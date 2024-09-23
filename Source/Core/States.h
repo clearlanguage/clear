@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace alkhat
+namespace clear
 {
 	class States
 	{

@@ -1,4 +1,4 @@
-﻿// alkhat.cpp : Defines the entry point for the application.
+﻿// clear.cpp : Defines the entry point for the application.
 //
 
 #include <iostream>
@@ -10,7 +10,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
 
-using namespace alkhat;
+using namespace clear;
 
 int main()
 {

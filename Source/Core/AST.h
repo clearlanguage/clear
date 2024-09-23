@@ -1,6 +1,6 @@
 #pragma once 
 
-namespace alkhat {
+namespace clear {
 
 	class AST
 	{

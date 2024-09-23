@@ -5,7 +5,7 @@
 
 #include <llvm/IR/Value.h>
 
-namespace alkhat {
+namespace clear {
 
 	enum class ASTNodeType
 	{

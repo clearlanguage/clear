@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-namespace alkhat {
+namespace clear {
 
 	void ASTNodeBase::PushChild(const std::shared_ptr<ASTNodeBase>& child)
 	{

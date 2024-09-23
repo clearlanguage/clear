@@ -4,9 +4,7 @@
 #include <fstream>
 #include <map>
 
-namespace alkhat
-{
-
+namespace clear {
     std::vector<std::string> Parser::ParseFile(const std::filesystem::path& path)
     {
         std::ifstream file(path);
@@ -46,10 +44,4 @@ namespace alkhat
 
         return split;
     }
-
-			}
-		}
-
-		return tokens;
-	}
 }

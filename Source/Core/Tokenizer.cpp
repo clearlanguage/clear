@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <map>
 
-namespace alkhat {
+namespace clear {
 
 	using StateMapType    = std::map<Tokenizer::CurrentState, std::function<void(std::string&, ProgramInfo&, Tokenizer::CurrentState&)>>;
 	using OperatorMapType = std::map<char, Tokenizer::CurrentState>;

@@ -5,7 +5,7 @@
 #include <iostream>
 #include <map>
 
-namespace alkhat
+namespace clear
 {
 
 	static const std::map<std::string_view, TokenType> s_TokenMap = {

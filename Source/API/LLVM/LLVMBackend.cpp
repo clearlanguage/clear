@@ -1,6 +1,6 @@
 #include "LLVMBackend.h"
 
-namespace alkhat {
+namespace clear {
 	namespace LLVM {
 
 		void Backend::Init()

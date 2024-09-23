@@ -4,7 +4,7 @@
 
 #include "LLVMInclude.h"
 
-namespace alkhat {
+namespace clear {
 	namespace LLVM {
 
 		class Backend

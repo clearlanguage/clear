@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-namespace alkhat
+namespace clear
 {
 
 	class Parser

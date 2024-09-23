@@ -5,7 +5,7 @@
 #include <string_view>
 #include <optional>
 
-namespace alkhat
+namespace clear
 {
 	enum class TokenType
 	{
