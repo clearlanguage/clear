@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20.0)
-project(alkhat)
+project(clear)
 set(CMAKE_CXX_STANDARD 20)
 
 if (POLICY CMP0141)
@@ -15,20 +15,20 @@ if (MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "/MD")
 endif()
 
-set(ALKHAT_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
-add_executable(alkhat "${MY_SOURCES}")
+add_executable(clear "${MY_SOURCES}")
 
 find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-include_directories(${LLVM_INCLUDE_DIRS} ${ALKHAT_INCLUDE_DIRS})
+include_directories(${LLVM_INCLUDE_DIRS} ${CLEAR_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
 
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
-target_link_libraries(alkhat ${llvm_libs})
+target_link_libraries(clear ${llvm_libs})

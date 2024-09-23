@@ -6,7 +6,7 @@ namespace alkhat {
 		void Backend::Init()
 		{
 			s_Context = std::make_shared<llvm::LLVMContext>();
-			s_Module  = std::make_shared<llvm::Module>("alkhat jit", *s_Context);
+			s_Module  = std::make_shared<llvm::Module>("clear", *s_Context);
 			s_Builder = std::make_shared<llvm::IRBuilder<>>(*s_Context);
 		}
 
