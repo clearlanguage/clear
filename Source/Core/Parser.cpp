@@ -1,52 +1,50 @@
 #include "Parser.h"
 
 #include <iostream>
+#include <fstream>
+#include <map>
 
-namespace alkhat {
+namespace alkhat
+{
 
-	Parser::Parser(const std::filesystem::path& path)
-		: m_Path(path)
-	{
-	}
-	std::vector<Token> Parser::Build()
-	{
-		std::vector<Token> tokens;
+    std::vector<std::string> Parser::ParseFile(const std::filesystem::path& path)
+    {
+        std::ifstream file(path);
 
-		m_File.open(m_Path);
+        if (!file.is_open())
+        {
+            std::cout << "failed to open file " << path << std::endl;
+            return {};
+        }
 
-		if (!m_File.is_open())
-		{
-			std::cout << "failed to open file " << m_Path << std::endl;
-			return tokens;
-		}
+        std::string buffer;
+        std::string line;
 
-		std::string line; 
+        while (std::getline(file, line))
+        {
+            buffer += line + '\n'; 
+        }
 
-		while (std::getline(m_File, line))
-		{
-			std::string current;
+        std::vector<std::string> split;
+        std::string current = "";
 
-			for (size_t i = 0; i < line.length(); i++)
-			{
-				if (std::isspace(line[i]))
-					continue;
+        for (size_t i = 0; i < buffer.length(); i++)
+        { 
+            if (buffer[i] == '\n' || buffer[i] == '\t' || buffer[i] == '\b')
+            {
+                if (!current.empty())
+                {
+                    split.push_back(current);
+                    current.clear();
+                }
 
-				if (std::isalnum(line[i]))
-				{
-					while (std::isalnum(line[i]))
-					{
-						current += line[i];
-					}
+                continue;
+            }
 
-					//run something with text
+            current += buffer[i];
+        }
 
-					current.clear();
-				}
-				
+        return split;
+    }
 
-			}
-		}
-
-		return tokens;
-	}
 }
