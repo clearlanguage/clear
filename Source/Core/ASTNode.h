@@ -10,7 +10,8 @@ namespace alkhat {
 	enum class ASTNodeType
 	{
 		Base = 0, 
-		Literal
+		Literal, 
+		BinaryExpression
 	};
 
 	class ASTNodeBase
@@ -49,10 +50,37 @@ namespace alkhat {
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
-		
 
 	private:
 		LiteralType m_Type;
 		std::string m_Data;
+	};
+
+	enum class BinaryExpressionType
+	{
+		None = 0, Add, Sub, Mul, 
+		Div, Mod, Less, LessEq, 
+		Greater, GreaterEq, Eq
+	};
+
+	class ASTBinaryExpression : public ASTNodeBase
+	{
+	public:
+		ASTBinaryExpression(BinaryExpressionType type);
+		virtual ~ASTBinaryExpression() = default;
+		virtual inline const ASTNodeType GetType() const { return ASTNodeType::BinaryExpression; }
+		virtual llvm::Value* Codegen() override;
+
+
+		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
+		
+	private:
+		const bool _IsMathExpression() const;
+
+		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
+		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
+
+	private:
+		BinaryExpressionType m_Expression;
 	};
 }

@@ -19,19 +19,17 @@ int main()
 
     LLVM::Backend::Init();
 
-    std::error_code EC;
-    llvm::raw_fd_ostream my_stream("file.ll", EC, llvm::sys::fs::OF_None);
+    {
+        ASTBinaryExpression expression(BinaryExpressionType::Greater);
 
-    if (EC) {
-        std::cout << "Failed to open file: " << EC.message() << std::endl;
-        return 0;
+        expression.PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "10.4"));
+        expression.PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "15.93"));
+
+        llvm::Value* value = expression.Codegen();
+        value->print(llvm::outs());
     }
 
-    ASTNodeLiteral literal(LiteralType::Int8, "5");
-
-    literal.Codegen()->print(my_stream, true);
-
-    my_stream.flush();
+    LLVM::Backend::GetModule()->print(llvm::outs(), nullptr);
 
     LLVM::Backend::Shutdown();
     return 0;
