@@ -66,7 +66,6 @@ namespace clear {
 		llvm::Value* LHS = children[0]->Codegen();
 		llvm::Value* RHS = children[1]->Codegen();
 
-
 		if (!LHS || !RHS)
 			return nullptr;
 

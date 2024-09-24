@@ -44,7 +44,7 @@ int main()
     for (size_t i = 0; i < info.Tokens.size(); i++)
     {
         std::cout << "Token Type: " << TokenToString(info.Tokens[i].TokenType);
-        std::cout << " Data: " << info.Tokens[i].Data;
+        std::cout << ", Data: " << info.Tokens[i].Data;
         std::cout << std::endl;
     }
 

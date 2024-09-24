@@ -5,6 +5,7 @@
 #include <map>
 #include <fstream>
 #include <iostream>
+#include <iosfwd>
 
 namespace clear {
 
@@ -12,16 +13,30 @@ namespace clear {
 	{
 		switch (token)
 		{
-			case TokenType::None:			    return "None";
-			case TokenType::IntType:		    return "IntType";
-			case TokenType::StringType:			return "StringType";
-			case TokenType::CharType:		    return "CharType";
-			case TokenType::FloatType:		    return "FloatType";
-			case TokenType::VariableName:		return "VariableName";
-			case TokenType::EndOfStatement:		return "EndOfStatement";
-			case TokenType::Assignment:			return "Assignment";
-			case TokenType::RValueNumber:		return "RValueNumber";
-			case TokenType::RValueString:		return "RValueString";
+			case TokenType::None:			return "None";
+			case TokenType::Int8Type:		return "Int8Type";
+			case TokenType::Int16Type:		return "Int16Type";
+			case TokenType::Int32Type:		return "Int32Type";
+			case TokenType::Int64Type:		return "Int64Type";
+			case TokenType::UInt8Type:		return "UInt8Type";
+			case TokenType::UInt16Type:		return "UInt16Type";
+			case TokenType::UInt32Type:		return "UInt32Type";
+			case TokenType::UInt64Type:		return "UInt64Type";
+			case TokenType::Float32Type:	return "Float32Type";
+			case TokenType::Float64Type:	return "Float64Type";
+			case TokenType::StringType:		return "StringType";
+			case TokenType::VariableName:	return "VariableName";
+			case TokenType::Assignment:		return "Assignment";
+			case TokenType::RValueNumber:	return "RValueNumber";
+			case TokenType::RValueString:	return "RValueString";
+			case TokenType::MulOp:			return "MulOp";
+			case TokenType::AddOp:			return "AddOp";
+			case TokenType::DivOp:			return "DivOp";
+			case TokenType::SubOp:			return "SubOp";
+			case TokenType::Bool:			return "Bool";
+			case TokenType::CloseBracket:	return "CloseBracket";
+			case TokenType::OpenBracket:	return "OpenBracket";
+
 			default:
 				break;
 		}
@@ -35,16 +50,42 @@ namespace clear {
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
 
-		m_OperatorMap['=']  = { .NextState = CurrentParserState::RValue, .TokenToPush = TokenType::Assignment};
-		m_OperatorMap['"']  = { .NextState = CurrentParserState::String, .TokenToPush = TokenType::None }; //token will be pushed by string state
+		m_OperatorMap['='] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::Assignment};
+		m_OperatorMap['*'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::MulOp };
+		m_OperatorMap['+'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::AddOp };
+		m_OperatorMap['/'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::DivOp };
+		m_OperatorMap['-'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::SubOp };
+		m_OperatorMap['%'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::ModOp };
 
-		m_KeyWordMap["int"]    = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::IntType };
-		m_KeyWordMap["string"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::StringType };
+		m_KeyWordMap["int8"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int8Type };
+		m_KeyWordMap["int16"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int16Type };
+		m_KeyWordMap["int32"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type };
+		m_KeyWordMap["int64"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int64Type };
+
+		m_KeyWordMap["uint8"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt8Type };
+		m_KeyWordMap["uint16"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt16Type };
+		m_KeyWordMap["uint32"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt32Type };
+		m_KeyWordMap["uint64"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt64Type };
+
+		m_KeyWordMap["string"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::StringType };
+		m_KeyWordMap["bool"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Bool };
+
+		m_KeyWordMap["float32"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float32Type };
+		m_KeyWordMap["float64"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float64Type };
 	}
 
 	char Parser::_GetNextChar()
 	{
+		if (m_CurrentTokenIndex >= m_Buffer.length())
+			return '\0';
+
 		return m_Buffer[m_CurrentTokenIndex++];
+	}
+
+	void Parser::_Backtrack()
+	{
+		if(m_CurrentTokenIndex > 0)
+			m_CurrentTokenIndex--;
 	}
 
 	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
@@ -114,6 +155,7 @@ namespace clear {
 		}
 
 
+
 	}
 
 	void Parser::_ParsingRValueState()
@@ -126,11 +168,24 @@ namespace clear {
 
 		m_CurrentString.clear();
 
-		if (current == '"')
+		//brackets
+		if (current == '(')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			m_CurrentState = CurrentParserState::RValue;
+			return;
+		}
+		else if (current == ')')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
+			m_CurrentState = CurrentParserState::RValue;
+			return;
+		}
+		else if (current == '"') //strings
 		{
 			_ParseString();
 		}
-		else if (std::isdigit(current) || current == '-') // OR negative numbers
+		else if (std::isdigit(current) || current == '-') // postive/negative numbers
 		{
 			m_CurrentString.push_back(current);
 			_ParseNumber();
@@ -148,7 +203,6 @@ namespace clear {
 	void Parser::_VariableNameState()
 	{
 		char current = _GetNextChar();
-		std::cout << current << std::endl;
 
 		//want to ignore all spaces in between type and variable
 		while (std::isspace(current)) 
@@ -201,6 +255,7 @@ namespace clear {
 
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 		m_CurrentString.clear();
+		_Backtrack();
 	}
 
 	void Parser::_ParseString()

@@ -12,8 +12,9 @@ namespace clear
 {
 	enum class TokenType
 	{
-		None = 0, IntType, CharType, FloatType,  RValueNumber, RValueString,
-		VariableName, StringType, EndOfStatement, Assignment
+		None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type, 
+		Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType, 
+		Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket
 	};
 
 	struct Token
@@ -32,8 +33,6 @@ namespace clear
 		Default = 0, 
 		RValue,
 		VariableName, 
-		Number, 
-		String,
 		Function
 	};
 
@@ -68,7 +67,7 @@ namespace clear
 		void _ParseOther();
 
 		char _GetNextChar();
-
+		void _Backtrack();
 
 	private:
 		size_t m_CurrentTokenIndex = 0;
