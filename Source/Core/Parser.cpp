@@ -76,16 +76,13 @@ namespace clear {
 
 	char Parser::_GetNextChar()
 	{
-		if (m_CurrentTokenIndex >= m_Buffer.length())
-			return '\0';
 
 		return m_Buffer[m_CurrentTokenIndex++];
 	}
 
 	void Parser::_Backtrack()
 	{
-		if(m_CurrentTokenIndex > 0)
-			m_CurrentTokenIndex--;
+		m_CurrentTokenIndex--;
 	}
 
 	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
@@ -124,6 +121,12 @@ namespace clear {
 
 		if (std::isspace(current))
 			return;
+
+		if (current == ')')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
+			return;
+		}
 
 		m_CurrentString += current;
 
