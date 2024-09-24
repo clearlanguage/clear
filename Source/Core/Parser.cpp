@@ -195,6 +195,8 @@ namespace clear {
 			{
 				break;
 			}
+
+			current = _GetNextChar();
 		}
 
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });

@@ -1,3 +1,3 @@
-int test = 5
+int test = -5.4
 
-string another = "hello"
+string another = "hello" 
