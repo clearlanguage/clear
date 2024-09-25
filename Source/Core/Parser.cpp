@@ -1,5 +1,5 @@
 #include "Parser.h"
-
+#include <sstream>
 #include <functional>
 #include <algorithm>
 #include <map>
@@ -36,6 +36,7 @@ namespace clear {
 			case TokenType::Bool:			return "Bool";
 			case TokenType::CloseBracket:	return "CloseBracket";
 			case TokenType::OpenBracket:	return "OpenBracket";
+			case TokenType::BooleanData:	return "BooleanData";
 
 			default:
 				break;
@@ -72,6 +73,10 @@ namespace clear {
 
 		m_KeyWordMap["float32"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float32Type };
 		m_KeyWordMap["float64"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float64Type };
+
+
+		m_KeyWordMap["false"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
+		m_KeyWordMap["true"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 	}
 
 	char Parser::_GetNextChar()
@@ -118,7 +123,6 @@ namespace clear {
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-
 		if (std::isspace(current))
 			return;
 
@@ -129,7 +133,6 @@ namespace clear {
 		}
 
 		m_CurrentString += current;
-
 		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(current))
 		{
 			auto& value = m_OperatorMap.at(current);
@@ -193,10 +196,11 @@ namespace clear {
 			m_CurrentString.push_back(current);
 			_ParseNumber();
 		}
-		else if(false) //TODO: implement this later
+		else if(true) //TODO: implement this later
 		{
 			//could be a variable reference, class/struct reference etc...
 			m_CurrentString.push_back(current);
+			_Backtrack();
 			_ParseOther();
 		}
 
@@ -284,5 +288,20 @@ namespace clear {
 
 	void Parser::_ParseOther()
 	{
+		char current = _GetNextChar();
+		m_CurrentString.clear();
+		m_CurrentString += current;
+		while (std::isalnum(current) and (not m_KeyWordMap.contains(m_CurrentString))){
+			char current = _GetNextChar();
+
+			m_CurrentString += current;
+		}
+
+		auto value = m_KeyWordMap.at(m_CurrentString);
+		m_ProgramInfo.Tokens.push_back({.TokenType = value.TokenToPush, .Data = m_CurrentString});
+
+		m_CurrentString.clear();
+
+		m_CurrentState = CurrentParserState::Default;
 	}
 }
