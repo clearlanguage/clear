@@ -74,15 +74,16 @@ namespace clear {
 		m_KeyWordMap["float32"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float32Type };
 		m_KeyWordMap["float64"] = { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float64Type };
 
-
 		m_KeyWordMap["false"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
-		m_KeyWordMap["true"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
+		m_KeyWordMap["true"] =  {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 	}
 
 	char Parser::_GetNextChar()
 	{
+		if(m_Buffer.length() > m_CurrentTokenIndex)
+			return m_Buffer[m_CurrentTokenIndex++];
 
-		return m_Buffer[m_CurrentTokenIndex++];
+		return '\0';
 	}
 
 	void Parser::_Backtrack()
@@ -234,6 +235,13 @@ namespace clear {
 	{
 		char current = _GetNextChar();
 
+		if (current == '\0')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			m_CurrentString.clear();
+			return;
+		}
+
 		bool usedDecimal = false;
 
 		while (true)
@@ -291,17 +299,17 @@ namespace clear {
 		char current = _GetNextChar();
 		m_CurrentString.clear();
 		m_CurrentString += current;
-		while (std::isalnum(current) and (not m_KeyWordMap.contains(m_CurrentString))){
-			char current = _GetNextChar();
 
+		while (std::isalnum(current) && (!m_KeyWordMap.contains(m_CurrentString)))
+		{
+			char current = _GetNextChar();
 			m_CurrentString += current;
 		}
 
-		auto value = m_KeyWordMap.at(m_CurrentString);
+		auto& value = m_KeyWordMap.at(m_CurrentString);
 		m_ProgramInfo.Tokens.push_back({.TokenType = value.TokenToPush, .Data = m_CurrentString});
 
 		m_CurrentString.clear();
-
 		m_CurrentState = CurrentParserState::Default;
 	}
 }
