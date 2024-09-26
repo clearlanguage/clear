@@ -85,7 +85,7 @@ namespace clear {
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 			return m_Buffer[m_CurrentTokenIndex++];
 
-		return '\0';
+		return 0;
 	}
 
 	void Parser::_Backtrack()
@@ -301,15 +301,21 @@ namespace clear {
 		char current = _GetNextChar();
 		m_CurrentString.clear();
 		m_CurrentString += current;
-		while ((std::isalnum(current) || current == '_' || current == '.') && !std::isspace(current))
+		
+		while ((std::isalnum(current) || current == '_' || current == '.') && current)
 		{
-			char current = _GetNextChar();
-			std::cout<< current << std::endl;
+			current = _GetNextChar();
+			if (current == '\n' || std::isspace(current))
+				break;
+
 			m_CurrentString += current;
 		}
 
-		auto& value = m_KeyWordMap.at(m_CurrentString);
-		m_ProgramInfo.Tokens.push_back({.TokenType = value.TokenToPush, .Data = m_CurrentString});
+		if (m_KeyWordMap.contains(m_CurrentString))
+		{
+			auto& value = m_KeyWordMap.at(m_CurrentString);
+			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+		}
 
 		m_CurrentString.clear();
 		m_CurrentState = CurrentParserState::Default;
