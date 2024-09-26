@@ -38,8 +38,8 @@ namespace clear {
 			case TokenType::OpenBracket:	return "OpenBracket";
 			case TokenType::BooleanData:	return "BooleanData";
 			case TokenType::ConditionalIf:  return "ConditionalIf";
-
-			default : break;
+			case TokenType::IsEqual:		return "IsEqual";
+			default: break;
 		}
 
 		return "";
@@ -51,7 +51,7 @@ namespace clear {
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
 
-		m_OperatorMap['='] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::Assignment};
+		m_OperatorMap['='] = { .NextState = CurrentParserState::Operator,  .TokenToPush = TokenType::Assignment};
 		m_OperatorMap['*'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::MulOp };
 		m_OperatorMap['+'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::AddOp };
 		m_OperatorMap['/'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::DivOp };
@@ -77,7 +77,7 @@ namespace clear {
 		m_KeyWordMap["false"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 		m_KeyWordMap["true"] =  {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 
-		m_KeyWordMap["if"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::ConditionalIf};
+		m_KeyWordMap["if"] = {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::ConditionalIf};
 	}
 
 	char Parser::_GetNextChar()
@@ -136,18 +136,6 @@ namespace clear {
 		}
 
 		m_CurrentString += current;
-		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(current))
-		{
-			auto& value = m_OperatorMap.at(current);
-
-			m_CurrentState = value.NextState;
-
-			if (value.TokenToPush != TokenType::None)
-				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
-			
-			m_CurrentString.clear();
-			return;
-		}
 
 		if (m_KeyWordMap.contains(m_CurrentString))
 		{
@@ -159,6 +147,19 @@ namespace clear {
 			if (value.TokenToPush != TokenType::None)
 				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
+			m_CurrentString.clear();
+			return;
+		}
+
+		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(current))
+		{
+			auto& value = m_OperatorMap.at(current);
+
+			m_CurrentState = value.NextState;
+
+			if (value.TokenToPush != TokenType::None)
+				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+			
 			m_CurrentString.clear();
 			return;
 		}
@@ -233,6 +234,10 @@ namespace clear {
 		m_CurrentState = CurrentParserState::Default;
 	}
 
+	void Parser::_OperatorState()
+	{
+	}
+
 	void Parser::_ParseNumber()
 	{
 		char current = _GetNextChar();
@@ -279,7 +284,7 @@ namespace clear {
 	{
 		char current = _GetNextChar();
 
-		while (current != '"')
+		while (current != '"' && current == '\0')
 		{
 			//may want to add raw strings to allow these
 			if (current == '\n')
