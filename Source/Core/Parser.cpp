@@ -18,7 +18,6 @@ void print(Args &&...args)
 	(std::cout << ... << std::forward<Args>(args));
 	std::cout << std::endl;
 }
-
 	namespace clear
 {
 
