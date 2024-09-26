@@ -7,7 +7,20 @@
 #include <iostream>
 #include <iosfwd>
 
-namespace clear {
+
+std::string str(char hello){
+	return std::string(1,hello);
+}
+
+template <typename... Args>
+void print(Args &&...args)
+{
+	(std::cout << ... << std::forward<Args>(args));
+	std::cout << std::endl;
+}
+
+	namespace clear
+{
 
 	std::string_view TokenToString(TokenType token)
 	{
@@ -39,6 +52,14 @@ namespace clear {
 			case TokenType::BooleanData:	return "BooleanData";
 			case TokenType::ConditionalIf:  return "ConditionalIf";
 			case TokenType::IsEqual:		return "IsEqual";
+			case TokenType::Null:           return "Null";
+			case TokenType::NotEqual:       return "NotEqual";
+			case TokenType::GreaterThan:	return "GreaterThan";
+			case TokenType::GreaterThanEqual:return "GreaterThanEqual";
+			case TokenType::LessThanEqual:	return "LessThanEqual";
+			case TokenType::LessThan:		return "LessThan";
+			case TokenType::Not:			return "Not";
+
 			default: break;
 		}
 
@@ -50,13 +71,22 @@ namespace clear {
 		m_StateMap[CurrentParserState::Default]      = [this]() { _DefaultState(); };
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
+		m_StateMap[CurrentParserState::Operator] = [this](){ _OperatorState(); };
 
-		m_OperatorMap['='] = { .NextState = CurrentParserState::Operator,  .TokenToPush = TokenType::Assignment};
-		m_OperatorMap['*'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::MulOp };
-		m_OperatorMap['+'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::AddOp };
-		m_OperatorMap['/'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::DivOp };
-		m_OperatorMap['-'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::SubOp };
-		m_OperatorMap['%'] = { .NextState = CurrentParserState::RValue,  .TokenToPush = TokenType::ModOp };
+		m_OperatorMap["="] = { .NextState = CurrentParserState::Operator,  .TokenToPush = TokenType::Assignment};
+		m_OperatorMap["*"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::MulOp};
+		m_OperatorMap["+"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::AddOp};
+		m_OperatorMap["/"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::DivOp};
+		m_OperatorMap["-"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::SubOp};
+		m_OperatorMap["%"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::ModOp};
+		m_OperatorMap["=="] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::IsEqual};
+		m_OperatorMap["<"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::LessThan};
+		m_OperatorMap[">"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::GreaterThan};
+		m_OperatorMap["!="] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::NotEqual};
+		m_OperatorMap["<="] = {.NextState = CurrentParserState::Operator,.TokenToPush = TokenType::LessThanEqual};
+		m_OperatorMap[">="] = {.NextState =CurrentParserState::Operator,.TokenToPush = TokenType::GreaterThanEqual};
+
+		m_OperatorMap["!"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::Not};
 
 		m_KeyWordMap["int8"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int8Type };
 		m_KeyWordMap["int16"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int16Type };
@@ -76,6 +106,7 @@ namespace clear {
 
 		m_KeyWordMap["false"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 		m_KeyWordMap["true"] =  {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
+		m_KeyWordMap["null"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::Null};
 
 		m_KeyWordMap["if"] = {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::ConditionalIf};
 	}
@@ -151,14 +182,14 @@ namespace clear {
 			return;
 		}
 
-		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(current))
+		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(str(current)))
 		{
-			auto& value = m_OperatorMap.at(current);
+			auto& value = m_OperatorMap.at(str(current));
 
 			m_CurrentState = value.NextState;
 
-			if (value.TokenToPush != TokenType::None)
-				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+			// if (value.TokenToPush != TokenType::None)
+			// 	m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 			
 			m_CurrentString.clear();
 			return;
@@ -236,6 +267,28 @@ namespace clear {
 
 	void Parser::_OperatorState()
 	{
+		_Backtrack();
+		std::string before = str(_GetNextChar());
+		std::string chr = str(_GetNextChar());
+		std::string h = before+chr;
+
+
+		ParserMapValue value;
+		std::string data;
+
+		if (m_OperatorMap.contains(h)){
+			value = m_OperatorMap.at(h);
+			data = h;
+		}else {
+			value = m_OperatorMap.at(before);
+			data = before;
+			_Backtrack();
+		}
+		if (value.TokenToPush != TokenType::None)
+			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
+		// m_CurrentState = value.NextState;
+
+		m_CurrentState = CurrentParserState::Default;
 	}
 
 	void Parser::_ParseNumber()
@@ -284,7 +337,7 @@ namespace clear {
 	{
 		char current = _GetNextChar();
 
-		while (current != '"' && current == '\0')
+		while (current != '"' && current != '\0')
 		{
 			//may want to add raw strings to allow these
 			if (current == '\n')

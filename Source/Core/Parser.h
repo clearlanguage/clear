@@ -15,7 +15,7 @@ namespace clear
 		None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type, 
 		Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType, 
 		Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData,ConditionalIf,
-		IsEqual
+		IsEqual,Null,NotEqual,GreaterThan,LessThan,LessThanEqual,GreaterThanEqual,Not
 	};
 
 	struct Token
@@ -50,7 +50,7 @@ namespace clear
 	{
 	public:
 		using StateMapType    = std::map<CurrentParserState, std::function<void()>>;
-		using OperatorMapType = std::map<char, ParserMapValue>;
+		using OperatorMapType = std::map<std::string, ParserMapValue>;
 		using KeyWordMapType  = std::map<std::string, ParserMapValue>;
 
 	public:
