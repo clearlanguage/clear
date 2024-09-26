@@ -37,9 +37,9 @@ namespace clear {
 			case TokenType::CloseBracket:	return "CloseBracket";
 			case TokenType::OpenBracket:	return "OpenBracket";
 			case TokenType::BooleanData:	return "BooleanData";
+			case TokenType::ConditionalIf:  return "ConditionalIf";
 
-			default:
-				break;
+			default : break;
 		}
 
 		return "";
@@ -76,6 +76,8 @@ namespace clear {
 
 		m_KeyWordMap["false"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
 		m_KeyWordMap["true"] =  {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData};
+
+		m_KeyWordMap["if"] = {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::ConditionalIf};
 	}
 
 	char Parser::_GetNextChar()
@@ -299,10 +301,10 @@ namespace clear {
 		char current = _GetNextChar();
 		m_CurrentString.clear();
 		m_CurrentString += current;
-
-		while (std::isalnum(current) && (!m_KeyWordMap.contains(m_CurrentString)))
+		while ((std::isalnum(current) || current == '_' || current == '.') && !std::isspace(current))
 		{
 			char current = _GetNextChar();
+			std::cout<< current << std::endl;
 			m_CurrentString += current;
 		}
 
