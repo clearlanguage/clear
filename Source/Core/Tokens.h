@@ -1,0 +1,50 @@
+//
+// Created by Kareem Fares on 9/27/24.
+//
+
+#pragma once
+#include <string_view>
+#include <string>
+#include <map>
+
+
+namespace clear{
+    enum class TokenType
+    {
+        None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
+        Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType,
+        Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData,ConditionalIf,
+        IsEqual,Null,NotEqual,GreaterThan,LessThan,LessThanEqual,GreaterThanEqual,Not,Ellipsis,DotOp,BinaryShiftLeft
+    };
+
+    enum class CurrentParserState
+    {
+        Default = 0,
+        RValue,
+        VariableName,
+        Function,
+        Operator
+    };
+
+
+    struct ParserMapValue
+    {
+        CurrentParserState NextState = CurrentParserState::Default;
+        TokenType TokenToPush = TokenType::None;
+    };
+
+
+    struct Token
+    {
+        TokenType TokenType = TokenType::None;
+        std::string Data = "";
+    };
+
+    std::string_view TokenToString(TokenType token);
+
+    using OperatorMapType = std::map<std::string, ParserMapValue>;
+    using KeyWordMapType  = std::map<std::string, ParserMapValue>;
+
+    static const OperatorMapType s_OperatorMap;
+    static const KeyWordMapType s_KeyWordMap;
+}

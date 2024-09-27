@@ -1,1 +1,4 @@
-int h = true.false
+bool test = true = =  false
+
+ 
+bool test = true == false
