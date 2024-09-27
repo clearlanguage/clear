@@ -25,13 +25,18 @@ int main()
 
     std::cout << "------AST TESTS--------" << std::endl;
     {
-        ASTBinaryExpression expression(BinaryExpressionType::Greater);
+        ASTFunctionDecleration function("main", VariableType::None, {});
+        
+        std::shared_ptr<ASTBinaryExpression> expression = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Greater);
 
-        expression.PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "10.4"));
-        expression.PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "15.93"));
+        expression->PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "10.4"));
+        expression->PushChild(std::make_shared<ASTNodeLiteral>(LiteralType::Float64, "15.93"));
 
-        llvm::Value* value = expression.Codegen();
-        value->print(llvm::outs());
+        function.PushChild(expression);
+        auto i = std::make_shared<ASTVariableDecleration>("my_var", VariableType::Int32);
+        function.PushChild(i);
+
+        llvm::Value* value = function.Codegen();
     }
 
     LLVM::Backend::GetModule()->print(llvm::outs(), nullptr);

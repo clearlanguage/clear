@@ -6,6 +6,14 @@
 
 namespace clear {
 
+	llvm::Value* ASTNodeBase::Codegen()
+	{
+		for (auto& child : GetChildren())
+			child->Codegen();
+
+		return nullptr;
+	}
+
 	void ASTNodeBase::PushChild(const std::shared_ptr<ASTNodeBase>& child)
 	{
 		m_Children.push_back(child);
@@ -91,15 +99,15 @@ namespace clear {
 		{
 			case BinaryExpressionType::Add:
 				return isFloat ? builder->CreateFAdd(LHS, RHS, "faddtmp")
-							   : builder->CreateAdd(LHS, RHS, "addtmp");
+							   : builder->CreateAdd(LHS, RHS,  "addtmp");
 
 			case BinaryExpressionType::Sub:
 				return isFloat ? builder->CreateFSub(LHS, RHS, "fsubtmp")
-							   : builder->CreateSub(LHS, RHS, "subtmp");
+							   : builder->CreateSub(LHS, RHS,  "subtmp");
 
 			case BinaryExpressionType::Mul:
 				return isFloat ? builder->CreateFMul(LHS, RHS, "fmultmp")
-							   : builder->CreateMul(LHS, RHS, "multmp");
+							   : builder->CreateMul(LHS, RHS,  "multmp");
 
 			case BinaryExpressionType::Div:
 				return isFloat ? builder->CreateFDiv(LHS, RHS, "fdivtmp")
@@ -155,14 +163,17 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTVariableDecleration::ASTVariableDecleration(const std::string& name)
-		: m_Name(name)
+	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, VariableType type)
+		: m_Name(name), m_Type(type)
 	{
 	}
 	llvm::Value* ASTVariableDecleration::Codegen()
 	{
-		return nullptr;
+		auto& builder = *LLVM::Backend::GetBuilder();
+		m_Value = builder.CreateAlloca(GetVariableType(m_Type), nullptr, m_Name);
+		return m_Value;
 	}
+
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Argument>& arugments)
 		: m_Name(name), m_ReturnType(returnType), m_Arguments(arugments)
 	{
@@ -173,12 +184,12 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		llvm::Type* returnType = _GetType(m_ReturnType);
+		llvm::Type* returnType = GetVariableType(m_ReturnType);
 		
 		std::vector<llvm::Type*> argumentTypes;
 		for (const auto& arugment : m_Arguments)
 		{
-			argumentTypes.push_back(_GetType(arugment.Type));
+			argumentTypes.push_back(GetVariableType(arugment.Type));
 		}
 
 		//TODO: may want to add variadic arguments in the future
@@ -212,7 +223,8 @@ namespace clear {
 
 		return function;
 	}
-	llvm::Type* ASTFunctionDecleration::_GetType(VariableType type)
+
+	llvm::Type* GetVariableType(VariableType type)
 	{
 		auto& context = *LLVM::Backend::GetContext();
 
@@ -222,20 +234,19 @@ namespace clear {
 			case VariableType::Int16:	return llvm::Type::getInt16Ty(context);
 			case VariableType::Int32:	return llvm::Type::getInt32Ty(context);
 			case VariableType::Int64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);  
+			case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);
 			case VariableType::Uint16:	return llvm::Type::getInt16Ty(context);
 			case VariableType::Uint32:	return llvm::Type::getInt32Ty(context);
 			case VariableType::Uint64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Bool:    return llvm::Type::getInt1Ty(context);  
-			case VariableType::Float32: return llvm::Type::getFloatTy(context); 
-			case VariableType::Float64:	return llvm::Type::getDoubleTy(context); 
-			//TODO:
+			case VariableType::Bool:    return llvm::Type::getInt1Ty(context);
+			case VariableType::Float32: return llvm::Type::getFloatTy(context);
+			case VariableType::Float64:	return llvm::Type::getDoubleTy(context);
+				//TODO:
 			case VariableType::Struct:
 			case VariableType::Object:
 			case VariableType::None:
 			default:
-				return nullptr;
+				return llvm::Type::getVoidTy(context);
 		}
-
 	}
 }

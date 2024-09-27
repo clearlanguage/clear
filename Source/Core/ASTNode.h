@@ -23,7 +23,7 @@ namespace clear {
 		ASTNodeBase() = default;
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
-		virtual llvm::Value* Codegen() { return nullptr; };
+		virtual llvm::Value* Codegen();
 
 		void PushChild(const std::shared_ptr<ASTNodeBase>& child);
 		void RemoveChild(const std::shared_ptr<ASTNodeBase>& child);
@@ -109,6 +109,9 @@ namespace clear {
 		Float32, Float64, Struct, Object //(struct and object will need implementing later)
 	};
 
+	static llvm::Type* GetVariableType(VariableType type);
+
+
 	struct Argument
 	{
 		std::string Name;
@@ -130,7 +133,6 @@ namespace clear {
 		inline const auto& GetArgs() const { return m_FunctionArgs; }
 
 	private:
-		llvm::Type* _GetType(VariableType type);
 
 	private:
 		std::string m_Name;
@@ -146,11 +148,10 @@ namespace clear {
 	//
 	// ---------------------- VARIABLE DECELRATION -----------------------
 	//
-	//TODO:
 	class ASTVariableDecleration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDecleration(const std::string& name);
+		ASTVariableDecleration(const std::string& name, VariableType type);
 		virtual ~ASTVariableDecleration() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
@@ -159,6 +160,8 @@ namespace clear {
 
 	private:
 		std::string m_Name;
+		VariableType m_Type;
+		llvm::Value* m_Value = nullptr;
 	};
 
 	//

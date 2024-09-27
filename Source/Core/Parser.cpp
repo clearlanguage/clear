@@ -24,7 +24,7 @@ namespace clear
 		m_StateMap[CurrentParserState::Default]      = [this]() { _DefaultState(); };
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
-		m_StateMap[CurrentParserState::Operator] = [this](){ _OperatorState(); };
+		m_StateMap[CurrentParserState::Operator]     = [this]() { _OperatorState(); };
 	}
 
 	char Parser::_GetNextChar()
