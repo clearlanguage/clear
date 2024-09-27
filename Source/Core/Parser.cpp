@@ -275,10 +275,9 @@ void print(Args &&...args)
 		std::string before = str(_GetNextChar());
 		std::string h = before;
 		char current  = before[0];
-		while (m_OperatorMap.contains(str(current)) || current =='.') {
+		while (m_OperatorMap.contains(str(current))) {
 			current = _GetNextChar();
-			print(current != '.' && !m_OperatorMap.contains(str(current)));
-			if (current != '.' && !m_OperatorMap.contains(str(current))) {
+			if (!m_OperatorMap.contains(str(current))) {
 				break;
 			};
 			h+=current;
@@ -286,14 +285,13 @@ void print(Args &&...args)
 		print(h);
 		ParserMapValue value;
 		std::string data;
-
+		_Backtrack();
 		if (m_OperatorMap.contains(h)){
 			value = m_OperatorMap.at(h);
 			data = h;
 		}else {
 			value = m_OperatorMap.at(before);
 			data = before;
-			_Backtrack();
 		}
 		if (value.TokenToPush != TokenType::None)
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
