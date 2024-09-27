@@ -17,18 +17,14 @@ void print(Args &&...args)
 	(std::cout << ... << std::forward<Args>(args));
 	std::cout << std::endl;
 }
-	namespace clear
+namespace clear
 {
-
-
 	Parser::Parser()
 	{
 		m_StateMap[CurrentParserState::Default]      = [this]() { _DefaultState(); };
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
 		m_StateMap[CurrentParserState::Operator] = [this](){ _OperatorState(); };
-
-
 	}
 
 	char Parser::_GetNextChar()
@@ -88,9 +84,9 @@ void print(Args &&...args)
 
 		m_CurrentString += current;
 
-		if (m_KeyWordMap.contains(m_CurrentString))
+		if (s_KeyWordMap.contains(m_CurrentString))
 		{
-			auto& value = m_KeyWordMap.at(m_CurrentString);
+			auto& value = s_KeyWordMap.at(m_CurrentString);
 
 
 			m_CurrentState = value.NextState;
@@ -102,21 +98,15 @@ void print(Args &&...args)
 			return;
 		}
 
-		if (m_CurrentString.size() == 1 && m_OperatorMap.contains(str(current)))
+		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
 		{
-			auto& value = m_OperatorMap.at(str(current));
+			auto& value = s_OperatorMap.at(str(current));
 
-			m_CurrentState = value.NextState;
-
-			// if (value.TokenToPush != TokenType::None)
-			// 	m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
-			
+			m_CurrentState = CurrentParserState::Operator;			
 			m_CurrentString.clear();
+
 			return;
 		}
-
-
-
 	}
 
 	void Parser::_ParsingRValueState()
@@ -185,33 +175,40 @@ void print(Args &&...args)
 		m_CurrentState = CurrentParserState::Default;
 	}
 
-	void Parser::_OperatorState() {
+	void Parser::_OperatorState() 
+	{
 		_Backtrack();
 		std::string before = str(_GetNextChar());
 		std::string h = before;
 		char current  = before[0];
-		while (m_OperatorMap.contains(str(current))) {
+		while (s_OperatorMap.contains(str(current))) 
+		{
 			current = _GetNextChar();
-			if (!m_OperatorMap.contains(str(current))) {
+
+			if (!s_OperatorMap.contains(str(current))) 
 				break;
-			};
+
 			h+=current;
 		}
-		print(h);
+
 		ParserMapValue value;
 		std::string data;
 		_Backtrack();
-		if (m_OperatorMap.contains(h)){
-			value = m_OperatorMap.at(h);
+
+		if (s_OperatorMap.contains(h))
+		{
+			value = s_OperatorMap.at(h);
 			data = h;
-		}else {
-			value = m_OperatorMap.at(before);
+		}
+		else 
+		{
+			value = s_OperatorMap.at(before);
 			data = before;
 		}
 		if (value.TokenToPush != TokenType::None)
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
-		// m_CurrentState = value.NextState;
-		m_CurrentState = CurrentParserState::Default;
+
+		m_CurrentState = value.NextState;
 	}
 
 	void Parser::_ParseNumber()
@@ -286,15 +283,15 @@ void print(Args &&...args)
 		while ((std::isalnum(current) || current == '_' || current == '.') && current)
 		{
 			current = _GetNextChar();
-			if (current == '\n' || std::isspace(current))
+			if (current == '\n' || current == '\0' || std::isspace(current))
 				break;
 
 			m_CurrentString += current;
 		}
 
-		if (m_KeyWordMap.contains(m_CurrentString))
+		if (s_KeyWordMap.contains(m_CurrentString))
 		{
-			auto& value = m_KeyWordMap.at(m_CurrentString);
+			auto& value = s_KeyWordMap.at(m_CurrentString);
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 		}
 

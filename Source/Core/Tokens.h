@@ -45,6 +45,6 @@ namespace clear{
     using OperatorMapType = std::map<std::string, ParserMapValue>;
     using KeyWordMapType  = std::map<std::string, ParserMapValue>;
 
-    static const OperatorMapType s_OperatorMap;
-    static const KeyWordMapType s_KeyWordMap;
+    extern const OperatorMapType s_OperatorMap;
+    extern const KeyWordMapType  s_KeyWordMap;
 }

@@ -1,4 +1,5 @@
-bool test = true = =  false
+struct Type:
+	int32 hello
+	bool test
 
- 
-bool test = true == false
+type.hello
