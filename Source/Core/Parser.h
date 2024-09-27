@@ -15,7 +15,7 @@ namespace clear
 		None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type, 
 		Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType, 
 		Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData,ConditionalIf,
-		IsEqual,Null,NotEqual,GreaterThan,LessThan,LessThanEqual,GreaterThanEqual,Not
+		IsEqual,Null,NotEqual,GreaterThan,LessThan,LessThanEqual,GreaterThanEqual,Not,Ellipsis,DotOp
 	};
 
 	struct Token

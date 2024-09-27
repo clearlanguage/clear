@@ -58,6 +58,8 @@ void print(Args &&...args)
 			case TokenType::LessThanEqual:	return "LessThanEqual";
 			case TokenType::LessThan:		return "LessThan";
 			case TokenType::Not:			return "Not";
+			case TokenType::Ellipsis:		return "Ellipsis";
+			case TokenType::DotOp: 			return "DotOp";
 
 			default: break;
 		}
@@ -84,6 +86,8 @@ void print(Args &&...args)
 		m_OperatorMap["!="] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::NotEqual};
 		m_OperatorMap["<="] = {.NextState = CurrentParserState::Operator,.TokenToPush = TokenType::LessThanEqual};
 		m_OperatorMap[">="] = {.NextState =CurrentParserState::Operator,.TokenToPush = TokenType::GreaterThanEqual};
+		m_OperatorMap["..."] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::Ellipsis};
+		m_OperatorMap["."] = {.NextState = CurrentParserState::Operator,.TokenToPush = TokenType::DotOp};
 
 		m_OperatorMap["!"] = {.NextState = CurrentParserState::Operator, .TokenToPush = TokenType::Not};
 
@@ -91,11 +95,13 @@ void print(Args &&...args)
 		m_KeyWordMap["int16"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int16Type };
 		m_KeyWordMap["int32"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type };
 		m_KeyWordMap["int64"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int64Type };
+		m_KeyWordMap["int"] = m_KeyWordMap["int32"];
 
 		m_KeyWordMap["uint8"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt8Type };
 		m_KeyWordMap["uint16"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt16Type };
 		m_KeyWordMap["uint32"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt32Type };
 		m_KeyWordMap["uint64"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt64Type };
+		m_KeyWordMap["uint"] = m_KeyWordMap["uint32"];
 
 		m_KeyWordMap["string"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::StringType };
 		m_KeyWordMap["bool"]	= { .NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Bool };
@@ -264,14 +270,20 @@ void print(Args &&...args)
 		m_CurrentState = CurrentParserState::Default;
 	}
 
-	void Parser::_OperatorState()
-	{
+	void Parser::_OperatorState() {
 		_Backtrack();
 		std::string before = str(_GetNextChar());
-		std::string chr = str(_GetNextChar());
-		std::string h = before+chr;
-
-
+		std::string h = before;
+		char current  = before[0];
+		while (m_OperatorMap.contains(str(current)) || current =='.') {
+			current = _GetNextChar();
+			print(current != '.' && !m_OperatorMap.contains(str(current)));
+			if (current != '.' && !m_OperatorMap.contains(str(current))) {
+				break;
+			};
+			h+=current;
+		}
+		print(h);
 		ParserMapValue value;
 		std::string data;
 
@@ -286,7 +298,6 @@ void print(Args &&...args)
 		if (value.TokenToPush != TokenType::None)
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
 		// m_CurrentState = value.NextState;
-
 		m_CurrentState = CurrentParserState::Default;
 	}
 
