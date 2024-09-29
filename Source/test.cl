@@ -1,5 +1,2 @@
-struct Type:
-	int32 hello
-	bool test
-
-type.hello
+if true
+    int32 hello = 4

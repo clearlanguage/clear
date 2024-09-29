@@ -84,6 +84,8 @@ namespace clear{
             case TokenType::Not:			   return "Not";
             case TokenType::Ellipsis:		   return "Ellipsis";
             case TokenType::DotOp: 			   return "DotOp";
+            case TokenType::StartIndentation:	   return "StartIndentation";
+             case TokenType::EndIndentation:	   return "EndIndentation";
 
             default: 
                 break;
