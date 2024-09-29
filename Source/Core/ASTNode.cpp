@@ -217,6 +217,7 @@ namespace clear {
 			return nullptr;
 		}
 
+
 		return builder.CreateLoad(value->getAllocatedType(), value, m_Name);
 	}
 

@@ -52,7 +52,7 @@ namespace clear {
 	public:
 		ASTNodeLiteral(const std::string& data);
 		virtual ~ASTNodeLiteral() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Literal; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
@@ -72,7 +72,7 @@ namespace clear {
 	public:
 		ASTBinaryExpression(BinaryExpressionType type);
 		virtual ~ASTBinaryExpression() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::BinaryExpression; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual llvm::Value* Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
@@ -107,7 +107,7 @@ namespace clear {
 	public:
 		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Argument>& arugments);
 		virtual ~ASTFunctionDecleration() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::FunctionDecleration; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
 
 		inline const auto  GetArg(size_t idx) const { return m_FunctionArgs[idx]; };
@@ -134,7 +134,7 @@ namespace clear {
 	public:
 		ASTVariableDecleration(const std::string& name, VariableType type);
 		virtual ~ASTVariableDecleration() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::VariableDecleration; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
 
 		inline const std::string& GetName() const { return m_Name; }
@@ -153,7 +153,7 @@ namespace clear {
 	public:
 		ASTVariableExpression(const std::string& name);
 		virtual ~ASTVariableExpression() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::VariableExpression; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
 		virtual llvm::Value* Codegen() override;
 
 		inline const std::string& GetName() const { return m_Name; }
@@ -171,8 +171,7 @@ namespace clear {
 	public:
 		ASTReturnStatement() = default;
 		virtual ~ASTReturnStatement() = default;
-		virtual inline const ASTNodeType GetType() const { return ASTNodeType::ReturnStatement; }
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual llvm::Value* Codegen() override;
-
 	};
 }
