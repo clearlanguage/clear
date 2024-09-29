@@ -13,7 +13,8 @@ namespace clear {
 	{
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
-		FunctionDecleration, ReturnStatement
+		FunctionDecleration, ReturnStatement, 
+		Expression
 	};
 
 	//
@@ -166,6 +167,9 @@ namespace clear {
 	// ------------------------------------------------------------------
 	//
 
+	//
+	// ---------------------- RETURN STATEMENT -----------------------
+	//
 	class ASTReturnStatement : public ASTNodeBase
 	{
 	public:
@@ -174,4 +178,28 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual llvm::Value* Codegen() override;
 	};
+
+	//
+	// ------------------------------------------------------------------
+	//
+
+	//
+	// ---------------------- EXPRESSION -----------------------
+	//
+
+	class ASTExpression : public ASTNodeBase
+	{
+	public:
+		ASTExpression() = default;
+		virtual ~ASTExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
+		virtual llvm::Value* Codegen() override;
+
+
+	};
+
+	//
+	// ------------------------------------------------------------------
+	//
+
 }

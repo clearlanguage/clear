@@ -18,6 +18,7 @@ namespace clear {
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
+			auto& currentChildren = currentRoot->GetChildren();
 
 			switch (currentToken.TokenType)
 			{
@@ -36,17 +37,33 @@ namespace clear {
 				case TokenType::SubOp:
 				case TokenType::DivOp:
 				case TokenType::MulOp:
+					break;
 				case TokenType::Assignment:
 				{
+					auto& previous = tokens[i - 1];
+					auto& next = tokens[i + 1];
+
 					auto binaryExp = std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(currentToken.TokenType));
-					m_Root->PushChild(binaryExp);
-					m_Stack.push(binaryExp);
+					
+					size_t last = currentChildren.size() - 1;
+
+					//TODO: current working on (first going to make expression class)
+					auto& lastNode = currentChildren[last];
+					binaryExp->PushChild(lastNode);
+
+					currentRoot->PushChild(binaryExp);
+
 					break;
 				}
 
 				case TokenType::RValueNumber:
 				{
 					currentRoot->PushChild(std::make_shared<ASTNodeLiteral>(currentToken.Data));
+					break;
+				}
+
+				case TokenType::EndLine:
+				{
 					break;
 				}
 
@@ -73,6 +90,4 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-
-
 }

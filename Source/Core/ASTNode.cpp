@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <map>
+#include <stack>
 
 namespace clear {
 
@@ -328,5 +329,17 @@ namespace clear {
 		}
 		
 		return builder.CreateRetVoid();
+	}
+	llvm::Value* ASTExpression::Codegen()
+	{
+		auto& builder  = *LLVM::Backend::GetBuilder();
+		auto& children = GetChildren();
+
+		for (const auto& child : children)
+		{
+
+		}
+
+		return nullptr;
 	}
 }

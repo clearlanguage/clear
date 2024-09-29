@@ -3,5 +3,7 @@ source_filename = "clear"
 
 define void @main() {
 entry:
+  %hello = alloca i32, align 4
+  %test = alloca i32, align 4
   ret void
 }
