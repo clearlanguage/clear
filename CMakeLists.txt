@@ -24,3 +24,5 @@ add_definitions(${LLVM_DEFINITIONS_LIST})
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 target_link_libraries(clear ${llvm_libs})
+
+add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")

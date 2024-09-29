@@ -32,13 +32,15 @@ namespace clear {
 					break;
 				}
 
+				case TokenType::AddOp:
+				case TokenType::SubOp:
+				case TokenType::DivOp:
+				case TokenType::MulOp:
 				case TokenType::Assignment:
 				{
-					//first step is to produce a value
-					size_t current = i + 1;
-
-
-
+					auto binaryExp = std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(currentToken.TokenType));
+					m_Root->PushChild(binaryExp);
+					m_Stack.push(binaryExp);
 					break;
 				}
 

@@ -13,7 +13,8 @@ CMakeUserPresets.json
 out/
 .vs/
 build/
-
 .idea/
 .vscode/
 cmake-build-debug/
+ThirdParty/
+build_proj

@@ -9,52 +9,6 @@ namespace clear {
 
 	static std::map<std::string, llvm::AllocaInst*> s_VariableMap;
 
-	llvm::Type* GetVariableType(VariableType type)
-	{
-		auto& context = *LLVM::Backend::GetContext();
-
-		switch (type)
-		{
-		case VariableType::Int8:	return llvm::Type::getInt8Ty(context);
-		case VariableType::Int16:	return llvm::Type::getInt16Ty(context);
-		case VariableType::Int32:	return llvm::Type::getInt32Ty(context);
-		case VariableType::Int64:	return llvm::Type::getInt64Ty(context);
-		case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);
-		case VariableType::Uint16:	return llvm::Type::getInt16Ty(context);
-		case VariableType::Uint32:	return llvm::Type::getInt32Ty(context);
-		case VariableType::Uint64:	return llvm::Type::getInt64Ty(context);
-		case VariableType::Bool:    return llvm::Type::getInt1Ty(context);
-		case VariableType::Float32: return llvm::Type::getFloatTy(context);
-		case VariableType::Float64:	return llvm::Type::getDoubleTy(context);
-			//TODO:
-		case VariableType::Struct:
-		case VariableType::Object:
-		case VariableType::None:
-		default:
-			return llvm::Type::getVoidTy(context);
-		}
-	}
-
-	VariableType GetVariableTypeFromTokenType(TokenType tokenType)
-	{
-		switch (tokenType)
-		{
-		case TokenType::Int8Type:		return VariableType::Int8;
-		case TokenType::Int16Type:		return VariableType::Int16;
-		case TokenType::Int32Type:		return VariableType::Int32;
-		case TokenType::Int64Type:		return VariableType::Int64;
-		case TokenType::UInt8Type:		return VariableType::Uint8;
-		case TokenType::UInt16Type:		return VariableType::Uint16;
-		case TokenType::UInt32Type:		return VariableType::Uint32;
-		case TokenType::UInt64Type:		return VariableType::Uint64;
-		case TokenType::None:
-		default:
-			break;
-		}
-
-		return VariableType::None;
-	}
-
 	llvm::Value* ASTNodeBase::Codegen()
 	{
 		for (auto& child : GetChildren())
@@ -134,8 +88,8 @@ namespace clear {
 		if (children.size() != 2)
 			return nullptr;
 
-		llvm::Value* LHS = children[0]->Codegen();
-		llvm::Value* RHS = children[1]->Codegen();
+		llvm::Value* LHS = children[1]->Codegen();
+		llvm::Value* RHS = children[0]->Codegen();
 
 		if (!LHS || !RHS)
 			return nullptr;
@@ -226,6 +180,20 @@ namespace clear {
 		return nullptr;
 	}
 
+	llvm::Value* ASTBinaryExpression::_CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS)
+	{
+		auto& builder = LLVM::Backend::GetBuilder();
+
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::Assignment:	return builder->CreateStore(RHS, LHS);
+			default:
+				break;
+		}
+
+		return nullptr;
+	}
+
 	ASTVariableExpression::ASTVariableExpression(const std::string& name)
 		: m_Name(name)
 	{
@@ -265,7 +233,7 @@ namespace clear {
 		}
 
 		auto& builder = *LLVM::Backend::GetBuilder();
-		auto value = builder.CreateAlloca(GetVariableType(m_Type), nullptr, m_Name);
+		auto value = builder.CreateAlloca(GetLLVMVariableType(m_Type), nullptr, m_Name);
 		s_VariableMap[m_Name] = value;
 		return value;
 	}
@@ -280,12 +248,12 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		llvm::Type* returnType = GetVariableType(m_ReturnType);
+		llvm::Type* returnType = GetLLVMVariableType(m_ReturnType);
 
 		std::vector<llvm::Type*> argumentTypes;
 		for (const auto& argument : m_Arguments)
 		{
-			argumentTypes.push_back(GetVariableType(argument.Type));
+			argumentTypes.push_back(GetLLVMVariableType(argument.Type));
 		}
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, argumentTypes, false);
@@ -315,7 +283,7 @@ namespace clear {
 		for (const auto& argument : m_Arguments)
 		{
 			m_FunctionArgs.push_back(function->getArg(k));
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetVariableType(argument.Type), nullptr, argument.Name);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(argument.Type), nullptr, argument.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
 			s_VariableMap[argument.Name + "::" + m_Name] = argAlloc;
 			k++;

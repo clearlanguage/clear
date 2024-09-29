@@ -34,7 +34,6 @@ int main()
         std::cout << std::endl;
     }
 
-
     std::cout << "------AST TESTS--------" << std::endl;
     {
         AST ast(info);

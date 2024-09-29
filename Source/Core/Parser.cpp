@@ -11,12 +11,6 @@ std::string str(char hello){
 	return std::string(1,hello);
 }
 
-template <typename... Args>
-void print(Args &&...args)
-{
-	(std::cout << ... << std::forward<Args>(args));
-	std::cout << std::endl;
-}
 namespace clear
 {
 	Parser::Parser()
@@ -27,14 +21,18 @@ namespace clear
 		m_StateMap[CurrentParserState::Operator]     = [this]() { _OperatorState(); };
 	}
 
-	char Parser::_GetNextChar() {
-		if(m_Buffer.length() > m_CurrentTokenIndex){
+	char Parser::_GetNextChar() 
+	{
+		if(m_Buffer.length() > m_CurrentTokenIndex)
+		{
 			auto c = m_Buffer[m_CurrentTokenIndex++];
-			if (c =='\n') {
+
+			if (c =='\n') 
+			{
 				m_LineStarted =false;
 				m_CurrentIndentLevel = 0;
-
 			}
+
 			return c;
 
 		}
@@ -83,38 +81,44 @@ namespace clear
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-		if (m_LineStarted) {
+		if (m_LineStarted) 
+		{
 			if (std::isspace(current))
 				return;
-			if (current == '\n') {
+			if (current == '\n') 
+			{
 				m_CurrentIndentLevel = 0;
 				m_LineStarted = false;
 				return;
 			}
-
-		}else {
-			if (current == '\t' ) {
+		}
+		else 
+		{
+			if (current == '\t' ) 
+			{
 				m_CurrentIndentLevel+=4;
 				return;
-			}else if(std::isspace(current)) {
+			}
+			else if(std::isspace(current)) 
+			{
 				m_CurrentIndentLevel+=1;
 				return;
-			}else {
-				if (m_CurrentIndentLevel > m_CurrentIndentationLevel) {
+			}
+			else 
+			{
+				if (m_CurrentIndentLevel > m_CurrentIndentationLevel) 
+				{
 					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::StartIndentation,.Data = ""});
-				}else if (m_CurrentIndentLevel < m_CurrentIndentationLevel) {
+				}
+				else if (m_CurrentIndentLevel < m_CurrentIndentationLevel) 
+				{
 					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::EndIndentation,.Data = ""});
 				}
 				m_CurrentIndentationLevel = m_CurrentIndentLevel;
 				m_LineStarted = true;
 			}
 
-
 		}
-
-
-
-
 
 		if (current == ')')
 		{
