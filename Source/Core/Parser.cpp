@@ -6,10 +6,9 @@
 #include <fstream>
 #include <iostream>
 #include <iosfwd>
+#include <Core/Log.h>
+#include <Core/Utils.h>
 
-std::string str(char hello){
-	return std::string(1,hello);
-}
 
 namespace clear
 {
@@ -21,13 +20,13 @@ namespace clear
 		m_StateMap[CurrentParserState::Operator]     = [this]() { _OperatorState(); };
 	}
 
-	char Parser::_GetNextChar() 
+	char Parser::_GetNextChar()
 	{
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
 			auto c = m_Buffer[m_CurrentTokenIndex++];
 
-			if (c =='\n') 
+			if (c =='\n' & m_CurrentState != CurrentParserState::Default)
 			{
 				m_LineStarted =false;
 				m_CurrentIndentLevel = 0;
@@ -49,6 +48,7 @@ namespace clear
 	{
 		m_ProgramInfo.Tokens.clear();
 		m_CurrentTokenIndex = 0;
+		m_Indents = 0;
 		m_CurrentIndentLevel = 0;
 		m_CurrentIndentationLevel = 0;
 		m_LineStarted = false;
@@ -81,44 +81,41 @@ namespace clear
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-
-		if (current == '\n')
+		if (m_LineStarted)
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine, .Data = "" });
-		}
-
-		if (m_LineStarted) 
-		{
-			if (std::isspace(current))
+			if (isspace(current))
 				return;
-			if (current == '\n') 
+			if (current == '\n')
 			{
+				CLEAR_LOG_INFO(m_Indents);
 				m_CurrentIndentLevel = 0;
 				m_LineStarted = false;
 				return;
 			}
 		}
-		else 
+		else
 		{
-			if (current == '\t' ) 
+			if (current == '\t' )
 			{
 				m_CurrentIndentLevel+=4;
 				return;
 			}
-			else if(std::isspace(current)) 
+			else if(isspace(current))
 			{
 				m_CurrentIndentLevel+=1;
 				return;
 			}
-			else 
+			else
 			{
-				if (m_CurrentIndentLevel > m_CurrentIndentationLevel) 
+				if (m_CurrentIndentLevel > m_CurrentIndentationLevel)
 				{
 					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::StartIndentation,.Data = ""});
+					m_Indents++;
 				}
-				else if (m_CurrentIndentLevel < m_CurrentIndentationLevel) 
+				else if (m_CurrentIndentLevel < m_CurrentIndentationLevel)
 				{
 					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::EndIndentation,.Data = ""});
+					m_Indents--;
 				}
 				m_CurrentIndentationLevel = m_CurrentIndentLevel;
 				m_LineStarted = true;
@@ -164,7 +161,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between = and actual variable
-		while (std::isspace(current))
+		while (isspace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
@@ -207,7 +204,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		while (std::isspace(current)) 
+		while (isspace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
@@ -333,7 +330,7 @@ namespace clear
 		while ((std::isalnum(current) || current == '_' || current == '.') && current)
 		{
 			current = _GetNextChar();
-			if (current == '\n' || current == '\0' || std::isspace(current))
+			if (current == '\n' || current == '\0' || isspace(current))
 				break;
 
 			m_CurrentString += current;

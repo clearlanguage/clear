@@ -1,3 +1,6 @@
-int32 hello = 50
-int32 test = 5
+if true
+    int32 hello = 2
+    if hello
+        int32 f = 3
 
+= 32
