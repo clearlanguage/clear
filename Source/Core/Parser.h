@@ -46,6 +46,7 @@ namespace clear
 		size_t m_CurrentTokenIndex = 0;
 		size_t m_CurrentIndentLevel = 0;
 		size_t m_CurrentIndentationLevel = 0;
+		size_t m_Indents = 0;
 		bool m_LineStarted = false;
 		std::ifstream m_File;
 		ProgramInfo m_ProgramInfo;

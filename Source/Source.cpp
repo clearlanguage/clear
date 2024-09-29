@@ -4,6 +4,7 @@
 
 #include "Core/Parser.h"
 #include "Core/AST.h"
+#include "Core/Log.h"
 
 #include "API/LLVM/LLVMBackend.h"
 
@@ -23,7 +24,6 @@ int main()
 
 
     std::cout << "------PARSER TESTS--------" << std::endl;
-
     Parser parser;
     ProgramInfo info = parser.CreateTokensFromFile("test.cl");
 
