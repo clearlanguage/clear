@@ -12,7 +12,7 @@ namespace clear {
         Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType,
         Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData, ConditionalIf,
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft, 
-        StartIndentation, EndIndentation, EndLine
+        StartIndentation, EndIndentation, EndLine, VariableReference
     };
 
     enum class CurrentParserState

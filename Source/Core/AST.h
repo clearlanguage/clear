@@ -16,7 +16,8 @@ namespace clear {
 
 		void BuildIR(const std::filesystem::path& out);
 
-
+	private:
+		std::shared_ptr<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, size_t& start);
 
 	private:
 		std::shared_ptr<ASTNodeBase> m_Root;

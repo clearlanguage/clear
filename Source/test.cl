@@ -1,7 +1,1 @@
-if true
-    int32 hello = 2
-    if true
-        int32 f = 3
-    
-    if true
-        int32 non = 4
+int32 hello = 100 + 10 * 400 / 20 / 50 + 10 * 10000 * (100 + 5012313)

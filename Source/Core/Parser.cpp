@@ -97,6 +97,13 @@ namespace clear
 			m_CurrentString.clear();
 			return;
 		}
+		else if (current == '\n')
+		{
+			//TODO: TEMPORARY
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+		}
+
+		
 
 		m_CurrentString += current;
 

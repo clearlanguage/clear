@@ -41,16 +41,12 @@ namespace clear {
 				case TokenType::Assignment:
 				{
 					auto& previous = tokens[i - 1];
-					auto& next = tokens[i + 1];
 
-					auto binaryExp = std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(currentToken.TokenType));
-					
-					size_t last = currentChildren.size() - 1;
+					std::shared_ptr<ASTBinaryExpression> binaryExpression = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Assignment);
+					binaryExpression->PushChild(_CreateExpression(tokens, i));
+					binaryExpression->PushChild(std::make_shared<ASTVariableExpression>(previous.Data));
 
-					auto& lastNode = currentChildren[last];
-					binaryExp->PushChild(lastNode);
-
-					currentRoot->PushChild(binaryExp);
+					currentRoot->PushChild(binaryExpression);
 
 					break;
 				}
@@ -89,4 +85,71 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
+
+	std::shared_ptr<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, size_t& start)
+	{
+		std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
+		start += 1;
+
+		std::stack<Token> operators;
+
+		static std::map<TokenType, int> s_Presedence = {
+			{TokenType::DivOp, 2},
+			{TokenType::MulOp, 2},
+			{TokenType::AddOp, 1},
+			{TokenType::SubOp, 1},
+			{TokenType::OpenBracket, 0}
+		};
+
+		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine)
+		{
+			auto& token = tokens[start];
+
+			if (token.TokenType == TokenType::VariableReference)
+			{
+				expression->PushChild(std::make_shared<ASTVariableExpression>(token.Data));
+			}
+			else if (token.TokenType == TokenType::RValueNumber)
+			{
+				expression->PushChild(std::make_shared<ASTNodeLiteral>(token.Data));
+			}
+			else if (token.TokenType == TokenType::OpenBracket)
+			{
+				operators.push(token);
+			}
+			else if (token.TokenType == TokenType::CloseBracket)
+			{
+				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket)
+				{
+					expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType)));
+					operators.pop();
+				}
+
+				if (!operators.empty())
+					operators.pop();
+			}
+			else if (s_Presedence.contains(token.TokenType))
+			{
+				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket &&
+					s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
+				{
+					expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType)));
+					operators.pop();
+				}
+
+				operators.push(token);
+			}
+
+			start++;
+		}
+
+		while (!operators.empty())
+		{
+			expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType)));
+			operators.pop();
+		}
+
+		return expression;
+	}
+
 }
