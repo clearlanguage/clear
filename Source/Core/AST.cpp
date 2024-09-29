@@ -47,7 +47,6 @@ namespace clear {
 					
 					size_t last = currentChildren.size() - 1;
 
-					//TODO: current working on (first going to make expression class)
 					auto& lastNode = currentChildren[last];
 					binaryExp->PushChild(lastNode);
 

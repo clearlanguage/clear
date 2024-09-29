@@ -11,8 +11,6 @@
 
 namespace clear
 {
-
-
 	struct ProgramInfo
 	{
 		std::vector<Token> Tokens;
@@ -33,6 +31,7 @@ namespace clear
 		void _DefaultState();
 		void _VariableNameState();
 		void _OperatorState();
+		void _IndentationState();
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -41,6 +40,8 @@ namespace clear
 
 		char _GetNextChar();
 		void _Backtrack();
+
+		const bool _IsEndOfFile();
 
 	private:
 		size_t m_CurrentTokenIndex = 0;
@@ -52,7 +53,6 @@ namespace clear
 		ProgramInfo m_ProgramInfo;
 
 		StateMapType m_StateMap;
-
 
 		CurrentParserState m_CurrentState = CurrentParserState::Default;
 

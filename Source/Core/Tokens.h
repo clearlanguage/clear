@@ -21,7 +21,8 @@ namespace clear {
         RValue,
         VariableName,
         Function,
-        Operator
+        Operator, 
+        Indentation
     };
 
 

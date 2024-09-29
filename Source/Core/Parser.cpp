@@ -18,6 +18,7 @@ namespace clear
 		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
 		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
 		m_StateMap[CurrentParserState::Operator]     = [this]() { _OperatorState(); };
+		m_StateMap[CurrentParserState::Indentation]  = [this]() { _IndentationState(); };
 	}
 
 	char Parser::_GetNextChar()
@@ -25,15 +26,7 @@ namespace clear
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
 			auto c = m_Buffer[m_CurrentTokenIndex++];
-
-			if (c =='\n' & m_CurrentState != CurrentParserState::Default)
-			{
-				m_LineStarted =false;
-				m_CurrentIndentLevel = 0;
-			}
-
 			return c;
-
 		}
 
 		return 0;
@@ -42,6 +35,11 @@ namespace clear
 	void Parser::_Backtrack()
 	{
 		m_CurrentTokenIndex--;
+	}
+
+	const bool Parser::_IsEndOfFile()
+	{
+		return m_CurrentTokenIndex == m_Buffer.length();
 	}
 
 	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
@@ -74,6 +72,12 @@ namespace clear
 			m_StateMap.at(m_CurrentState)();
 		}
 
+		while (m_Indents > 0)
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
+			m_Indents--;
+		}
+
 		return m_ProgramInfo;
 	}
 
@@ -81,51 +85,16 @@ namespace clear
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-		if (m_LineStarted)
-		{
-			if (isspace(current))
-				return;
-			if (current == '\n')
-			{
-				CLEAR_LOG_INFO(m_Indents);
-				m_CurrentIndentLevel = 0;
-				m_LineStarted = false;
-				return;
-			}
-		}
-		else
-		{
-			if (current == '\t' )
-			{
-				m_CurrentIndentLevel+=4;
-				return;
-			}
-			else if(isspace(current))
-			{
-				m_CurrentIndentLevel+=1;
-				return;
-			}
-			else
-			{
-				if (m_CurrentIndentLevel > m_CurrentIndentationLevel)
-				{
-					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::StartIndentation,.Data = ""});
-					m_Indents++;
-				}
-				else if (m_CurrentIndentLevel < m_CurrentIndentationLevel)
-				{
-					m_ProgramInfo.Tokens.push_back({.TokenType = TokenType::EndIndentation,.Data = ""});
-					m_Indents--;
-				}
-				m_CurrentIndentationLevel = m_CurrentIndentLevel;
-				m_LineStarted = true;
-			}
-
-		}
-
+		
 		if (current == ')')
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
+			return;
+		}
+		if (current == '\n' || current == ' ')
+		{
+			m_CurrentState = CurrentParserState::Indentation;
+			m_CurrentString.clear();
 			return;
 		}
 
@@ -256,6 +225,56 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
 
 		m_CurrentState = value.NextState;
+	}
+
+	void Parser::_IndentationState()
+	{
+		char next = _GetNextChar();
+
+		bool indenting = true;
+		size_t localIndents = 0;
+
+		while (indenting)
+		{
+			if (next == '\t')
+			{
+				localIndents++;
+				continue;
+			}
+			
+			size_t spaceCounter = 0;
+
+			if (next == ' ')
+			{
+				spaceCounter = 1;
+
+				while (next == ' ' && spaceCounter < 4)
+				{
+					next = _GetNextChar();
+					spaceCounter++;
+				}
+			}
+			
+			if (spaceCounter == 4)
+				localIndents++;
+			else
+				indenting = false;
+		}
+
+		if (localIndents > m_Indents)
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartIndentation });
+			m_Indents = localIndents;
+		}
+
+		while (m_Indents > localIndents)
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
+			m_Indents--;
+		}
+
+		m_CurrentState = CurrentParserState::Default;
+		_Backtrack();
 	}
 
 	void Parser::_ParseNumber()
