@@ -1,5 +1,7 @@
 #pragma once 
 
+#include "Tokens.h"
+
 #include <memory>
 #include <vector>
 
@@ -7,11 +9,22 @@
 
 namespace clear {
 
+	enum class VariableType
+	{
+		None = 0, Int8, Int16, Int32, Int64,
+		Uint8, Uint16, Uint32, Uint64, Bool,
+		Float32, Float64, Struct, Object //(struct and object will need implementing later)
+	};
+
+	extern llvm::Type* GetVariableType(VariableType type);
+	extern VariableType GetVariableTypeFromTokenType(TokenType tokenType);
+
+
 	enum class ASTNodeType
 	{
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
-		FunctionDecleration
+		FunctionDecleration, ReturnStatement
 	};
 
 	//
@@ -42,26 +55,19 @@ namespace clear {
 	// -------------------------------------------------------
 	//
 
-	enum class LiteralType
-	{
-		None = 0, String, Int8, Int16,
-		Int32, Int64, Uint8, Uint16, Uint32, Uint64, 
-		Float32, Float64, Bool
-	};
-
 	//
 	// ---------------------- LITERAL -----------------------
 	//
 	class ASTNodeLiteral : public ASTNodeBase
 	{
 	public:
-		ASTNodeLiteral(LiteralType type, const std::string& data);
+		ASTNodeLiteral(const std::string& data);
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		LiteralType m_Type;
+		VariableType m_Type;
 		std::string m_Data;
 	};
 
@@ -73,7 +79,7 @@ namespace clear {
 	{
 		None = 0, Add, Sub, Mul, 
 		Div, Mod, Less, LessEq, 
-		Greater, GreaterEq, Eq
+		Greater, GreaterEq, Eq, Assignment
 	};
 
 	//
@@ -91,9 +97,11 @@ namespace clear {
 		
 	private:
 		const bool _IsMathExpression() const;
+		const bool _IsCmpExpression() const;
 
 		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
+		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
 
 	private:
 		BinaryExpressionType m_Expression;
@@ -101,15 +109,6 @@ namespace clear {
 	//
 	// ------------------------------------------------------------------
 	//
-
-	enum class VariableType
-	{
-		None = 0, Int8, Int16, Int32, Int64, 
-		Uint8, Uint16, Uint32, Uint64, Bool, 
-		Float32, Float64, Struct, Object //(struct and object will need implementing later)
-	};
-
-	static llvm::Type* GetVariableType(VariableType type);
 
 
 	struct Argument
@@ -161,13 +160,16 @@ namespace clear {
 	private:
 		std::string m_Name;
 		VariableType m_Type;
-		llvm::Value* m_Value = nullptr;
+	};
+
+	enum class VariableKind
+	{
+		None = 0, Argument, Local
 	};
 
 	//
 	// ---------------------- VARIABLE EXPRESSION -----------------------
 	//
-	//TODO:
 	class ASTVariableExpression : public ASTNodeBase
 	{
 	public:
@@ -185,4 +187,14 @@ namespace clear {
 	//
 	// ------------------------------------------------------------------
 	//
+
+	class ASTReturnStatement : public ASTNodeBase
+	{
+	public:
+		ASTReturnStatement() = default;
+		virtual ~ASTReturnStatement() = default;
+		virtual inline const ASTNodeType GetType() const { return ASTNodeType::ReturnStatement; }
+		virtual llvm::Value* Codegen() override;
+
+	};
 }

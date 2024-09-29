@@ -3,8 +3,57 @@
 #include "API/LLVM/LLVMBackend.h"
 
 #include <iostream>
+#include <map>
 
 namespace clear {
+
+	static std::map<std::string, llvm::AllocaInst*> s_VariableMap;
+
+	llvm::Type* GetVariableType(VariableType type)
+	{
+		auto& context = *LLVM::Backend::GetContext();
+
+		switch (type)
+		{
+		case VariableType::Int8:	return llvm::Type::getInt8Ty(context);
+		case VariableType::Int16:	return llvm::Type::getInt16Ty(context);
+		case VariableType::Int32:	return llvm::Type::getInt32Ty(context);
+		case VariableType::Int64:	return llvm::Type::getInt64Ty(context);
+		case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);
+		case VariableType::Uint16:	return llvm::Type::getInt16Ty(context);
+		case VariableType::Uint32:	return llvm::Type::getInt32Ty(context);
+		case VariableType::Uint64:	return llvm::Type::getInt64Ty(context);
+		case VariableType::Bool:    return llvm::Type::getInt1Ty(context);
+		case VariableType::Float32: return llvm::Type::getFloatTy(context);
+		case VariableType::Float64:	return llvm::Type::getDoubleTy(context);
+			//TODO:
+		case VariableType::Struct:
+		case VariableType::Object:
+		case VariableType::None:
+		default:
+			return llvm::Type::getVoidTy(context);
+		}
+	}
+
+	VariableType GetVariableTypeFromTokenType(TokenType tokenType)
+	{
+		switch (tokenType)
+		{
+		case TokenType::Int8Type:		return VariableType::Int8;
+		case TokenType::Int16Type:		return VariableType::Int16;
+		case TokenType::Int32Type:		return VariableType::Int32;
+		case TokenType::Int64Type:		return VariableType::Int64;
+		case TokenType::UInt8Type:		return VariableType::Uint8;
+		case TokenType::UInt16Type:		return VariableType::Uint16;
+		case TokenType::UInt32Type:		return VariableType::Uint32;
+		case TokenType::UInt64Type:		return VariableType::Uint64;
+		case TokenType::None:
+		default:
+			break;
+		}
+
+		return VariableType::None;
+	}
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
@@ -32,9 +81,23 @@ namespace clear {
 	{
 		m_Parent.reset();
 	}
-	ASTNodeLiteral::ASTNodeLiteral(LiteralType type, const std::string& data)
-		: m_Type(type), m_Data(data)
+	ASTNodeLiteral::ASTNodeLiteral(const std::string& data)
+		: m_Data(data), m_Type(VariableType::Uint64)
 	{
+		for (const auto ch : data)
+		{
+			if (ch == '.')
+			{
+				m_Type = VariableType::Float64;
+				break;
+			}
+
+			if (ch == '-')
+			{
+				m_Type = VariableType::Int64;
+				break;
+			}
+		}
 	}
 	llvm::Value* ASTNodeLiteral::Codegen()
 	{
@@ -44,17 +107,17 @@ namespace clear {
 
 		switch (m_Type)
 		{
-			case LiteralType::Int8:	   return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (int8_t)std::stoi(m_Data),     true);
-			case LiteralType::Int16:   return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (int16_t)std::stoi(m_Data),    true);
-			case LiteralType::Int32:   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (int32_t)std::stoi(m_Data),    true);
-			case LiteralType::Int64:   return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (int64_t)std::stoll(m_Data),   true);
-			case LiteralType::Uint8:   return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (uint8_t)std::stoull(m_Data),  false);
-			case LiteralType::Uint16:  return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (uint16_t)std::stoull(m_Data), false);
-			case LiteralType::Uint32:  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (uint32_t)std::stoull(m_Data), false);
-			case LiteralType::Uint64:  return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (uint64_t)std::stoull(m_Data), false);
-			case LiteralType::Float32: return llvm::ConstantFP::get(llvm::Type::getFloatTy(context),   (float)std::stod(m_Data));
-			case LiteralType::Float64: return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context),  (double)std::stod(m_Data));
-			case LiteralType::None:	
+			case VariableType::Int8:    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (int8_t)std::stoi(m_Data),     true);
+			case VariableType::Int16:   return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (int16_t)std::stoi(m_Data),    true);
+			case VariableType::Int32:   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (int32_t)std::stoi(m_Data),    true);
+			case VariableType::Int64:   return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (int64_t)std::stoll(m_Data),   true);
+			case VariableType::Uint8:   return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (uint8_t)std::stoull(m_Data),  false);
+			case VariableType::Uint16:  return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (uint16_t)std::stoull(m_Data), false);
+			case VariableType::Uint32:  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (uint32_t)std::stoull(m_Data), false);
+			case VariableType::Uint64:  return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (uint64_t)std::stoull(m_Data), false);
+			case VariableType::Float32: return llvm::ConstantFP::get(llvm::Type::getFloatTy(context),   (float)std::stod(m_Data));
+			case VariableType::Float64: return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context),  (double)std::stod(m_Data));
+			case VariableType::None:
 			default:
 				return nullptr;
 		}
@@ -77,10 +140,15 @@ namespace clear {
 		if (!LHS || !RHS)
 			return nullptr;
 
+
+		auto& builder = LLVM::Backend::GetBuilder();
+
 		if (_IsMathExpression())
 			return _CreateMathExpression(LHS, RHS);
-		else
+		else if (_IsCmpExpression())
 			return _CreateCmpExpression(LHS, RHS);
+		else
+			return _CreateLoadStoreExpression(LHS, RHS);
 
 		return nullptr;
 	}
@@ -88,6 +156,11 @@ namespace clear {
 	const bool ASTBinaryExpression::_IsMathExpression() const
 	{
 		return (int)m_Expression <= (int)BinaryExpressionType::Mod;
+	}
+
+	const bool ASTBinaryExpression::_IsCmpExpression() const
+	{
+		return (int)m_Expression <= (int)BinaryExpressionType::Eq && !_IsMathExpression();
 	}
 
 	llvm::Value* ASTBinaryExpression::_CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS)
@@ -160,7 +233,23 @@ namespace clear {
 
 	llvm::Value* ASTVariableExpression::Codegen()
 	{
-		return nullptr;
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		if (!s_VariableMap.contains(m_Name))
+		{
+			std::cout << "no variable of name " << m_Name << " exists" << std::endl;
+			return nullptr;
+		}
+
+		llvm::AllocaInst* value = s_VariableMap[m_Name];
+
+		if (!value)
+		{
+			std::cout << "value was nullptr" << std::endl;
+			return nullptr;
+		}
+
+		return builder.CreateLoad(value->getAllocatedType(), value, m_Name);
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, VariableType type)
@@ -169,9 +258,16 @@ namespace clear {
 	}
 	llvm::Value* ASTVariableDecleration::Codegen()
 	{
+		if (s_VariableMap.contains(m_Name))
+		{
+			std::cout << "variable of the name " << m_Name << " exists" << std::endl;
+			return nullptr;
+		}
+
 		auto& builder = *LLVM::Backend::GetBuilder();
-		m_Value = builder.CreateAlloca(GetVariableType(m_Type), nullptr, m_Name);
-		return m_Value;
+		auto value = builder.CreateAlloca(GetVariableType(m_Type), nullptr, m_Name);
+		s_VariableMap[m_Name] = value;
+		return value;
 	}
 
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Argument>& arugments)
@@ -185,18 +281,25 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		llvm::Type* returnType = GetVariableType(m_ReturnType);
-		
+
 		std::vector<llvm::Type*> argumentTypes;
-		for (const auto& arugment : m_Arguments)
+		for (const auto& argument : m_Arguments)
 		{
-			argumentTypes.push_back(GetVariableType(arugment.Type));
+			argumentTypes.push_back(GetVariableType(argument.Type));
 		}
 
-		//TODO: may want to add variadic arguments in the future
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, argumentTypes, false);
 
-		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, m_Name, module);
-		
+		llvm::Function* function = module.getFunction(m_Name);
+
+		if (function)
+		{
+			std::cout << "function already defined" << std::endl;
+			return nullptr;
+		}
+
+		function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, m_Name, module);
+
 		llvm::Function::arg_iterator args = function->arg_begin();
 
 		for (const auto& argument : m_Arguments)
@@ -211,42 +314,50 @@ namespace clear {
 		uint32_t k = 0;
 		for (const auto& argument : m_Arguments)
 		{
-			m_FunctionArgs.push_back(function->getArg(k++));
+			m_FunctionArgs.push_back(function->getArg(k));
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetVariableType(argument.Type), nullptr, argument.Name);
+			builder.CreateStore(function->getArg(k), argAlloc);
+			s_VariableMap[argument.Name + "::" + m_Name] = argAlloc;
+			k++;
 		}
 
-		//children should contain return statement, any functions that need to be created. If they need
-		//function arguments they can get them from the parent GetParent()
 		for (const auto& child : GetChildren())
 		{
 			child->Codegen();
+
+			if (child->GetType() == ASTNodeType::ReturnStatement)
+				break;
+		}
+
+		for (const auto& argument : m_Arguments)
+		{
+			s_VariableMap.erase(argument.Name + "::" + m_Name);
+		}
+
+		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
+		{
+			builder.CreateRetVoid();
+		}
+		else if (!builder.GetInsertBlock()->getTerminator())
+		{
+			std::cout << "no return statement generated" << std::endl;
+			return nullptr;
 		}
 
 		return function;
 	}
 
-	llvm::Type* GetVariableType(VariableType type)
+	
+	llvm::Value* ASTReturnStatement::Codegen()
 	{
-		auto& context = *LLVM::Backend::GetContext();
+		auto& builder = *LLVM::Backend::GetBuilder();
 
-		switch (type)
+		if (GetChildren().size() > 0)
 		{
-			case VariableType::Int8:	return llvm::Type::getInt8Ty(context);
-			case VariableType::Int16:	return llvm::Type::getInt16Ty(context);
-			case VariableType::Int32:	return llvm::Type::getInt32Ty(context);
-			case VariableType::Int64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);
-			case VariableType::Uint16:	return llvm::Type::getInt16Ty(context);
-			case VariableType::Uint32:	return llvm::Type::getInt32Ty(context);
-			case VariableType::Uint64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Bool:    return llvm::Type::getInt1Ty(context);
-			case VariableType::Float32: return llvm::Type::getFloatTy(context);
-			case VariableType::Float64:	return llvm::Type::getDoubleTy(context);
-				//TODO:
-			case VariableType::Struct:
-			case VariableType::Object:
-			case VariableType::None:
-			default:
-				return llvm::Type::getVoidTy(context);
+			llvm::Value* returnValue = GetChildren()[0]->Codegen();
+			return builder.CreateRet(returnValue);
 		}
+		
+		return builder.CreateRetVoid();
 	}
 }

@@ -1,14 +1,11 @@
-//
-// Created by Kareem Fares on 9/27/24.
-//
-
 #pragma once
 #include <string_view>
 #include <string>
 #include <map>
 
 
-namespace clear{
+namespace clear {
+
     enum class TokenType
     {
         None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,

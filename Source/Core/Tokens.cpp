@@ -5,7 +5,7 @@
 #include "Tokens.h"
 #include <string_view>
 
-namespace clear{
+namespace clear {
     const OperatorMapType s_OperatorMap = {
         {"=",   {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::Assignment}},
         {"*",   {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::MulOp}},
