@@ -81,6 +81,12 @@ namespace clear
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
+
+		if (current == '\n')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine, .Data = "" });
+		}
+
 		if (m_LineStarted) 
 		{
 			if (std::isspace(current))
