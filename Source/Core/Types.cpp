@@ -42,6 +42,8 @@ namespace clear {
 			case TokenType::UInt16Type:		return VariableType::Uint16;
 			case TokenType::UInt32Type:		return VariableType::Uint32;
 			case TokenType::UInt64Type:		return VariableType::Uint64;
+			case TokenType::Float32Type:	return VariableType::Float32;
+			case TokenType::Float64Type:	return VariableType::Float64;
 			case TokenType::None:
 			default:
 				break;

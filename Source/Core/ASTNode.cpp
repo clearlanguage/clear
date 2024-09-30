@@ -84,6 +84,7 @@ namespace clear {
 	llvm::Value* ASTBinaryExpression::Codegen()
 	{
 		// Assumes the two values in its children are to be added in order
+		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();
 
 		if (children.size() != 2)
@@ -95,8 +96,40 @@ namespace clear {
 		if (!LHS || !RHS)
 			return nullptr;
 
+		llvm::Type* typeLHS = LHS->getType();
+		llvm::Type* typeRHS = RHS->getType();
 
-		auto& builder = LLVM::Backend::GetBuilder();
+		if (llvm::isa<llvm::AllocaInst>(LHS))
+		{
+			auto val = llvm::dyn_cast<llvm::AllocaInst>(LHS);
+			typeLHS = val->getAllocatedType();
+		}
+
+		if (llvm::isa<llvm::AllocaInst>(RHS))
+		{
+			auto val = llvm::dyn_cast<llvm::AllocaInst>(RHS);
+			typeRHS = val->getAllocatedType();
+		}
+
+		if (typeLHS != typeRHS)
+		{
+			if (typeLHS->isFloatingPointTy() && typeRHS->isIntegerTy())
+				RHS = builder.CreateSIToFP(RHS, typeLHS);
+
+			else if (typeLHS->isIntegerTy() && typeRHS->isFloatingPointTy())
+				LHS = builder.CreateSIToFP(LHS, typeRHS);
+
+			else if (typeLHS->isFloatingPointTy() && typeRHS->isFloatingPointTy())
+			{
+				auto LHSWidth = typeLHS->getPrimitiveSizeInBits();
+				auto RHSWidth = typeRHS->getPrimitiveSizeInBits();
+
+				//if (LHSWidth > RHSWidth)
+					//RHS = builder.CreateFPExt(RHS, LHS->getType());
+				//else if (LHSWidth < RHSWidth)
+					//LHS = builder.CreateFPTrunc(LHS, RHS->getType());
+			}
+		}
 
 		if (_IsMathExpression())
 			return _CreateMathExpression(LHS, RHS);
