@@ -98,12 +98,8 @@ namespace clear
 		if (current == ':' || current == '\n')
 		{
 			m_CurrentState = CurrentParserState::Indentation;
-			return;
-		}
-		else if (current == '\n')
-		{
-			//TODO: TEMPORARY
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+			return;
 		}
 
 		if (!std::isspace(current))
