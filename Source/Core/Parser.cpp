@@ -106,8 +106,8 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
 		}
 
-	
-		m_CurrentString += current;
+		if (!std::isspace(current))
+			m_CurrentString += current;
 
 		if (s_KeyWordMap.contains(m_CurrentString))
 		{
