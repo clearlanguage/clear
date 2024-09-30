@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <map>
+#include <stack>
 
 namespace clear {
 
@@ -148,7 +149,7 @@ namespace clear {
 			default:
 				break;
 		}
-		
+
 		return nullptr;
 	}
 	llvm::Value* ASTBinaryExpression::_CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS)
@@ -158,7 +159,7 @@ namespace clear {
 
 		switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:	
+			case BinaryExpressionType::Less:
 				return isFloat ? builder->CreateFCmpOLT(LHS, RHS)
 							   : builder->CreateICmpSLT(LHS, RHS);
 			case BinaryExpressionType::LessEq:
@@ -316,7 +317,7 @@ namespace clear {
 		return function;
 	}
 
-	
+
 	llvm::Value* ASTReturnStatement::Codegen()
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -326,7 +327,19 @@ namespace clear {
 			llvm::Value* returnValue = GetChildren()[0]->Codegen();
 			return builder.CreateRet(returnValue);
 		}
-		
+
 		return builder.CreateRetVoid();
+	}
+	llvm::Value* ASTExpression::Codegen()
+	{
+		auto& builder  = *LLVM::Backend::GetBuilder();
+		auto& children = GetChildren();
+
+		for (const auto& child : children)
+		{
+
+		}
+
+		return nullptr;
 	}
 }

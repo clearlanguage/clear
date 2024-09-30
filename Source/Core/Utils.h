@@ -4,9 +4,11 @@
 
 #pragma once
 #include <string>
+#include <vector>
 
-
-namespace clear{
+namespace clear {
     extern bool isspace(char c);
     extern std::string str(char c);
+    extern std::vector<std::string> split(const std::string& str);
+    extern bool isvarnamechar(char c);
 }
