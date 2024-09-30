@@ -95,10 +95,9 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 			return;
 		}
-		if (current == '\n' || current == ' ')
+		if (current == ':')
 		{
 			m_CurrentState = CurrentParserState::Indentation;
-			m_CurrentString.clear();
 			return;
 		}
 		else if (current == '\n')
@@ -106,15 +105,8 @@ namespace clear
 			//TODO: TEMPORARY
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
 		}
-		if (current == '\n' || current == ' ')
-		{
-			m_CurrentState = CurrentParserState::Indentation;
-			m_CurrentString.clear();
-			return;
-		}
 
-		
-
+	
 		m_CurrentString += current;
 
 		if (s_KeyWordMap.contains(m_CurrentString))
@@ -371,6 +363,8 @@ namespace clear
 	void Parser::_IndentationState()
 	{
 		char next = _GetNextChar();
+		if (next == '\n')
+			next = _GetNextChar();
 
 		bool indenting = true;
 		size_t localIndents = 0;
@@ -380,6 +374,7 @@ namespace clear
 			if (next == '\t')
 			{
 				localIndents++;
+				next = _GetNextChar();
 				continue;
 			}
 
@@ -485,15 +480,14 @@ namespace clear
 	{
 		char current = _GetNextChar();
 		m_CurrentString.clear();
-		m_CurrentString += current;
 		
 		while ((std::isalnum(current) || current == '_' || current == '.') && current)
 		{
+			m_CurrentString += current;
+
 			current = _GetNextChar();
 			if (current == '\n' || current == '\0' || isspace(current))
 				break;
-
-			m_CurrentString += current;
 		}
 
 		if (s_KeyWordMap.contains(m_CurrentString))
@@ -504,5 +498,6 @@ namespace clear
 
 		m_CurrentString.clear();
 		m_CurrentState = CurrentParserState::Default;
+		_Backtrack();
 	}
 }

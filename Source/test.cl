@@ -1,1 +1,2 @@
-function h(Car car) -> f
+if true:
+	int32 hello = 5
