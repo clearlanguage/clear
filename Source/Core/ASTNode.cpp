@@ -43,13 +43,13 @@ namespace clear {
 		{
 			if (ch == '.')
 			{
-				m_Type = VariableType::Float64;
+				m_Type = VariableType::Float32;
 				break;
 			}
 
 			if (ch == '-')
 			{
-				m_Type = VariableType::Int64;
+				m_Type = VariableType::Int32;
 				break;
 			}
 		}
@@ -188,8 +188,8 @@ namespace clear {
 		switch (m_Expression)
 		{
 			case BinaryExpressionType::Assignment:	return builder->CreateStore(RHS, LHS);
-			default:
-				break;
+				default:
+					break;
 		}
 
 		return nullptr;
@@ -218,8 +218,7 @@ namespace clear {
 			return nullptr;
 		}
 
-
-		return builder.CreateLoad(value->getAllocatedType(), value, m_Name);
+		return value;
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, VariableType type)
@@ -335,11 +334,29 @@ namespace clear {
 		auto& builder  = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();
 
+		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+
 		for (const auto& child : children)
 		{
+			if (child->GetType() == ASTNodeType::Literal ||
+				child->GetType() == ASTNodeType::VariableExpression)
+			{
+				stack.push(child);
+				continue;
+			}
 
+			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
+
+			binExp->PushChild(stack.top());
+			stack.pop();
+
+			binExp->PushChild(stack.top());
+			stack.pop();
+
+
+			stack.push(binExp);
 		}
 
-		return nullptr;
+		return stack.top()->Codegen();
 	}
 }

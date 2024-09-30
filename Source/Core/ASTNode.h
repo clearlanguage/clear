@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include "Tokens.h"
 #include "Types.h"
@@ -11,9 +11,10 @@ namespace clear {
 
 	enum class ASTNodeType
 	{
-		Base = 0, Literal, BinaryExpression, 
-		VariableExpression, VariableDecleration, 
-		FunctionDecleration, ReturnStatement
+		Base = 0, Literal, BinaryExpression,
+		VariableExpression, VariableDecleration,
+		FunctionDecleration, ReturnStatement,
+		Expression
 	};
 
 	//
@@ -76,7 +77,7 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
-		
+
 	private:
 		const bool _IsMathExpression() const;
 		const bool _IsCmpExpression() const;
@@ -166,6 +167,9 @@ namespace clear {
 	// ------------------------------------------------------------------
 	//
 
+	//
+	// ---------------------- RETURN STATEMENT -----------------------
+	//
 	class ASTReturnStatement : public ASTNodeBase
 	{
 	public:
@@ -174,4 +178,28 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual llvm::Value* Codegen() override;
 	};
+
+	//
+	// ------------------------------------------------------------------
+	//
+
+	//
+	// ---------------------- EXPRESSION -----------------------
+	//
+
+	class ASTExpression : public ASTNodeBase
+	{
+	public:
+		ASTExpression() = default;
+		virtual ~ASTExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
+		virtual llvm::Value* Codegen() override;
+
+
+	};
+
+	//
+	// ------------------------------------------------------------------
+	//
+
 }
