@@ -95,7 +95,7 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 			return;
 		}
-		if (current == ':')
+		if (current == ':' || current == '\n')
 		{
 			m_CurrentState = CurrentParserState::Indentation;
 			return;

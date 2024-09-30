@@ -5,6 +5,10 @@ define void @main() {
 entry:
   %hello = alloca i32, align 4
   store i64 3, ptr %hello, align 4
+  %another = alloca i32, align 4
+  store i64 6, ptr %another, align 4
+  %anotherx = alloca i32, align 4
+  store i64 100, ptr %anotherx, align 4
   %g = alloca i32, align 4
   store i64 3, ptr %g, align 4
   ret void
