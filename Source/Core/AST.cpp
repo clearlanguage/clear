@@ -80,7 +80,7 @@ namespace clear {
 
 		std::error_code EC;
 		llvm::raw_fd_stream stream(out.string(), EC);
-		
+
 		m_Root->Codegen();
 
 		module.print(stream, nullptr);

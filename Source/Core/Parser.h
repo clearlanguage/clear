@@ -32,11 +32,16 @@ namespace clear
 		void _VariableNameState();
 		void _OperatorState();
 		void _IndentationState();
+		void _FunctionNameState();
+		void _FunctionArgumentState();
+		void _ArrowState();
+		void _FunctionTypeState();
 
 		void _ParsingRValueState();
 		void _ParseNumber();
 		void _ParseString();
 		void _ParseOther();
+
 
 		char _GetNextChar();
 		void _Backtrack();

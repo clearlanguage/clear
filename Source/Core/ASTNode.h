@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include "Tokens.h"
 #include "Types.h"
@@ -77,7 +77,7 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
-		
+
 	private:
 		const bool _IsMathExpression() const;
 		const bool _IsCmpExpression() const;

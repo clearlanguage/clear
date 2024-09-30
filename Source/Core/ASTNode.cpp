@@ -149,7 +149,7 @@ namespace clear {
 			default:
 				break;
 		}
-		
+
 		return nullptr;
 	}
 	llvm::Value* ASTBinaryExpression::_CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS)
@@ -159,7 +159,7 @@ namespace clear {
 
 		switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:	
+			case BinaryExpressionType::Less:
 				return isFloat ? builder->CreateFCmpOLT(LHS, RHS)
 							   : builder->CreateICmpSLT(LHS, RHS);
 			case BinaryExpressionType::LessEq:
@@ -316,7 +316,7 @@ namespace clear {
 		return function;
 	}
 
-	
+
 	llvm::Value* ASTReturnStatement::Codegen()
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -326,7 +326,7 @@ namespace clear {
 			llvm::Value* returnValue = GetChildren()[0]->Codegen();
 			return builder.CreateRet(returnValue);
 		}
-		
+
 		return builder.CreateRetVoid();
 	}
 	llvm::Value* ASTExpression::Codegen()
@@ -338,8 +338,8 @@ namespace clear {
 
 		for (const auto& child : children)
 		{
-			if (child->GetType() == ASTNodeType::Literal || 
-				child->GetType() == ASTNodeType::VariableExpression)
+			if (child->GetType() == ASTNodeType::Literal ||
+				  child->GetType() == ASTNodeType::VariableExpression)
 			{
 				stack.push(child);
 				continue;
@@ -349,11 +349,10 @@ namespace clear {
 
 			binExp->PushChild(stack.top());
 			stack.pop();
-			
+
 			binExp->PushChild(stack.top());
 			stack.pop();
-			
-			
+
 			stack.push(binExp);
 		}
 

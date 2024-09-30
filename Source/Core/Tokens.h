@@ -2,6 +2,7 @@
 #include <string_view>
 #include <string>
 #include <map>
+#include <set>
 
 
 namespace clear {
@@ -11,8 +12,9 @@ namespace clear {
         None = 0, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
         Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType,
         Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData, ConditionalIf,
-        IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft, 
-        StartIndentation, EndIndentation, EndLine, VariableReference
+        IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
+        StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionArguments,EndFunctionArguments,Arrow,FunctionType,
+        Lambda
     };
 
     enum class CurrentParserState
@@ -20,9 +22,12 @@ namespace clear {
         Default = 0,
         RValue,
         VariableName,
-        Function,
-        Operator, 
-        Indentation
+        FunctionName,
+        Operator,
+        Indentation,
+        FunctionArguments,
+        ArrowState,
+        FunctionTypeState
     };
 
 
@@ -46,4 +51,5 @@ namespace clear {
 
     extern const OperatorMapType s_OperatorMap;
     extern const KeyWordMapType  s_KeyWordMap;
+    extern const std::set<std::string> DataTypes;
 }
