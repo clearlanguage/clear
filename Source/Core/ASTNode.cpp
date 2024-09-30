@@ -339,7 +339,7 @@ namespace clear {
 		for (const auto& child : children)
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
-				child->GetType() == ASTNodeType::VariableExpression)
+				  child->GetType() == ASTNodeType::VariableExpression)
 			{
 				stack.push(child);
 				continue;
@@ -352,7 +352,6 @@ namespace clear {
 
 			binExp->PushChild(stack.top());
 			stack.pop();
-
 
 			stack.push(binExp);
 		}

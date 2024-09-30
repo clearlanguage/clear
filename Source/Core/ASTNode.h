@@ -11,9 +11,9 @@ namespace clear {
 
 	enum class ASTNodeType
 	{
-		Base = 0, Literal, BinaryExpression,
-		VariableExpression, VariableDecleration,
-		FunctionDecleration, ReturnStatement,
+		Base = 0, Literal, BinaryExpression, 
+		VariableExpression, VariableDecleration, 
+		FunctionDecleration, ReturnStatement, 
 		Expression
 	};
 

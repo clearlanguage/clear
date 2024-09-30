@@ -51,7 +51,6 @@ namespace clear {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8"
     };
 
-
     std::string_view TokenToString(TokenType token) {
         switch (token) {
             case TokenType::None: return "None";

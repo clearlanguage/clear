@@ -23,7 +23,6 @@ namespace clear
 		m_StateMap[CurrentParserState::FunctionArguments] = [this]() { _FunctionArgumentState(); };
 		m_StateMap[CurrentParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[CurrentParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
-
 	}
 
 	char Parser::_GetNextChar()
@@ -90,7 +89,7 @@ namespace clear
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-
+    
 		if (current == ')')
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
@@ -102,6 +101,19 @@ namespace clear
 			m_CurrentString.clear();
 			return;
 		}
+		else if (current == '\n')
+		{
+			//TODO: TEMPORARY
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+		}
+		if (current == '\n' || current == ' ')
+		{
+			m_CurrentState = CurrentParserState::Indentation;
+			m_CurrentString.clear();
+			return;
+		}
+
+		
 
 		m_CurrentString += current;
 
