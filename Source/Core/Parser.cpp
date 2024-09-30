@@ -159,7 +159,9 @@ namespace clear
 			if (value.TokenToPush != TokenType::None)
 				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data =m_CurrentString });
 		}else {
-			// STRUCT OR CLASS REF add after git branch merge?
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =m_CurrentString });
+
+
 		}
 		m_CurrentState = CurrentParserState::Default;
 
@@ -276,7 +278,7 @@ namespace clear
 				if (value.TokenToPush != TokenType::None)
 					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = spL.at(0) });
 			}else {
-			// STRUCT OR CLASS REF add after git branch merge?
+				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =spL.at(0) });
 			}
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = spL.at(1) });
 

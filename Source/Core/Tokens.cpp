@@ -99,6 +99,7 @@ namespace clear {
             case TokenType::FunctionType: return "FunctionType";
             case TokenType::Arrow: return "Arrow";
             case TokenType::Lambda: return "Lambda";
+            case TokenType::VariableReference: return "VariableReference";
             default:
                 break;
         }

@@ -1,1 +1,1 @@
-stringg
+function h(Car car) -> f
