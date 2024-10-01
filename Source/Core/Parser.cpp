@@ -46,6 +46,11 @@ namespace clear
 		return m_CurrentTokenIndex == m_Buffer.length();
 	}
 
+	void Parser::_EndLine() {
+		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+
+	}
+
 	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
 	{
 		m_ProgramInfo.Tokens.clear();
@@ -92,13 +97,25 @@ namespace clear
     
 		if (current == ')')
 		{
+			if (m_BracketStack.empty()) {
+				CLEAR_LOG_ERROR("CLosing brackets unmatched");
+				CLEAR_HALT();
+			}
+			if (m_BracketStack.back() == '(') {
+				m_BracketStack.pop_back();
+			}else {
+				CLEAR_LOG_ERROR("CLosing brackets type unmatched");
+				CLEAR_HALT();
+			}
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 			return;
 		}
 		if (current == ':' || current == '\n')
 		{
 			m_CurrentState = CurrentParserState::Indentation;
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+			if (m_BracketStack.empty()) {
+				_EndLine();
+			}
 			return;
 		}
 
@@ -121,12 +138,9 @@ namespace clear
 
 		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
 		{
-			auto& value = s_OperatorMap.at(str(current));
-
 			m_CurrentState = CurrentParserState::Operator;
 			m_CurrentString.clear();
 
-			return;
 		}
 	}
 	void Parser::_ArrowState() {
@@ -163,6 +177,8 @@ namespace clear
 
 
 		}
+		_Backtrack();
+		m_CurrentString.clear();
 		m_CurrentState = CurrentParserState::Default;
 
 	}
@@ -179,6 +195,7 @@ namespace clear
 		//brackets
 		if (current == '(')
 		{
+			m_BracketStack.push_back('(');
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 			m_CurrentState = CurrentParserState::RValue;
 			return;
@@ -187,6 +204,16 @@ namespace clear
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = CurrentParserState::RValue;
+			if (m_BracketStack.empty()) {
+				CLEAR_LOG_ERROR("CLosing brackets unmatched");
+				CLEAR_HALT();
+			}
+			if (m_BracketStack.back() == '(') {
+				m_BracketStack.pop_back();
+			}else {
+				CLEAR_LOG_ERROR("CLosing brackets type unmatched");
+				CLEAR_HALT();
+			}
 			return;
 		}
 		else if (current == '"') //strings

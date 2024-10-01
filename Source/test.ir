@@ -1,9 +1,0 @@
-; ModuleID = 'clear'
-source_filename = "clear"
-
-define void @main() {
-entry:
-  %g = alloca double, align 8
-  store double 0.000000e+00, ptr %g, align 8
-  ret void
-}

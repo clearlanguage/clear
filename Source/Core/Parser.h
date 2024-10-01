@@ -45,6 +45,7 @@ namespace clear
 
 		char _GetNextChar();
 		void _Backtrack();
+		void _EndLine();
 
 		const bool _IsEndOfFile();
 
@@ -63,6 +64,7 @@ namespace clear
 
 		std::string m_Buffer;
 		std::string m_CurrentString;
+		std::vector<char> m_BracketStack;
 	};
 
 }
