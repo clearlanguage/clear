@@ -120,17 +120,20 @@ namespace clear
 			m_CurrentString.clear();
 		}
 
-		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
-		{
-			m_CurrentState = CurrentParserState::Operator;
-			m_CurrentString.clear();
-		}
-
 		if (current == ':' || current == '\n')
 		{
 			m_CurrentState = CurrentParserState::Indentation;
 			if (m_BracketStack.empty()) 
 				_EndLine();
+
+			m_CurrentString.clear();
+			return;
+		}
+
+		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
+		{
+			m_CurrentState = CurrentParserState::Operator;
+			m_CurrentString.clear();
 		}
 	}
 	void Parser::_ArrowState() {
