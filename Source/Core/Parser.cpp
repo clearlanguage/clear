@@ -46,9 +46,9 @@ namespace clear
 		return m_CurrentTokenIndex == m_Buffer.length();
 	}
 
-	void Parser::_EndLine() {
+	void Parser::_EndLine() 
+	{
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
-
 	}
 
 	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
@@ -97,35 +97,20 @@ namespace clear
     
 		if (current == ')')
 		{
-			if (m_BracketStack.empty()) {
-				CLEAR_LOG_ERROR("CLosing brackets unmatched");
-				CLEAR_HALT();
-			}
-			if (m_BracketStack.back() == '(') {
-				m_BracketStack.pop_back();
-			}else {
-				CLEAR_LOG_ERROR("CLosing brackets type unmatched");
-				CLEAR_HALT();
-			}
+			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
+
+			m_BracketStack.pop_back();
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
-			return;
-		}
-		if (current == ':' || current == '\n')
-		{
-			m_CurrentState = CurrentParserState::Indentation;
-			if (m_BracketStack.empty()) {
-				_EndLine();
-			}
+
 			return;
 		}
 
 		if (!std::isspace(current))
 			m_CurrentString += current;
 
-		if (s_KeyWordMap.contains(m_CurrentString))
+		if (s_KeyWordMap.contains(m_CurrentString) && (current == ' ' || current == '\n'))
 		{
 			auto& value = s_KeyWordMap.at(m_CurrentString);
-
 
 			m_CurrentState = value.NextState;
 
@@ -133,14 +118,19 @@ namespace clear
 				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
 			m_CurrentString.clear();
-			return;
 		}
 
 		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
 		{
 			m_CurrentState = CurrentParserState::Operator;
 			m_CurrentString.clear();
+		}
 
+		if (current == ':' || current == '\n')
+		{
+			m_CurrentState = CurrentParserState::Indentation;
+			if (m_BracketStack.empty()) 
+				_EndLine();
 		}
 	}
 	void Parser::_ArrowState() {

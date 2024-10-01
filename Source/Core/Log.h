@@ -39,10 +39,10 @@ namespace clear {
 	#endif
 
 	#ifdef _DEBUG
-		#define CLEAR_ASSERT(condition, ...) if(!(condition)) {TGE_LOG_ERROR(__VA_ARGS__); TGE_HALT();}
+		#define CLEAR_ASSERT(condition, ...) if(!(condition)) {CLEAR_LOG_ERROR(__VA_ARGS__); CLEAR_HALT();}
 	#else 
 		#define CLEAR_ASSERT(condition, ...) 
 	#endif
 
-	#define CLEAR_VERIFY(condition, ...) if(!(condition)) {TGE_LOG_ERROR(__VA_ARGS__); TGE_HALT();}
+	#define CLEAR_VERIFY(condition, ...) if(!(condition)) {CLEAR_LOG_ERROR(__VA_ARGS__); CLEAR_HALT();}
 }
