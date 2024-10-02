@@ -26,7 +26,7 @@ namespace clear {
         {"->", {.NextState = CurrentParserState::ArrowState, .TokenToPush = TokenType::Arrow}},
     };
 
-    const KeyWordMapType s_KeyWordMap = {
+        const KeyWordMapType s_KeyWordMap = {
         {"int8", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int8Type}},
         {"int16", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int16Type}},
         {"int32", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
@@ -43,12 +43,18 @@ namespace clear {
         {"true", {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData}},
         {"null", {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::Null}},
         {"if", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::ConditionalIf}},
-        {"function", {.NextState = CurrentParserState::FunctionName, .TokenToPush = TokenType::Function}}
+        {"function", {.NextState = CurrentParserState::FunctionName, .TokenToPush = TokenType::Function}},
+        {"int",{.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
+        {"uint", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
+
+
 
     };
 
+
+
     const std::set<std::string> DataTypes = {
-        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8"
+        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint"
     };
 
     std::string_view TokenToString(TokenType token) {
