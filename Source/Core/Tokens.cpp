@@ -7,53 +7,51 @@
 #include <set>
 
 namespace clear {
-    const OperatorMapType s_OperatorMap = {
-        {"=", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::Assignment}},
-        {"*", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::MulOp}},
-        {"/", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::DivOp}},
-        {"-", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::SubOp}},
-        {"%", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::ModOp}},
-        {"+", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::AddOp}},
-        {"==", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::IsEqual}},
-        {"<", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::LessThan}},
-        {">", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::GreaterThan}},
-        {"!=", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::NotEqual}},
-        {"<=", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::LessThanEqual}},
-        {">=", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
-        {"...", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::Ellipsis}},
-        {".", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::DotOp}},
-        {"!", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::Not}},
-        {"->", {.NextState = CurrentParserState::ArrowState, .TokenToPush = TokenType::Arrow}},
+    const OperatorMapType g_OperatorMap = {
+        {"=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Assignment}},
+        {"*", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MulOp}},
+        {"/", {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivOp}},
+        {"-", {.NextState = ParserState::RValue, .TokenToPush = TokenType::SubOp}},
+        {"%", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModOp}},
+        {"+", {.NextState = ParserState::RValue, .TokenToPush = TokenType::AddOp}},
+        {"==", {.NextState = ParserState::RValue, .TokenToPush = TokenType::IsEqual}},
+        {"<", {.NextState = ParserState::RValue, .TokenToPush = TokenType::LessThan}},
+        {">", {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThan}},
+        {"!=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::NotEqual}},
+        {"<=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::LessThanEqual}},
+        {">=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
+        {"...", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Ellipsis}},
+        {".", {.NextState = ParserState::RValue, .TokenToPush = TokenType::DotOp}},
+        {"!", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Not}},
+        {"->", {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::Arrow}},
     };
 
-        const KeyWordMapType s_KeyWordMap = {
-        {"int8", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int8Type}},
-        {"int16", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int16Type}},
-        {"int32", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
-        {"int64", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int64Type}},
-        {"uint8", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt8Type}},
-        {"uint16", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt16Type}},
-        {"uint32", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
-        {"uint64", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt64Type}},
-        {"string", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::StringType}},
-        {"bool", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Bool}},
-        {"float32", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
-        {"float64", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Float64Type}},
-        {"false", {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData}},
-        {"true", {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::BooleanData}},
-        {"null", {.NextState = CurrentParserState::Default, .TokenToPush = TokenType::Null}},
-        {"if", {.NextState = CurrentParserState::RValue, .TokenToPush = TokenType::ConditionalIf}},
-        {"function", {.NextState = CurrentParserState::FunctionName, .TokenToPush = TokenType::Function}},
-        {"int",{.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
-        {"uint", {.NextState = CurrentParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
-
-
+        const KeyWordMapType g_KeyWordMap = {
+        {"int8", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int8Type}},
+        {"int16", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int16Type}},
+        {"int32", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
+        {"int64", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int64Type}},
+        {"uint8", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt8Type}},
+        {"uint16", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt16Type}},
+        {"uint32", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
+        {"uint64", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt64Type}},
+        {"string", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::StringType}},
+        {"bool", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Bool}},
+        {"float32", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
+        {"float64", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float64Type}},
+        {"false", {.NextState = ParserState::Default, .TokenToPush = TokenType::BooleanData}},
+        {"true", {.NextState = ParserState::Default, .TokenToPush = TokenType::BooleanData}},
+        {"null", {.NextState = ParserState::Default, .TokenToPush = TokenType::Null}},
+        {"if", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ConditionalIf}},
+        {"function", {.NextState = ParserState::FunctionName, .TokenToPush = TokenType::Function}},
+        {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
+        {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
 
     };
 
 
 
-    const std::set<std::string> DataTypes = {
+    const std::set<std::string> g_DataTypes = {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint"
     };
 

@@ -17,7 +17,7 @@ namespace clear {
         Lambda
     };
 
-    enum class CurrentParserState
+    enum class ParserState
     {
         Default = 0,
         RValue,
@@ -33,7 +33,7 @@ namespace clear {
 
     struct ParserMapValue
     {
-        CurrentParserState NextState = CurrentParserState::Default;
+        ParserState NextState = ParserState::Default;
         TokenType TokenToPush = TokenType::None;
     };
 
@@ -49,7 +49,7 @@ namespace clear {
     using OperatorMapType = std::map<std::string, ParserMapValue>;
     using KeyWordMapType  = std::map<std::string, ParserMapValue>;
 
-    extern const OperatorMapType s_OperatorMap;
-    extern const KeyWordMapType  s_KeyWordMap;
-    extern const std::set<std::string> DataTypes;
+    extern const OperatorMapType g_OperatorMap;
+    extern const KeyWordMapType  g_KeyWordMap;
+    extern const std::set<std::string> g_DataTypes;
 }

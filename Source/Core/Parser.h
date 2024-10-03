@@ -19,7 +19,7 @@ namespace clear
 	class Parser
 	{
 	public:
-		using StateMapType    = std::map<CurrentParserState, std::function<void()>>;
+		using StateMapType    = std::map<ParserState, std::function<void()>>;
 
 	public:
 		Parser();
@@ -60,7 +60,7 @@ namespace clear
 
 		StateMapType m_StateMap;
 
-		CurrentParserState m_CurrentState = CurrentParserState::Default;
+		ParserState m_CurrentState = ParserState::Default;
 
 		std::string m_Buffer;
 		std::string m_CurrentString;

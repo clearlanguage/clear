@@ -7,8 +7,8 @@
 #include <vector>
 
 namespace clear {
-    extern bool isspace(char c);
-    extern std::string str(char c);
-    extern std::vector<std::string> split(const std::string& str);
-    extern bool isvarnamechar(char c);
+    extern bool IsSpace(char c);
+    extern std::string Str(char c);
+    extern std::vector<std::string> Split(const std::string& str);
+    extern bool IsVarNameChar(char c);
 }

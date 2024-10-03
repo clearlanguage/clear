@@ -14,15 +14,15 @@ namespace clear
 {
 	Parser::Parser()
 	{
-		m_StateMap[CurrentParserState::Default]      = [this]() { _DefaultState(); };
-		m_StateMap[CurrentParserState::VariableName] = [this]() { _VariableNameState(); };
-		m_StateMap[CurrentParserState::RValue]       = [this]() { _ParsingRValueState(); };
-		m_StateMap[CurrentParserState::Operator]     = [this]() { _OperatorState(); };
-		m_StateMap[CurrentParserState::Indentation]  = [this]() { _IndentationState(); };
-		m_StateMap[CurrentParserState::FunctionName] = [this]() {_FunctionNameState();};
-		m_StateMap[CurrentParserState::FunctionArguments] = [this]() { _FunctionArgumentState(); };
-		m_StateMap[CurrentParserState::ArrowState] = [this](){_ArrowState();};
-		m_StateMap[CurrentParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
+		m_StateMap[ParserState::Default]      = [this]() { _DefaultState(); };
+		m_StateMap[ParserState::VariableName] = [this]() { _VariableNameState(); };
+		m_StateMap[ParserState::RValue]       = [this]() { _ParsingRValueState(); };
+		m_StateMap[ParserState::Operator]     = [this]() { _OperatorState(); };
+		m_StateMap[ParserState::Indentation]  = [this]() { _IndentationState(); };
+		m_StateMap[ParserState::FunctionName] = [this]() {_FunctionNameState();};
+		m_StateMap[ParserState::FunctionArguments] = [this]() { _FunctionArgumentState(); };
+		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
+		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 	}
 
 	char Parser::_GetNextChar()
@@ -59,7 +59,7 @@ namespace clear
 		m_CurrentIndentLevel = 0;
 		m_CurrentIndentationLevel = 0;
 		m_LineStarted = false;
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 		m_Buffer.clear();
 		m_CurrentString.clear();
 
@@ -108,9 +108,9 @@ namespace clear
 		if (!std::isspace(current))
 			m_CurrentString += current;
 
-		if (s_KeyWordMap.contains(m_CurrentString) && (current == ' ' || current == '\n'))
+		if (g_KeyWordMap.contains(m_CurrentString) && (current == ' ' || current == '\n'))
 		{
-			auto& value = s_KeyWordMap.at(m_CurrentString);
+			auto& value = g_KeyWordMap.at(m_CurrentString);
 
 			m_CurrentState = value.NextState;
 
@@ -122,7 +122,7 @@ namespace clear
 
 		if (current == ':' || current == '\n')
 		{
-			m_CurrentState = CurrentParserState::Indentation;
+			m_CurrentState = ParserState::Indentation;
 			if (m_BracketStack.empty()) 
 				_EndLine();
 
@@ -130,49 +130,56 @@ namespace clear
 			return;
 		}
 
-		if (m_CurrentString.size() == 1 && s_OperatorMap.contains(str(current)))
+		if (m_CurrentString.size() == 1 && g_OperatorMap.contains(Str(current)))
 		{
-			m_CurrentState = CurrentParserState::Operator;
+			m_CurrentState = ParserState::Operator;
 			m_CurrentString.clear();
 		}
 	}
-	void Parser::_ArrowState() {
-		if (m_ProgramInfo.Tokens.size()>1 && m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionArguments) {
-			m_CurrentState = CurrentParserState::FunctionTypeState;
+	void Parser::_ArrowState() 
+	{
+		if (m_ProgramInfo.Tokens.size() > 1 && 
+			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionArguments) 
+		{
+			m_CurrentState = ParserState::FunctionTypeState;
 			return;
 		}
-		m_CurrentState = CurrentParserState::Default;
+
+		m_CurrentState = ParserState::Default;
 
 	}
-	void Parser::_FunctionTypeState() {
+	void Parser::_FunctionTypeState() 
+	{
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		while (isspace(current))
+		while (IsSpace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
-		while (isvarnamechar(current))
+		while (IsVarNameChar(current))
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
 
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data =m_CurrentString });
-		if(DataTypes.contains(m_CurrentString)) {
-			auto& value = s_KeyWordMap.at(m_CurrentString);
+		if(g_DataTypes.contains(m_CurrentString)) 
+		{
+			auto& value = g_KeyWordMap.at(m_CurrentString);
 			if (value.TokenToPush != TokenType::None)
 				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data =m_CurrentString });
-		}else {
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =m_CurrentString });
-
-
 		}
+		else 
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =m_CurrentString });
+		}
+
 		_Backtrack();
 		m_CurrentString.clear();
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 
 	}
 	void Parser::_ParsingRValueState()
@@ -180,7 +187,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between = and actual variable
-		while (isspace(current))
+		while (IsSpace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
@@ -190,23 +197,17 @@ namespace clear
 		{
 			m_BracketStack.push_back('(');
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
-			m_CurrentState = CurrentParserState::RValue;
+			m_CurrentState = ParserState::RValue;
 			return;
 		}
 		else if (current == ')')
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
-			m_CurrentState = CurrentParserState::RValue;
-			if (m_BracketStack.empty()) {
-				CLEAR_LOG_ERROR("CLosing brackets unmatched");
-				CLEAR_HALT();
-			}
-			if (m_BracketStack.back() == '(') {
-				m_BracketStack.pop_back();
-			}else {
-				CLEAR_LOG_ERROR("CLosing brackets type unmatched");
-				CLEAR_HALT();
-			}
+			m_CurrentState = ParserState::RValue;
+			
+			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "closing brackets unmatched");
+			m_BracketStack.pop_back();
+
 			return;
 		}
 		else if (current == '"') //strings
@@ -226,7 +227,7 @@ namespace clear
 			_ParseOther();
 		}
 
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 	}
 
 	void Parser::_VariableNameState()
@@ -234,7 +235,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		while (isspace(current))
+		while (IsSpace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
@@ -249,108 +250,116 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = m_CurrentString });
 		m_CurrentString.clear();
 
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_FunctionArgumentState() {
+	void Parser::_FunctionArgumentState() 
+	{
 		char current = _GetNextChar();
 
-		while (isspace(current))
+		while (IsSpace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
+		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
 
+		std::vector<std::string> argList;
+		bool detectedEnd = false;
 
-		if (current != '(') {
-			CLEAR_LOG_ERROR("Expected ( after function decleartion");
-			CLEAR_HALT();
-		}
-		std::vector<std::string> ArgList;
-		bool DetectedEnd = false;
-		while (current != ')' && current != '\0') {
+		while (current != ')' && current != '\0') 
+		{
 			current = _GetNextChar();
-			if (current==',' || current ==')' || current == '\0' || current == '\n') {
-				if (current == ')') DetectedEnd = true;
-				if ( !m_CurrentString.empty())
-					ArgList.push_back(m_CurrentString);
+
+			if (current==',' || current ==')' || current == '\0' || current == '\n') 
+			{
+				if (current == ')') 
+					detectedEnd = true;
+
+				if (!m_CurrentString.empty())
+					argList.push_back(m_CurrentString);
+
 				m_CurrentString.clear();
 
-			}else {
-				if(!(isspace(current) && m_CurrentString.empty()))
+			}
+			else 
+			{
+				if(!(IsSpace(current) && m_CurrentString.empty()))
 					m_CurrentString += current;
 			}
 
 		}
 
-		if (!DetectedEnd) {
-			CLEAR_LOG_ERROR("Expected ) after function decleartion");
-			CLEAR_HALT();
-		}
+		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
-		for (auto i: ArgList) {
-			auto spL = split(i);
-			if (spL.size()!=2) {
-				CLEAR_LOG_ERROR("Expected variable and type only");
-				CLEAR_HALT();
-			}
-			if(DataTypes.contains(spL.at(0))) {
-				auto& value = s_KeyWordMap.at(spL.at(0));
+
+		for (const auto& i: argList) 
+		{
+			auto spL = Split(i);
+
+			CLEAR_VERIFY(spL.size() == 2, "expected variable and type only");
+		
+			if(g_DataTypes.contains(spL.at(0))) 
+			{
+				auto& value = g_KeyWordMap.at(spL.at(0));
 				if (value.TokenToPush != TokenType::None)
 					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = spL.at(0) });
-			}else {
+
+			}
+			else 
+			{
 				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =spL.at(0) });
 			}
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = spL.at(1) });
 
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionArguments, .Data = "" });
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 	}
 
 
-	void Parser::_FunctionNameState() {
+	void Parser::_FunctionNameState() 
+	{
 		char current = _GetNextChar();
 
-		while (isspace(current))
+		while (IsSpace(current))
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
 		if (current == '(') {
 			_Backtrack();
-			m_CurrentState = CurrentParserState::FunctionArguments;
+			m_CurrentState = ParserState::FunctionArguments;
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Lambda, .Data = ""});
 			return;
 		}
 
-		while (isvarnamechar(current))
+		while (IsVarNameChar(current))
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
+
 		if (current =='(')
 			_Backtrack();
 
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
 		m_CurrentString.clear();
-		if (current == '\n') {
-			CLEAR_LOG_ERROR("Did not expect new line after function def");
-			CLEAR_HALT();
-		}
-		m_CurrentState = CurrentParserState::FunctionArguments;
+
+		CLEAR_VERIFY(current != '\n', "did not expect new line after function def")
+		m_CurrentState = ParserState::FunctionArguments;
 	}
 
 
 	void Parser::_OperatorState()
 	{
 		_Backtrack();
-		std::string before = str(_GetNextChar());
+		std::string before = Str(_GetNextChar());
 		std::string h = before;
 		char current  = before[0];
-		while (s_OperatorMap.contains(str(current)))
+		while (g_OperatorMap.contains(Str(current)))
 		{
 			current = _GetNextChar();
 
-			if (!s_OperatorMap.contains(str(current)))
+			if (!g_OperatorMap.contains(Str(current)))
 				break;
 
 			h+=current;
@@ -360,14 +369,14 @@ namespace clear
 		std::string data;
 		_Backtrack();
 
-		if (s_OperatorMap.contains(h))
+		if (g_OperatorMap.contains(h))
 		{
-			value = s_OperatorMap.at(h);
+			value = g_OperatorMap.at(h);
 			data = h;
 		}
 		else
 		{
-			value = s_OperatorMap.at(before);
+			value = g_OperatorMap.at(before);
 			data = before;
 		}
 		if (value.TokenToPush != TokenType::None)
@@ -425,7 +434,7 @@ namespace clear
 			m_Indents--;
 		}
 
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 		_Backtrack();
 	}
 
@@ -502,18 +511,18 @@ namespace clear
 			m_CurrentString += current;
 
 			current = _GetNextChar();
-			if (current == '\n' || current == '\0' || isspace(current))
+			if (current == '\n' || current == '\0' || IsSpace(current))
 				break;
 		}
 
-		if (s_KeyWordMap.contains(m_CurrentString))
+		if (g_KeyWordMap.contains(m_CurrentString))
 		{
-			auto& value = s_KeyWordMap.at(m_CurrentString);
+			auto& value = g_KeyWordMap.at(m_CurrentString);
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 		}
 
 		m_CurrentString.clear();
-		m_CurrentState = CurrentParserState::Default;
+		m_CurrentState = ParserState::Default;
 		_Backtrack();
 	}
 }
