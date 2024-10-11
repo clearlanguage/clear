@@ -32,11 +32,11 @@ int main()
         std::cout << std::endl;
     }
 
-    // std::cout << "------AST TESTS--------" << std::endl;
-    // {
-    //     AST ast(info);
-    //     ast.BuildIR("test.ir");
-    // }
+     std::cout << "------AST TESTS--------" << std::endl;
+     {
+         AST ast(info);
+         ast.BuildIR("test.ir");
+     }
 
 
     LLVM::Backend::Shutdown();

@@ -11,7 +11,9 @@ namespace clear {
 		auto& tokens = info.Tokens;
 
 		//possibly add command line arguments in the future
-		m_Root = std::make_shared<ASTFunctionDecleration>("main", VariableType::None, std::vector<Argument>());
+		std::vector<Argument> arguments;
+
+		m_Root = std::make_shared<ASTFunctionDecleration>("main", VariableType::None, arguments);
 		m_Stack.push(m_Root);
 
 		for (size_t i = 0; i < tokens.size(); i++)
@@ -22,6 +24,45 @@ namespace clear {
 
 			switch (currentToken.TokenType)
 			{
+				case TokenType::Function:
+				{
+					VariableType returnType = VariableType::None;
+					arguments.clear();
+
+					i++;
+					std::string name = tokens[i].Data;
+
+					i++;
+					if (tokens[i].TokenType != TokenType::StartFunctionArguments)
+					{
+						//create a function call (TODO)
+						i--;
+						break;
+					}
+					
+					i++;
+					Argument currentArgument;
+					while (tokens[i].TokenType != TokenType::EndFunctionArguments)
+					{
+						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
+						{
+							currentArgument.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
+						}
+						else
+						{
+							currentArgument.Name = tokens[i].Data;
+							arguments.push_back(currentArgument);
+						}
+
+						i++;
+					}
+
+					std::shared_ptr<ASTFunctionDecleration> funcDec = std::make_shared<ASTFunctionDecleration>(name, returnType, arguments);
+					currentRoot->PushChild(funcDec);
+					m_Stack.push(funcDec);
+
+					break;
+				}
 				case TokenType::VariableName:
 				{
 					auto& previous = tokens[i - 1];
@@ -57,8 +98,11 @@ namespace clear {
 					break;
 				}
 
-				case TokenType::EndLine:
+				case TokenType::EndIndentation:
 				{
+					if(m_Stack.size() > 1)
+						m_Stack.pop();
+
 					break;
 				}
 
