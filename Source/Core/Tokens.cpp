@@ -46,6 +46,7 @@ namespace clear {
         {"function", {.NextState = ParserState::FunctionName, .TokenToPush = TokenType::Function}},
         {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
+        {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
 
     };
 
@@ -103,6 +104,8 @@ namespace clear {
             case TokenType::Arrow: return "Arrow";
             case TokenType::Lambda: return "Lambda";
             case TokenType::VariableReference: return "VariableReference";
+            case TokenType::Struct: return "Struct";
+            case TokenType::StructName: return "StructName";
             default:
                 break;
         }

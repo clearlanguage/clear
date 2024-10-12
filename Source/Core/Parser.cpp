@@ -23,7 +23,14 @@ namespace clear
 		m_StateMap[ParserState::FunctionArguments] = [this]() { _FunctionArgumentState(); };
 		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
+		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
 	}
+
+	void Parser::_PushToken(const TokenType tok, const std::string &data) {
+		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data });
+
+	}
+
 
 	char Parser::_GetNextChar()
 	{
@@ -182,6 +189,32 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 
 	}
+
+	void Parser::_StructNameState() {
+		char current = _GetNextChar();
+
+		while (IsSpace(current))
+			current = _GetNextChar();
+
+		if (current == ':') {
+			CLEAR_LOG_ERROR("Implement later unnamed struct?");
+			CLEAR_HALT();
+		}
+		m_CurrentString.clear();
+		while (IsVarNameChar(current))
+		{
+			m_CurrentString += current;
+			current = _GetNextChar();
+		}
+
+
+		_PushToken(TokenType::StructName, m_CurrentString);
+		m_CurrentString.clear();
+		_Backtrack();
+		m_CurrentState = ParserState::Default;
+	}
+
+
 	void Parser::_ParsingRValueState()
 	{
 		char current = _GetNextChar();
