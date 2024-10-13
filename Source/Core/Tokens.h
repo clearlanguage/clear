@@ -26,10 +26,11 @@ namespace clear {
         FunctionName,
         Operator,
         Indentation,
-        FunctionArguments,
+        FunctionParameters,
         ArrowState,
         FunctionTypeState,
-        StructName
+        StructName,
+        FunctionArguments
     };
 
 
