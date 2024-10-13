@@ -37,8 +37,10 @@ namespace clear
 		void _FunctionParameterState();
 		void _ArrowState();
 		void _FunctionTypeState();
+		void _CommentState();
 		void _StructNameState();
 		void _FunctionArgumentState();
+		void _MultiLineCommentState();
 
 		void _ParsingRValueState();
 		void _ParseNumber();

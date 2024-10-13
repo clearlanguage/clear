@@ -30,7 +30,9 @@ namespace clear {
         ArrowState,
         FunctionTypeState,
         StructName,
-        FunctionArguments
+        FunctionArguments,
+        Comment,
+        MultilineComment
     };
 
 

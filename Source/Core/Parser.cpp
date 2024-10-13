@@ -25,6 +25,9 @@ namespace clear
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
 		m_StateMap[ParserState::FunctionArguments] = [this]()  {_FunctionArgumentState(); };
+		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
+		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
+
 	}
 
 	void Parser::_PushToken(const TokenType tok, const std::string &data) 
@@ -145,6 +148,29 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
 
 
+	}
+
+
+	void Parser::_MultiLineCommentState() {
+		char current = _GetNextChar();
+		while (current!= '\0') {
+			current = _GetNextChar();
+			if (current == '*') {
+				current = _GetNextChar();
+				if (current == '\\') {
+					m_CurrentState = ParserState::Default;
+					return;
+				}
+			}
+		}
+	}
+
+	void Parser::_CommentState() {
+		char current = _GetNextChar();
+		while (current != '\n' && current != '\0') {
+			current = _GetNextChar();
+		}
+		m_CurrentState = ParserState::Default;
 	}
 
 
@@ -615,7 +641,7 @@ namespace clear
 		char current = _GetNextChar();
 		m_CurrentString.clear();
 		
-		while (IsVarNameChar(current) && current)
+		while (IsVarNameChar(current ) && current)
 		{
 			m_CurrentString += current;
 
