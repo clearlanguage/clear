@@ -1,7 +1,0 @@
-; ModuleID = 'clear'
-source_filename = "clear"
-
-define void @main() {
-entry:
-  ret void
-}

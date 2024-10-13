@@ -35,7 +35,7 @@ int main()
      std::cout << "------AST TESTS--------" << std::endl;
      {
          AST ast(info);
-         ast.BuildIR("test.ir");
+         ast.BuildIR("Tests/test.ir");
      }
 
 
