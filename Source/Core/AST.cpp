@@ -66,9 +66,15 @@ namespace clear {
 				{
 					auto& previous = tokens[i - 1];
 
+					Field field;
+					if (previous.TokenType == TokenType::VariableReference)
+						field = previous.Data;
+					else
+						field = GetVariableTypeFromTokenType(previous.TokenType);
+
 					currentRoot->PushChild(std::make_shared<ASTVariableDecleration>(
 						currentToken.Data,
-						GetVariableTypeFromTokenType(previous.TokenType)));
+						field));
 
 					break;
 				}
