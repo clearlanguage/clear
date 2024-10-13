@@ -36,6 +36,11 @@ namespace clear
 
 	char Parser::_GetNextChar()
 	{
+		if (!m_CharBuffer.empty()) {
+			char ch = m_CharBuffer.front();
+			m_CharBuffer.pop();
+			return ch;
+		}
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
 			auto c = m_Buffer[m_CurrentTokenIndex++];
@@ -174,10 +179,10 @@ namespace clear
 			return;
 		}
 
-		if (!std::isspace(current))
+		if (IsVarNameChar(current))
 			m_CurrentString += current;
 
-		if (!m_CurrentString.empty() && (current == ' ' || current == '\n'))
+		if (!m_CurrentString.empty() && !IsVarNameChar(current))
 		{
 			if (g_KeyWordMap.contains(m_CurrentString) ) {
 				auto& value = g_KeyWordMap.at(m_CurrentString);
@@ -206,7 +211,7 @@ namespace clear
 			return;
 		}
 
-		if (m_CurrentString.size() == 1 && g_OperatorMap.contains(Str(current)))
+		if (g_OperatorMap.contains(Str(current)))
 		{
 			m_CurrentState = ParserState::Operator;
 			m_CurrentString.clear();
@@ -610,7 +615,7 @@ namespace clear
 		char current = _GetNextChar();
 		m_CurrentString.clear();
 		
-		while ((std::isalnum(current) || current == '_' || current == '.') && current)
+		while (IsVarNameChar(current) && current)
 		{
 			m_CurrentString += current;
 

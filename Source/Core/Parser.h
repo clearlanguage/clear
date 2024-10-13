@@ -8,6 +8,7 @@
 #include <map>
 #include <functional>
 #include "Tokens.h"
+#include <queue>
 
 namespace clear
 {
@@ -69,6 +70,8 @@ namespace clear
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
+		std::queue<char> m_CharBuffer;
+
 	};
 
 }
