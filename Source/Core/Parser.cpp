@@ -95,6 +95,20 @@ namespace clear
 	{
 		char current = _GetNextChar();
     
+		if (current == '(')
+		{
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Function });
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+
+			m_BracketStack.push_back('(');
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			m_CurrentState = ParserState::FunctionArguments;
+
+			_Backtrack();
+
+			return;
+		}
+
 		if (current == ')')
 		{
 			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
@@ -314,6 +328,8 @@ namespace clear
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionArguments, .Data = "" });
 		m_CurrentState = ParserState::Default;
+
+		_Backtrack();
 	}
 
 
@@ -325,7 +341,8 @@ namespace clear
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
-		if (current == '(') {
+		if (current == '(') 
+		{
 			_Backtrack();
 			m_CurrentState = ParserState::FunctionArguments;
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Lambda, .Data = ""});

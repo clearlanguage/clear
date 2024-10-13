@@ -35,8 +35,6 @@ namespace clear {
 					i++;
 					if (tokens[i].TokenType != TokenType::StartFunctionArguments)
 					{
-						//create a function call (TODO)
-						i--;
 						break;
 					}
 					
