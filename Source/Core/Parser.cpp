@@ -20,16 +20,18 @@ namespace clear
 		m_StateMap[ParserState::Operator]     = [this]() { _OperatorState(); };
 		m_StateMap[ParserState::Indentation]  = [this]() { _IndentationState(); };
 		m_StateMap[ParserState::FunctionName] = [this]() {_FunctionNameState();};
-		m_StateMap[ParserState::FunctionArguments] = [this]() { _FunctionArgumentState(); };
+		m_StateMap[ParserState::FunctionParameters] = [this]() { _FunctionParameterState(); };
 		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
+		m_StateMap[ParserState::FunctionArguments] = [this]()  {_FunctionArgumentState(); };
 	}
 
 	void Parser::_PushToken(const TokenType tok, const std::string &data) 
 	{
 		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data });
 	}
+
 
 
 	char Parser::_GetNextChar()
@@ -82,6 +84,7 @@ namespace clear
 		stream << m_File.rdbuf();
 
 		m_Buffer = stream.str();
+		m_Buffer+='\n';
 
 		while (m_CurrentTokenIndex < m_Buffer.length())
 		{
@@ -98,20 +101,65 @@ namespace clear
 	}
 
 
+	void Parser::_FunctionArgumentState() {
+		char current = _GetNextChar();
+
+		while (IsSpace(current))
+			current = _GetNextChar();
+
+		m_CurrentString.clear();
+		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
+
+		std::vector<std::string> argList;
+		bool detectedEnd = false;
+
+		while (current != ')' && current != '\0')
+		{
+			current = _GetNextChar();
+
+			if (current==',' || current ==')' || current == '\0' || current == '\n')
+			{
+				if (current == ')')
+					detectedEnd = true;
+
+				if (!m_CurrentString.empty())
+					argList.push_back(m_CurrentString);
+
+				m_CurrentString.clear();
+
+			}
+			else
+			{
+				if(!(IsSpace(current) && m_CurrentString.empty()))
+					m_CurrentString += current;
+			}
+
+		}
+
+		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
+		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
+
+
+	}
+
+
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
-    
+
 		if (current == '(')
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Function });
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+			if (!m_CurrentString.empty()) {
 
+				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Function });
+				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+				m_CurrentState = ParserState::FunctionArguments;
+				_Backtrack();
+
+			}
 			m_BracketStack.push_back('(');
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
-			m_CurrentState = ParserState::FunctionArguments;
 
-			_Backtrack();
 
 			return;
 		}
@@ -129,16 +177,23 @@ namespace clear
 		if (!std::isspace(current))
 			m_CurrentString += current;
 
-		if (g_KeyWordMap.contains(m_CurrentString) && (current == ' ' || current == '\n'))
+		if (!m_CurrentString.empty() && (current == ' ' || current == '\n'))
 		{
-			auto& value = g_KeyWordMap.at(m_CurrentString);
+			if (g_KeyWordMap.contains(m_CurrentString) ) {
+				auto& value = g_KeyWordMap.at(m_CurrentString);
 
-			m_CurrentState = value.NextState;
+				m_CurrentState = value.NextState;
 
-			if (value.TokenToPush != TokenType::None)
-				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+				if (value.TokenToPush != TokenType::None)
+					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
-			m_CurrentString.clear();
+				m_CurrentString.clear();
+
+			}else {
+				_PushToken(TokenType::VariableReference, m_CurrentString);
+				m_CurrentState = ParserState::VariableName;
+				m_CurrentString.clear();
+			}
 		}
 
 		if (current == ':' || current == '\n')
@@ -287,8 +342,7 @@ namespace clear
 
 		m_CurrentString.clear();
 
-		//allow _ and any character from alphabet
-		while (std::isalpha(current) || current == '_')
+		while (IsVarNameChar(current))
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();
@@ -300,7 +354,7 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_FunctionArgumentState() 
+	void Parser::_FunctionParameterState() 
 	{
 		char current = _GetNextChar();
 
@@ -361,8 +415,8 @@ namespace clear
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionArguments, .Data = "" });
 		m_CurrentState = ParserState::Default;
-
-		_Backtrack();
+		if (current != ')')
+			_Backtrack();
 	}
 
 
@@ -377,7 +431,7 @@ namespace clear
 		if (current == '(') 
 		{
 			_Backtrack();
-			m_CurrentState = ParserState::FunctionArguments;
+			m_CurrentState = ParserState::FunctionParameters;
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Lambda, .Data = ""});
 			return;
 		}
@@ -395,7 +449,7 @@ namespace clear
 		m_CurrentString.clear();
 
 		CLEAR_VERIFY(current != '\n', "did not expect new line after function def")
-		m_CurrentState = ParserState::FunctionArguments;
+		m_CurrentState = ParserState::FunctionParameters;
 	}
 
 
@@ -569,6 +623,8 @@ namespace clear
 		{
 			auto& value = g_KeyWordMap.at(m_CurrentString);
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+		}else {
+			_PushToken(TokenType::VariableReference, m_CurrentString);
 		}
 
 		m_CurrentString.clear();

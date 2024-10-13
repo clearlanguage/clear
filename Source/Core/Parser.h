@@ -33,10 +33,11 @@ namespace clear
 		void _OperatorState();
 		void _IndentationState();
 		void _FunctionNameState();
-		void _FunctionArgumentState();
+		void _FunctionParameterState();
 		void _ArrowState();
 		void _FunctionTypeState();
 		void _StructNameState();
+		void _FunctionArgumentState();
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -44,6 +45,7 @@ namespace clear
 		void _ParseOther();
 
 		void _PushToken(const TokenType tok, const std::string& data);
+		bool _InObject();
 
 		char _GetNextChar();
 		void _Backtrack();
