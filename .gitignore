@@ -18,5 +18,4 @@ build/
 cmake-build-debug/
 ThirdParty/
 build_proj
-Source/test.cl
-Source/test.ir
+Source/Tests/
