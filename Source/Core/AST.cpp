@@ -1,6 +1,7 @@
 #include "AST.h"
 
 #include "API/LLVM/LLVMBackend.h"
+#include "Log.h"
 
 #include <iostream>
 
@@ -71,7 +72,46 @@ namespace clear {
 
 					break;
 				}
+				case TokenType::Struct:
+				{
+					i++;
+					CLEAR_VERIFY(tokens[i].TokenType == TokenType::StructName, "invalid token after struct");
+					
+					const std::string& structName = tokens[i].Data;
+					
+					while (tokens[i].TokenType != TokenType::StartIndentation)
+						i++;
 
+					i++;
+
+					std::vector<Member> memberVars;
+
+					while (tokens[i].TokenType == TokenType::VariableReference ||
+						   GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None &&
+						   i < tokens.size())
+					{
+						Member member;
+
+						if (tokens[i].TokenType == TokenType::VariableReference)
+						{
+							member.Field = tokens[i].Data;
+						}
+						else
+						{
+							member.Field = GetVariableTypeFromTokenType(tokens[i].TokenType);
+						}
+
+						i++;
+						member.Name = tokens[i].Data;
+						memberVars.push_back(member);
+
+						i++;
+					}
+
+					currentRoot->PushChild(std::make_shared<ASTStruct>(structName, memberVars));
+
+					break;
+				}
 				case TokenType::AddOp:
 				case TokenType::SubOp:
 				case TokenType::DivOp:

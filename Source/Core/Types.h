@@ -1,8 +1,9 @@
 #pragma once
 
 #include "Tokens.h"
+#include "API/LLVM/LLVMInclude.h"
 
-#include <llvm/IR/Value.h>
+#include <variant>
 
 namespace clear {
 
@@ -24,6 +25,14 @@ namespace clear {
 		None = 0, Add, Sub, Mul,
 		Div, Mod, Less, LessEq,
 		Greater, GreaterEq, Eq, Assignment
+	};
+
+	using Field = std::variant<std::string, VariableType>;
+	
+	struct ObjectReferenceInfo
+	{
+		llvm::StructType* Struct;
+		std::map<std::string, uint32_t> Indices;
 	};
 
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);

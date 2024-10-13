@@ -20,7 +20,6 @@ int main()
 
     LLVM::Backend::Init();
 
-
     std::cout << "------PARSER TESTS--------" << std::endl;
     Parser parser;
     ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");

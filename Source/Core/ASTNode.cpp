@@ -1,6 +1,7 @@
 #include "ASTNode.h"
 
 #include "API/LLVM/LLVMBackend.h"
+#include "Log.h"
 
 #include <iostream>
 #include <map>
@@ -9,6 +10,7 @@
 namespace clear {
 
 	static std::map<std::string, llvm::AllocaInst*> s_VariableMap;
+	static std::map<std::string, ObjectReferenceInfo> s_StructTypes;
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
@@ -235,26 +237,19 @@ namespace clear {
 
 	llvm::Value* ASTVariableExpression::Codegen()
 	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-
 		if (!s_VariableMap.contains(m_Name))
 		{
 			std::cout << "no variable of name " << m_Name << " exists" << std::endl;
 			return nullptr;
 		}
 
-		llvm::AllocaInst* value = s_VariableMap[m_Name];
-
-		if (!value)
-		{
-			std::cout << "value was nullptr" << std::endl;
-			return nullptr;
-		}
+		llvm::AllocaInst* value = s_VariableMap.at(m_Name);
+		CLEAR_VERIFY(value, "value was nullptr");
 
 		return value;
 	}
 
-	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, VariableType type)
+	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, Field type)
 		: m_Name(name), m_Type(type)
 	{
 	}
@@ -267,8 +262,21 @@ namespace clear {
 		}
 
 		auto& builder = *LLVM::Backend::GetBuilder();
-		auto value = builder.CreateAlloca(GetLLVMVariableType(m_Type), nullptr, m_Name);
+
+		if (std::holds_alternative<std::string>(m_Type))
+		{
+			auto& structType = std::get<0>(m_Type);
+
+			auto value = builder.CreateAlloca(s_StructTypes[structType].Struct, nullptr, m_Name);
+			s_VariableMap[m_Name] = value;
+
+			return value;
+		}
+
+		auto& variableType = std::get<1>(m_Type);
+		auto value = builder.CreateAlloca(GetLLVMVariableType(variableType), nullptr, m_Name);
 		s_VariableMap[m_Name] = value;
+		
 		return value;
 	}
 
@@ -349,7 +357,6 @@ namespace clear {
 		return function;
 	}
 
-
 	llvm::Value* ASTReturnStatement::Codegen()
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -390,5 +397,41 @@ namespace clear {
 		}
 
 		return stack.top()->Codegen();
+	}
+
+	ASTStruct::ASTStruct(const std::string& name, const std::vector<Member>& fields)
+		: m_Name(name), m_Members(fields)
+	{
+	}
+
+	llvm::Value* ASTStruct::Codegen()
+	{
+		std::vector<llvm::Type*> types;
+
+		ObjectReferenceInfo info;
+		uint32_t k = 0;
+
+		for (auto& member : m_Members)
+		{
+			if (std::holds_alternative<std::string>(member.Field))
+			{
+				auto& structName = std::get<0>(member.Field);
+				CLEAR_VERIFY(s_StructTypes.contains(structName), "struct hasn't been declared");
+
+				types.push_back(s_StructTypes[structName].Struct);
+			}
+			else
+			{
+				auto& variableType = std::get<1>(member.Field);
+				types.push_back(GetLLVMVariableType(variableType));
+			}
+
+			info.Indices[member.Name] = k++;
+		}
+
+		info.Struct = llvm::StructType::create(types);
+		s_StructTypes[m_Name] = info;
+
+		return nullptr;
 	}
 }
