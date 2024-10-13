@@ -23,7 +23,7 @@ int main()
 
     std::cout << "------PARSER TESTS--------" << std::endl;
     Parser parser;
-    ProgramInfo info = parser.CreateTokensFromFile("test.cl");
+    ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");
 
     for (size_t i = 0; i < info.Tokens.size(); i++)
     {
