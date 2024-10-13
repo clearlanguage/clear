@@ -14,7 +14,7 @@ namespace clear {
         Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData, ConditionalIf,
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
         StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionArguments,EndFunctionArguments,Arrow,FunctionType,
-        Lambda
+        Lambda,Struct,StructName
     };
 
     enum class ParserState
@@ -27,7 +27,8 @@ namespace clear {
         Indentation,
         FunctionArguments,
         ArrowState,
-        FunctionTypeState
+        FunctionTypeState,
+        StructName
     };
 
 

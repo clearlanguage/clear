@@ -36,12 +36,14 @@ namespace clear
 		void _FunctionArgumentState();
 		void _ArrowState();
 		void _FunctionTypeState();
+		void _StructNameState();
 
 		void _ParsingRValueState();
 		void _ParseNumber();
 		void _ParseString();
 		void _ParseOther();
 
+		void _PushToken(const TokenType tok, const std::string& data);
 
 		char _GetNextChar();
 		void _Backtrack();
