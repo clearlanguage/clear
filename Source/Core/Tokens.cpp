@@ -109,6 +109,7 @@ namespace clear {
             case TokenType::Struct: return "Struct";
             case TokenType::StructName: return "StructName";
             case TokenType::FunctionCall: return "FunctionCall";
+            case TokenType::Comma: return "Comma";
             default:
                 break;
         }

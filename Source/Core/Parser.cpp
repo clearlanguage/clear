@@ -157,10 +157,10 @@ namespace clear
 				opens++;
 			if (current == ')')
 				opens--;
-			if (current==',' || (current ==')' && opens== 0) || current == '\0')
+			if ( (current ==')' && opens== 0) || (current == ',' && opens == 1) || current == '\0')
 			{
 
-				if (current == ')')
+				if (current == ')' && opens ==0 )
 					detectedEnd = true;
 
 				if (!m_CurrentString.empty())
@@ -189,6 +189,10 @@ namespace clear
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
+			_PushToken(TokenType::Comma, "");
+		}
+		if (m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::Comma) {
+			m_ProgramInfo.Tokens.pop_back();
 		}
 
 		_PushToken(TokenType::CloseBracket,")");
