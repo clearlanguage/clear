@@ -125,7 +125,7 @@ namespace clear
 			current = _GetNextChar();
 
 		m_CurrentString.clear();
-		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
+		CLEAR_VERIFY(current == '(', "expected ( after function call");
 		std::vector<std::string> argList;
 		bool detectedEnd = false;
 		int opens =1;
@@ -136,7 +136,7 @@ namespace clear
 				opens++;
 			if (current == ')')
 				opens--;
-			if (current==',' || (current ==')' && opens== 0) || current == '\0' || current == '\n')
+			if (current==',' || (current ==')' && opens== 0) || current == '\0')
 			{
 
 				if (current == ')' && opens == 0)
@@ -156,7 +156,7 @@ namespace clear
 
 		}
 
-		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
+		CLEAR_VERIFY(detectedEnd, "Expected ) after function call");
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
 		m_CurrentState = ParserState::Default;
 		for (std::string arg : argList) {
@@ -322,7 +322,7 @@ namespace clear
 			current = _GetNextChar();
 
 		if (current == ':') {
-			CLEAR_LOG_ERROR("Implement later unnamed struct?");
+			CLEAR_LOG_ERROR("Expected struct name?");
 			CLEAR_HALT();
 		}
 		m_CurrentString.clear();
