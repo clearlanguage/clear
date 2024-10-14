@@ -68,32 +68,7 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
 	}
 
-	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
-	{
-		m_ProgramInfo.Tokens.clear();
-		m_CurrentTokenIndex = 0;
-		m_Indents = 0;
-		m_CurrentIndentLevel = 0;
-		m_CurrentIndentationLevel = 0;
-		m_LineStarted = false;
-		m_CurrentState = ParserState::Default;
-		m_Buffer.clear();
-		m_CurrentString.clear();
-
-		m_File.open(path);
-
-		if (!m_File.is_open())
-		{
-			std::cout << "failed to open file " << path << std::endl;
-			return m_ProgramInfo;
-		}
-
-		std::stringstream stream;
-		stream << m_File.rdbuf();
-
-		m_Buffer = stream.str();
-		m_Buffer+='\n';
-
+	ProgramInfo Parser::ParseProgram() {
 		while (m_CurrentTokenIndex < m_Buffer.length())
 		{
 			m_StateMap.at(m_CurrentState)();
@@ -108,6 +83,40 @@ namespace clear
 		return m_ProgramInfo;
 	}
 
+	void Parser::InitParser() {
+		m_ProgramInfo.Tokens.clear();
+		m_CurrentTokenIndex = 0;
+		m_Indents = 0;
+		m_CurrentIndentLevel = 0;
+		m_CurrentIndentationLevel = 0;
+		m_LineStarted = false;
+		m_CurrentState = ParserState::Default;
+		m_Buffer.clear();
+		m_CurrentString.clear();
+	}
+
+
+	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
+	{
+		InitParser();
+		m_File.open(path);
+
+		if (!m_File.is_open())
+		{
+			std::cout << "failed to open file " << path << std::endl;
+			return m_ProgramInfo;
+		}
+
+		std::stringstream stream;
+		stream << m_File.rdbuf();
+
+		m_Buffer = stream.str();
+		m_Buffer+='\n';
+		return ParseProgram();
+
+
+	}
+
 
 	void Parser::_FunctionArgumentState() {
 		char current = _GetNextChar();
@@ -117,17 +126,20 @@ namespace clear
 
 		m_CurrentString.clear();
 		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
-
 		std::vector<std::string> argList;
 		bool detectedEnd = false;
-
-		while (current != ')' && current != '\0')
+		int opens =1;
+		while (opens !=0 && current != '\0')
 		{
 			current = _GetNextChar();
-
-			if (current==',' || current ==')' || current == '\0' || current == '\n')
+			if (current == '(')
+				opens++;
+			if (current == ')')
+				opens--;
+			if (current==',' || (current ==')' && opens== 0) || current == '\0' || current == '\n')
 			{
-				if (current == ')')
+
+				if (current == ')' && opens == 0)
 					detectedEnd = true;
 
 				if (!m_CurrentString.empty())
@@ -145,8 +157,20 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
+		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
+		m_CurrentState = ParserState::Default;
+		for (std::string arg : argList) {
+			Parser subParser;
+			subParser.InitParser();
+			subParser.m_Buffer = arg;
+			subParser.m_Buffer+=" ";
+			ProgramInfo info = subParser.ParseProgram();
+			for (auto tok :info.Tokens) {
+				m_ProgramInfo.Tokens.push_back(tok);
+			}
+		}
 
+		_PushToken(TokenType::CloseBracket,")");
 
 	}
 
@@ -171,6 +195,8 @@ namespace clear
 			current = _GetNextChar();
 		}
 		m_CurrentState = ParserState::Default;
+		if (current == '\n')
+			_Backtrack();
 	}
 
 
@@ -182,8 +208,7 @@ namespace clear
 		{
 			if (!m_CurrentString.empty()) {
 
-				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Function });
-				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionCall, .Data = m_CurrentString });
 				m_CurrentState = ParserState::FunctionArguments;
 				_Backtrack();
 

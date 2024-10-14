@@ -27,6 +27,8 @@ namespace clear
 		~Parser() = default;
 
 		ProgramInfo CreateTokensFromFile(const std::filesystem::path& path);
+		void InitParser();
+		ProgramInfo ParseProgram();
 
 	private:
 		void _DefaultState();
@@ -41,6 +43,8 @@ namespace clear
 		void _StructNameState();
 		void _FunctionArgumentState();
 		void _MultiLineCommentState();
+
+
 
 		void _ParsingRValueState();
 		void _ParseNumber();
