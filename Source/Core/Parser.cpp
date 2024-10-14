@@ -9,6 +9,32 @@
 #include <Core/Log.h>
 #include <Core/Utils.h>
 
+bool isValidNumber(const std::string& str) {
+	if (str.empty()) {
+		return false; // Empty string is not a number
+	}
+
+	bool hasDecimalPoint = false;
+	bool hasSign = false;
+
+	for (char c : str) {
+		if (c == '-' || c == '+') {
+			if (hasSign || !hasDecimalPoint) {
+				return false; // Invalid sign placement
+			}
+			hasSign = true;
+		} else if (c == '.') {
+			if (hasDecimalPoint) {
+				return false; // Multiple decimal points
+			}
+			hasDecimalPoint = true;
+		} else if (!std::isdigit(c)) {
+			return false; // Non-numeric character
+		}
+	}
+
+	return true;
+}
 
 namespace clear
 {
@@ -39,11 +65,6 @@ namespace clear
 
 	char Parser::_GetNextChar()
 	{
-		if (!m_CharBuffer.empty()) {
-			char ch = m_CharBuffer.front();
-			m_CharBuffer.pop();
-			return ch;
-		}
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
 			auto c = m_Buffer[m_CurrentTokenIndex++];
@@ -159,13 +180,13 @@ namespace clear
 		CLEAR_VERIFY(detectedEnd, "Expected ) after function call");
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
 		m_CurrentState = ParserState::Default;
-		for (const std::string arg& : argList) {
+		for (const std::string& arg : argList) {
 			Parser subParser;
 			subParser.InitParser();
 			subParser.m_Buffer = arg;
 			subParser.m_Buffer+=" ";
 			ProgramInfo info = subParser.ParseProgram();
-			for (const Token tok& :info.Tokens) {
+			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
 		}
@@ -229,11 +250,11 @@ namespace clear
 
 			return;
 		}
-
-		if (IsVarNameChar(current))
+		bool TreatAsNum = current == '.' && isValidNumber(m_CurrentString);
+		if (IsVarNameChar(current) || TreatAsNum)
 			m_CurrentString += current;
 
-		if (!m_CurrentString.empty() && !IsVarNameChar(current))
+		if (!m_CurrentString.empty() && !IsVarNameChar(current) && !TreatAsNum)
 		{
 			if (g_KeyWordMap.contains(m_CurrentString) ) {
 				auto& value = g_KeyWordMap.at(m_CurrentString);
@@ -246,9 +267,16 @@ namespace clear
 				m_CurrentString.clear();
 
 			}else {
+				if (isValidNumber(m_CurrentString)) {
+					_PushToken(TokenType::RValueNumber, m_CurrentString);
+					m_CurrentString.clear();
+
+				}else {
+
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
+				}
 			}
 		}
 
@@ -262,7 +290,7 @@ namespace clear
 			return;
 		}
 
-		if (g_OperatorMap.contains(Str(current)))
+		if (g_OperatorMap.contains(Str(current)) && !TreatAsNum)
 		{
 			m_CurrentState = ParserState::Operator;
 			m_CurrentString.clear();
@@ -536,8 +564,11 @@ namespace clear
 		}
 		else
 		{
+
 			value = g_OperatorMap.at(before);
 			data = before;
+			m_CurrentTokenIndex -= (h.size()-1);
+
 		}
 		if (value.TokenToPush != TokenType::None)
 			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
