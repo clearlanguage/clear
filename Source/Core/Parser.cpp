@@ -459,7 +459,7 @@ namespace clear
 		{
 			current = _GetNextChar();
 
-			if (current==',' || current ==')' || current == '\0' || current == '\n') 
+			if (current==',' || current ==')' || current == '\0' )
 			{
 				if (current == ')') 
 					detectedEnd = true;
