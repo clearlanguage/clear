@@ -139,7 +139,7 @@ namespace clear
 			if (current==',' || (current ==')' && opens== 0) || current == '\0')
 			{
 
-				if (current == ')' && opens == 0)
+				if (current == ')')
 					detectedEnd = true;
 
 				if (!m_CurrentString.empty())
@@ -159,13 +159,13 @@ namespace clear
 		CLEAR_VERIFY(detectedEnd, "Expected ) after function call");
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
 		m_CurrentState = ParserState::Default;
-		for (std::string arg : argList) {
+		for (const std::string arg& : argList) {
 			Parser subParser;
 			subParser.InitParser();
 			subParser.m_Buffer = arg;
 			subParser.m_Buffer+=" ";
 			ProgramInfo info = subParser.ParseProgram();
-			for (auto tok :info.Tokens) {
+			for (const Token tok& :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
 		}
