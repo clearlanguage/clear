@@ -34,14 +34,14 @@ namespace clear {
 					std::string name = tokens[i].Data;
 
 					i++;
-					if (tokens[i].TokenType != TokenType::StartFunctionArguments)
+					if (tokens[i].TokenType != TokenType::StartFunctionParameters)
 					{
 						break;
 					}
 					
 					i++;
 					Argument currentArgument;
-					while (tokens[i].TokenType != TokenType::EndFunctionArguments)
+					while (tokens[i].TokenType != TokenType::EndFunctionParameters)
 					{
 						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
 						{

@@ -178,7 +178,7 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(detectedEnd, "Expected ) after function call");
-		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
+		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 		m_CurrentState = ParserState::Default;
 		for (const std::string& arg : argList) {
 			Parser subParser;
@@ -209,6 +209,8 @@ namespace clear
 				if (current == '\\') {
 					m_CurrentState = ParserState::Default;
 					return;
+				}else {
+					_Backtrack();
 				}
 			}
 		}
@@ -244,12 +246,12 @@ namespace clear
 
 			return;
 		}
-		if (current == '"' &&  m_CurrentString.empty()) {
-			_ParseString();
-		}
-		if (current == '\'' &&  m_CurrentString.empty()) {
-			_ParseChar();
-		}
+		// if (current == '"' &&  m_CurrentString.empty()) {
+		// 	_ParseString();
+		// }
+		// if (current == '\'' &&  m_CurrentString.empty()) {
+		// 	_ParseChar();
+		// }
 		if (current == ')')
 		{
 			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
@@ -304,11 +306,16 @@ namespace clear
 			m_CurrentState = ParserState::Operator;
 			m_CurrentString.clear();
 		}
+
+		if (current == '[') {
+			m_CurrentState = ParserState::;
+
+		}
 	}
 	void Parser::_ArrowState() 
 	{
 		if (m_ProgramInfo.Tokens.size() > 1 && 
-			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionArguments) 
+			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionParameters)
 		{
 			m_CurrentState = ParserState::FunctionTypeState;
 			return;
@@ -486,7 +493,7 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionArguments, .Data = "" });
+		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 
 		for (const auto& i: argList) 
 		{
@@ -508,7 +515,7 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = spL.at(1) });
 
 		}
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionArguments, .Data = "" });
+		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
 		m_CurrentState = ParserState::Default;
 		if (current != ')')
 			_Backtrack();
@@ -676,8 +683,12 @@ namespace clear
 
 			current = _GetNextChar();
 		}
+		if (m_CurrentString == "-") {
+			_PushToken(TokenType::SubOp,"-");
+		}else {
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+		}
 		m_CurrentString.clear();
 		_Backtrack();
 	}
@@ -703,12 +714,12 @@ namespace clear
 			}else if(current == 'b') {
 				data= '\b';
 			}
-
 			else {
 				CLEAR_LOG_ERROR("Unknown char escape char \"\\",current,'"');
 				CLEAR_HALT();
 
 			}
+
 		}
 
 		// if (current == '\'') {

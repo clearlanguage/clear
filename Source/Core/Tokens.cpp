@@ -100,8 +100,8 @@ namespace clear {
             case TokenType::EndLine: return "EndLine";
             case TokenType::FunctionName: return "FunctionName";
             case TokenType::Function: return "Function";
-            case TokenType::EndFunctionArguments: return "EndFunctionArguments";
-            case TokenType::StartFunctionArguments: return "StartFunctionArguments";
+            case TokenType::EndFunctionParameters: return "EndFunctionParameters";
+            case TokenType::StartFunctionParameters: return "StartFunctionParameters";
             case TokenType::FunctionType: return "FunctionType";
             case TokenType::Arrow: return "Arrow";
             case TokenType::Lambda: return "Lambda";
@@ -111,6 +111,7 @@ namespace clear {
             case TokenType::FunctionCall: return "FunctionCall";
             case TokenType::Comma: return "Comma";
             case TokenType::RValueChar : return "RValueChar";
+
             default:
                 break;
         }
