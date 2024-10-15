@@ -111,6 +111,7 @@ namespace clear {
             case TokenType::FunctionCall: return "FunctionCall";
             case TokenType::Comma: return "Comma";
             case TokenType::RValueChar : return "RValueChar";
+            case TokenType::IndexOperator : return "IndexOperator";
 
             default:
                 break;

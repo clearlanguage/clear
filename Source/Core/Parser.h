@@ -43,6 +43,7 @@ namespace clear
 		void _StructNameState();
 		void _FunctionArgumentState();
 		void _MultiLineCommentState();
+		void _IndexOperatorState();
 
 
 

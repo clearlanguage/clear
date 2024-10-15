@@ -53,6 +53,7 @@ namespace clear
 		m_StateMap[ParserState::FunctionArguments] = [this]()  {_FunctionArgumentState(); };
 		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
+		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
 
 	}
 
@@ -226,6 +227,49 @@ namespace clear
 			_Backtrack();
 	}
 
+	void Parser::_IndexOperatorState() {
+		char current = _GetNextChar();
+		bool detectedEnd = false;
+		int opens =1;
+
+		CLEAR_VERIFY(current == '[', "index op should start with [");
+		while (opens !=0 && current != '\0')
+		{
+			current = _GetNextChar();
+			if (current == '[')
+				opens++;
+			if (current == ']')
+				opens--;
+
+			if (opens ==0 && current == ']') {
+				detectedEnd = true;
+				break;
+			}
+
+			if(!(IsSpace(current) && m_CurrentString.empty()))
+				m_CurrentString += current;
+
+
+		}
+		CLEAR_VERIFY(detectedEnd, "Expected ] after index call");
+		Parser subParser;
+		subParser.InitParser();
+		subParser.m_Buffer = m_CurrentString;
+		subParser.m_Buffer+=" ";
+		ProgramInfo info = subParser.ParseProgram();
+		for (const Token& tok :info.Tokens) {
+			m_ProgramInfo.Tokens.push_back(tok);
+		}
+
+		m_CurrentString.clear();
+		m_CurrentState = ParserState::Default;
+
+		_PushToken(TokenType::CloseBracket,"]");
+
+
+	}
+
+
 
 	void Parser::_DefaultState()
 	{
@@ -246,12 +290,12 @@ namespace clear
 
 			return;
 		}
-		// if (current == '"' &&  m_CurrentString.empty()) {
-		// 	_ParseString();
-		// }
-		// if (current == '\'' &&  m_CurrentString.empty()) {
-		// 	_ParseChar();
-		// }
+		if (current == '"' &&  m_CurrentString.empty()) {
+			_ParseString();
+		}
+		if (current == '\'' &&  m_CurrentString.empty()) {
+			_ParseChar();
+		}
 		if (current == ')')
 		{
 			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
@@ -308,7 +352,10 @@ namespace clear
 		}
 
 		if (current == '[') {
-			m_CurrentState = ParserState::;
+			m_CurrentState = ParserState::IndexOperator;
+			_PushToken(TokenType::IndexOperator,"");
+			_PushToken(TokenType::OpenBracket,"[");
+			_Backtrack();
 
 		}
 	}
