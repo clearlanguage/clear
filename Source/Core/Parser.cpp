@@ -244,7 +244,9 @@ namespace clear
 
 			return;
 		}
-
+		if (current == '"' &&  m_CurrentString.empty()) {
+			_ParseString();
+		}
 		if (current == ')')
 		{
 			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
