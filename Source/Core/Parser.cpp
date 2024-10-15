@@ -683,7 +683,7 @@ namespace clear
 
 		while (current != '"')
 		{
-			CLEAR_VERIFY(current == '\n' || current != '\0',"String never closed expected \"")
+			CLEAR_VERIFY(!(current == '\n' || current == '\0'),"String never closed expected \"")
 
 			m_CurrentString += current;
 			current = _GetNextChar();
