@@ -160,7 +160,7 @@ namespace clear
 			if ( (current ==')' && opens== 0) || (current == ',' && opens == 1) || current == '\0')
 			{
 
-				if (current == ')' && opens ==0 )
+				if (current == ')' )
 					detectedEnd = true;
 
 				if (!m_CurrentString.empty())
@@ -409,7 +409,7 @@ namespace clear
 			m_CurrentString.push_back(current);
 			_ParseNumber();
 		}
-		else if(true) //TODO: implement this later
+		else //TODO: implement this later
 		{
 			//could be a variable reference, class/struct reference etc...
 			m_CurrentString.push_back(current);
@@ -708,6 +708,11 @@ namespace clear
 			current = _GetNextChar();
 			if (current == '\n' || current == '\0' || IsSpace(current))
 				break;
+		}
+		if (current == '(') {
+			if (!m_CurrentString.empty())
+				_Backtrack();
+				return;
 		}
 
 		if (g_KeyWordMap.contains(m_CurrentString))
