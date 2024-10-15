@@ -50,9 +50,9 @@ namespace clear
 		void _ParseNumber();
 		void _ParseString();
 		void _ParseOther();
+		void _ParseChar();
 
 		void _PushToken(const TokenType tok, const std::string& data);
-		bool _InObject();
 
 		char _GetNextChar();
 		void _Backtrack();

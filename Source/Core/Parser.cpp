@@ -410,6 +410,8 @@ namespace clear
 		{
 			m_CurrentString.push_back(current);
 			_ParseNumber();
+		}else if (current == '\'') {
+			_ParseChar();
 		}
 		else //TODO: implement this later
 		{
@@ -677,13 +679,55 @@ namespace clear
 		_Backtrack();
 	}
 
+	void Parser::_ParseChar() {
+		char current = _GetNextChar();
+		char data = current;
+		if (current == '\\') {
+			current = _GetNextChar();
+			if (current == '\'') {
+				data = '\'';
+				current = 0;
+			}
+			else if(current == 'n'){
+				data=  '\n';
+			}
+			else if(current == '\\') {
+				data= '\\';
+			}else if(current == 't') {
+				data = '\t';
+			}else if(current == 'r') {
+				data =  '\r';
+			}else if(current == 'b') {
+				data= '\b';
+			}
+
+			else {
+				CLEAR_LOG_ERROR("Unknown char escape char \"\\",current,'"');
+				CLEAR_HALT();
+
+			}
+		}
+
+		// if (current == '\'') {
+		// 	current = '';
+		// }
+		CLEAR_VERIFY(current!= '\'',"No data in char") // Allow this?
+
+
+		_PushToken(TokenType::RValueChar,Str(data));
+		current = _GetNextChar();
+		CLEAR_VERIFY(current == '\'', "unclosed char: expected ' after char ");
+
+
+	}
+
+
 	void Parser::_ParseString()
 	{
 		char current = _GetNextChar();
 		while (current != '"')
 		{
 			CLEAR_VERIFY(!(current == '\n' || current == '\0'),"String never closed expected \"")
-
 			if (current == '\\') {
 				current = _GetNextChar();
 				if (current == '"') {
