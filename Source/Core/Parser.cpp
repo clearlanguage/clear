@@ -680,13 +680,40 @@ namespace clear
 	void Parser::_ParseString()
 	{
 		char current = _GetNextChar();
-
 		while (current != '"')
 		{
 			CLEAR_VERIFY(!(current == '\n' || current == '\0'),"String never closed expected \"")
 
-			m_CurrentString += current;
+			if (current == '\\') {
+				current = _GetNextChar();
+				if (current == '"') {
+					m_CurrentString += '"';
+				}
+				else if(current == 'n'){
+					m_CurrentString += '\n';
+				}
+				else if(current == '\\') {
+					m_CurrentString += '\\';
+				}else if(current == 't') {
+					m_CurrentString += '\t';
+				}else if(current == 'r') {
+					m_CurrentString += '\r';
+				}else if(current == 'b') {
+					m_CurrentString += '\b';
+				}
+
+				else {
+					m_CurrentString += '\\';
+					m_CurrentString += current;
+
+				}
+			}else {
+				m_CurrentString += current;
+
+			}
 			current = _GetNextChar();
+
+
 		}
 
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
