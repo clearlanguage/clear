@@ -681,14 +681,9 @@ namespace clear
 	{
 		char current = _GetNextChar();
 
-		while (current != '"' && current != '\0')
+		while (current != '"')
 		{
-			//may want to add raw strings to allow these
-			if (current == '\n')
-			{
-				current = _GetNextChar();
-				continue;
-			}
+			CLEAR_VERIFY(current == '\n' || current != '\0',"String never closed expected \"")
 
 			m_CurrentString += current;
 			current = _GetNextChar();
