@@ -166,6 +166,10 @@ namespace clear
 
 				if (!m_CurrentString.empty())
 					argList.push_back(m_CurrentString);
+				else {
+					CLEAR_LOG_ERROR("Expected function argument after commas");
+					CLEAR_HALT();
+				}
 
 				m_CurrentString.clear();
 
@@ -481,23 +485,49 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_VariableNameState()
-	{
+	void Parser::_VariableNameState() {
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
 		while (IsSpace(current))
 			current = _GetNextChar();
-
-		m_CurrentString.clear();
-
-		while (IsVarNameChar(current))
-		{
-			m_CurrentString += current;
-			current = _GetNextChar();
+		if (current == ':' || g_OperatorMap.contains(Str(current))) {
+			_Backtrack();
+			m_CurrentState = ParserState::Default;
+			return;
 		}
+		m_CurrentString.clear();
+		int commas = 0;
+		int vars = 0;
+		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
+			if (!IsSpace(current)) {
+				m_CurrentString += current;
+			}
+			current = _GetNextChar();
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = m_CurrentString });
+			if (current == ',') {
+				CLEAR_VERIFY(!m_CurrentString.empty(),"Expected variable name after comma")
+				_PushToken(TokenType::VariableName, m_CurrentString);
+				_PushToken(TokenType::Comma,"");
+				m_CurrentString.clear();
+				current = _GetNextChar();
+				commas++;
+				if (current == ',') {
+					commas++;
+				}
+				vars ++;
+			}
+			CLEAR_VERIFY(current != ',',"Expected variable name after comma")
+		}
+		if (!m_CurrentString.empty()) {
+			_PushToken(TokenType::VariableName, m_CurrentString);
+			vars++;
+
+		}
+		CLEAR_VERIFY(commas < vars, "Expected variable names after comma did not expect trailing comma");
+		if (!IsSpace(current)) {
+			_Backtrack();
+		}
 		m_CurrentString.clear();
 
 		m_CurrentState = ParserState::Default;

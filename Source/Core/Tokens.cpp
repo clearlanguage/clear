@@ -26,6 +26,7 @@ namespace clear {
         {".",{.NextState = ParserState::RValue, .TokenToPush = TokenType::DotOp}},
         {"//",{.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
+        {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
     };
 
         const KeyWordMapType g_KeyWordMap = {
