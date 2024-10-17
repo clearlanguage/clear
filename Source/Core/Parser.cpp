@@ -167,8 +167,10 @@ namespace clear
 				if (!m_CurrentString.empty())
 					argList.push_back(m_CurrentString);
 				else {
+					if (current == ',') {
 					CLEAR_LOG_ERROR("Expected function argument after commas");
 					CLEAR_HALT();
+					}
 				}
 
 				m_CurrentString.clear();
@@ -176,7 +178,7 @@ namespace clear
 			}
 			else
 			{
-				if(!(IsSpace(current) && m_CurrentString.empty()))
+				if(!(std::isspace(current) && m_CurrentString.empty()))
 					m_CurrentString += current;
 			}
 
@@ -201,6 +203,7 @@ namespace clear
 		}
 
 		_PushToken(TokenType::CloseBracket,")");
+		_EndLine();
 
 	}
 

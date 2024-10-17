@@ -50,6 +50,7 @@ namespace clear {
         {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
+            {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
 
     };
 
@@ -113,6 +114,10 @@ namespace clear {
             case TokenType::Comma: return "Comma";
             case TokenType::RValueChar : return "RValueChar";
             case TokenType::IndexOperator : return "IndexOperator";
+            case TokenType::Return: return "Return";
+            case TokenType::DeclarationOperator: return "DeclarationOperator";
+            case TokenType::ModOp: return "ModOp";
+            case TokenType::BinaryShiftLeft: return "BinaryShiftLeft";
 
             default:
                 break;
