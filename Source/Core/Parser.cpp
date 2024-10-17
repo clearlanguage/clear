@@ -294,10 +294,12 @@ namespace clear
 
 			return;
 		}
-		if (current == '"' &&  m_CurrentString.empty()) {
+		if (current == '"' ) {
+			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened string");
 			_ParseString();
 		}
-		if (current == '\'' &&  m_CurrentString.empty()) {
+		if (current == '\'') {
+			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened char");
 			_ParseChar();
 		}
 		if (current == ')')
