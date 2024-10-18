@@ -58,7 +58,7 @@ namespace clear
 		void _ParsePointerDecleration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
-		bool _IsLineClosed() const;
+		bool _IsLineClosed();
 		char _SkipSpaces();
 
 		char _GetNextChar();

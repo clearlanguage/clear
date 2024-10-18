@@ -224,12 +224,12 @@ namespace clear
 			_Backtrack();
 	}
 
-	bool Parser::_IsLineClosed() const {
+	bool Parser::_IsLineClosed() {
 
 		if (m_ProgramInfo.Tokens.empty())
 			return true;
-
-		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::EndLine;
+		TokenType tok = _GetLastToken().TokenType;
+		return !(tok == TokenType::CloseBracket);
 	}
 
 
@@ -313,37 +313,42 @@ namespace clear
 		if (IsVarNameChar(current) || TreatAsNum)
 			m_CurrentString += current;
 
-		if (!m_CurrentString.empty() && !IsVarNameChar(current) && !TreatAsNum)
+		if (!m_CurrentString.empty() && !IsVarNameChar(current) && !TreatAsNum )
 		{
-			if (g_KeyWordMap.contains(m_CurrentString) ) {
-				auto& value = g_KeyWordMap.at(m_CurrentString);
+			if (!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') {
+				if (g_KeyWordMap.contains(m_CurrentString) ) {
+					auto& value = g_KeyWordMap.at(m_CurrentString);
 
-				m_CurrentState = value.NextState;
+					m_CurrentState = value.NextState;
 
-				if (value.TokenToPush != TokenType::None)
-					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+					if (value.TokenToPush != TokenType::None)
+						m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
+					m_CurrentString.clear();
+
+				}
+				else
+				{
+					if (IsValidNumber(m_CurrentString))
+					{
+						_PushToken(TokenType::RValueNumber, m_CurrentString);
+						m_CurrentString.clear();
+					}
+					else
+					{
+						_PushToken(TokenType::VariableReference, m_CurrentString);
+						m_CurrentState = ParserState::VariableName;
+						m_CurrentString.clear();
+					}
+				}
+				if (!IsSpace(current))
+					_Backtrack();
+
+				return;
+			}else {
+				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
-
 			}
-			else 
-			{
-				if (IsValidNumber(m_CurrentString)) 
-				{
-					_PushToken(TokenType::RValueNumber, m_CurrentString);
-					m_CurrentString.clear();
-				}
-				else 
-				{
-					_PushToken(TokenType::VariableReference, m_CurrentString);
-					m_CurrentState = ParserState::VariableName;
-					m_CurrentString.clear();
-				}
-			}
-			if (!IsSpace(current))
-				_Backtrack();
-
-			return;
 		}
 
 		if (current == ':' || current == '\n')
@@ -754,12 +759,12 @@ namespace clear
 	void Parser::_AsterisksState() {
 		TokenType tok = _GetLastToken().TokenType;
 
-		if (tok == TokenType::EndLine || tok == TokenType::Assignment || tok == TokenType::MulOp || tok == TokenType::DereferenceOp) {
+		if (tok == TokenType::EndLine || tok == TokenType::Assignment || tok == TokenType::MulOp || tok == TokenType::DereferenceOp || tok ==TokenType::OpenBracket) {
 			_PushToken(TokenType::DereferenceOp,"");
 		}else {
 			_PushToken(TokenType::MulOp,"*");
 		}
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = ParserState::Default;
 
 	}
 
