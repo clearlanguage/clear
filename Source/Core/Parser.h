@@ -44,6 +44,9 @@ namespace clear
 		void _FunctionParamterState();
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
+		void _AsterisksState();
+
+		Token _GetLastToken();
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -51,8 +54,12 @@ namespace clear
 		void _ParseOther();
 		void _ParseChar();
 
+		void _ParseArrayDecleration();
+		void _ParsePointerDecleration();
+
 		void _PushToken(const TokenType tok, const std::string& data);
 		bool _IsLineClosed() const;
+		char _SkipSpaces();
 
 		char _GetNextChar();
 		void _Backtrack();

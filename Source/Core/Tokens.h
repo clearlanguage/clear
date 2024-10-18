@@ -15,7 +15,7 @@ namespace clear {
         Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData, ConditionalIf,
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
         StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,Arrow,FunctionType,
-        Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp
+        Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp
     };
 
     enum class ParserState
@@ -33,7 +33,8 @@ namespace clear {
         FunctionParamters,
         Comment,
         MultilineComment,
-        IndexOperator
+        IndexOperator,
+        AsterisksOperator
     };
 
 

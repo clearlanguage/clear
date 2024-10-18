@@ -9,7 +9,7 @@
 namespace clear {
     const OperatorMapType g_OperatorMap = {
         {"=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Assignment}},
-        {"*", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MulOp}},
+        {"*", {.NextState = ParserState::AsterisksOperator, .TokenToPush = TokenType::None}},
         {"/", {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivOp}},
         {"-", {.NextState = ParserState::RValue, .TokenToPush = TokenType::SubOp}},
         {"%", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModOp}},
@@ -119,6 +119,10 @@ namespace clear {
             case TokenType::ModOp: return "ModOp";
             case TokenType::BinaryShiftLeft: return "BinaryShiftLeft";
             case TokenType::AddressOp: return "AddressOp";
+            case TokenType::DynamicArrayDef : return "DynamicArrayDef";
+            case TokenType::StaticArrayDef: return "StaticArrayDef";
+            case TokenType::PointerDef: return "PointerDef";
+            case TokenType::DereferenceOp : return "DereferenceOp";
 
             default:
                 break;

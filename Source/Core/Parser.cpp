@@ -29,6 +29,7 @@ namespace clear
 		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
+		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
 
 	}
 
@@ -37,6 +38,12 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data });
 	}
 
+	Token Parser::_GetLastToken() {
+		if (m_ProgramInfo.Tokens.empty())
+			return Token{.TokenType = TokenType::EndLine,.Data = ""};
+
+		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1);
+	}
 
 
 	char Parser::_GetNextChar()
@@ -115,13 +122,19 @@ namespace clear
 
 	}
 
+	 char Parser::_SkipSpaces() {
+		_Backtrack();
+		char current = _GetNextChar();
+		while (IsSpace(current))
+			current = _GetNextChar();
+
+		return current;
+	 }
 
 	void Parser::_FunctionParamterState() {
 		char current = _GetNextChar();
 
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		m_CurrentString.clear();
 		CLEAR_VERIFY(current == '(', "expected ( after function call");
 		std::vector<std::string> argList;
@@ -174,15 +187,13 @@ namespace clear
 			}
 			_PushToken(TokenType::Comma, "");
 		}
-		if (m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::Comma) {
+		if (_GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
 
 		_PushToken(TokenType::CloseBracket,")");
 		current = _GetNextChar();
-		while (IsSpace(current))
-			current = _GetNextChar();
-		
+		_SkipSpaces();		
 		_Backtrack();
 	}
 
@@ -329,6 +340,10 @@ namespace clear
 					m_CurrentString.clear();
 				}
 			}
+			if (!IsSpace(current))
+				_Backtrack();
+
+			return;
 		}
 
 		if (current == ':' || current == '\n')
@@ -378,9 +393,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
@@ -411,9 +424,7 @@ namespace clear
 	void Parser::_StructNameState() {
 		char current = _GetNextChar();
 
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		if (current == ':') {
 			CLEAR_LOG_ERROR("Expected struct name?");
 			CLEAR_HALT();
@@ -438,12 +449,14 @@ namespace clear
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between = and actual variable
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		m_CurrentString.clear();
 
 		//brackets
+		if (g_OperatorMap.contains(Str(current))) {
+			m_CurrentState = ParserState::Operator;
+			return;
+		}
 		if (current == '(')
 		{
 			m_BracketStack.push_back('(');
@@ -483,13 +496,68 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
+	void Parser::_ParseArrayDecleration() {
+		char current = _GetNextChar();
+		while (current != ']' && current != '\n' && current != '\0')
+		{
+			if (std::isdigit(current)) {
+				m_CurrentString += current;
+			}
+			else if ('.' == current && m_CurrentString.empty()) {
+				m_CurrentString+= current;
+				m_CurrentString += _GetNextChar();
+				m_CurrentString += _GetNextChar();
+				CLEAR_VERIFY(m_CurrentString == "...","Expected 3 dots for static array")
+
+			}
+			else {
+				// I cba but add specific errors for newline chars and anything else
+				CLEAR_LOG_ERROR("Unexpected character only expected numbers in array size declaration");
+				CLEAR_HALT();
+			}
+			current = _GetNextChar();
+		}
+		if (m_CurrentString.empty()) {
+			_PushToken(TokenType::DynamicArrayDef,"");
+		}else {
+			_PushToken(TokenType::StaticArrayDef,m_CurrentString);
+		}
+		m_CurrentString.clear();
+		current = _GetNextChar();
+		while (IsSpace(current)) {
+			current = _GetNextChar();
+		}
+		CLEAR_VERIFY(current != ']',"Attempting to close unopened array decleration")
+		if (current == '[') {
+			_ParseArrayDecleration();
+		}else  {
+			_Backtrack();
+		}
+
+
+	}
+
+	void Parser::_ParsePointerDecleration() {
+		char current = _GetNextChar();
+		while (current == '*') {
+			current = _GetNextChar();
+			_PushToken(TokenType::PointerDef,"*");
+		}
+		current = _SkipSpaces();
+		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
+		if (!IsSpace(current)) {
+			_Backtrack();
+		}
+		
+	}
+
+
 	void Parser::_VariableNameState() {
 		char current = _GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		while (IsSpace(current))
-			current = _GetNextChar();
-		if (current == ':' || g_OperatorMap.contains(Str(current))) {
+		current = _SkipSpaces();
+		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
 			_Backtrack();
 			m_CurrentState = ParserState::Default;
 			return;
@@ -499,6 +567,18 @@ namespace clear
 			m_CurrentState = ParserState::Default;
 
 			return;
+		}
+
+		if (current == '*') {
+			_Backtrack();
+			_ParsePointerDecleration();
+			current = _GetNextChar();
+		}
+
+		m_CurrentString.clear();
+		if (current == '[') {
+			_ParseArrayDecleration();
+			current = _GetNextChar();
 		}
 		m_CurrentString.clear();
 		int commas = 0;
@@ -541,9 +621,7 @@ namespace clear
 	{
 		char current = _GetNextChar();
 
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		m_CurrentString.clear();
 		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
 
@@ -607,9 +685,7 @@ namespace clear
 	{
 		char current = _GetNextChar();
 
-		while (IsSpace(current))
-			current = _GetNextChar();
-
+		current = _SkipSpaces();
 		m_CurrentString.clear();
 		if (current == '(') 
 		{
@@ -674,6 +750,19 @@ namespace clear
 
 		m_CurrentState = value.NextState;
 	}
+
+	void Parser::_AsterisksState() {
+		TokenType tok = _GetLastToken().TokenType;
+
+		if (tok == TokenType::EndLine || tok == TokenType::Assignment || tok == TokenType::MulOp || tok == TokenType::DereferenceOp) {
+			_PushToken(TokenType::DereferenceOp,"");
+		}else {
+			_PushToken(TokenType::MulOp,"*");
+		}
+		m_CurrentState = ParserState::RValue;
+
+	}
+
 
 	void Parser::_IndentationState()
 	{
