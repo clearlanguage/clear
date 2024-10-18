@@ -243,7 +243,7 @@ namespace clear
 	bool Parser::_IsLineClosed() {
 
 		if (m_ProgramInfo.Tokens.size() == 0)
-			return false;
+			return true;
 
 		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::EndLine;
 	}
@@ -300,8 +300,9 @@ namespace clear
 		if (current == '(')
 		{
 			if (!m_CurrentString.empty() || !_IsLineClosed()) {
-
-				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionCall, .Data = m_CurrentString });
+				if (!m_CurrentString.empty())
+					_PushToken(TokenType::VariableReference,m_CurrentString);
+				_PushToken(TokenType::FunctionCall,"");
 				m_CurrentState = ParserState::FunctionArguments;
 				_Backtrack();
 
