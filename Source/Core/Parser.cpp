@@ -203,7 +203,13 @@ namespace clear
 		}
 
 		_PushToken(TokenType::CloseBracket,")");
-		_EndLine();
+		current = _GetNextChar();
+		while (IsSpace(current))
+			current = _GetNextChar();
+		if (current  == '\n')
+			_EndLine();
+		else
+			_Backtrack();
 
 	}
 
@@ -234,6 +240,15 @@ namespace clear
 			_Backtrack();
 	}
 
+	bool Parser::_IsLineClosed() {
+
+		if (m_ProgramInfo.Tokens.size() == 0)
+			return false;
+
+		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::EndLine;
+	}
+
+
 	void Parser::_IndexOperatorState() {
 		char current = _GetNextChar();
 		bool detectedEnd = false;
@@ -253,7 +268,7 @@ namespace clear
 				break;
 			}
 
-			if(!(IsSpace(current) && m_CurrentString.empty()))
+			if((!(IsSpace(current) && m_CurrentString.empty()) && current!= '\n'))
 				m_CurrentString += current;
 
 
@@ -272,7 +287,7 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 
 		_PushToken(TokenType::CloseBracket,"]");
-
+		// m_CurrentString+= "INDEX_OP";
 
 	}
 
@@ -284,7 +299,7 @@ namespace clear
 
 		if (current == '(')
 		{
-			if (!m_CurrentString.empty()) {
+			if (!m_CurrentString.empty() || !_IsLineClosed()) {
 
 				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionCall, .Data = m_CurrentString });
 				m_CurrentState = ParserState::FunctionArguments;
@@ -305,15 +320,7 @@ namespace clear
 			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened char");
 			_ParseChar();
 		}
-		if (current == ')')
-		{
-			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
 
-			m_BracketStack.pop_back();
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
-
-			return;
-		}
 		bool TreatAsNum = current == '.' && isValidNumber(m_CurrentString);
 		if (IsVarNameChar(current) || TreatAsNum)
 			m_CurrentString += current;
@@ -366,6 +373,15 @@ namespace clear
 			_PushToken(TokenType::OpenBracket,"[");
 			_Backtrack();
 
+		}
+		if (current == ')')
+		{
+			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
+
+			m_BracketStack.pop_back();
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
+
+			return;
 		}
 	}
 	void Parser::_ArrowState() 
@@ -750,8 +766,8 @@ namespace clear
 			}
 			else if (current == '.' && usedDecimal) // need to throw some type of error again TODO
 			{
-				std::cout << "cannot have two decimal points" << std::endl;
-				break;
+				CLEAR_LOG_ERROR("float cannot have two decimal points");
+				CLEAR_HALT();
 			}
 			else if (current == '.')
 			{
