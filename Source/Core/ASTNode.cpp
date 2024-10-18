@@ -13,8 +13,6 @@ namespace clear {
 	static std::map<std::string, ObjectReferenceInfo>   s_StructTypes;
 	static std::stack<llvm::IRBuilderBase::InsertPoint> s_InsertPoints;
 
-
-
 	llvm::Value* ASTNodeBase::Codegen()
 	{
 		for (auto& child : GetChildren())

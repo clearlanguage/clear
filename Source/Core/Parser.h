@@ -45,8 +45,6 @@ namespace clear
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 
-
-
 		void _ParsingRValueState();
 		void _ParseNumber();
 		void _ParseString();

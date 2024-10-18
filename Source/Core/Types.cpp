@@ -1,6 +1,7 @@
 #include "Types.h"
 
 #include "API/LLVM/LLVMBackend.h"
+#include "Utils.h"
 
 namespace clear {
 
@@ -101,6 +102,26 @@ namespace clear {
 		}
 
 		return BinaryExpressionType::None;
+	}
+
+	AbstractType::AbstractType(const Token& token)
+		: m_Type(GetVariableTypeFromTokenType(token.TokenType)), m_LLVMType(GetLLVMVariableType(m_Type))
+	{
+	}
+
+	AbstractType::AbstractType(VariableType type)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type))
+	{
+	}
+
+	AbstractType::AbstractType(const std::string_view& value)
+	{
+		if (IsValidNumber(value))
+		{
+
+		}
+
+		
 	}
 
 }

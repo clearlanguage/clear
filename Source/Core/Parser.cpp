@@ -9,43 +9,7 @@
 #include <Core/Log.h>
 #include <Core/Utils.h>
 
-bool isValidNumber(const std::string& str) 
-{
-	if (str.empty()) 
-		return false; // Empty string is not a number
-	
-	bool hasDecimalPoint = false;
-	bool hasSign = false;
 
-	for (char c : str) 
-	{
-		if (c == '-' || c == '+') 
-		{
-			if (hasSign || !hasDecimalPoint) 
-			{
-				return false; // Invalid sign placement
-			}
-
-			hasSign = true;
-
-		} else if (c == '.') 
-		{
-			if (hasDecimalPoint)
-			{
-				return false; // Multiple decimal points
-			}
-			
-			hasDecimalPoint = true;
-
-		} 
-		else if (!std::isdigit(c)) 
-		{
-			return false; // Non-numeric character
-		}
-	}
-
-	return true;
-}
 
 namespace clear
 {
@@ -311,7 +275,7 @@ namespace clear
 			{
 				if (!m_CurrentString.empty()) 
 				{
-					CLEAR_VERIFY(!isValidNumber(m_CurrentString),"Cannot call a number")
+					CLEAR_VERIFY(!IsValidNumber(m_CurrentString),"Cannot call a number")
 					_PushToken(TokenType::VariableReference, m_CurrentString);
 				}
 
@@ -335,7 +299,7 @@ namespace clear
 			_ParseChar();
 		}
 
-		bool TreatAsNum = current == '.' && isValidNumber(m_CurrentString);
+		bool TreatAsNum = current == '.' && IsValidNumber(m_CurrentString);
 		if (IsVarNameChar(current) || TreatAsNum)
 			m_CurrentString += current;
 
@@ -351,16 +315,19 @@ namespace clear
 
 				m_CurrentString.clear();
 
-			}else {
-				if (isValidNumber(m_CurrentString)) {
+			}
+			else 
+			{
+				if (IsValidNumber(m_CurrentString)) 
+				{
 					_PushToken(TokenType::RValueNumber, m_CurrentString);
 					m_CurrentString.clear();
-
-				}else {
-
-				_PushToken(TokenType::VariableReference, m_CurrentString);
-				m_CurrentState = ParserState::VariableName;
-				m_CurrentString.clear();
+				}
+				else 
+				{
+					_PushToken(TokenType::VariableReference, m_CurrentString);
+					m_CurrentState = ParserState::VariableName;
+					m_CurrentString.clear();
 				}
 			}
 		}

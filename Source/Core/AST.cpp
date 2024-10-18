@@ -162,7 +162,6 @@ namespace clear {
 					}
 
 					currentRoot->PushChild(std::make_shared<ASTStruct>(structName, memberVars));
-
 					break;
 				}
 				case TokenType::AddOp:

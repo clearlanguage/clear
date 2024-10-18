@@ -36,7 +36,31 @@ namespace clear {
 	};
 
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);
-	extern VariableType GetVariableTypeFromTokenType(TokenType tokenType);
-	extern llvm::Type*  GetLLVMVariableType(VariableType type);
-	extern llvm::Value* GetLLVMConstant(VariableType type, const std::string& data);
+	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
+	extern llvm::Type*	GetLLVMVariableType(VariableType type);
+	extern llvm::Value*	GetLLVMConstant(VariableType type, const std::string& data);
+
+	class AbstractType
+	{
+	public:
+		AbstractType() = default;
+		AbstractType(const Token& token);
+		AbstractType(VariableType type);
+		AbstractType(const std::string_view& value); //auto generate type from a value
+
+		inline const VariableType Get() const { return m_Type; };
+		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
+
+	private:
+		VariableType m_Type = VariableType::None;
+		llvm::Type*  m_LLVMType = nullptr;
+	};
+
+	class AbstractValue
+	{
+	public:
+	private:
+		AbstractType m_Type;
+		llvm::Value* m_Value;
+	};
 }
