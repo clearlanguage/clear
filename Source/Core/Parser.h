@@ -54,7 +54,7 @@ namespace clear
 		void _ParseChar();
 
 		void _PushToken(const TokenType tok, const std::string& data);
-		bool _IsLineClosed();
+		bool _IsLineClosed() const;
 
 		char _GetNextChar();
 		void _Backtrack();

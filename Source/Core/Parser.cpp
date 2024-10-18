@@ -80,10 +80,10 @@ namespace clear
 		m_CurrentTokenIndex--;
 	}
 
-	const bool Parser::_IsEndOfFile()
-	{
-		return m_CurrentTokenIndex == m_Buffer.length();
-	}
+	// const bool Parser::_IsEndOfFile()
+	// {
+	// 	return m_CurrentTokenIndex == m_Buffer.length();
+	// }
 
 	void Parser::_EndLine() 
 	{
@@ -240,9 +240,9 @@ namespace clear
 			_Backtrack();
 	}
 
-	bool Parser::_IsLineClosed() {
+	bool Parser::_IsLineClosed() const {
 
-		if (m_ProgramInfo.Tokens.size() == 0)
+		if (m_ProgramInfo.Tokens.empty())
 			return true;
 
 		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1).TokenType == TokenType::EndLine;
@@ -300,8 +300,10 @@ namespace clear
 		if (current == '(')
 		{
 			if (!m_CurrentString.empty() || !_IsLineClosed()) {
-				if (!m_CurrentString.empty())
+				if (!m_CurrentString.empty()) {
+					CLEAR_VERIFY(!isValidNumber(m_CurrentString),"Cannot call a number")
 					_PushToken(TokenType::VariableReference,m_CurrentString);
+				}
 				_PushToken(TokenType::FunctionCall,"");
 				m_CurrentState = ParserState::FunctionArguments;
 				_Backtrack();
