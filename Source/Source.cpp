@@ -31,13 +31,13 @@ int main()
         std::cout << std::endl;
     }
 
-     std::cout << "------AST TESTS--------" << std::endl;
-     {
-         AST ast(info);
-         ast.BuildIR("Tests/test.ir");
-     }
-
+    std::cout << "------AST TESTS--------" << std::endl;
+    {
+        AST ast(info);
+        ast.BuildIR("Tests/test.ir");
+    }
 
     LLVM::Backend::Shutdown();
+
     return 0;
 }

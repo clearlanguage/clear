@@ -113,7 +113,6 @@ namespace clear
 		m_Buffer+='\n';
 		return ParseProgram();
 
-
 	}
 
 

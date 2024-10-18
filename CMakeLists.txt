@@ -1,4 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.20.0)
+include(FetchContent)
+
 project(clear)
 set(CMAKE_CXX_STANDARD 20)
 
@@ -23,6 +25,13 @@ add_definitions(${LLVM_DEFINITIONS_LIST})
 
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
-target_link_libraries(clear ${llvm_libs})
+FetchContent_Declare(
+  fast_float
+  GIT_REPOSITORY https://github.com/fastfloat/fast_float.git
+  GIT_TAG tags/v6.1.6
+  GIT_SHALLOW TRUE)
+
+FetchContent_MakeAvailable(fast_float)
+target_link_libraries(clear PUBLIC ${llvm_libs} fast_float)
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")

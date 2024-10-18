@@ -1,9 +1,13 @@
 #include "Utils.h"
+
+#include <fast_float/fast_float.h>
+
 #include <string>
 #include <vector>
 #include <sstream>
-
 #include <charconv>
+
+
 
 namespace clear {
 
@@ -37,7 +41,7 @@ namespace clear {
 	bool IsValidNumber(const std::string_view& str)
 	{
 		double result;
-		auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), result);
+		auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);
 		return ec == std::errc() && ptr == str.data() + str.size();
 	}
 
@@ -46,7 +50,7 @@ namespace clear {
         NumberInfo info;
 
         double result;
-        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), result);
+        auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);
 
         if (ec != std::errc())
             return info;
@@ -56,6 +60,7 @@ namespace clear {
         auto testTypeAgainst = [&info, result](auto type)
             {
                 using T = decltype(type);
+
                 if (result == (double)((T)(result)))
                 {
                     if constexpr (std::is_signed_v<T>)
