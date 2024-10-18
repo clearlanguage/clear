@@ -10,11 +10,12 @@ namespace clear {
 	AST::AST(const ProgramInfo& info)
 	{
 		auto& tokens = info.Tokens;
+		auto& builder = *LLVM::Backend::GetBuilder();
 
 		//possibly add command line arguments in the future
-		std::vector<Argument> arguments;
+		std::vector<Paramter> paramters;
 
-		m_Root = std::make_shared<ASTFunctionDecleration>("main", VariableType::None, arguments);
+		m_Root = std::make_shared<ASTFunctionDecleration>("main", VariableType::None, paramters);
 		m_Stack.push(m_Root);
 
 		for (size_t i = 0; i < tokens.size(); i++)
@@ -28,7 +29,7 @@ namespace clear {
 				case TokenType::Function:
 				{
 					VariableType returnType = VariableType::None;
-					arguments.clear();
+					paramters.clear();
 
 					i++;
 					std::string name = tokens[i].Data;
@@ -40,25 +41,70 @@ namespace clear {
 					}
 					
 					i++;
-					Argument currentArgument;
+					Paramter currentParamter;
 					while (tokens[i].TokenType != TokenType::EndFunctionParameters)
 					{
 						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
 						{
-							currentArgument.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
+							currentParamter.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
 						}
 						else
 						{
-							currentArgument.Name = tokens[i].Data;
-							arguments.push_back(currentArgument);
+							currentParamter.Name = tokens[i].Data;
+							paramters.push_back(currentParamter);
 						}
 
 						i++;
 					}
 
-					std::shared_ptr<ASTFunctionDecleration> funcDec = std::make_shared<ASTFunctionDecleration>(name, returnType, arguments);
+					std::shared_ptr<ASTFunctionDecleration> funcDec = std::make_shared<ASTFunctionDecleration>(name, returnType, paramters);
 					currentRoot->PushChild(funcDec);
 					m_Stack.push(funcDec);
+
+					break;
+				}
+				case TokenType::FunctionCall:
+				{
+					const std::string& name = tokens[i].Data;
+					std::vector<Argument> args;
+
+					i++;
+
+					CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket);
+					i++;
+
+					while (tokens[i].TokenType != TokenType::CloseBracket)
+					{
+						if (tokens[i].TokenType == TokenType::Comma)
+						{
+							i++;
+							continue;
+						}
+
+						Argument arg;
+
+						switch (tokens[i].TokenType)
+						{
+							case TokenType::RValueNumber:
+							{
+								arg.Field = VariableType::Int32;
+								arg.Data = tokens[i].Data;
+								args.push_back(arg);
+
+								break;
+							}
+							default:
+							{
+								ANNOTATED_HALT("tokens of all types haven't been dealt with yet"); //TODO
+								break;
+							}
+						}
+
+						i++;
+					}
+
+					std::shared_ptr<ASTFunctionCall> funcDec = std::make_shared<ASTFunctionCall>(name, args);
+					currentRoot->PushChild(funcDec);
 
 					break;
 				}
@@ -81,6 +127,7 @@ namespace clear {
 				case TokenType::Struct:
 				{
 					i++;
+
 					CLEAR_VERIFY(tokens[i].TokenType == TokenType::StructName, "invalid token after struct");
 					
 					const std::string& structName = tokens[i].Data;
@@ -144,12 +191,13 @@ namespace clear {
 
 				case TokenType::EndIndentation:
 				{
-					if(m_Stack.size() > 1)
+					if (m_Stack.size() > 1)
+					{
 						m_Stack.pop();
+					}
 
 					break;
 				}
-
 				default:
 					break;
 			}

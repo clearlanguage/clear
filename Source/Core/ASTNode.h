@@ -15,7 +15,7 @@ namespace clear {
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
 		FunctionDecleration, ReturnStatement, 
-		Expression, Struct
+		Expression, Struct, FunctionCall
 	};
 
 
@@ -96,10 +96,10 @@ namespace clear {
 	//
 
 
-	struct Argument
+	struct Paramter
 	{
 		std::string Name;
-		VariableType Type;
+		VariableType Type; //TODO: change thhis to field
 	};
 
 	//
@@ -108,21 +108,42 @@ namespace clear {
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Argument>& arugments);
+		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramter>& arugments);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
 
-		inline const auto  GetArg(size_t idx) const { return m_FunctionArgs[idx]; };
-		inline const auto& GetArgs() const { return m_FunctionArgs; }
-
-	private:
-
 	private:
 		std::string m_Name;
 		VariableType m_ReturnType;
+		std::vector<Paramter> m_Paramters;
+	};
+	//
+	// -------------------------------------------------------------------
+	//
+
+
+	struct Argument
+	{
+		Field Field;
+		std::string Data;
+	};
+
+	//
+	// ---------------------- FUNCTION CALL -----------------------
+	//
+	class ASTFunctionCall : public ASTNodeBase
+	{
+	public:
+		ASTFunctionCall(const std::string& name, const std::vector<Argument>& arugments);
+		virtual ~ASTFunctionCall() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
+		virtual llvm::Value* Codegen() override;
+
+
+	private:
+		std::string m_Name;
 		std::vector<Argument> m_Arguments;
-		std::vector<llvm::Value*> m_FunctionArgs;
 	};
 	//
 	// -------------------------------------------------------------------

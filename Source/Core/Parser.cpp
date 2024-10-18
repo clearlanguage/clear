@@ -9,26 +9,37 @@
 #include <Core/Log.h>
 #include <Core/Utils.h>
 
-bool isValidNumber(const std::string& str) {
-	if (str.empty()) {
+bool isValidNumber(const std::string& str) 
+{
+	if (str.empty()) 
 		return false; // Empty string is not a number
-	}
-
+	
 	bool hasDecimalPoint = false;
 	bool hasSign = false;
 
-	for (char c : str) {
-		if (c == '-' || c == '+') {
-			if (hasSign || !hasDecimalPoint) {
+	for (char c : str) 
+	{
+		if (c == '-' || c == '+') 
+		{
+			if (hasSign || !hasDecimalPoint) 
+			{
 				return false; // Invalid sign placement
 			}
+
 			hasSign = true;
-		} else if (c == '.') {
-			if (hasDecimalPoint) {
+
+		} else if (c == '.') 
+		{
+			if (hasDecimalPoint)
+			{
 				return false; // Multiple decimal points
 			}
+			
 			hasDecimalPoint = true;
-		} else if (!std::isdigit(c)) {
+
+		} 
+		else if (!std::isdigit(c)) 
+		{
 			return false; // Non-numeric character
 		}
 	}
@@ -50,7 +61,7 @@ namespace clear
 		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[ParserState::FunctionArguments] = [this]()  {_FunctionArgumentState(); };
+		m_StateMap[ParserState::FunctionParamters] = [this]()  {_FunctionParamterState(); };
 		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
@@ -90,7 +101,8 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
 	}
 
-	ProgramInfo Parser::ParseProgram() {
+	ProgramInfo Parser::ParseProgram() 
+	{
 		while (m_CurrentTokenIndex < m_Buffer.length())
 		{
 			m_StateMap.at(m_CurrentState)();
@@ -105,7 +117,8 @@ namespace clear
 		return m_ProgramInfo;
 	}
 
-	void Parser::InitParser() {
+	void Parser::InitParser() 
+	{
 		m_ProgramInfo.Tokens.clear();
 		m_CurrentTokenIndex = 0;
 		m_Indents = 0;
@@ -140,7 +153,7 @@ namespace clear
 	}
 
 
-	void Parser::_FunctionArgumentState() {
+	void Parser::_FunctionParamterState() {
 		char current = _GetNextChar();
 
 		while (IsSpace(current))
@@ -168,7 +181,7 @@ namespace clear
 					argList.push_back(m_CurrentString);
 				else {
 					if (current == ',') {
-					CLEAR_LOG_ERROR("Expected function argument after commas");
+					CLEAR_LOG_ERROR("Expected function Paramter after commas");
 					CLEAR_HALT();
 					}
 				}
@@ -206,11 +219,8 @@ namespace clear
 		current = _GetNextChar();
 		while (IsSpace(current))
 			current = _GetNextChar();
-		if (current  == '\n')
-			_EndLine();
-		else
-			_Backtrack();
-
+		
+		_Backtrack();
 	}
 
 
@@ -291,21 +301,22 @@ namespace clear
 
 	}
 
-
-
 	void Parser::_DefaultState()
 	{
 		char current = _GetNextChar();
 
 		if (current == '(')
 		{
-			if (!m_CurrentString.empty() || !_IsLineClosed()) {
-				if (!m_CurrentString.empty()) {
+			if (!m_CurrentString.empty() || !_IsLineClosed()) 
+			{
+				if (!m_CurrentString.empty()) 
+				{
 					CLEAR_VERIFY(!isValidNumber(m_CurrentString),"Cannot call a number")
-					_PushToken(TokenType::VariableReference,m_CurrentString);
+					_PushToken(TokenType::VariableReference, m_CurrentString);
 				}
-				_PushToken(TokenType::FunctionCall,"");
-				m_CurrentState = ParserState::FunctionArguments;
+
+				_PushToken(TokenType::FunctionCall, m_CurrentString);
+				m_CurrentState = ParserState::FunctionParamters;
 				_Backtrack();
 
 			}
@@ -357,9 +368,6 @@ namespace clear
 		if (current == ':' || current == '\n')
 		{
 			m_CurrentState = ParserState::Indentation;
-			if (m_BracketStack.empty()) 
-				_EndLine();
-
 			m_CurrentString.clear();
 			return;
 		}

@@ -45,4 +45,6 @@ namespace clear {
 	#endif
 
 	#define CLEAR_VERIFY(condition, ...) if(!(condition)) {CLEAR_LOG_ERROR(__VA_ARGS__); CLEAR_HALT();}
+
+	#define ANNOTATED_HALT(...) { CLEAR_LOG_WARNING(__VA_ARGS__); CLEAR_HALT(); }
 }

@@ -9,8 +9,11 @@
 
 namespace clear {
 
-	static std::map<std::string, llvm::AllocaInst*> s_VariableMap;
-	static std::map<std::string, ObjectReferenceInfo> s_StructTypes;
+	static std::map<std::string, llvm::AllocaInst*>     s_VariableMap;
+	static std::map<std::string, ObjectReferenceInfo>   s_StructTypes;
+	static std::stack<llvm::IRBuilderBase::InsertPoint> s_InsertPoints;
+
+
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
@@ -56,29 +59,12 @@ namespace clear {
 			}
 		}
 	}
+
 	llvm::Value* ASTNodeLiteral::Codegen()
 	{
-		auto& context = *LLVM::Backend::GetContext();
-
-		//TODO: add strings
-
-		switch (m_Type)
-		{
-			case VariableType::Int8:    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (int8_t)std::stoi(m_Data),     true);
-			case VariableType::Int16:   return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (int16_t)std::stoi(m_Data),    true);
-			case VariableType::Int32:   return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (int32_t)std::stoi(m_Data),    true);
-			case VariableType::Int64:   return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (int64_t)std::stoll(m_Data),   true);
-			case VariableType::Uint8:   return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),   (uint8_t)std::stoull(m_Data),  false);
-			case VariableType::Uint16:  return llvm::ConstantInt::get(llvm::Type::getInt16Ty(context),  (uint16_t)std::stoull(m_Data), false);
-			case VariableType::Uint32:  return llvm::ConstantInt::get(llvm::Type::getInt32Ty(context),  (uint32_t)std::stoull(m_Data), false);
-			case VariableType::Uint64:  return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (uint64_t)std::stoull(m_Data), false);
-			case VariableType::Float32: return llvm::ConstantFP::get(llvm::Type::getFloatTy(context),   (float)std::stod(m_Data));
-			case VariableType::Float64: return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context),  (double)std::stod(m_Data));
-			case VariableType::None:
-			default:
-				return nullptr;
-		}
+		return GetLLVMConstant(m_Type, m_Data);
 	}
+
 	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
 		: m_Expression(type)
 	{
@@ -280,8 +266,8 @@ namespace clear {
 		return value;
 	}
 
-	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Argument>& arugments)
-		: m_Name(name), m_ReturnType(returnType), m_Arguments(arugments)
+	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramter>& paramters)
+		: m_Name(name), m_ReturnType(returnType), m_Paramters(paramters)
 	{
 	}
 	llvm::Value* ASTFunctionDecleration::Codegen()
@@ -290,15 +276,18 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& builder = *LLVM::Backend::GetBuilder();
 
+		s_InsertPoints.push(builder.saveIP());
+
+
 		llvm::Type* returnType = GetLLVMVariableType(m_ReturnType);
 
-		std::vector<llvm::Type*> argumentTypes;
-		for (const auto& argument : m_Arguments)
+		std::vector<llvm::Type*> ParamterTypes;
+		for (const auto& Paramter : m_Paramters)
 		{
-			argumentTypes.push_back(GetLLVMVariableType(argument.Type));
+			ParamterTypes.push_back(GetLLVMVariableType(Paramter.Type));
 		}
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, argumentTypes, false);
+		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamterTypes, false);
 
 		llvm::Function* function = module.getFunction(m_Name);
 
@@ -312,9 +301,9 @@ namespace clear {
 
 		llvm::Function::arg_iterator args = function->arg_begin();
 
-		for (const auto& argument : m_Arguments)
+		for (const auto& Paramter : m_Paramters)
 		{
-			args->setName(argument.Name);
+			args->setName(Paramter.Name);
 			args++;
 		}
 
@@ -322,12 +311,11 @@ namespace clear {
 		builder.SetInsertPoint(entry);
 
 		uint32_t k = 0;
-		for (const auto& argument : m_Arguments)
+		for (const auto& Paramter : m_Paramters)
 		{
-			m_FunctionArgs.push_back(function->getArg(k));
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(argument.Type), nullptr, argument.Name);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramter.Type), nullptr, Paramter.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
-			s_VariableMap[argument.Name + "::" + m_Name] = argAlloc;
+			s_VariableMap[m_Name + "::" + Paramter.Name] = argAlloc;
 			k++;
 		}
 
@@ -339,20 +327,19 @@ namespace clear {
 				break;
 		}
 
-		for (const auto& argument : m_Arguments)
+		for (const auto& Paramter : m_Paramters)
 		{
-			s_VariableMap.erase(argument.Name + "::" + m_Name);
+			s_VariableMap.erase(m_Name + "::" + Paramter.Name);
 		}
 
 		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
 		{
 			builder.CreateRetVoid();
 		}
-		else if (!builder.GetInsertBlock()->getTerminator())
-		{
-			std::cout << "no return statement generated" << std::endl;
-			return nullptr;
-		}
+
+		auto& ip = s_InsertPoints.top();
+		builder.restoreIP(ip);
+		s_InsertPoints.pop();
 
 		return function;
 	}
@@ -379,7 +366,7 @@ namespace clear {
 		for (const auto& child : children)
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
-				  child->GetType() == ASTNodeType::VariableExpression)
+				child->GetType() == ASTNodeType::VariableExpression)
 			{
 				stack.push(child);
 				continue;
@@ -433,5 +420,37 @@ namespace clear {
 		s_StructTypes[m_Name] = info;
 
 		return nullptr;
+	}
+
+	ASTFunctionCall::ASTFunctionCall(const std::string& name, const std::vector<Argument>& arguments)
+		:  m_Name(name), m_Arguments(arguments)
+	{
+	}
+
+	llvm::Value* ASTFunctionCall::Codegen()
+	{
+		std::vector<llvm::Value*> args;
+
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& module  = *LLVM::Backend::GetModule();
+
+		//currently only dealing with constants
+		for (const auto& argument : m_Arguments)
+		{
+			if (std::holds_alternative<std::string>(argument.Field))
+			{
+				CLEAR_HALT(); //(TODO)
+			}
+			else
+			{
+				auto& variableType = std::get<1>(argument.Field);
+				args.push_back(GetLLVMConstant(variableType, argument.Data));
+			}
+		}
+
+		llvm::Function* callee = module.getFunction(m_Name);
+		CLEAR_VERIFY(callee, "not a valid function");
+
+		return builder.CreateCall(callee, args);
 	}
 }

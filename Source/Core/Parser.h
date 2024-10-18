@@ -41,7 +41,7 @@ namespace clear
 		void _FunctionTypeState();
 		void _CommentState();
 		void _StructNameState();
-		void _FunctionArgumentState();
+		void _FunctionParamterState();
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 

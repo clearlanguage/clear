@@ -29,7 +29,7 @@ namespace clear {
         {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
     };
 
-        const KeyWordMapType g_KeyWordMap = {
+    const KeyWordMapType g_KeyWordMap = {
         {"int8", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int8Type}},
         {"int16", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int16Type}},
         {"int32", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},

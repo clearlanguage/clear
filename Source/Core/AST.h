@@ -2,6 +2,7 @@
 
 #include "ASTNode.h"
 #include "Parser.h"
+#include "API/LLVM/LLVMInclude.h"
 
 #include <filesystem>
 #include <stack>
