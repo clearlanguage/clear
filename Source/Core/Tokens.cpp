@@ -27,6 +27,7 @@ namespace clear {
         {"//",{.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
         {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
+        {"&",{.NextState = ParserState::RValue, .TokenToPush = TokenType::AddressOp}},
     };
 
     const KeyWordMapType g_KeyWordMap = {
@@ -118,6 +119,7 @@ namespace clear {
             case TokenType::DeclarationOperator: return "DeclarationOperator";
             case TokenType::ModOp: return "ModOp";
             case TokenType::BinaryShiftLeft: return "BinaryShiftLeft";
+            case TokenType::AddressOp: return "AddressOp";
 
             default:
                 break;
