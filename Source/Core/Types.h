@@ -40,6 +40,7 @@ namespace clear {
 	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
 	extern llvm::Type*	GetLLVMVariableType(VariableType type);
 	extern llvm::Value*	GetLLVMConstant(VariableType type, const std::string& data);
+	extern bool IsTypeIntegral(VariableType type);
 
 	class AbstractType
 	{
@@ -52,6 +53,7 @@ namespace clear {
 		inline const VariableType Get() const { return m_Type; };
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
 
+		inline operator VariableType() const { return m_Type; }
 
 	private:
 		VariableType m_Type = VariableType::None;
@@ -61,8 +63,14 @@ namespace clear {
 	class AbstractValue
 	{
 	public:
+		AbstractValue() = default;
+		AbstractValue(VariableType type, const std::string_view& value);
+
+		inline const AbstractType& GetType() const { return m_Type; }
+		inline const llvm::Value*  GetValue() const { return m_Value; }
+
 	private:
 		AbstractType m_Type;
-		llvm::Value* m_Value;
+		llvm::Value* m_Value = nullptr;
 	};
 }

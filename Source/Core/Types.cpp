@@ -12,20 +12,19 @@ namespace clear {
 
 		switch (type)
 		{
-			case VariableType::Int8:	return llvm::Type::getInt8Ty(context);
-			case VariableType::Int16:	return llvm::Type::getInt16Ty(context);
-			case VariableType::Int32:	return llvm::Type::getInt32Ty(context);
-			case VariableType::Int64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Uint8:	return llvm::Type::getInt8Ty(context);
-			case VariableType::Uint16:	return llvm::Type::getInt16Ty(context);
-			case VariableType::Uint32:	return llvm::Type::getInt32Ty(context);
-			case VariableType::Uint64:	return llvm::Type::getInt64Ty(context);
-			case VariableType::Bool:    return llvm::Type::getInt1Ty(context);
-			case VariableType::Float32: return llvm::Type::getFloatTy(context);
-			case VariableType::Float64:	return llvm::Type::getDoubleTy(context);
-				//TODO:
-			case VariableType::Struct:
-			case VariableType::Object:
+			case VariableType::Int8:		    return llvm::Type::getInt8Ty(context);
+			case VariableType::Int16:		    return llvm::Type::getInt16Ty(context);
+			case VariableType::Int32:		    return llvm::Type::getInt32Ty(context);
+			case VariableType::Int64:		    return llvm::Type::getInt64Ty(context);
+			case VariableType::Uint8:		    return llvm::Type::getInt8Ty(context);
+			case VariableType::Uint16:		    return llvm::Type::getInt16Ty(context);
+			case VariableType::Uint32:		    return llvm::Type::getInt32Ty(context);
+			case VariableType::Uint64:		    return llvm::Type::getInt64Ty(context);
+			case VariableType::Bool:		    return llvm::Type::getInt1Ty(context);
+			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
+			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
+			case VariableType::ConstantString:	return llvm::PointerType::getInt8Ty(context);
+			case VariableType::Object:			return llvm::PointerType::get(context , 0);
 			case VariableType::None:
 			default:
 				return llvm::Type::getVoidTy(context);
@@ -54,6 +53,28 @@ namespace clear {
 			default:
 				return nullptr;
 		}
+	}
+
+	bool IsTypeIntegral(VariableType type)
+	{
+		switch (type)
+		{
+		case VariableType::Int8:
+		case VariableType::Int16:
+		case VariableType::Int32:
+		case VariableType::Int64:
+		case VariableType::Uint8:
+		case VariableType::Uint16:
+		case VariableType::Uint32:
+		case VariableType::Uint64:
+		case VariableType::Float32:
+		case VariableType::Float64:
+			return true;
+		default:
+			break;
+		}
+
+		return false;
 	}
 
 	VariableType GetVariableTypeFromTokenType(TokenType tokenType)
@@ -120,7 +141,7 @@ namespace clear {
 		//handle the case where the type may be a number
 		NumberInfo info = GetNumberInfoFromLiteral(value);
 		
-		if (info.Valid)
+		if (info.Valid) //numbers
 		{
 			if (info.IsSigned && !info.IsFloatingPoint)
 			{
@@ -131,7 +152,6 @@ namespace clear {
 					case 32: m_Type = VariableType::Int32; break;
 					case 64: m_Type = VariableType::Int64; break;
 					default:
-						CLEAR_HALT(); // something went wrong here 
 						break;
 				}
 			}
@@ -144,7 +164,6 @@ namespace clear {
 					case 32: m_Type = VariableType::Uint32; break;
 					case 64: m_Type = VariableType::Uint64; break;
 					default:
-						CLEAR_HALT(); // something went wrong here 
 						break;
 				}
 			}
@@ -155,7 +174,6 @@ namespace clear {
 					case 32: m_Type = VariableType::Float32; break;
 					case 64: m_Type = VariableType::Float64; break;
 					default:
-						CLEAR_HALT(); // something went wrong here 
 						break;
 				}
 			}
@@ -165,15 +183,21 @@ namespace clear {
 		{
 			m_Type = VariableType::Bool;
 		}
-		//readonly strings
+		//strings
 		else
 		{
 			m_Type = VariableType::ConstantString;
 		}
 
+		CLEAR_VERIFY(m_Type != VariableType::None, "could not evaluate type of ", value);
 		m_LLVMType = GetLLVMVariableType(m_Type);
 
 		return;
+	}
+
+	AbstractValue::AbstractValue(VariableType type, const std::string_view& value)
+		: m_Type(type)
+	{
 	}
 
 }

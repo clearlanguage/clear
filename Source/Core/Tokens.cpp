@@ -51,8 +51,7 @@ namespace clear {
         {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
-            {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
-
+        {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
     };
 
 
