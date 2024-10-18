@@ -520,6 +520,12 @@ namespace clear
 			m_CurrentState = ParserState::Default;
 			return;
 		}
+		if (current == '(') {
+			_Backtrack();
+			m_CurrentState = ParserState::Default;
+
+			return;
+		}
 		m_CurrentString.clear();
 		int commas = 0;
 		int vars = 0;
