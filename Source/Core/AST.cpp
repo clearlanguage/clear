@@ -70,7 +70,7 @@ namespace clear {
 
 					i++;
 
-					CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket);
+					CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket,"");
 					i++;
 
 					while (tokens[i].TokenType != TokenType::CloseBracket)
