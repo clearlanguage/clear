@@ -11,7 +11,8 @@ namespace clear {
 	{
 		None = 0, Int8, Int16, Int32, Int64,
 		Uint8, Uint16, Uint32, Uint64, Bool,
-		Float32, Float64, Struct, Object 
+		Float32, Float64, Struct, Object, 
+		ConstantString
 	};
 
 	enum class VariableKind
@@ -50,6 +51,7 @@ namespace clear {
 
 		inline const VariableType Get() const { return m_Type; };
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
+
 
 	private:
 		VariableType m_Type = VariableType::None;

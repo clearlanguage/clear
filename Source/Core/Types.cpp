@@ -2,6 +2,7 @@
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Utils.h"
+#include "Log.h"
 
 namespace clear {
 
@@ -116,12 +117,63 @@ namespace clear {
 
 	AbstractType::AbstractType(const std::string_view& value)
 	{
-		if (IsValidNumber(value))
+		//handle the case where the type may be a number
+		NumberInfo info = GetNumberInfoFromLiteral(value);
+		
+		if (info.Valid)
 		{
-
+			if (info.IsSigned && !info.IsFloatingPoint)
+			{
+				switch (info.BitsNeeded)
+				{
+					case 8:  m_Type = VariableType::Int8;  break;
+					case 16: m_Type = VariableType::Int16; break;
+					case 32: m_Type = VariableType::Int32; break;
+					case 64: m_Type = VariableType::Int64; break;
+					default:
+						CLEAR_HALT(); // something went wrong here 
+						break;
+				}
+			}
+			else if (!info.IsFloatingPoint)
+			{
+				switch (info.BitsNeeded)
+				{
+					case 8:  m_Type = VariableType::Uint8;  break;
+					case 16: m_Type = VariableType::Uint16; break;
+					case 32: m_Type = VariableType::Uint32; break;
+					case 64: m_Type = VariableType::Uint64; break;
+					default:
+						CLEAR_HALT(); // something went wrong here 
+						break;
+				}
+			}
+			else //floating point
+			{
+				switch (info.BitsNeeded)
+				{
+					case 32: m_Type = VariableType::Float32; break;
+					case 64: m_Type = VariableType::Float64; break;
+					default:
+						CLEAR_HALT(); // something went wrong here 
+						break;
+				}
+			}
+		}
+		//boolean values
+		else if (value == "true" || value == "false")
+		{
+			m_Type = VariableType::Bool;
+		}
+		//readonly strings
+		else
+		{
+			m_Type = VariableType::ConstantString;
 		}
 
-		
+		m_LLVMType = GetLLVMVariableType(m_Type);
+
+		return;
 	}
 
 }
