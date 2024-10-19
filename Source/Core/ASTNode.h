@@ -59,7 +59,7 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		VariableType m_Type;
+		AbstractType m_Type;
 		std::string m_Data;
 	};
 
@@ -125,7 +125,7 @@ namespace clear {
 
 	struct Argument
 	{
-		Field Field;
+		AbstractType Field;
 		std::string Data;
 	};
 
@@ -156,7 +156,7 @@ namespace clear {
 	class ASTVariableDecleration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDecleration(const std::string& name, Field type);
+		ASTVariableDecleration(const std::string& name, AbstractType type);
 		virtual ~ASTVariableDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
@@ -165,7 +165,7 @@ namespace clear {
 
 	private:
 		std::string m_Name;
-		Field m_Type;
+		AbstractType m_Type;
 	};
 
 
@@ -231,7 +231,7 @@ namespace clear {
 
 	struct Member
 	{
-		Field Field;
+		AbstractType Field;
 		std::string Name;
 	};
 

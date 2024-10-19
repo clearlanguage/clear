@@ -23,8 +23,7 @@ namespace clear {
 			case VariableType::Bool:		    return llvm::Type::getInt1Ty(context);
 			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
 			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
-			case VariableType::ConstantString:	return llvm::PointerType::getInt8Ty(context);
-			case VariableType::Object:			return llvm::PointerType::get(context , 0);
+			case VariableType::UserDefinedType:	return llvm::PointerType::get(context , 0);
 			case VariableType::None:
 			default:
 				return llvm::Type::getVoidTy(context);
@@ -59,19 +58,19 @@ namespace clear {
 	{
 		switch (type)
 		{
-		case VariableType::Int8:
-		case VariableType::Int16:
-		case VariableType::Int32:
-		case VariableType::Int64:
-		case VariableType::Uint8:
-		case VariableType::Uint16:
-		case VariableType::Uint32:
-		case VariableType::Uint64:
-		case VariableType::Float32:
-		case VariableType::Float64:
-			return true;
-		default:
-			break;
+			case VariableType::Int8:
+			case VariableType::Int16:
+			case VariableType::Int32:
+			case VariableType::Int64:
+			case VariableType::Uint8:
+			case VariableType::Uint16:
+			case VariableType::Uint32:
+			case VariableType::Uint64:
+			case VariableType::Float32:
+			case VariableType::Float64:
+				return true;
+			default:
+				break;
 		}
 
 		return false;
@@ -131,8 +130,8 @@ namespace clear {
 	{
 	}
 
-	AbstractType::AbstractType(VariableType type)
-		: m_Type(type), m_LLVMType(GetLLVMVariableType(type))
+	AbstractType::AbstractType(VariableType type, const std::string& userDefinedtype)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype)
 	{
 	}
 
@@ -186,18 +185,13 @@ namespace clear {
 		//strings
 		else
 		{
-			m_Type = VariableType::ConstantString;
+			m_Type = VariableType::Array;
 		}
 
 		CLEAR_VERIFY(m_Type != VariableType::None, "could not evaluate type of ", value);
 		m_LLVMType = GetLLVMVariableType(m_Type);
 
 		return;
-	}
-
-	AbstractValue::AbstractValue(VariableType type, const std::string_view& value)
-		: m_Type(type)
-	{
 	}
 
 }

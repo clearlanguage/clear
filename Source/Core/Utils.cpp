@@ -79,7 +79,6 @@ namespace clear {
                 return false;
             };
 
-
         if (testTypeAgainst(uint8_t{}) || testTypeAgainst(uint16_t{}) || testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{}))
             return info;
 
