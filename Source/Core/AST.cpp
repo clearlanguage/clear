@@ -112,15 +112,16 @@ namespace clear {
 				{
 					auto& previous = tokens[i - 1];
 
-					Field field;
+					AbstractType type;
+
 					if (previous.TokenType == TokenType::VariableReference)
-						field = previous.Data;
+						type = AbstractType(VariableType::UserDefinedType, previous.Data);
 					else
-						field = GetVariableTypeFromTokenType(previous.TokenType);
+						type = previous;
 
 					currentRoot->PushChild(std::make_shared<ASTVariableDecleration>(
 						currentToken.Data,
-						field));
+						type));
 
 					break;
 				}
@@ -147,7 +148,7 @@ namespace clear {
 
 						if (tokens[i].TokenType == TokenType::VariableReference)
 						{
-							member.Field = tokens[i].Data;
+							member.Field = AbstractType(VariableType::UserDefinedType, tokens[i].Data);
 						}
 						else
 						{
@@ -202,7 +203,6 @@ namespace clear {
 			}
 		}
 	}
-
 	void AST::BuildIR(const std::filesystem::path& out)
 	{
 		if (!m_Root)
@@ -220,7 +220,6 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-
 	std::shared_ptr<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, size_t& start)
 	{
 		std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
@@ -286,5 +285,4 @@ namespace clear {
 
 		return expression;
 	}
-
 }

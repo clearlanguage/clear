@@ -40,22 +40,8 @@ namespace clear {
 		m_Parent.reset();
 	}
 	ASTNodeLiteral::ASTNodeLiteral(const std::string& data)
-		: m_Data(data), m_Type(VariableType::Uint64)
+		: m_Data(data), m_Type(data)
 	{
-		for (const auto ch : data)
-		{
-			if (ch == '.')
-			{
-				m_Type = VariableType::Float32;
-				break;
-			}
-
-			if (ch == '-')
-			{
-				m_Type = VariableType::Int32;
-				break;
-			}
-		}
 	}
 
 	llvm::Value* ASTNodeLiteral::Codegen()
@@ -233,10 +219,11 @@ namespace clear {
 		return value;
 	}
 
-	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, Field type)
+	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
 		: m_Name(name), m_Type(type)
 	{
 	}
+
 	llvm::Value* ASTVariableDecleration::Codegen()
 	{
 		if (s_VariableMap.contains(m_Name))
@@ -247,9 +234,9 @@ namespace clear {
 
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		if (std::holds_alternative<std::string>(m_Type))
+		if (m_Type.Get() == VariableType::UserDefinedType)
 		{
-			auto& structType = std::get<0>(m_Type);
+			auto& structType = m_Type.GetUserDefinedType();
 
 			auto value = builder.CreateAlloca(s_StructTypes[structType].Struct, nullptr, m_Name);
 			s_VariableMap[m_Name] = value;
@@ -257,7 +244,7 @@ namespace clear {
 			return value;
 		}
 
-		auto& variableType = std::get<1>(m_Type);
+		auto variableType = m_Type.Get();
 		auto value = builder.CreateAlloca(GetLLVMVariableType(variableType), nullptr, m_Name);
 		s_VariableMap[m_Name] = value;
 		
@@ -398,16 +385,17 @@ namespace clear {
 
 		for (auto& member : m_Members)
 		{
-			if (std::holds_alternative<std::string>(member.Field))
+			if (member.Field.Get() == VariableType::UserDefinedType)
 			{
-				auto& structName = std::get<0>(member.Field);
+				auto& structName = member.Field.GetUserDefinedType();
+
 				CLEAR_VERIFY(s_StructTypes.contains(structName), "struct hasn't been declared");
 
 				types.push_back(s_StructTypes[structName].Struct);
 			}
 			else
 			{
-				auto& variableType = std::get<1>(member.Field);
+				auto& variableType = member.Field;
 				types.push_back(GetLLVMVariableType(variableType));
 			}
 
@@ -435,13 +423,13 @@ namespace clear {
 		//currently only dealing with constants
 		for (const auto& argument : m_Arguments)
 		{
-			if (std::holds_alternative<std::string>(argument.Field))
+			if (argument.Field.Get() == VariableType::UserDefinedType)
 			{
 				CLEAR_HALT(); //(TODO)
 			}
 			else
 			{
-				auto& variableType = std::get<1>(argument.Field);
+				auto& variableType = argument.Field;
 				args.push_back(GetLLVMConstant(variableType, argument.Data));
 			}
 		}
