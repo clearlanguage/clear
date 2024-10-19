@@ -398,9 +398,9 @@ namespace clear {
 
 		for (auto& member : m_Members)
 		{
-			if (std::holds_alternative<std::string>(member.Field))
+			if (member.Field.GetType() == VariableType::Struct)
 			{
-				auto& structName = std::get<0>(member.Field);
+				auto& structName = member.Field.;
 				CLEAR_VERIFY(s_StructTypes.contains(structName), "struct hasn't been declared");
 
 				types.push_back(s_StructTypes[structName].Struct);
