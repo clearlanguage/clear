@@ -309,11 +309,18 @@ namespace clear
 			_ParseChar();
 		}
 
-		bool TreatAsNum = current == '.' && IsValidNumber(m_CurrentString);
-		if (IsVarNameChar(current) || TreatAsNum)
+		if (std::isdigit(current) && m_CurrentString.empty())
+		{
+				m_CurrentString += current;
+				_ParseNumber();
+				return;
+		}
+
+		if (IsVarNameChar(current))
 			m_CurrentString += current;
 
-		if (!m_CurrentString.empty() && !IsVarNameChar(current) && !TreatAsNum )
+
+		if (!m_CurrentString.empty() && !IsVarNameChar(current))
 		{
 			if (!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') {
 				if (g_KeyWordMap.contains(m_CurrentString) ) {
@@ -329,17 +336,10 @@ namespace clear
 				}
 				else
 				{
-					if (IsValidNumber(m_CurrentString))
-					{
-						_PushToken(TokenType::RValueNumber, m_CurrentString);
-						m_CurrentString.clear();
-					}
-					else
-					{
-						_PushToken(TokenType::VariableReference, m_CurrentString);
-						m_CurrentState = ParserState::VariableName;
-						m_CurrentString.clear();
-					}
+					_PushToken(TokenType::VariableReference, m_CurrentString);
+					m_CurrentState = ParserState::VariableName;
+					m_CurrentString.clear();
+
 				}
 				if (!IsSpace(current))
 					_Backtrack();
@@ -348,6 +348,7 @@ namespace clear
 			}else {
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
+
 			}
 		}
 
@@ -358,7 +359,7 @@ namespace clear
 			return;
 		}
 
-		if (g_OperatorMap.contains(Str(current)) && !TreatAsNum)
+		if (g_OperatorMap.contains(Str(current)))
 		{
 			m_CurrentState = ParserState::Operator;
 			m_CurrentString.clear();
@@ -759,10 +760,10 @@ namespace clear
 	void Parser::_AsterisksState() {
 		TokenType tok = _GetLastToken().TokenType;
 
-		if (tok == TokenType::EndLine || tok == TokenType::Assignment || tok == TokenType::MulOp || tok == TokenType::DereferenceOp || tok ==TokenType::OpenBracket) {
-			_PushToken(TokenType::DereferenceOp,"");
-		}else {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString) {
 			_PushToken(TokenType::MulOp,"*");
+		}else {
+			_PushToken(TokenType::DereferenceOp,"");
 		}
 		m_CurrentState = ParserState::Default;
 
@@ -822,6 +823,41 @@ namespace clear
 		_Backtrack();
 	}
 
+	void Parser::_ParseHexLiteral() {
+		m_CurrentString.clear();
+		char current = _GetNextChar();
+		while (!std::isspace(current)) {
+			CLEAR_VERIFY(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',"Expected   hexadecimal characters only in hexadecimal literal");
+			m_CurrentString += current;
+			current = _GetNextChar();
+		}
+
+		if (!IsSpace(current)) {
+			_Backtrack();
+		}
+
+		_PushToken(TokenType::RValueNumber,std::to_string(hexStringToInteger(m_CurrentString)));
+		m_CurrentString.clear();
+	}
+	void Parser::_ParseBinaryLiteral() {
+		m_CurrentString.clear();
+		char current = _GetNextChar();
+		while (!std::isspace(current)) {
+			CLEAR_VERIFY(current == '0' || current == '1',"Expected 1 and 0 only in binary literal");
+			m_CurrentString += current;
+			current = _GetNextChar();
+		}
+
+		if (!IsSpace(current)) {
+			_Backtrack();
+		}
+
+		_PushToken(TokenType::RValueNumber,std::to_string(binaryStringToInteger(m_CurrentString)));
+		m_CurrentString.clear();
+
+	}
+
+
 	void Parser::_ParseNumber()
 	{
 		char current = _GetNextChar();
@@ -834,6 +870,17 @@ namespace clear
 		}
 
 		bool usedDecimal = false;
+		if (current == 'b') {
+			CLEAR_VERIFY(m_CurrentString == "0", "expected binary literal to start with 0");
+			_ParseBinaryLiteral();
+			return;
+		}
+
+		if (current == 'x') {
+			CLEAR_VERIFY(m_CurrentString == "0", "expected hex literal to start with 0");
+			_ParseHexLiteral();
+			return;
+		}
 
 		while (true)
 		{
