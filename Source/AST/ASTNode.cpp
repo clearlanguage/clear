@@ -525,7 +525,22 @@ namespace clear {
 				    llvm::Type::getInt32Ty(module.getContext()),
 						false)).getCallee());
 		}
-
+		else if (m_Name == "sleep")
+		{
+			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+				module.getOrInsertFunction("sleep",
+					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+						llvm::Type::getInt32Ty(module.getContext()),
+						false)).getCallee());
+		}
+		else if (m_Name == "nanosleep")
+		{
+			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+				module.getOrInsertFunction("nanosleep",
+					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+						llvm::Type::getInt32Ty(module.getContext()),
+						false)).getCallee());
+		}
 
 		llvm::Function* callee = module.getFunction(m_Name);
 		CLEAR_VERIFY(callee, "not a valid function");
