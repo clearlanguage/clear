@@ -18,12 +18,12 @@ namespace clear {
         void BuildIR(const std::filesystem::path& out);
 
     private:
-        std::shared_ptr<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, const std::string& root,
-                                                         size_t& start, AbstractType expectedType);
+        Ref<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, const std::string& root,
+                                             size_t& start, AbstractType expectedType);
 
     private:
-        std::shared_ptr<ASTFunctionDecleration> m_Root;
-        std::stack<std::shared_ptr<ASTFunctionDecleration>> m_Stack;
+        Ref<ASTFunctionDecleration> m_Root;
+        std::stack<Ref<ASTFunctionDecleration>> m_Stack;
     };
 
 }

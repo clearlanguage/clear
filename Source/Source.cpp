@@ -1,8 +1,4 @@
-﻿// clear.cpp : Defines the entry point for the application.
-//
-
-
-#include "Parsing/Parser.h"
+﻿#include "Parsing/Parser.h"
 #include "AST/AST.h"
 #include "Core/Log.h"
 

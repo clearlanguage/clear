@@ -2,10 +2,11 @@
 
 #include "Parsing/Tokens.h"
 #include "Core/Types.h"
+#include "Core/Ref.h"
 
-#include <memory>
 #include <vector>
 #include <string>
+
 
 
 namespace clear {
@@ -22,7 +23,8 @@ namespace clear {
 	//
 	// ---------------------- BASE -----------------------
 	//
-	class ASTNodeBase
+
+	class ASTNodeBase : public Ref<ASTNodeBase>
 	{
 	public:
 		ASTNodeBase() = default;
@@ -30,18 +32,18 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual llvm::Value* Codegen();
 
-		void PushChild(const std::shared_ptr<ASTNodeBase>& child);
-		void RemoveChild(const std::shared_ptr<ASTNodeBase>& child);
+		void PushChild(const Ref<ASTNodeBase>& child);
+		void RemoveChild(const Ref<ASTNodeBase>& child);
 
-		void SetParent(const std::shared_ptr<ASTNodeBase>& parent);
+		void SetParent(const Ref<ASTNodeBase>& parent);
 		void RemoveParent();
 
 		const auto  GetParent()   const { return m_Parent; }
 		const auto& GetChildren() const { return m_Children; }
 
 	private:
-		std::shared_ptr<ASTNodeBase> m_Parent = nullptr;
-		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
+		Ref<ASTNodeBase> m_Parent;
+		std::vector<Ref<ASTNodeBase>> m_Children;
 	};
 	//
 	// -------------------------------------------------------

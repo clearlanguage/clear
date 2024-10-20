@@ -16,7 +16,8 @@ namespace clear {
 
     std::string Str(char hello)
     {
-        return std::string(1,hello);
+        std::string s(1, hello);
+        return s;
     }
 
     std::vector<std::string> Split(const std::string& str) 

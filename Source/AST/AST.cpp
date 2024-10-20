@@ -15,7 +15,7 @@ namespace clear {
 		//possibly add command line arguments in the future
 		std::vector<Paramter> paramters;
 
-		m_Root = std::make_shared<ASTFunctionDecleration>("main", VariableType::None, paramters);
+		m_Root = Ref<ASTFunctionDecleration>::Create("main", VariableType::None, paramters);
 		m_Stack.push(m_Root);
 
 		for (size_t i = 0; i < tokens.size(); i++)
@@ -57,7 +57,7 @@ namespace clear {
 						i++;
 					}
 
-					std::shared_ptr<ASTFunctionDecleration> funcDec = std::make_shared<ASTFunctionDecleration>(name, returnType, paramters);
+					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, paramters);
 					currentRoot->PushChild(funcDec);
 					m_Stack.push(funcDec);
 
@@ -105,9 +105,7 @@ namespace clear {
 						i++;
 					}
 
-					std::shared_ptr<ASTFunctionCall> funcDec = std::make_shared<ASTFunctionCall>(name, args);
-					currentRoot->PushChild(funcDec);
-
+					currentRoot->PushChild(Ref<ASTFunctionCall>::Create(name, args));
 					break;
 				}
 				case TokenType::VariableName:
@@ -121,10 +119,7 @@ namespace clear {
 					else
 						type = AbstractType(previous, TypeKind::Variable);
 
-					currentRoot->PushChild(std::make_shared<ASTVariableDecleration>(
-						currentRoot->GetName() + "::" + currentToken.Data,
-						type));
-
+					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create( currentRoot->GetName() + "::" + currentToken.Data, type));
 					break;
 				}
 				case TokenType::Struct:
@@ -164,7 +159,7 @@ namespace clear {
 						i++;
 					}
 
-					currentRoot->PushChild(std::make_shared<ASTStruct>(structName, memberVars));
+					currentRoot->PushChild(Ref<ASTStruct>::Create(structName, memberVars));
 					break;
 				}
 				case TokenType::AddOp:
@@ -178,9 +173,9 @@ namespace clear {
 					auto& assignmentType = tokens[i - 2];
 					AbstractType type(assignmentType);
 
-					std::shared_ptr<ASTBinaryExpression> binaryExpression = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Assignment, type);
+					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
-					binaryExpression->PushChild(std::make_shared<ASTVariableExpression>(currentRoot->GetName() + "::" + previous.Data));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(currentRoot->GetName() + "::" + previous.Data));
 
 					currentRoot->PushChild(binaryExpression);
 
@@ -217,10 +212,10 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	std::shared_ptr<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root,
-														  size_t& start, AbstractType expectedType)
+	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root,
+											  size_t& start, AbstractType expectedType)
 	{
-		std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
+		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		start += 1;
 
 		std::stack<Token> operators;
@@ -239,11 +234,11 @@ namespace clear {
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
-				expression->PushChild(std::make_shared<ASTVariableExpression>(root + "::" + token.Data));
+				expression->PushChild(Ref<ASTVariableExpression>::Create(root + "::" + token.Data));
 			}
 			else if (token.TokenType == TokenType::RValueNumber)
 			{
-				expression->PushChild(std::make_shared<ASTNodeLiteral>(token.Data));
+				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
@@ -253,7 +248,7 @@ namespace clear {
 			{
 				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket)
 				{
-					expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
 					operators.pop();
 				}
 
@@ -265,7 +260,7 @@ namespace clear {
 				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket &&
 					s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
 				{
-					expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
 					operators.pop();
 				}
 
@@ -279,7 +274,7 @@ namespace clear {
 
 		while (!operators.empty())
 		{
-			expression->PushChild(std::make_shared<ASTBinaryExpression>(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
 			operators.pop();
 		}
 

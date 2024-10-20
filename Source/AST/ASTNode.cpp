@@ -21,23 +21,23 @@ namespace clear {
 		return nullptr;
 	}
 
-	void ASTNodeBase::PushChild(const std::shared_ptr<ASTNodeBase>& child)
+	void ASTNodeBase::PushChild(const Ref<ASTNodeBase>& child)
 	{
 		m_Children.push_back(child);
 	}
-	void ASTNodeBase::RemoveChild(const std::shared_ptr<ASTNodeBase>& child)
+	void ASTNodeBase::RemoveChild(const Ref<ASTNodeBase>& child)
 	{
 		auto it = std::find(m_Children.begin(), m_Children.end(), child);
 		if (it != m_Children.end())
 			m_Children.erase(it);
 	}
-	void ASTNodeBase::SetParent(const std::shared_ptr<ASTNodeBase>& parent)
+	void ASTNodeBase::SetParent(const Ref<ASTNodeBase>& parent)
 	{
 		m_Parent = parent;
 	}
 	void ASTNodeBase::RemoveParent()
 	{
-		m_Parent.reset();
+		m_Parent.Reset();
 	}
 	ASTNodeLiteral::ASTNodeLiteral(const std::string& data)
 		: m_Data(data), m_Type(data)
@@ -435,7 +435,7 @@ namespace clear {
 		auto& builder  = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();
 
-		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+		std::stack<Ref<ASTNodeBase>> stack;
 
 		for (const auto& child : children)
 		{
@@ -446,7 +446,7 @@ namespace clear {
 				continue;
 			}
 
-			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
+			Ref<ASTBinaryExpression> binExp = ASTBinaryExpression::DynamicCast<ASTBinaryExpression>(child);
 
 			binExp->PushChild(stack.top());
 			stack.pop();
