@@ -162,7 +162,6 @@ namespace clear {
 		}
 		else if (fromType->isIntegerTy() && to.IsFloatingPoint()) 
 		{
-	
 			if (to.IsSigned())  
 				return builder.CreateSIToFP(casting, toType);  // Signed int to float
 			else
@@ -352,7 +351,6 @@ namespace clear {
 
 		s_InsertPoints.push(builder.saveIP());
 
-
 		llvm::Type* returnType = GetLLVMVariableType(m_ReturnType);
 
 		std::vector<llvm::Type*> ParamterTypes;
@@ -364,12 +362,7 @@ namespace clear {
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamterTypes, false);
 
 		llvm::Function* function = module.getFunction(m_Name);
-
-		if (function)
-		{
-			std::cout << "function already defined" << std::endl;
-			return nullptr;
-		}
+		CLEAR_VERIFY(!function, "function already defined");
 
 		function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, m_Name, module);
 
@@ -523,6 +516,16 @@ namespace clear {
 				args.push_back(s_VariableMap[variableName]);
 			}
 		}
+
+		if (m_Name == "_sleep")
+		{
+			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+				module.getOrInsertFunction("_sleep",
+					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+				    llvm::Type::getInt32Ty(module.getContext()),
+						false)).getCallee());
+		}
+
 
 		llvm::Function* callee = module.getFunction(m_Name);
 		CLEAR_VERIFY(callee, "not a valid function");

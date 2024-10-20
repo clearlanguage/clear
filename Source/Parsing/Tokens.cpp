@@ -51,8 +51,6 @@ namespace clear {
         {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
     };
 
-
-
     const std::set<std::string> g_DataTypes = {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint"
     };

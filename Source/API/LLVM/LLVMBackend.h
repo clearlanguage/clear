@@ -7,11 +7,14 @@
 namespace clear {
 	namespace LLVM {
 
+		//TODO: need to make this support multiple modules
 		class Backend
 		{
 		public:
 			static void Init();
 			static void Shutdown();
+
+			static void BuildModule();
 			
 			static const auto& GetBuilder() { return s_Builder; }
 			static const auto& GetModule()  { return s_Module; }

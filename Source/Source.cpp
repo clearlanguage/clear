@@ -33,6 +33,9 @@ int main()
         ast.BuildIR("Tests/test.ir");
     }
 
+
+    LLVM::Backend::BuildModule();
+
     LLVM::Backend::Shutdown();
 
     return 0;

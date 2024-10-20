@@ -11,8 +11,6 @@
 #include <functional>
 #include <queue>
 
-
-
 namespace clear
 {
 	struct ProgramInfo
