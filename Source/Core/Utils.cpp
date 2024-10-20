@@ -1,13 +1,11 @@
 #include "Utils.h"
 
 #include <fast_float/fast_float.h>
+//#include <charconv> replacement
 
 #include <string>
 #include <vector>
 #include <sstream>
-#include <charconv>
-
-
 
 namespace clear {
 
@@ -41,7 +39,7 @@ namespace clear {
 	bool IsValidNumber(const std::string_view& str)
 	{
 		double result;
-		auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);
+		auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result); 
 		return ec == std::errc() && ptr == str.data() + str.size();
 	}
 

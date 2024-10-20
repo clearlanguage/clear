@@ -20,7 +20,7 @@ namespace clear {
 
 		for (size_t i = 0; i < tokens.size(); i++)
 		{
-			auto& currentRoot = m_Stack.top();
+			auto& currentRoot =m_Stack.top();
 			auto& currentToken = tokens[i];
 			auto& currentChildren = currentRoot->GetChildren();
 
@@ -86,16 +86,18 @@ namespace clear {
 						switch (tokens[i].TokenType)
 						{
 							case TokenType::RValueNumber:
+							case TokenType::BooleanData:
 							{
-								arg.Field = VariableType::Int32;
+								arg.Field = AbstractType(tokens[i].Data);
 								arg.Data = tokens[i].Data;
+
 								args.push_back(arg);
 
 								break;
 							}
 							default:
 							{
-								ANNOTATED_HALT("tokens of all types haven't been dealt with yet"); //TODO
+								CLEAR_ANNOTATED_HALT("tokens of all types haven't been dealt with yet"); //TODO
 								break;
 							}
 						}
@@ -115,12 +117,12 @@ namespace clear {
 					AbstractType type;
 
 					if (previous.TokenType == TokenType::VariableReference)
-						type = AbstractType(VariableType::UserDefinedType, previous.Data);
+						type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, previous.Data);
 					else
 						type = previous;
 
 					currentRoot->PushChild(std::make_shared<ASTVariableDecleration>(
-						currentToken.Data,
+						currentRoot->GetName() + currentToken.Data,
 						type));
 
 					break;
@@ -148,7 +150,7 @@ namespace clear {
 
 						if (tokens[i].TokenType == TokenType::VariableReference)
 						{
-							member.Field = AbstractType(VariableType::UserDefinedType, tokens[i].Data);
+							member.Field = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, tokens[i].Data);
 						}
 						else
 						{

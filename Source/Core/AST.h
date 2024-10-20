@@ -21,8 +21,8 @@ namespace clear {
         std::shared_ptr<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, size_t& start);
 
     private:
-        std::shared_ptr<ASTNodeBase> m_Root;
-        std::stack<std::shared_ptr<ASTNodeBase>> m_Stack;
+        std::shared_ptr<ASTFunctionDecleration> m_Root;
+        std::stack<std::shared_ptr<ASTFunctionDecleration>> m_Stack;
     };
 
 }

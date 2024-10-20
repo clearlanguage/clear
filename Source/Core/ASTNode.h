@@ -113,6 +113,8 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
 
+		inline const std::string& GetName() const { return m_Name; }
+
 	private:
 		std::string m_Name;
 		VariableType m_ReturnType;

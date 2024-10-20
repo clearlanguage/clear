@@ -7,16 +7,17 @@
 
 namespace clear {
 
-	enum class VariableType
+	enum class VariableType 
 	{
 		None = 0, Int8, Int16, Int32, Int64,
 		Uint8, Uint16, Uint32, Uint64, Bool,
-		Float32, Float64, UserDefinedType, Array
+		Float32, Float64, String, UserDefinedType,
+		Array
 	};
 
-	enum class VariableKind
+	enum class TypeKind
 	{
-		None = 0, Paramter, Local
+		None = 0, RValue, Variable
 	};
 
 
@@ -39,22 +40,25 @@ namespace clear {
 	extern llvm::Value*	GetLLVMConstant(VariableType type, const std::string& data);
 	extern bool IsTypeIntegral(VariableType type);
 
-	class AbstractType
+	class AbstractType 
 	{
 	public:
 		AbstractType() = default;
 		AbstractType(const Token& token);
-		AbstractType(VariableType type, const std::string& userDefinedType = "");
+		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 
 		inline const VariableType Get() const { return m_Type; };
+		inline const TypeKind GetKind() const { return m_Kind; }
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
 
 		inline operator VariableType() const { return m_Type; }
+		inline operator TypeKind() const { return m_Kind; }
 
 	private:
 		VariableType m_Type = VariableType::None;
+		TypeKind m_Kind = TypeKind::None;
 		llvm::Type*  m_LLVMType = nullptr;
 		std::string  m_UserDefinedType = "";
 	};

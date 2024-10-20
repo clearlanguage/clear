@@ -48,6 +48,7 @@ namespace clear {
 			case VariableType::Uint64:  return llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), false);
 			case VariableType::Float32: return llvm::ConstantFP::get(llvm::Type::getFloatTy(context),  (float)std::stod(data));
 			case VariableType::Float64: return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data));
+			case VariableType::Bool:	return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context),  data == "true" ? 1 : 0);
 			case VariableType::None:
 			default:
 				return nullptr;
@@ -90,6 +91,7 @@ namespace clear {
 			case TokenType::UInt64Type:		return VariableType::Uint64;
 			case TokenType::Float32Type:	return VariableType::Float32;
 			case TokenType::Float64Type:	return VariableType::Float64;
+			case TokenType::Bool:			return VariableType::Bool;
 			case TokenType::None:
 			default:
 				break;
@@ -128,19 +130,31 @@ namespace clear {
 	AbstractType::AbstractType(const Token& token)
 		: m_Type(GetVariableTypeFromTokenType(token.TokenType)), m_LLVMType(GetLLVMVariableType(m_Type))
 	{
+		if (token.TokenType == TokenType::RValueNumber ||
+			token.TokenType == TokenType::RValueChar ||
+			token.TokenType == TokenType::RValueString)
+		{
+			m_Kind = TypeKind::RValue;
+		}
+		else
+		{
+			m_Kind = TypeKind::Variable;
+		}
+
 	}
 
-	AbstractType::AbstractType(VariableType type, const std::string& userDefinedtype)
-		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype)
+	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedtype)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype), m_Kind(kind)
 	{
 	}
 
 	AbstractType::AbstractType(const std::string_view& value)
+		: m_Kind(TypeKind::RValue)
 	{
 		//handle the case where the type may be a number
 		NumberInfo info = GetNumberInfoFromLiteral(value);
 		
-		if (info.Valid) //numbers
+		if (info.Valid) 
 		{
 			if (info.IsSigned && !info.IsFloatingPoint)
 			{
@@ -166,7 +180,7 @@ namespace clear {
 						break;
 				}
 			}
-			else //floating point
+			else 
 			{
 				switch (info.BitsNeeded)
 				{
@@ -177,16 +191,15 @@ namespace clear {
 				}
 			}
 		}
-		//boolean values
 		else if (value == "true" || value == "false")
 		{
 			m_Type = VariableType::Bool;
 		}
-		//strings
 		else
 		{
 			m_Type = VariableType::Array;
 		}
+
 
 		CLEAR_VERIFY(m_Type != VariableType::None, "could not evaluate type of ", value);
 		m_LLVMType = GetLLVMVariableType(m_Type);

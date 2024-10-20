@@ -65,7 +65,6 @@ namespace clear
 		void _Backtrack();
 		void _EndLine();
 
-		const bool _IsEndOfFile();
 
 	private:
 		size_t m_CurrentTokenIndex = 0;

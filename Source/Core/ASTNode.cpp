@@ -390,7 +390,6 @@ namespace clear {
 				auto& structName = member.Field.GetUserDefinedType();
 
 				CLEAR_VERIFY(s_StructTypes.contains(structName), "struct hasn't been declared");
-
 				types.push_back(s_StructTypes[structName].Struct);
 			}
 			else
@@ -423,14 +422,15 @@ namespace clear {
 		//currently only dealing with constants
 		for (const auto& argument : m_Arguments)
 		{
-			if (argument.Field.Get() == VariableType::UserDefinedType)
-			{
-				CLEAR_HALT(); //(TODO)
-			}
-			else
+			if(argument.Field.GetKind() == TypeKind::RValue)
 			{
 				auto& variableType = argument.Field;
 				args.push_back(GetLLVMConstant(variableType, argument.Data));
+			}
+			else
+			{
+				auto& variableName = argument.Data;
+				args.push_back(s_VariableMap[variableName]);
 			}
 		}
 
