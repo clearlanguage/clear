@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ASTNode.h"
-#include "Parser.h"
+#include "Parsing/Parser.h"
 #include "API/LLVM/LLVMInclude.h"
 
 #include <filesystem>

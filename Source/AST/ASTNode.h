@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Tokens.h"
-#include "Types.h"
+#include "Parsing/Tokens.h"
+#include "Core/Types.h"
 
 #include <memory>
 #include <vector>

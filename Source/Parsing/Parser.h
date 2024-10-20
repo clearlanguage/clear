@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Tokens.h"
+
 #include <vector>
 #include <string>
 #include <string_view>
@@ -7,8 +9,9 @@
 #include <filesystem>
 #include <map>
 #include <functional>
-#include "Tokens.h"
 #include <queue>
+
+
 
 namespace clear
 {

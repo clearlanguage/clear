@@ -1,7 +1,7 @@
 #include "AST.h"
 
 #include "API/LLVM/LLVMBackend.h"
-#include "Log.h"
+#include "Core/Log.h"
 
 #include <iostream>
 
