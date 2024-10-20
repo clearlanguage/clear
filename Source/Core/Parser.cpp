@@ -294,7 +294,7 @@ namespace clear
 				_Backtrack();
 
 			}
-			m_BracketStack.push_back('(');
+
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 
 
@@ -470,7 +470,7 @@ namespace clear
 			m_CurrentState = ParserState::RValue;
 			return;
 		}
-		else if (current == ')')
+		if (current == ')')
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = ParserState::RValue;
@@ -480,7 +480,7 @@ namespace clear
 
 			return;
 		}
-		else if (current == '"') //strings
+		if (current == '"') //strings
 		{
 			_ParseString();
 		}
@@ -882,29 +882,25 @@ namespace clear
 			return;
 		}
 
-		while (true)
+		while (!std::isspace(current))
 		{
-			if (std::isdigit(current))
-			{
-				m_CurrentString.push_back(current);
-			}
-			else if (current == '.' && usedDecimal) // need to throw some type of error again TODO
+			m_CurrentString.push_back(current);
+			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
 			{
 				CLEAR_LOG_ERROR("float cannot have two decimal points");
 				CLEAR_HALT();
 			}
-			else if (current == '.')
+			if (current == '.')
 			{
 				m_CurrentString.push_back(current);
 				usedDecimal = true;
 			}
-			else
-			{
-				break;
-			}
+
 
 			current = _GetNextChar();
 		}
+
+		CLEAR_VERIFY(IsValidNumber(m_CurrentString),"Expected a valid number");
 		if (m_CurrentString == "-") {
 			_PushToken(TokenType::SubOp,"-");
 		}else {
