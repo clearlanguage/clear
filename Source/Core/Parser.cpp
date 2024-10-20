@@ -294,7 +294,7 @@ namespace clear
 				_Backtrack();
 
 			}
-			m_BracketStack.push_back('(');
+
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 
 
@@ -470,7 +470,7 @@ namespace clear
 			m_CurrentState = ParserState::RValue;
 			return;
 		}
-		else if (current == ')')
+		if (current == ')')
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = ParserState::RValue;
@@ -480,7 +480,7 @@ namespace clear
 
 			return;
 		}
-		else if (current == '"') //strings
+		if (current == '"') //strings
 		{
 			_ParseString();
 		}
@@ -826,7 +826,7 @@ namespace clear
 	void Parser::_ParseHexLiteral() {
 		m_CurrentString.clear();
 		char current = _GetNextChar();
-		while (!std::isspace(current)) {
+		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
 			CLEAR_VERIFY(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',"Expected   hexadecimal characters only in hexadecimal literal");
 			m_CurrentString += current;
 			current = _GetNextChar();
@@ -842,7 +842,7 @@ namespace clear
 	void Parser::_ParseBinaryLiteral() {
 		m_CurrentString.clear();
 		char current = _GetNextChar();
-		while (!std::isspace(current)) {
+		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
 			CLEAR_VERIFY(current == '0' || current == '1',"Expected 1 and 0 only in binary literal");
 			m_CurrentString += current;
 			current = _GetNextChar();
@@ -882,29 +882,25 @@ namespace clear
 			return;
 		}
 
-		while (true)
+		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current)))
 		{
-			if (std::isdigit(current))
-			{
-				m_CurrentString.push_back(current);
-			}
-			else if (current == '.' && usedDecimal) // need to throw some type of error again TODO
+			m_CurrentString.push_back(current);
+			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
 			{
 				CLEAR_LOG_ERROR("float cannot have two decimal points");
 				CLEAR_HALT();
 			}
-			else if (current == '.')
+			if (current == '.')
 			{
 				m_CurrentString.push_back(current);
 				usedDecimal = true;
 			}
-			else
-			{
-				break;
-			}
+
 
 			current = _GetNextChar();
 		}
+
+		CLEAR_VERIFY(IsValidNumber(m_CurrentString),"Expected a valid number");
 		if (m_CurrentString == "-") {
 			_PushToken(TokenType::SubOp,"-");
 		}else {
@@ -912,7 +908,8 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 		}
 		m_CurrentString.clear();
-		_Backtrack();
+		if (!IsSpace(current))
+			_Backtrack();
 	}
 
 	void Parser::_ParseChar() {
