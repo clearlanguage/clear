@@ -45,6 +45,7 @@ namespace clear {
 	public:
 		AbstractType() = default;
 		AbstractType(const Token& token);
+		AbstractType(const Token& token, TypeKind kind);
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 

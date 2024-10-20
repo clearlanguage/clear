@@ -65,8 +65,7 @@ namespace clear {
 		llvm::Value* LHS = children[1]->Codegen();
 		llvm::Value* RHS = children[0]->Codegen();
 
-		if (!LHS || !RHS)
-			return nullptr;
+		CLEAR_VERIFY(LHS && RHS, "lhs or rhs failed to generate");
 
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
@@ -88,11 +87,6 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
-		if (llvm::isa<llvm::AllocaInst>(RHS))
-		{
-			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
-			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
-		}
 
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
 

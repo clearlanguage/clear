@@ -170,6 +170,22 @@ namespace clear {
 
 	}
 
+	AbstractType::AbstractType(const Token& token, TypeKind kind)
+		: m_Type(GetVariableTypeFromTokenType(token.TokenType)), m_LLVMType(GetLLVMVariableType(m_Type)), m_Kind(kind)
+	{
+		if (token.TokenType == TokenType::RValueNumber ||
+			token.TokenType == TokenType::RValueChar ||
+			token.TokenType == TokenType::RValueString)
+		{
+			m_Kind = TypeKind::RValue;
+		}
+		else
+		{
+			m_Kind = TypeKind::Variable;
+		}
+
+	}
+
 	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedtype)
 		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype), m_Kind(kind)
 	{

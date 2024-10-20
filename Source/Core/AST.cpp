@@ -119,7 +119,7 @@ namespace clear {
 					if (previous.TokenType == TokenType::VariableReference)
 						type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, previous.Data);
 					else
-						type = previous;
+						type = AbstractType(previous, TypeKind::Variable);
 
 					currentRoot->PushChild(std::make_shared<ASTVariableDecleration>(
 						currentRoot->GetName() + "::" + currentToken.Data,
@@ -179,20 +179,13 @@ namespace clear {
 					AbstractType type(assignmentType);
 
 					std::shared_ptr<ASTBinaryExpression> binaryExpression = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, i, type));
+					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
 					binaryExpression->PushChild(std::make_shared<ASTVariableExpression>(currentRoot->GetName() + "::" + previous.Data));
 
 					currentRoot->PushChild(binaryExpression);
 
 					break;
 				}
-
-				case TokenType::RValueNumber:
-				{
-					currentRoot->PushChild(std::make_shared<ASTNodeLiteral>(currentToken.Data));
-					break;
-				}
-
 				case TokenType::EndIndentation:
 				{
 					if (m_Stack.size() > 1)
@@ -224,7 +217,8 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	std::shared_ptr<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, size_t& start, AbstractType expectedType)
+	std::shared_ptr<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root,
+														  size_t& start, AbstractType expectedType)
 	{
 		std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
 		start += 1;
@@ -245,7 +239,7 @@ namespace clear {
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
-				expression->PushChild(std::make_shared<ASTVariableExpression>(token.Data));
+				expression->PushChild(std::make_shared<ASTVariableExpression>(root + "::" + token.Data));
 			}
 			else if (token.TokenType == TokenType::RValueNumber)
 			{

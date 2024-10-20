@@ -356,6 +356,9 @@ namespace clear
 		{
 			m_CurrentState = ParserState::Indentation;
 			m_CurrentString.clear();
+			_PushToken(TokenType::EndLine, "");
+
+
 			return;
 		}
 
@@ -836,7 +839,7 @@ namespace clear
 			_Backtrack();
 		}
 
-		_PushToken(TokenType::RValueNumber,std::to_string(hexStringToInteger(m_CurrentString)));
+		_PushToken(TokenType::RValueNumber,std::to_string(HexStringToInteger(m_CurrentString)));
 		m_CurrentString.clear();
 	}
 	void Parser::_ParseBinaryLiteral() {
@@ -852,7 +855,7 @@ namespace clear
 			_Backtrack();
 		}
 
-		_PushToken(TokenType::RValueNumber,std::to_string(binaryStringToInteger(m_CurrentString)));
+		_PushToken(TokenType::RValueNumber,std::to_string(BinaryStringToInteger(m_CurrentString)));
 		m_CurrentString.clear();
 
 	}
