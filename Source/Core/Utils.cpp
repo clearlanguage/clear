@@ -30,6 +30,39 @@ namespace clear {
         return words;
 
     }
+    int hexStringToInteger(const std::string& hexString) {
+        int result = 0;
+        int length = hexString.length();
+
+        for (int i = 0; i < length; i++) {
+            char hexChar = hexString[i];
+            int hexValue;
+
+            if (hexChar >= '0' && hexChar <= '9') {
+                hexValue = hexChar - '0';
+            } else if (hexChar >= 'A' && hexChar <= 'F') {
+                hexValue = hexChar - 'A' + 10;
+            } else if (hexChar >= 'a' && hexChar <= 'f') {
+                hexValue = hexChar - 'a' + 10;
+            }
+            result = result * 16 + hexValue;
+        }
+
+        return result;
+    }
+
+    int binaryStringToInteger(const std::string& binaryString) {
+        int result = 0;
+        int length = binaryString.length();
+
+        for (int i = 0; i < length; i++) {
+            if (binaryString[i] == '1') {
+                result += pow(2, length - i - 1);
+            }
+        }
+
+        return result;
+    }
 
     bool IsVarNameChar(char c)
     {

@@ -53,6 +53,8 @@ namespace clear
 		void _ParseString();
 		void _ParseOther();
 		void _ParseChar();
+		void _ParseBinaryLiteral();
+		void _ParseHexLiteral();
 
 		void _ParseArrayDecleration();
 		void _ParsePointerDecleration();
