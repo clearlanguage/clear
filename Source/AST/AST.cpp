@@ -13,9 +13,9 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		//possibly add command line arguments in the future
-		std::vector<Paramter> paramters;
+		std::vector<Paramater> Paramaters;
 
-		m_Root = Ref<ASTFunctionDecleration>::Create("main", VariableType::None, paramters);
+		m_Root = Ref<ASTFunctionDecleration>::Create("main", VariableType::None, Paramaters);
 		m_Stack.push(m_Root);
 
 		for (size_t i = 0; i < tokens.size(); i++)
@@ -29,7 +29,7 @@ namespace clear {
 				case TokenType::Function:
 				{
 					VariableType returnType = VariableType::None;
-					paramters.clear();
+					Paramaters.clear();
 
 					i++;
 					std::string name = tokens[i].Data;
@@ -41,23 +41,23 @@ namespace clear {
 					}
 					
 					i++;
-					Paramter currentParamter;
+					Paramater currentParamater;
 					while (tokens[i].TokenType != TokenType::EndFunctionParameters)
 					{
 						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
 						{
-							currentParamter.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
+							currentParamater.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
 						}
 						else
 						{
-							currentParamter.Name = tokens[i].Data;
-							paramters.push_back(currentParamter);
+							currentParamater.Name = tokens[i].Data;
+							Paramaters.push_back(currentParamater);
 						}
 
 						i++;
 					}
 
-					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, paramters);
+					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, Paramaters);
 					currentRoot->PushChild(funcDec);
 					m_Stack.push(funcDec);
 
@@ -90,6 +90,15 @@ namespace clear {
 							{
 								arg.Field = AbstractType(tokens[i].Data);
 								arg.Data = tokens[i].Data;
+
+								args.push_back(arg);
+
+								break;
+							}
+							case TokenType::VariableReference:
+							{
+								arg.Field = AbstractType(tokens[i], TypeKind::Variable);
+								arg.Data = currentRoot->GetName() + "::" + tokens[i].Data;
 
 								args.push_back(arg);
 

@@ -2,6 +2,7 @@
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
+#include "Core/Types.h"
 
 #include <iostream>
 #include <map>
@@ -12,9 +13,12 @@ namespace clear {
 	static std::map<std::string, llvm::AllocaInst*>     s_VariableMap;
 	static std::map<std::string, ObjectReferenceInfo>   s_StructTypes;
 	static std::stack<llvm::IRBuilderBase::InsertPoint> s_InsertPoints;
+	static std::map<std::string, std::vector<Paramater>> s_FunctionToExpectedTypes;
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
+
+
 		for (auto& child : GetChildren())
 			child->Codegen();
 
@@ -87,7 +91,6 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
-
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
 
 		switch (m_ExpectedType.Get())
@@ -102,29 +105,29 @@ namespace clear {
 			case VariableType::Uint64:
 			{
 				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
+					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
 
 				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
 				break;
 			}
 			case VariableType::Float32:
 			case VariableType::Float64:
 			{
 				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
+					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
 
 				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
 				break;
 			}
 			case VariableType::Bool:
 			{
 				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
+					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
 
 				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
 
 				break;
 			}
@@ -145,60 +148,6 @@ namespace clear {
 	const bool ASTBinaryExpression::_IsCmpExpression() const
 	{
 		return (int)m_Expression <= (int)BinaryExpressionType::Eq && !_IsMathExpression();
-	}
-
-	llvm::Value* ASTBinaryExpression::_Cast(llvm::Value* casting, AbstractType to)
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-		llvm::Type* fromType = casting->getType();
-		llvm::Type* toType = to.GetLLVMType();
-
-		if (fromType == toType)
-			return casting;  
-
-		if (fromType->isIntegerTy() && to.IsIntegral()) 
-		{
-			return builder.CreateIntCast(casting, toType, to.IsSigned());  
-		}
-		else if (fromType->isIntegerTy() && to.IsFloatingPoint()) 
-		{
-			if (to.IsSigned())  
-				return builder.CreateSIToFP(casting, toType);  // Signed int to float
-			else
-				return builder.CreateUIToFP(casting, toType);  // Unsigned int to float
-		}
-		else if (fromType->isFloatingPointTy() && to.IsIntegral()) 
-		{
-			// Float to integer cast 
-			if (to.IsSigned())
-				return builder.CreateFPToSI(casting, toType);  // Float to signed int
-			else
-				return builder.CreateFPToUI(casting, toType);  // Float to unsigned int
-		}
-		else if (fromType->isFloatingPointTy() && to.IsFloatingPoint()) 
-		{
-			// Float to float cast
-			return builder.CreateFPCast(casting, toType);  
-		}
-		else if (fromType->isPointerTy() && to.IsPointer()) 
-		{
-			// Pointer to pointer cast
-			return builder.CreatePointerCast(casting, toType);
-		}
-		else if (fromType->isIntegerTy() && to.IsPointer()) 
-		{
-			// Integer to pointer cast
-			return builder.CreateIntToPtr(casting, toType);
-		}
-		else if (fromType->isPointerTy() && to.IsIntegral()) 
-		{
-			// Pointer to integer cast
-			return builder.CreatePtrToInt(casting, toType);
-		}
-
-		CLEAR_ANNOTATED_HALT("failed to find right cast type");
-
-		return nullptr;
 	}
 
 	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue)
@@ -339,9 +288,17 @@ namespace clear {
 		return value;
 	}
 
-	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramter>& paramters)
-		: m_Name(name), m_ReturnType(returnType), m_Paramters(paramters)
+	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& Paramaters)
+		: m_Name(name), m_ReturnType(returnType), m_Paramaters(Paramaters)
 	{
+		s_FunctionToExpectedTypes[m_Name] = m_Paramaters;
+
+		if (!s_FunctionToExpectedTypes.contains("_sleep")) //TODO: remove thhis immediately
+		{
+			auto& e = s_FunctionToExpectedTypes["_sleep"];
+			e.push_back({ .Name = "time", .Type = AbstractType(VariableType::Int32) });
+		}
+
 	}
 	llvm::Value* ASTFunctionDecleration::Codegen()
 	{
@@ -353,13 +310,13 @@ namespace clear {
 
 		llvm::Type* returnType = GetLLVMVariableType(m_ReturnType);
 
-		std::vector<llvm::Type*> ParamterTypes;
-		for (const auto& Paramter : m_Paramters)
+		std::vector<llvm::Type*> ParamaterTypes;
+		for (const auto& Paramater : m_Paramaters)
 		{
-			ParamterTypes.push_back(GetLLVMVariableType(Paramter.Type));
+			ParamaterTypes.push_back(GetLLVMVariableType(Paramater.Type));
 		}
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamterTypes, false);
+		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamaterTypes, false);
 
 		llvm::Function* function = module.getFunction(m_Name);
 		CLEAR_VERIFY(!function, "function already defined");
@@ -368,9 +325,9 @@ namespace clear {
 
 		llvm::Function::arg_iterator args = function->arg_begin();
 
-		for (const auto& Paramter : m_Paramters)
+		for (const auto& Paramater : m_Paramaters)
 		{
-			args->setName(Paramter.Name);
+			args->setName(Paramater.Name);
 			args++;
 		}
 
@@ -378,11 +335,11 @@ namespace clear {
 		builder.SetInsertPoint(entry);
 
 		uint32_t k = 0;
-		for (const auto& Paramter : m_Paramters)
+		for (const auto& Paramater : m_Paramaters)
 		{
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramter.Type), nullptr, Paramter.Name);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramater.Type), nullptr, Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
-			s_VariableMap[m_Name + "::" + Paramter.Name] = argAlloc;
+			s_VariableMap[m_Name + "::" + Paramater.Name] = argAlloc;
 			k++;
 		}
 
@@ -394,9 +351,9 @@ namespace clear {
 				break;
 		}
 
-		for (const auto& Paramter : m_Paramters)
+		for (const auto& Paramater : m_Paramaters)
 		{
-			s_VariableMap.erase(m_Name + "::" + Paramter.Name);
+			s_VariableMap.erase(m_Name + "::" + Paramater.Name);
 		}
 
 		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
@@ -453,7 +410,6 @@ namespace clear {
 		return stack.top()->Codegen();
 	}
 
-
 	ASTStruct::ASTStruct(const std::string& name, const std::vector<Member>& fields)
 		: m_Name(name), m_Members(fields)
 	{
@@ -502,27 +458,44 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 
-		//currently only dealing with constants
+		auto& expected = s_FunctionToExpectedTypes.at(m_Name);
+
+		uint32_t k = 0;
 		for (const auto& argument : m_Arguments)
 		{
 			if(argument.Field.GetKind() == TypeKind::RValue)
 			{
 				auto& variableType = argument.Field;
-				args.push_back(GetLLVMConstant(variableType, argument.Data));
+				auto value = GetLLVMConstant(variableType, argument.Data);
+
+				if (variableType.Get() != expected[k].Type.Get())
+					value = AbstractType::CastValue(value, expected[k].Type);
+
+				args.push_back(value);
 			}
 			else
 			{
 				auto& variableName = argument.Data;
-				args.push_back(s_VariableMap[variableName]);
+				auto& variableType = argument.Field;
+				auto& variable = s_VariableMap.at(variableName);
+
+				llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
+
+				if (variableType.Get() != expected[k].Type.Get())
+					value = AbstractType::CastValue(value, expected[k].Type);
+
+				args.push_back(value);
 			}
+			k++;
 		}
 
-		if (m_Name == "_sleep") //TODO: have a map of registered built in functions
+
+		if (m_Name == "_sleep") 
 		{
 			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
 				module.getOrInsertFunction("_sleep",
 					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-				    llvm::Type::getInt32Ty(module.getContext()),
+						llvm::Type::getInt32Ty(module.getContext()),
 						false)).getCallee());
 		}
 		else if (m_Name == "sleep")
@@ -541,6 +514,7 @@ namespace clear {
 						llvm::Type::getInt32Ty(module.getContext()),
 						false)).getCallee());
 		}
+		
 
 		llvm::Function* callee = module.getFunction(m_Name);
 		CLEAR_VERIFY(callee, "not a valid function");

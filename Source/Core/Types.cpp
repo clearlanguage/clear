@@ -94,8 +94,6 @@ namespace clear {
 			case VariableType::Uint16:
 			case VariableType::Uint32:
 			case VariableType::Uint64:
-			case VariableType::Float32:
-			case VariableType::Float64:
 				return true;
 			default:
 				break;
@@ -261,15 +259,6 @@ namespace clear {
 			case VariableType::Float32:
 			case VariableType::Float64:
 				return true;
-			case VariableType::Bool:
-			case VariableType::Uint8:
-			case VariableType::Uint16:
-			case VariableType::Uint32:
-			case VariableType::Uint64:
-			case VariableType::String:
-			case VariableType::UserDefinedType:
-			case VariableType::Array:
-			case VariableType::None:
 			default:
 				break;
 		}
@@ -281,6 +270,60 @@ namespace clear {
 	{
 		//TODO:
 		return false;
+	}
+
+	llvm::Value* AbstractType::CastValue(llvm::Value* casting, AbstractType to)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+		llvm::Type* fromType = casting->getType();
+		llvm::Type* toType = to.GetLLVMType();
+
+		if (fromType == toType)
+			return casting;
+
+		if (fromType->isIntegerTy() && to.IsIntegral())
+		{
+			return builder.CreateIntCast(casting, toType, to.IsSigned());
+		}
+		else if (fromType->isIntegerTy() && to.IsFloatingPoint())
+		{
+			if (to.IsSigned())
+				return builder.CreateSIToFP(casting, toType);  // Signed int to float
+			else
+				return builder.CreateUIToFP(casting, toType);  // Unsigned int to float
+		}
+		else if (fromType->isFloatingPointTy() && to.IsIntegral())
+		{
+			// Float to integer cast 
+			if (to.IsSigned())
+				return builder.CreateFPToSI(casting, toType);  // Float to signed int
+			else
+				return builder.CreateFPToUI(casting, toType);  // Float to unsigned int
+		}
+		else if (fromType->isFloatingPointTy() && to.IsFloatingPoint())
+		{
+			// Float to float cast
+			return builder.CreateFPCast(casting, toType);
+		}
+		else if (fromType->isPointerTy() && to.IsPointer())
+		{
+			// Pointer to pointer cast
+			return builder.CreatePointerCast(casting, toType);
+		}
+		else if (fromType->isIntegerTy() && to.IsPointer())
+		{
+			// Integer to pointer cast
+			return builder.CreateIntToPtr(casting, toType);
+		}
+		else if (fromType->isPointerTy() && to.IsIntegral())
+		{
+			// Pointer to integer cast
+			return builder.CreatePtrToInt(casting, toType);
+		}
+
+		CLEAR_ANNOTATED_HALT("failed to find right cast type");
+
+		return nullptr;
 	}
 
 	const bool AbstractType::IsFloatingPoint() const

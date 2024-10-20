@@ -42,7 +42,7 @@ namespace clear
 		void _FunctionTypeState();
 		void _CommentState();
 		void _StructNameState();
-		void _FunctionParamterState();
+		void _FunctionParamaterState();
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 		void _AsterisksState();

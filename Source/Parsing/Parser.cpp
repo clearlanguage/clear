@@ -26,7 +26,7 @@ namespace clear
 		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[ParserState::FunctionParamters] = [this]()  {_FunctionParamterState(); };
+		m_StateMap[ParserState::FunctionParamaters] = [this]()  {_FunctionParamaterState(); };
 		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
@@ -132,7 +132,7 @@ namespace clear
 		return current;
 	 }
 
-	void Parser::_FunctionParamterState() {
+	void Parser::_FunctionParamaterState() {
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
@@ -158,7 +158,7 @@ namespace clear
 					argList.push_back(m_CurrentString);
 				else {
 					if (current == ',') {
-					CLEAR_LOG_ERROR("Expected function Paramter after commas");
+					CLEAR_LOG_ERROR("Expected function Paramater after commas");
 					CLEAR_HALT();
 					}
 				}
@@ -291,7 +291,7 @@ namespace clear
 				}
 
 				_PushToken(TokenType::FunctionCall, m_CurrentString);
-				m_CurrentState = ParserState::FunctionParamters;
+				m_CurrentState = ParserState::FunctionParamaters;
 				_Backtrack();
 
 			}

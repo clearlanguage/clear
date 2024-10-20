@@ -86,8 +86,6 @@ namespace clear {
 		const bool _IsMathExpression() const;
 		const bool _IsCmpExpression() const;
 
-		llvm::Value* _Cast(llvm::Value* casting, AbstractType to);
-
 		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue);
 		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
@@ -102,10 +100,10 @@ namespace clear {
 	//
 
 
-	struct Paramter
+	struct Paramater
 	{
 		std::string Name;
-		VariableType Type; //TODO: change thhis to field
+		AbstractType Type; 
 	};
 
 	//
@@ -114,7 +112,7 @@ namespace clear {
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramter>& arugments);
+		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& arugments);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
@@ -124,7 +122,7 @@ namespace clear {
 	private:
 		std::string m_Name;
 		VariableType m_ReturnType;
-		std::vector<Paramter> m_Paramters;
+		std::vector<Paramater> m_Paramaters;
 	};
 	//
 	// -------------------------------------------------------------------

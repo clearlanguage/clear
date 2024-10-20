@@ -30,7 +30,7 @@ namespace clear {
         ArrowState,
         FunctionTypeState,
         StructName,
-        FunctionParamters,
+        FunctionParamaters,
         Comment,
         MultilineComment,
         IndexOperator,

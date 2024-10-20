@@ -49,11 +49,14 @@ namespace clear {
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 
+		static llvm::Value* CastValue(llvm::Value* casting, AbstractType to);
+
 		inline const VariableType Get() const { return m_Type; };
 		inline const TypeKind GetKind() const { return m_Kind; }
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
 		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
+
 
 		const bool IsFloatingPoint() const;
 		const bool IsIntegral()		 const;
