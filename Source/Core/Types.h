@@ -52,9 +52,22 @@ namespace clear {
 		inline const TypeKind GetKind() const { return m_Kind; }
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
+		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
+
+		const bool IsFloatingPoint() const;
+		const bool IsIntegral()		 const;
+		const bool IsSigned()		 const;
+		const bool IsPointer()		 const;
 
 		inline operator VariableType() const { return m_Type; }
 		inline operator TypeKind() const { return m_Kind; }
+
+		inline const bool operator==(const AbstractType& other) const;
+		inline const bool operator!=(const AbstractType& other) const;
+
+		inline const bool operator==(VariableType other) const;
+		inline const bool operator!=(VariableType other) const;
+
 
 	private:
 		VariableType m_Type = VariableType::None;

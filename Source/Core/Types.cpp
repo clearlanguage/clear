@@ -6,6 +6,35 @@
 
 namespace clear {
 
+	static size_t s_StringCount = 0;
+
+	static llvm::Value* CreateConstantString(const std::string& data)
+	{
+		auto& module  = *LLVM::Backend::GetModule();
+		auto& context = *LLVM::Backend::GetContext();
+
+		llvm::Constant* strConstant = llvm::ConstantDataArray::getString(context, data, true);
+
+		llvm::GlobalVariable* globalStr = new llvm::GlobalVariable(
+			module,                                         
+			strConstant->getType(),                          
+			true,                                            
+			llvm::GlobalValue::PrivateLinkage,               
+			strConstant,                                     
+			".str"                                           
+		);
+
+		llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+		llvm::Constant* indices[] = { zero, zero };
+		llvm::Constant* strPtr = llvm::ConstantExpr::getGetElementPtr(
+			globalStr->getValueType(),                       
+			globalStr,                                     
+			indices                                         
+		);
+
+		return strPtr;
+	}
+
 	llvm::Type* GetLLVMVariableType(VariableType type)
 	{
 		auto& context = *LLVM::Backend::GetContext();
@@ -33,8 +62,6 @@ namespace clear {
 	llvm::Value* GetLLVMConstant(VariableType type, const std::string& data)
 	{
 		auto& context = *LLVM::Backend::GetContext();
-
-		//TODO: add strings
 
 		switch (type)
 		{
@@ -205,6 +232,114 @@ namespace clear {
 		m_LLVMType = GetLLVMVariableType(m_Type);
 
 		return;
+	}
+
+	const bool AbstractType::IsSigned() const
+	{
+		switch (m_Type)
+		{
+			case VariableType::Int8:
+			case VariableType::Int16:
+			case VariableType::Int32:
+			case VariableType::Int64:
+			case VariableType::Float32:
+			case VariableType::Float64:
+				return true;
+			case VariableType::Bool:
+			case VariableType::Uint8:
+			case VariableType::Uint16:
+			case VariableType::Uint32:
+			case VariableType::Uint64:
+			case VariableType::String:
+			case VariableType::UserDefinedType:
+			case VariableType::Array:
+			case VariableType::None:
+			default:
+				break;
+		}
+
+		return false;
+	}
+
+	const bool AbstractType::IsPointer() const
+	{
+		//TODO:
+		return false;
+	}
+
+	const bool AbstractType::IsFloatingPoint() const
+	{
+		switch (m_Type)
+		{
+			case VariableType::Float32:
+			case VariableType::Float64:
+				return true;
+			case VariableType::Int8:
+			case VariableType::Int16:
+			case VariableType::Int32:
+			case VariableType::Int64:
+			case VariableType::Bool:
+			case VariableType::Uint8:
+			case VariableType::Uint16:
+			case VariableType::Uint32:
+			case VariableType::Uint64:
+			case VariableType::String:
+			case VariableType::UserDefinedType:
+			case VariableType::Array:
+			case VariableType::None:
+			default:
+				break;
+		}
+
+		return false;
+	}
+
+	const bool AbstractType::IsIntegral() const
+	{
+		switch (m_Type)
+		{
+			case VariableType::Int8:
+			case VariableType::Int16:
+			case VariableType::Int32:
+			case VariableType::Int64:
+			case VariableType::Uint8:
+			case VariableType::Uint16:
+			case VariableType::Uint32:
+			case VariableType::Uint64:
+				return true;
+			case VariableType::Bool:
+			case VariableType::Float32:
+			case VariableType::Float64:
+			case VariableType::String:
+			case VariableType::UserDefinedType:
+			case VariableType::Array:
+			case VariableType::None:
+			default:
+				break;
+		}
+
+		return false;
+	}
+
+	const bool AbstractType::operator==(const AbstractType& other) const
+	{
+		return m_Type == other.m_Type && 
+			   m_UserDefinedType == other.m_UserDefinedType;
+	}
+
+	const bool AbstractType::operator!=(const AbstractType& other) const
+	{
+		return !(*this == other);
+	}
+
+	inline const bool AbstractType::operator==(VariableType other) const
+	{
+		return m_Type == other;
+	}
+
+	inline const bool AbstractType::operator!=(VariableType other) const
+	{
+		return !(*this == other);
 	}
 
 }

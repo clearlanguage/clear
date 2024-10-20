@@ -49,8 +49,8 @@ namespace clear {
 		return GetLLVMConstant(m_Type, m_Data);
 	}
 
-	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
-		: m_Expression(type)
+	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, AbstractType expectedType)
+		: m_Expression(type), m_ExpectedType(expectedType)
 	{
 	}
 	llvm::Value* ASTBinaryExpression::Codegen()
@@ -68,49 +68,79 @@ namespace clear {
 		if (!LHS || !RHS)
 			return nullptr;
 
-		llvm::Type* typeLHS = LHS->getType();
-		llvm::Type* typeRHS = RHS->getType();
+		llvm::Value* LHSRawValue = LHS;
+		llvm::Value* RHSRawValue = RHS;
 
-		if (llvm::isa<llvm::AllocaInst>(LHS))
+		if (llvm::isa<llvm::AllocaInst>(RHS))
 		{
-			auto val = llvm::dyn_cast<llvm::AllocaInst>(LHS);
-			typeLHS = val->getAllocatedType();
+			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
+			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
+		}
+
+		// Load values if they are alloca instructions
+		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
+		{
+			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
+			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
+		}
+		else if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
+		{
+			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
 		if (llvm::isa<llvm::AllocaInst>(RHS))
 		{
-			auto val = llvm::dyn_cast<llvm::AllocaInst>(RHS);
-			typeRHS = val->getAllocatedType();
+			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
+			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
 		}
 
-		if (typeLHS != typeRHS)
+		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
+
+		switch (m_ExpectedType.Get())
 		{
-			if (typeLHS->isFloatingPointTy() && typeRHS->isIntegerTy())
-				RHS = builder.CreateSIToFP(RHS, typeLHS);
-
-			else if (typeLHS->isIntegerTy() && typeRHS->isFloatingPointTy())
-				LHS = builder.CreateSIToFP(LHS, typeRHS);
-
-			else if (typeLHS->isFloatingPointTy() && typeRHS->isFloatingPointTy())
+			case VariableType::Int8:
+			case VariableType::Int16:
+			case VariableType::Int32:
+			case VariableType::Int64:
+			case VariableType::Uint8:
+			case VariableType::Uint16:
+			case VariableType::Uint32:
+			case VariableType::Uint64:
 			{
-				auto LHSWidth = typeLHS->getPrimitiveSizeInBits();
-				auto RHSWidth = typeRHS->getPrimitiveSizeInBits();
+				if (LHSRawValue->getType() != expectedLLVMType)
+					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
 
-				//if (LHSWidth > RHSWidth)
-					//RHS = builder.CreateFPExt(RHS, LHS->getType());
-				//else if (LHSWidth < RHSWidth)
-					//LHS = builder.CreateFPTrunc(LHS, RHS->getType());
+				if (RHSRawValue->getType() != expectedLLVMType)
+					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+				break;
 			}
+			case VariableType::Float32:
+			case VariableType::Float64:
+			{
+				if (LHSRawValue->getType() != expectedLLVMType)
+					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
+
+				if (RHSRawValue->getType() != expectedLLVMType)
+					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+				break;
+			}
+			case VariableType::Bool:
+			{
+				if (LHSRawValue->getType() != expectedLLVMType)
+					LHSRawValue = _Cast(LHSRawValue, m_ExpectedType);
+
+				if (RHSRawValue->getType() != expectedLLVMType)
+					RHSRawValue = _Cast(RHSRawValue, m_ExpectedType);
+
+				break;
+			}
+			case VariableType::None:
+			default:
+				//no special handling just assume the types are compatible
+				break;
 		}
 
-		if (_IsMathExpression())
-			return _CreateMathExpression(LHS, RHS);
-		else if (_IsCmpExpression())
-			return _CreateCmpExpression(LHS, RHS);
-		else
-			return _CreateLoadStoreExpression(LHS, RHS);
-
-		return nullptr;
+		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 	}
 
 	const bool ASTBinaryExpression::_IsMathExpression() const
@@ -121,6 +151,71 @@ namespace clear {
 	const bool ASTBinaryExpression::_IsCmpExpression() const
 	{
 		return (int)m_Expression <= (int)BinaryExpressionType::Eq && !_IsMathExpression();
+	}
+
+	llvm::Value* ASTBinaryExpression::_Cast(llvm::Value* casting, AbstractType to)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+		llvm::Type* fromType = casting->getType();
+		llvm::Type* toType = to.GetLLVMType();
+
+		if (fromType == toType)
+			return casting;  
+
+		if (fromType->isIntegerTy() && to.IsIntegral()) 
+		{
+			return builder.CreateIntCast(casting, toType, to.IsSigned());  
+		}
+		else if (fromType->isIntegerTy() && to.IsFloatingPoint()) 
+		{
+	
+			if (to.IsSigned())  
+				return builder.CreateSIToFP(casting, toType);  // Signed int to float
+			else
+				return builder.CreateUIToFP(casting, toType);  // Unsigned int to float
+		}
+		else if (fromType->isFloatingPointTy() && to.IsIntegral()) 
+		{
+			// Float to integer cast 
+			if (to.IsSigned())
+				return builder.CreateFPToSI(casting, toType);  // Float to signed int
+			else
+				return builder.CreateFPToUI(casting, toType);  // Float to unsigned int
+		}
+		else if (fromType->isFloatingPointTy() && to.IsFloatingPoint()) 
+		{
+			// Float to float cast
+			return builder.CreateFPCast(casting, toType);  
+		}
+		else if (fromType->isPointerTy() && to.IsPointer()) 
+		{
+			// Pointer to pointer cast
+			return builder.CreatePointerCast(casting, toType);
+		}
+		else if (fromType->isIntegerTy() && to.IsPointer()) 
+		{
+			// Integer to pointer cast
+			return builder.CreateIntToPtr(casting, toType);
+		}
+		else if (fromType->isPointerTy() && to.IsIntegral()) 
+		{
+			// Pointer to integer cast
+			return builder.CreatePtrToInt(casting, toType);
+		}
+
+		CLEAR_ANNOTATED_HALT("failed to find right cast type");
+
+		return nullptr;
+	}
+
+	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue)
+	{
+		if (_IsMathExpression())
+			return _CreateMathExpression(LHSRawValue, RHSRawValue);
+		else if (_IsCmpExpression())
+			return _CreateCmpExpression(LHSRawValue, RHSRawValue);
+		
+		return _CreateLoadStoreExpression(LHS, RHSRawValue);
 	}
 
 	llvm::Value* ASTBinaryExpression::_CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS)
@@ -370,6 +465,7 @@ namespace clear {
 
 		return stack.top()->Codegen();
 	}
+
 
 	ASTStruct::ASTStruct(const std::string& name, const std::vector<Member>& fields)
 		: m_Name(name), m_Members(fields)

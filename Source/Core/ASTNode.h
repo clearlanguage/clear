@@ -73,7 +73,7 @@ namespace clear {
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type);
+		ASTBinaryExpression(BinaryExpressionType type, AbstractType expectedType = VariableType::None);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -84,12 +84,16 @@ namespace clear {
 		const bool _IsMathExpression() const;
 		const bool _IsCmpExpression() const;
 
+		llvm::Value* _Cast(llvm::Value* casting, AbstractType to);
+
+		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue);
 		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
 
 	private:
 		BinaryExpressionType m_Expression;
+		AbstractType m_ExpectedType;
 	};
 	//
 	// ------------------------------------------------------------------
@@ -219,7 +223,6 @@ namespace clear {
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual llvm::Value* Codegen() override;
-
 
 	};
 
