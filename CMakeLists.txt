@@ -33,7 +33,9 @@ llvm_map_components_to_libnames(llvm_libs
     analysis
     codegen
     x86codegen     
-    x86asmparser   
+    x86asmparser
+    AArch64CodeGen 
+    AArch64AsmParser
 )
 
 FetchContent_Declare(

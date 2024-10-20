@@ -517,7 +517,7 @@ namespace clear {
 			}
 		}
 
-		if (m_Name == "_sleep")
+		if (m_Name == "_sleep") //TODO: have a map of registered built in functions
 		{
 			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
 				module.getOrInsertFunction("_sleep",
