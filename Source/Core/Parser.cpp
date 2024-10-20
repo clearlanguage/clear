@@ -882,7 +882,7 @@ namespace clear
 			return;
 		}
 
-		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current)))
+		while (!std::isspace(current) && (!g_OperatorMap.contains(Str(current))  || current == '.'))
 		{
 			m_CurrentString.push_back(current);
 			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
@@ -892,7 +892,6 @@ namespace clear
 			}
 			if (current == '.')
 			{
-				m_CurrentString.push_back(current);
 				usedDecimal = true;
 			}
 
