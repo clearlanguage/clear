@@ -122,6 +122,7 @@ namespace clear {
             case TokenType::PointerDef: return "PointerDef";
             case TokenType::DereferenceOp : return "DereferenceOp";
             case TokenType::CharType: return "CharType";
+            case TokenType::Declaration: return "Declaration";
 
             default:
                 break;
