@@ -294,6 +294,8 @@ namespace clear
 				m_CurrentState = ParserState::FunctionParamaters;
 				_Backtrack();
 
+			}else {
+				m_BracketStack.push_back('(');
 			}
 
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
@@ -323,7 +325,7 @@ namespace clear
 
 		if (!m_CurrentString.empty() && !IsVarNameChar(current))
 		{
-			if (!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') {
+			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (g_DataTypes.contains(m_CurrentString) &&( current == '*' || current == '&'))) {
 				if (g_KeyWordMap.contains(m_CurrentString) ) {
 					auto& value = g_KeyWordMap.at(m_CurrentString);
 
@@ -357,7 +359,8 @@ namespace clear
 		{
 			m_CurrentState = ParserState::Indentation;
 			m_CurrentString.clear();
-			_PushToken(TokenType::EndLine, "");
+			if (current == '\n' && m_BracketStack.empty())
+				_PushToken(TokenType::EndLine, "");
 
 
 			return;
@@ -407,22 +410,19 @@ namespace clear
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
-		while (IsVarNameChar(current))
+		while (current != '\n' && current != '\0')
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
-
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data =m_CurrentString });
-		if(g_DataTypes.contains(m_CurrentString)) 
-		{
-			auto& value = g_KeyWordMap.at(m_CurrentString);
-			if (value.TokenToPush != TokenType::None)
-				m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data =m_CurrentString });
-		}
-		else 
-		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =m_CurrentString });
+		Parser subParser;
+		subParser.InitParser();
+		subParser.m_Buffer = m_CurrentString;
+		subParser.m_Buffer+=" ";
+		ProgramInfo info = subParser.ParseProgram();
+		for (const Token& tok :info.Tokens) {
+			m_ProgramInfo.Tokens.push_back(tok);
 		}
 
 		_Backtrack();
@@ -541,7 +541,8 @@ namespace clear
 		if (current == '[') {
 			_ParseArrayDecleration();
 		}else  {
-			_Backtrack();
+			if (current != '\0')
+				_Backtrack();
 		}
 
 
@@ -555,7 +556,7 @@ namespace clear
 		}
 		current = _SkipSpaces();
 		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
-		if (!IsSpace(current)) {
+		if (!IsSpace(current) && current != '\0') {
 			_Backtrack();
 		}
 		
@@ -585,12 +586,19 @@ namespace clear
 			current = _GetNextChar();
 		}
 
+
 		m_CurrentString.clear();
 		if (current == '[') {
 			_ParseArrayDecleration();
 			current = _GetNextChar();
 		}
 		m_CurrentString.clear();
+		if (current == '\n' || current == '\0') {
+			m_CurrentState = ParserState::Default;
+			_Backtrack();
+			return;
+		}
+
 		int commas = 0;
 		int vars = 0;
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
@@ -666,22 +674,14 @@ namespace clear
 
 		for (const auto& i: argList) 
 		{
-			auto spL = Split(i);
-
-			CLEAR_VERIFY(spL.size() == 2, "expected variable and type only");
-		
-			if(g_DataTypes.contains(spL.at(0))) 
-			{
-				auto& value = g_KeyWordMap.at(spL.at(0));
-				if (value.TokenToPush != TokenType::None)
-					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = spL.at(0) });
-
+			Parser subParser;
+			subParser.InitParser();
+			subParser.m_Buffer = i;
+			subParser.m_Buffer+=" ";
+			ProgramInfo info = subParser.ParseProgram();
+			for (const Token& tok :info.Tokens) {
+				m_ProgramInfo.Tokens.push_back(tok);
 			}
-			else 
-			{
-				m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableReference, .Data =spL.at(0) });
-			}
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::VariableName, .Data = spL.at(1) });
 
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
@@ -886,7 +886,7 @@ namespace clear
 			return;
 		}
 
-		while (!std::isspace(current) && (!g_OperatorMap.contains(Str(current))  || current == '.'))
+		while (std::isalnum(current))
 		{
 			m_CurrentString.push_back(current);
 			if (current == '.' && usedDecimal) // need to throw some type of error again TODO

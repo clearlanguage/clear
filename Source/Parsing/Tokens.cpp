@@ -49,10 +49,12 @@ namespace clear {
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
         {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
+        {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
+        {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
     };
 
     const std::set<std::string> g_DataTypes = {
-        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint"
+        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char"
     };
 
     std::string_view TokenToString(TokenType token) {
@@ -119,6 +121,7 @@ namespace clear {
             case TokenType::StaticArrayDef: return "StaticArrayDef";
             case TokenType::PointerDef: return "PointerDef";
             case TokenType::DereferenceOp : return "DereferenceOp";
+            case TokenType::CharType: return "CharType";
 
             default:
                 break;
