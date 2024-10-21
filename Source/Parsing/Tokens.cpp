@@ -51,6 +51,7 @@ namespace clear {
         {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
         {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
+        {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
     };
 
     const std::set<std::string> g_DataTypes = {
@@ -123,6 +124,7 @@ namespace clear {
             case TokenType::DereferenceOp : return "DereferenceOp";
             case TokenType::CharType: return "CharType";
             case TokenType::Declaration: return "Declaration";
+            case TokenType::Defer: return "Defer";
 
             default:
                 break;

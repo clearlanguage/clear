@@ -935,6 +935,14 @@ namespace clear
 				data =  '\r';
 			}else if(current == 'b') {
 				data= '\b';
+			}else if(current == '0') {
+				data+= '\0';
+			}else if(current == 'f') {
+				data = '\f';
+			}else if(current == 'v') {
+				data = '\v';
+			}else if(current == 'a') {
+				data = '\a';
 			}
 			else {
 				CLEAR_LOG_ERROR("Unknown char escape char \"\\",current,'"');
@@ -980,6 +988,14 @@ namespace clear
 					m_CurrentString += '\r';
 				}else if(current == 'b') {
 					m_CurrentString += '\b';
+				}else if(current == '0') {
+					m_CurrentString+= '\0';
+				}else if(current == 'f') {
+					m_CurrentString = '\f';
+				}else if(current == 'v') {
+					m_CurrentString = '\v';
+				}else if(current == 'a') {
+					m_CurrentString = '\a';
 				}
 
 				else {
