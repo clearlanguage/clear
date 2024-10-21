@@ -410,7 +410,7 @@ namespace clear
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
-		while (current != '\n' && current != '\0')
+		while (current != '\n' && current != '\0' && current != ':')
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();

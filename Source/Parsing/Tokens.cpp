@@ -17,7 +17,7 @@ namespace clear {
         {"!=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::NotEqual}},
         {"<=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::LessThanEqual}},
         {">=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
-        {"...", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Ellipsis}},
+        {"...", {.NextState = ParserState::Default, .TokenToPush = TokenType::Ellipsis}},
          {"!", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Not}},
         {"->", {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::Arrow}},
         {".",{.NextState = ParserState::RValue, .TokenToPush = TokenType::DotOp}},
