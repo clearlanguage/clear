@@ -353,9 +353,6 @@ namespace clear {
 		for (const auto& child : GetChildren())
 		{
 			child->Codegen();
-
-			if (child->GetType() == ASTNodeType::ReturnStatement)
-				break;
 		}
 
 		for (const auto& Paramater : m_Paramaters)

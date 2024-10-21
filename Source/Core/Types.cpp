@@ -55,7 +55,19 @@ namespace clear {
 			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
 			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
 			case VariableType::UserDefinedType:	return llvm::PointerType::get(context , 0);
-			case VariableType::String:			return llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+			case VariableType::String:			return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int8), 0);
+			case VariableType::Int8Pointer:		return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int8), 0);
+			case VariableType::Int16Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int16), 0);
+			case VariableType::Int32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int32), 0);
+			case VariableType::Int64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int64), 0);
+			case VariableType::Uint8Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint8), 0);
+			case VariableType::Uint16Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint16), 0);
+			case VariableType::Uint32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint32), 0);
+			case VariableType::Uint64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint64), 0);
+			case VariableType::BoolPointer:		return llvm::PointerType::get(GetLLVMVariableType(VariableType::Bool), 0);
+			case VariableType::Float32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Float32), 0);
+			case VariableType::Float64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Float64), 0);
+			case VariableType::StringPointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::String), 0);
 			case VariableType::None:
 			default:
 				return llvm::Type::getVoidTy(context);
@@ -130,6 +142,30 @@ namespace clear {
 		return VariableType::None;
 	}
 
+	VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType)
+	{
+		switch (tokenType)
+		{
+			case TokenType::Int8Type:		return VariableType::Int8Pointer;
+			case TokenType::Int16Type:		return VariableType::Int16Pointer;
+			case TokenType::Int32Type:		return VariableType::Int32Pointer;
+			case TokenType::Int64Type:		return VariableType::Int64Pointer;
+			case TokenType::UInt8Type:		return VariableType::Uint8Pointer;
+			case TokenType::UInt16Type:		return VariableType::Uint16Pointer;
+			case TokenType::UInt32Type:		return VariableType::Uint32Pointer;
+			case TokenType::UInt64Type:		return VariableType::Uint64Pointer;
+			case TokenType::Float32Type:	return VariableType::Float32Pointer;
+			case TokenType::Float64Type:	return VariableType::Float64Pointer;
+			case TokenType::Bool:			return VariableType::BoolPointer;
+			case TokenType::StringType:		return VariableType::StringPointer;
+			case TokenType::None:
+			default:
+				break;
+		}
+
+		return VariableType::None;
+	}
+
 	BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type)
 	{
 		switch (type)
@@ -173,8 +209,8 @@ namespace clear {
 
 	}
 
-	AbstractType::AbstractType(const Token& token, TypeKind kind)
-		: m_Type(GetVariableTypeFromTokenType(token.TokenType)), m_LLVMType(GetLLVMVariableType(m_Type)), m_Kind(kind)
+	AbstractType::AbstractType(const Token& token, TypeKind kind, bool isPointer)
+		: m_Kind(kind)
 	{
 		if (token.TokenType == TokenType::RValueNumber ||
 			token.TokenType == TokenType::RValueChar ||
@@ -187,6 +223,8 @@ namespace clear {
 			m_Kind = TypeKind::Variable;
 		}
 
+		m_Type = isPointer ? GetVariablePointerTypeFromTokenType(token.TokenType) : GetVariableTypeFromTokenType(token.TokenType);
+		m_LLVMType = GetLLVMVariableType(m_Type);
 	}
 
 	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedtype)
@@ -275,7 +313,29 @@ namespace clear {
 
 	const bool AbstractType::IsPointer() const
 	{
-		//TODO:
+		switch (m_Type)
+		{
+			case VariableType::String:
+			case VariableType::Array:
+			case VariableType::Int8Pointer:
+			case VariableType::Int16Pointer:
+			case VariableType::Int32Pointer:
+			case VariableType::Int64Pointer:
+			case VariableType::Uint8Pointer:
+			case VariableType::Uint16Pointer:
+			case VariableType::Uint32Pointer:
+			case VariableType::Uint64Pointer:
+			case VariableType::BoolPointer:
+			case VariableType::Float32Pointer:
+			case VariableType::Float64Pointer:
+			case VariableType::StringPointer:
+			case VariableType::UserDefinedTypePointer:
+			case VariableType::ArrayPointer:
+				return true;
+			default:
+				break;
+		}
+
 		return false;
 	}
 
@@ -340,19 +400,6 @@ namespace clear {
 			case VariableType::Float32:
 			case VariableType::Float64:
 				return true;
-			case VariableType::Int8:
-			case VariableType::Int16:
-			case VariableType::Int32:
-			case VariableType::Int64:
-			case VariableType::Bool:
-			case VariableType::Uint8:
-			case VariableType::Uint16:
-			case VariableType::Uint32:
-			case VariableType::Uint64:
-			case VariableType::String:
-			case VariableType::UserDefinedType:
-			case VariableType::Array:
-			case VariableType::None:
 			default:
 				break;
 		}
@@ -373,13 +420,6 @@ namespace clear {
 			case VariableType::Uint32:
 			case VariableType::Uint64:
 				return true;
-			case VariableType::Bool:
-			case VariableType::Float32:
-			case VariableType::Float64:
-			case VariableType::String:
-			case VariableType::UserDefinedType:
-			case VariableType::Array:
-			case VariableType::None:
 			default:
 				break;
 		}

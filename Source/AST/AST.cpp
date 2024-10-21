@@ -125,9 +125,18 @@ namespace clear {
 					AbstractType type;
 
 					if (previous.TokenType == TokenType::VariableReference)
+					{
 						type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, previous.Data);
+					}
+					else if (previous.TokenType == TokenType::PointerDef)
+					{
+						auto& before = tokens[i - 2];
+						type = AbstractType(before, TypeKind::Variable, true);
+					}
 					else
+					{
 						type = AbstractType(previous, TypeKind::Variable);
+					}
 
 					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot->GetName() + "::" + currentToken.Data, type));
 					break;
