@@ -57,7 +57,6 @@ namespace clear {
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
 		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
 
-
 		const bool IsFloatingPoint() const;
 		const bool IsIntegral()		 const;
 		const bool IsSigned()		 const;

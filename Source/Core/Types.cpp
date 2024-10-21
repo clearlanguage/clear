@@ -15,13 +15,15 @@ namespace clear {
 
 		llvm::Constant* strConstant = llvm::ConstantDataArray::getString(context, data, true);
 
+		llvm::Type* type = strConstant->getType();
+
 		llvm::GlobalVariable* globalStr = new llvm::GlobalVariable(
-			module,                                         
-			strConstant->getType(),                          
-			true,                                            
-			llvm::GlobalValue::PrivateLinkage,               
-			strConstant,                                     
-			".str"                                           
+			module,
+			type,
+			true,
+			llvm::GlobalValue::PrivateLinkage,
+			strConstant,
+			".str" + std::to_string(s_StringCount++)
 		);
 
 		llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
@@ -53,6 +55,7 @@ namespace clear {
 			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
 			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
 			case VariableType::UserDefinedType:	return llvm::PointerType::get(context , 0);
+			case VariableType::String:			return llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
 			case VariableType::None:
 			default:
 				return llvm::Type::getVoidTy(context);
@@ -76,6 +79,7 @@ namespace clear {
 			case VariableType::Float32: return llvm::ConstantFP::get(llvm::Type::getFloatTy(context),  (float)std::stod(data));
 			case VariableType::Float64: return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data));
 			case VariableType::Bool:	return llvm::ConstantInt::get(llvm::Type::getInt1Ty(context),  data == "true" ? 1 : 0);
+			case VariableType::String:	return CreateConstantString(data);
 			case VariableType::None:
 			default:
 				return nullptr;
@@ -117,6 +121,7 @@ namespace clear {
 			case TokenType::Float32Type:	return VariableType::Float32;
 			case TokenType::Float64Type:	return VariableType::Float64;
 			case TokenType::Bool:			return VariableType::Bool;
+			case TokenType::StringType:		return VariableType::String;
 			case TokenType::None:
 			default:
 				break;
@@ -236,10 +241,12 @@ namespace clear {
 		{
 			m_Type = VariableType::Bool;
 		}
-		else
+		else 
 		{
-			m_Type = VariableType::Array;
+			m_Type = VariableType::String;
 		}
+
+		
 
 
 		CLEAR_VERIFY(m_Type != VariableType::None, "could not evaluate type of ", value);

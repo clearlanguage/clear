@@ -299,6 +299,13 @@ namespace clear {
 			e.push_back({ .Name = "time", .Type = AbstractType(VariableType::Int32) });
 		}
 
+		if (!s_FunctionToExpectedTypes.contains("printf"))
+		{
+			auto& e = s_FunctionToExpectedTypes["printf"];
+			e.push_back({ .Name = "fmt", .Type = AbstractType(VariableType::String) });
+			e.push_back({ .Name = "msg", .Type = AbstractType(VariableType::String) });
+		}
+
 	}
 	llvm::Value* ASTFunctionDecleration::Codegen()
 	{
@@ -490,7 +497,7 @@ namespace clear {
 		}
 
 
-		if (m_Name == "_sleep") 
+		if (m_Name == "_sleep")
 		{
 			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
 				module.getOrInsertFunction("_sleep",
@@ -514,8 +521,17 @@ namespace clear {
 						llvm::Type::getInt32Ty(module.getContext()),
 						false)).getCallee());
 		}
+		else if (m_Name == "printf")
+		{
+			llvm::Function* printfFunc = llvm::cast<llvm::Function>(
+				module.getOrInsertFunction("printf",
+					llvm::FunctionType::get(
+						llvm::Type::getInt32Ty(module.getContext()),              // Return type: int
+						{ llvm::PointerType::get(llvm::Type::getInt8Ty(module.getContext()), 0) }, // First arg: const char*
+						true                                                      // Is variadic
+					)).getCallee());
+		}
 		
-
 		llvm::Function* callee = module.getFunction(m_Name);
 		CLEAR_VERIFY(callee, "not a valid function");
 
