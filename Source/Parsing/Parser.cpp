@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <iosfwd>
+#include <stack>
+#include <stack>
 #include <Core/Log.h>
 #include <Core/Utils.h>
 
@@ -139,16 +141,35 @@ namespace clear
 		m_CurrentString.clear();
 		CLEAR_VERIFY(current == '(', "expected ( after function call");
 		std::vector<std::string> argList;
+		std::vector<char> stack;
+		stack.push_back('(');
 		bool detectedEnd = false;
-		int opens =1;
-		while (opens !=0 && current != '\0')
-		{
+
+		while (!stack.empty() && current != '\0') {
 			current = _GetNextChar();
-			if (current == '(')
-				opens++;
-			if (current == ')')
-				opens--;
-			if ( (current ==')' && opens== 0) || (current == ',' && opens == 1) || current == '\0')
+			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
+				stack.push_back(current);
+			}else {
+
+			if (!(stack.back() == '\'' || stack.back() == '"')) {
+				if (g_Openers.contains(current)) {
+					stack.push_back(current);
+				}
+				if (g_CloserToOpeners.contains(current)) {
+					CLEAR_VERIFY(g_CloserToOpeners.at(current) == stack.back(),"Attempting to close wrong bracket");
+					stack.pop_back();
+				}
+			}else {
+				if ((current == '\'' || current == '"')) {
+					if (m_Buffer[m_CurrentTokenIndex-2] != '\\') {
+						CLEAR_VERIFY(current == stack.back(),"Closing unmatched string");
+						stack.pop_back();
+					}
+				}
+			}
+
+			}
+			if ( (current ==')' && stack.size() == 0) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
 
 				if (current == ')' )
@@ -237,18 +258,35 @@ namespace clear
 	void Parser::_IndexOperatorState() {
 		char current = _GetNextChar();
 		bool detectedEnd = false;
-		int opens =1;
-
+		std::vector<char> stack;
+		stack.push_back('[');
 		CLEAR_VERIFY(current == '[', "index op should start with [");
-		while (opens !=0 && current != '\0')
+		while (!stack.empty() && current != '\0')
 		{
 			current = _GetNextChar();
-			if (current == '[')
-				opens++;
-			if (current == ']')
-				opens--;
+			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
+				stack.push_back(current);
+			}else {
 
-			if (opens ==0 && current == ']') {
+				if (!(stack.back() == '\'' || stack.back() == '"')) {
+					if (g_Openers.contains(current)) {
+						stack.push_back(current);
+					}
+					if (g_CloserToOpeners.contains(current)) {
+						CLEAR_VERIFY(g_CloserToOpeners.at(current) == stack.back(),"Attempting to close wrong bracket");
+						stack.pop_back();
+					}
+				}else {
+					if ((current == '\'' || current == '"')) {
+						if (m_Buffer[m_CurrentTokenIndex-2] != '\\') {
+							CLEAR_VERIFY(current == stack.back(),"Closing unmatched string");
+							stack.pop_back();
+						}
+					}
+				}
+
+			}
+			if (stack.empty() && current == ']') {
 				detectedEnd = true;
 				break;
 			}

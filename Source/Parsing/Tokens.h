@@ -59,4 +59,6 @@ namespace clear {
     extern const OperatorMapType g_OperatorMap;
     extern const KeyWordMapType  g_KeyWordMap;
     extern const std::set<std::string> g_DataTypes;
+    extern const std::map<char,char> g_CloserToOpeners;
+    extern const std::set<char> g_Openers;
 }
