@@ -12,7 +12,10 @@ namespace clear {
 		None = 0, Int8, Int16, Int32, Int64,
 		Uint8, Uint16, Uint32, Uint64, Bool,
 		Float32, Float64, String, UserDefinedType,
-		Array
+		Array, Int8Pointer, Int16Pointer, Int32Pointer, 
+		Int64Pointer, Uint8Pointer, Uint16Pointer, Uint32Pointer, 
+		Uint64Pointer, BoolPointer, Float32Pointer, Float64Pointer, 
+		StringPointer, UserDefinedTypePointer, ArrayPointer
 	};
 
 	enum class TypeKind
@@ -36,6 +39,7 @@ namespace clear {
 
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);
 	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
+	extern VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType);
 	extern llvm::Type*	GetLLVMVariableType(VariableType type);
 	extern llvm::Value*	GetLLVMConstant(VariableType type, const std::string& data);
 	extern bool IsTypeIntegral(VariableType type);
@@ -45,7 +49,7 @@ namespace clear {
 	public:
 		AbstractType() = default;
 		AbstractType(const Token& token);
-		AbstractType(const Token& token, TypeKind kind);
+		AbstractType(const Token& token, TypeKind kind, bool isPointer = false);
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 
@@ -56,7 +60,6 @@ namespace clear {
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
 		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
-
 
 		const bool IsFloatingPoint() const;
 		const bool IsIntegral()		 const;

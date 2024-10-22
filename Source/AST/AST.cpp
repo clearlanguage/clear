@@ -86,6 +86,7 @@ namespace clear {
 						switch (tokens[i].TokenType)
 						{
 							case TokenType::RValueNumber:
+							case TokenType::RValueString:
 							case TokenType::BooleanData:
 							{
 								arg.Field = AbstractType(tokens[i].Data);
@@ -124,11 +125,20 @@ namespace clear {
 					AbstractType type;
 
 					if (previous.TokenType == TokenType::VariableReference)
+					{
 						type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, previous.Data);
+					}
+					else if (previous.TokenType == TokenType::PointerDef)
+					{
+						auto& before = tokens[i - 2];
+						type = AbstractType(before, TypeKind::Variable, true);
+					}
 					else
+					{
 						type = AbstractType(previous, TypeKind::Variable);
+					}
 
-					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create( currentRoot->GetName() + "::" + currentToken.Data, type));
+					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot->GetName() + "::" + currentToken.Data, type));
 					break;
 				}
 				case TokenType::Struct:
@@ -241,11 +251,13 @@ namespace clear {
 		{
 			auto& token = tokens[start];
 
+
 			if (token.TokenType == TokenType::VariableReference)
 			{
 				expression->PushChild(Ref<ASTVariableExpression>::Create(root + "::" + token.Data));
 			}
-			else if (token.TokenType == TokenType::RValueNumber)
+			else if (token.TokenType == TokenType::RValueNumber || 
+					 token.TokenType == TokenType::RValueString)
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
 			}
