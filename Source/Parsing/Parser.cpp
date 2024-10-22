@@ -344,7 +344,7 @@ namespace clear
 
 		if (!m_CurrentString.empty() && !IsVarNameChar(current))
 		{
-			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (g_DataTypes.contains(m_CurrentString) &&( current == '*' || current == '&'))) {
+			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) {
 				if (g_KeyWordMap.contains(m_CurrentString) ) {
 					auto& value = g_KeyWordMap.at(m_CurrentString);
 
