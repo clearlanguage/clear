@@ -18,6 +18,12 @@ namespace clear
 		std::vector<Token> Tokens;
 	};
 
+	struct ArrayDeclarationReturn {
+		std::vector<Token> Tokens;
+		bool error;
+		std::string errormsg;
+	};
+
 	class Parser
 	{
 	public:
@@ -47,7 +53,9 @@ namespace clear
 		void _IndexOperatorState();
 		void _AsterisksState();
 
+
 		Token _GetLastToken();
+		Token _CreateToken(const TokenType tok, const std::string& data);
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -56,8 +64,9 @@ namespace clear
 		void _ParseChar();
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
+		std::vector<std::string> _ParseBrackets(char end,bool commas);
 
-		void _ParseArrayDecleration();
+		void _ParseArrayDecleration(ArrayDeclarationReturn& output);
 		void _ParsePointerDecleration();
 
 		void _PushToken(const TokenType tok, const std::string& data);

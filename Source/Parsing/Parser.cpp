@@ -140,63 +140,9 @@ namespace clear
 		current = _SkipSpaces();
 		m_CurrentString.clear();
 		CLEAR_VERIFY(current == '(', "expected ( after function call");
-		std::vector<std::string> argList;
-		std::vector<char> stack;
-		stack.push_back('(');
-		bool detectedEnd = false;
 
-		while (!stack.empty() && current != '\0') {
-			current = _GetNextChar();
-			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
-				stack.push_back(current);
-			}else {
-
-			if (!(stack.back() == '\'' || stack.back() == '"')) {
-				if (g_Openers.contains(current)) {
-					stack.push_back(current);
-				}
-				if (g_CloserToOpeners.contains(current)) {
-					CLEAR_VERIFY(g_CloserToOpeners.at(current) == stack.back(),"Attempting to close wrong bracket");
-					stack.pop_back();
-				}
-			}else {
-				if ((current == '\'' || current == '"')) {
-					if (m_Buffer[m_CurrentTokenIndex-2] != '\\') {
-						CLEAR_VERIFY(current == stack.back(),"Closing unmatched string");
-						stack.pop_back();
-					}
-				}
-			}
-
-			}
-			if ( (current ==')' && stack.size() == 0) || (current == ',' && stack.size() == 1) || current == '\0')
-			{
-
-				if (current == ')' )
-					detectedEnd = true;
-
-				if (!m_CurrentString.empty())
-					argList.push_back(m_CurrentString);
-				else {
-					if (current == ',') {
-					CLEAR_LOG_ERROR("Expected function Paramater after commas");
-					CLEAR_HALT();
-					}
-				}
-
-				m_CurrentString.clear();
-
-			}
-			else
-			{
-				if(!(std::isspace(current) && m_CurrentString.empty()))
-					m_CurrentString += current;
-			}
-
-		}
-
-		CLEAR_VERIFY(detectedEnd, "Expected ) after function call");
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
+		auto argList = _ParseBrackets(')',true);
 		m_CurrentState = ParserState::Default;
 		for (const std::string& arg : argList) {
 			Parser subParser;
@@ -255,14 +201,16 @@ namespace clear
 	}
 
 
-	void Parser::_IndexOperatorState() {
-		char current = _GetNextChar();
-		bool detectedEnd = false;
+	std::vector<std::string> Parser::_ParseBrackets(char end, bool commas) {
+		char start = g_CloserToOpeners.at(end);
+		char current = start;
+		std::vector<std::string> argList;
 		std::vector<char> stack;
-		stack.push_back('[');
-		CLEAR_VERIFY(current == '[', "index op should start with [");
-		while (!stack.empty() && current != '\0')
-		{
+		stack.push_back(start);
+		bool detectedEnd = false;
+
+
+		while (!stack.empty() && current != '\0') {
 			current = _GetNextChar();
 			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
 				stack.push_back(current);
@@ -286,20 +234,53 @@ namespace clear
 				}
 
 			}
-			if (stack.empty() && current == ']') {
-				detectedEnd = true;
-				break;
-			}
+			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
+			{
+				CLEAR_VERIFY((current == ',' && commas) || current != ',',"Did not expect commas" );
+				if (current == end)
+					detectedEnd = true;
 
-			if((!(IsSpace(current) && m_CurrentString.empty()) && current!= '\n'))
-				m_CurrentString += current;
+				if (!m_CurrentString.empty())
+					argList.push_back(m_CurrentString);
+				else {
+					if (current == ',') {
+						CLEAR_LOG_ERROR("Expected function Paramater after commas");
+						CLEAR_HALT();
+					}
+				}
+
+				m_CurrentString.clear();
+
+			}
+			else
+			{
+				if(!(std::isspace(current) && m_CurrentString.empty()))
+					m_CurrentString += current;
+			}
 
 
 		}
-		CLEAR_VERIFY(detectedEnd, "Expected ] after index call");
+
+
+
+		CLEAR_VERIFY(detectedEnd, "Expected " , end );
+
+		return argList;
+
+	}
+
+
+	void Parser::_IndexOperatorState() {
+		char current = _GetNextChar();
+		CLEAR_VERIFY(current == '[', "index op should start with [");
+
+
+		auto parsed= _ParseBrackets(']',false);
+		CLEAR_VERIFY(!parsed.empty(), "Expected value inside brackets");
+
 		Parser subParser;
 		subParser.InitParser();
-		subParser.m_Buffer = m_CurrentString;
+		subParser.m_Buffer = parsed[0];
 		subParser.m_Buffer+=" ";
 		ProgramInfo info = subParser.ParseProgram();
 		for (const Token& tok :info.Tokens) {
@@ -491,6 +472,10 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
+	Token Parser::_CreateToken(const TokenType tok, const std::string &data) {
+		return Token{ .TokenType = tok, .Data = data };
+	}
+
 
 	void Parser::_ParsingRValueState()
 	{
@@ -544,40 +529,34 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_ParseArrayDecleration() {
-		char current = _GetNextChar();
-		while (current != ']' && current != '\n' && current != '\0')
-		{
-			if (std::isdigit(current)) {
-				m_CurrentString += current;
-			}
-			else if ('.' == current && m_CurrentString.empty()) {
-				m_CurrentString+= current;
-				m_CurrentString += _GetNextChar();
-				m_CurrentString += _GetNextChar();
-				CLEAR_VERIFY(m_CurrentString == "...","Expected 3 dots for static array")
-
-			}
-			else {
-				// I cba but add specific errors for newline chars and anything else
-				CLEAR_LOG_ERROR("Unexpected character only expected numbers in array size declaration");
-				CLEAR_HALT();
-			}
-			current = _GetNextChar();
+	void Parser::_ParseArrayDecleration(ArrayDeclarationReturn& output) {
+		auto parsed = _ParseBrackets(']',false);
+		m_CurrentString.clear();
+		if (!parsed.empty()) {
+			m_CurrentString = parsed.at(0);
 		}
+
 		if (m_CurrentString.empty()) {
-			_PushToken(TokenType::DynamicArrayDef,"");
+			output.Tokens.push_back(_CreateToken(TokenType::DynamicArrayDef,""));
 		}else {
-			_PushToken(TokenType::StaticArrayDef,m_CurrentString);
+			if (m_CurrentString.find_first_not_of("0123456789") == std::string::npos) {
+				output.Tokens.push_back(_CreateToken(TokenType::StaticArrayDef,m_CurrentString));
+			}
+			else if (m_CurrentString == "...") {
+				output.Tokens.push_back(_CreateToken(TokenType::StaticArrayDef,"..."));
+			}else {
+				output.error = true;
+				output.errormsg = "Array declaration syntax error only expected numbers or ...";
+			}
 		}
 		m_CurrentString.clear();
-		current = _GetNextChar();
+		char current = _GetNextChar();
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
 		CLEAR_VERIFY(current != ']',"Attempting to close unopened array decleration")
 		if (current == '[') {
-			_ParseArrayDecleration();
+			_ParseArrayDecleration(output);
 		}else  {
 			if (current != '\0')
 				_Backtrack();
@@ -604,8 +583,11 @@ namespace clear
 	void Parser::_VariableNameState() {
 		char current = _GetNextChar();
 
-		//want to ignore all spaces in between type and variable
 		current = _SkipSpaces();
+		bool CompilerType = g_DataTypes.contains(_GetLastToken().Data);
+		bool variableState = false;
+		bool bracketState = false;
+		int prevTokenIndex = 0;
 		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
 			_Backtrack();
 			m_CurrentState = ParserState::Default;
@@ -619,6 +601,7 @@ namespace clear
 		}
 
 		if (current == '*') {
+			variableState = true;
 			_Backtrack();
 			_ParsePointerDecleration();
 			current = _GetNextChar();
@@ -626,19 +609,34 @@ namespace clear
 
 
 		m_CurrentString.clear();
+		ArrayDeclarationReturn ArrayDeclarations;
 		if (current == '[') {
-			_ParseArrayDecleration();
+			prevTokenIndex = m_CurrentTokenIndex;
+
+			_ParseArrayDecleration(ArrayDeclarations);
 			current = _GetNextChar();
+			bracketState = true;
 		}
 		m_CurrentString.clear();
-		if (current == '\n' || current == '\0') {
+		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
+			CLEAR_VERIFY(!variableState, "Expected variable name after type declaration");
+			CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
+			if (bracketState) {
+				m_CurrentTokenIndex = prevTokenIndex;
+			}
 			m_CurrentState = ParserState::Default;
 			_Backtrack();
 			return;
 		}
 
+
+
 		int commas = 0;
 		int vars = 0;
+		CLEAR_VERIFY(!ArrayDeclarations.error,ArrayDeclarations.errormsg);
+		for (auto tok :ArrayDeclarations.Tokens) {
+			m_ProgramInfo.Tokens.push_back(tok);
+		}
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
