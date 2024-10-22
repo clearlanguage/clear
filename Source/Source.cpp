@@ -11,7 +11,6 @@ using namespace clear;
 
 int main()
 {
-
     std::filesystem::path current = __FILE__;
     std::filesystem::current_path(current.parent_path());
 

@@ -112,8 +112,8 @@ namespace clear {
         template<typename ...Args>
         static Ref<Type> Create(Args&&... args)
         {
-            size_t* refCount = new size_t(0);
             Type* object = new Type(std::forward<Args>(args)...);
+            size_t* refCount = new size_t(0);
 
             return Ref<Type>(object, refCount);
         }
@@ -124,7 +124,7 @@ namespace clear {
             const auto ptr = dynamic_cast<To*>(other.Get());
 
             if (ptr)
-                return Ref<To>(ptr, other.m_RefCount);
+                return Ref<To>(ptr, other.GetRefCount());
 
             return {};
         }
