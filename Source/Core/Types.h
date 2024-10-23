@@ -20,7 +20,7 @@ namespace clear {
 
 	enum class TypeKind
 	{
-		None = 0, RValue, Variable
+		None = 0, RValue, Variable, VariableReference
 	};
 
 
@@ -31,21 +31,18 @@ namespace clear {
 		Greater, GreaterEq, Eq, Assignment
 	};
 	
-	struct ObjectReferenceInfo
-	{
-		llvm::StructType* Struct = nullptr;
-		std::map<std::string, uint32_t> Indices;
-	};
+	struct StructMetaData;
 
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);
 	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
 	extern VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType);
 	extern llvm::Type*	GetLLVMVariableType(VariableType type);
-	extern llvm::Value*	GetLLVMConstant(VariableType type, const std::string& data);
-	extern bool IsTypeIntegral(VariableType type);
 
 	class AbstractType 
 	{
+	public:
+		using MemberType = std::pair<std::string, AbstractType>;
+
 	public:
 		AbstractType() = default;
 		AbstractType(const Token& token);
@@ -53,12 +50,17 @@ namespace clear {
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 
-		static llvm::Value* CastValue(llvm::Value* casting, AbstractType to);
+		static llvm::StructType* GetStructType(const std::string& name);
+		static StructMetaData& GetStructInfo(const std::string& name);
+		static StructMetaData& GetStructMetaDataFromAllocInst(llvm::AllocaInst* alloc);
 
-		inline const VariableType Get() const { return m_Type; };
-		inline const TypeKind GetKind() const { return m_Kind; }
+		static void CreateStructType(const std::string& name, const std::vector<MemberType>& members);
+
+		inline const VariableType Get()				   const { return m_Type; };
+		inline const llvm::Type*  GetLLVMType()		   const { return m_LLVMType; }
+		inline const TypeKind     GetKind()			   const { return m_Kind; }
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
-		inline const llvm::Type*  GetLLVMType() const { return m_LLVMType; }
+
 		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
 
 		const bool IsFloatingPoint() const;
@@ -68,6 +70,7 @@ namespace clear {
 
 		inline operator VariableType() const { return m_Type; }
 		inline operator TypeKind() const { return m_Kind; }
+		inline operator bool() const { return Get() != VariableType::None; }
 
 		inline const bool operator==(const AbstractType& other) const;
 		inline const bool operator!=(const AbstractType& other) const;
@@ -81,5 +84,12 @@ namespace clear {
 		TypeKind m_Kind = TypeKind::None;
 		llvm::Type*  m_LLVMType = nullptr;
 		std::string  m_UserDefinedType = "";
+	};
+
+	struct StructMetaData
+	{
+		llvm::StructType* Struct = nullptr;
+		std::map<std::string, uint32_t> Indices;
+		std::vector<AbstractType> Types;
 	};
 }

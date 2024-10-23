@@ -3,6 +3,7 @@
 #include "Parsing/Tokens.h"
 #include "Core/Types.h"
 #include "Core/Ref.h"
+#include "Core/Value.h"
 
 #include <vector>
 #include <string>
@@ -16,7 +17,7 @@ namespace clear {
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
 		FunctionDecleration, ReturnStatement, 
-		Expression, Struct, FunctionCall
+		Expression, Struct, FunctionCall, StructElement
 	};
 
 
@@ -24,7 +25,7 @@ namespace clear {
 	// ---------------------- BASE -----------------------
 	//
 
-	class ASTNodeBase : public Ref<ASTNodeBase>
+	class ASTNodeBase 
 	{
 	public:
 		ASTNodeBase() = default;
@@ -61,8 +62,7 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		AbstractType m_Type;
-		std::string m_Data;
+		Value m_Constant;
 	};
 
 	//
@@ -172,6 +172,7 @@ namespace clear {
 	private:
 		std::string m_Name;
 		AbstractType m_Type;
+		Value m_Value;
 	};
 
 
@@ -181,7 +182,7 @@ namespace clear {
 	class ASTVariableExpression : public ASTNodeBase
 	{
 	public:
-		ASTVariableExpression(const std::string& name);
+		ASTVariableExpression(const std::list<std::string>& chain);
 		virtual ~ASTVariableExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -190,6 +191,7 @@ namespace clear {
 
 	private:
 		std::string m_Name;
+		std::list<std::string> m_Chain;
 	};
 
 	//
@@ -234,22 +236,16 @@ namespace clear {
 	// ---------------------- STRUCT -----------------------
 	//
 
-	struct Member
-	{
-		AbstractType Field;
-		std::string Name;
-	};
-
 	class ASTStruct : public ASTNodeBase
 	{
 	public:
-		ASTStruct(const std::string& name, const std::vector<Member>& fields);
+		ASTStruct(const std::string& name, const std::vector<AbstractType::MemberType>& fields);
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		std::vector<Member> m_Members;
+		std::vector<AbstractType::MemberType> m_Members;
 		std::string m_Name;
 	};
 

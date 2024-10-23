@@ -3,6 +3,7 @@
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
 #include "Core/Types.h"
+#include "Core/Utils.h"
 
 #include <iostream>
 #include <map>
@@ -10,9 +11,7 @@
 
 namespace clear {
 
-	static std::map<std::string, llvm::AllocaInst*>     s_VariableMap;
-	static std::map<std::string, ObjectReferenceInfo>   s_StructTypes;
-	static std::stack<llvm::IRBuilderBase::InsertPoint> s_InsertPoints;
+	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 	static std::map<std::string, std::vector<Paramater>> s_FunctionToExpectedTypes;
 
 	llvm::Value* ASTNodeBase::Codegen()
@@ -44,13 +43,13 @@ namespace clear {
 		m_Parent.Reset();
 	}
 	ASTNodeLiteral::ASTNodeLiteral(const std::string& data)
-		: m_Data(data), m_Type(data)
+		: m_Constant(data)
 	{
 	}
 
 	llvm::Value* ASTNodeLiteral::Codegen()
 	{
-		return GetLLVMConstant(m_Type, m_Data);
+		return m_Constant.Get();
 	}
 
 	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, AbstractType expectedType)
@@ -74,17 +73,45 @@ namespace clear {
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
+	
+		if (!m_ExpectedType)
+		{
+			auto& str = m_ExpectedType.GetUserDefinedType();
+
+			std::vector<std::string> words = Split(str, '.');
+
+			VariableMetaData& metaData = Value::GetVariableMetaData(words[0]);
+			AbstractType type = metaData.Type;
+
+			for (size_t i = 1; i < words.size(); i++)
+			{
+				StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
+				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+
+				size_t indexToNextType = structMetaData.Indices[words[i]];
+				type = structMetaData.Types[indexToNextType];
+			}
+
+			m_ExpectedType = type;
+		}
+
 		if (llvm::isa<llvm::AllocaInst>(RHS))
 		{
 			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
 			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
 		}
-
-		// Load values if they are alloca instructions
+		else if (RHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer())
+		{
+			RHSRawValue = builder.CreateLoad(RHSRawValue->getType(), RHSRawValue, "ptr_load");
+		}
 		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
 		{
 			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
 			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
+		}
+		else if (LHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer() && m_Expression != BinaryExpressionType::Assignment)
+		{
+			LHSRawValue = builder.CreateLoad(LHSRawValue->getType(), LHSRawValue, "ptr_load");
 		}
 		else if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
 		{
@@ -93,49 +120,11 @@ namespace clear {
 
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
 
-		switch (m_ExpectedType.Get())
-		{
-			case VariableType::Int8:
-			case VariableType::Int16:
-			case VariableType::Int32:
-			case VariableType::Int64:
-			case VariableType::Uint8:
-			case VariableType::Uint16:
-			case VariableType::Uint32:
-			case VariableType::Uint64:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
+		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
-				break;
-			}
-			case VariableType::Float32:
-			case VariableType::Float64:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
-
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
-				break;
-			}
-			case VariableType::Bool:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = AbstractType::CastValue(LHSRawValue, m_ExpectedType);
-
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = AbstractType::CastValue(RHSRawValue, m_ExpectedType);
-
-				break;
-			}
-			case VariableType::None:
-			default:
-				//no special handling just assume the types are compatible
-				break;
-		}
+		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 	}
@@ -237,23 +226,48 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTVariableExpression::ASTVariableExpression(const std::string& name)
-		: m_Name(name)
+	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain)
+		: m_Chain(chain)
 	{
 	}
 
 	llvm::Value* ASTVariableExpression::Codegen()
 	{
-		if (!s_VariableMap.contains(m_Name))
-		{
-			std::cout << "no variable of name " << m_Name << " exists" << std::endl;
-			return nullptr;
-		}
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
 
-		llvm::AllocaInst* value = s_VariableMap.at(m_Name);
+		llvm::AllocaInst* value = Value::GetVariableMetaData(*m_Chain.begin()).Alloca;
+
 		CLEAR_VERIFY(value, "value was nullptr");
 
-		return value;
+		m_Chain.pop_front();
+
+		if(m_Chain.empty())
+			return value;
+
+		StructMetaData* currentRef = &AbstractType::GetStructMetaDataFromAllocInst(value);
+
+		std::vector<llvm::Value*> indices = 
+		{
+			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
+		};
+
+		for (;;)
+		{
+			size_t currentIndex = currentRef->Indices[m_Chain.front()];
+			indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
+			m_Chain.pop_front();
+
+			if (m_Chain.empty())
+				break;
+
+			currentRef = &AbstractType::GetStructInfo(currentRef->Types[currentIndex].GetUserDefinedType());
+
+			if (!currentRef)
+				break;
+		}
+
+		return builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_ptr");
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
@@ -262,30 +276,9 @@ namespace clear {
 	}
 
 	llvm::Value* ASTVariableDecleration::Codegen()
-	{
-		if (s_VariableMap.contains(m_Name))
-		{
-			std::cout << "variable of the name " << m_Name << " exists" << std::endl;
-			return nullptr;
-		}
-
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		if (m_Type.Get() == VariableType::UserDefinedType)
-		{
-			auto& structType = m_Type.GetUserDefinedType();
-
-			auto value = builder.CreateAlloca(s_StructTypes[structType].Struct, nullptr, m_Name);
-			s_VariableMap[m_Name] = value;
-
-			return value;
-		}
-
-		auto variableType = m_Type.Get();
-		auto value = builder.CreateAlloca(GetLLVMVariableType(variableType), nullptr, m_Name);
-		s_VariableMap[m_Name] = value;
-		
-		return value;
+	{		
+		m_Value = Value(m_Type, m_Name);
+		return m_Value.Get();
 	}
 
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& Paramaters)
@@ -342,11 +335,14 @@ namespace clear {
 		builder.SetInsertPoint(entry);
 
 		uint32_t k = 0;
+
 		for (const auto& Paramater : m_Paramaters)
 		{
 			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramater.Type), nullptr, Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
-			s_VariableMap[m_Name + "::" + Paramater.Name] = argAlloc;
+			
+			Value::RegisterVariable(argAlloc, m_Name + "::" + Paramater.Name, Paramater.Type);
+
 			k++;
 		}
 
@@ -357,7 +353,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			s_VariableMap.erase(m_Name + "::" + Paramater.Name);
+			Value::RemoveVariable(m_Name + "::" + Paramater.Name);
 		}
 
 		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
@@ -400,7 +396,7 @@ namespace clear {
 				continue;
 			}
 
-			Ref<ASTBinaryExpression> binExp = ASTBinaryExpression::DynamicCast<ASTBinaryExpression>(child);
+			Ref<ASTBinaryExpression> binExp = Ref<ASTBinaryExpression>::DynamicCast<ASTBinaryExpression>(child);
 
 			binExp->PushChild(stack.top());
 			stack.pop();
@@ -414,38 +410,14 @@ namespace clear {
 		return stack.top()->Codegen();
 	}
 
-	ASTStruct::ASTStruct(const std::string& name, const std::vector<Member>& fields)
+	ASTStruct::ASTStruct(const std::string& name, const std::vector<AbstractType::MemberType>& fields)
 		: m_Name(name), m_Members(fields)
 	{
 	}
 
 	llvm::Value* ASTStruct::Codegen()
 	{
-		std::vector<llvm::Type*> types;
-
-		ObjectReferenceInfo info;
-		uint32_t k = 0;
-
-		for (auto& member : m_Members)
-		{
-			if (member.Field.Get() == VariableType::UserDefinedType)
-			{
-				auto& structName = member.Field.GetUserDefinedType();
-
-				CLEAR_VERIFY(s_StructTypes.contains(structName), "struct hasn't been declared");
-				types.push_back(s_StructTypes[structName].Struct);
-			}
-			else
-			{
-				auto& variableType = member.Field;
-				types.push_back(GetLLVMVariableType(variableType));
-			}
-
-			info.Indices[member.Name] = k++;
-		}
-
-		info.Struct = llvm::StructType::create(types);
-		s_StructTypes[m_Name] = info;
+		AbstractType::CreateStructType(m_Name, m_Members);
 
 		return nullptr;
 	}
@@ -461,6 +433,7 @@ namespace clear {
 
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
+		auto& context = *LLVM::Backend::GetContext();
 
 		auto& expected = s_FunctionToExpectedTypes.at(m_Name);
 
@@ -470,10 +443,10 @@ namespace clear {
 			if(argument.Field.GetKind() == TypeKind::RValue)
 			{
 				auto& variableType = argument.Field;
-				auto value = GetLLVMConstant(variableType, argument.Data);
+				auto value = Value::GetConstant(variableType, argument.Data);
 
 				if (variableType.Get() != expected[k].Type.Get())
-					value = AbstractType::CastValue(value, expected[k].Type);
+					value = Value::CastValue(value, expected[k].Type);
 
 				args.push_back(value);
 			}
@@ -481,14 +454,51 @@ namespace clear {
 			{
 				auto& variableName = argument.Data;
 				auto& variableType = argument.Field;
-				auto& variable = s_VariableMap.at(variableName);
 
-				llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
 
-				if (variableType.Get() != expected[k].Type.Get())
-					value = AbstractType::CastValue(value, expected[k].Type);
+				std::vector<std::string> chain = Split(variableName, '.');
 
-				args.push_back(value);
+				auto& metaData = Value::GetVariableMetaData(chain[0]);
+				auto variable  = metaData.Alloca;
+
+				if (chain.size() == 1)
+				{
+					llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
+
+					if (variableType.Get() != expected[k].Type.Get())
+						value = Value::CastValue(value, expected[k].Type);
+
+					args.push_back(value);
+				}
+				else
+				{
+					AbstractType currentType = metaData.Type;
+
+					std::vector<llvm::Value*> indices =
+					{
+						llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
+					};
+
+					for (size_t i = 1; i < chain.size(); i++)
+					{
+						auto& structMetaData = AbstractType::GetStructInfo(currentType.GetUserDefinedType());
+
+						size_t currentIndex = structMetaData.Indices[chain[i]];
+						indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
+
+						currentType = structMetaData.Types[currentIndex];
+					}
+
+
+					llvm::Value* elementPointer = builder.CreateGEP(variable->getAllocatedType(), variable, indices, "struct_ptr");
+
+					llvm::Value* value = builder.CreateLoad(currentType.GetLLVMType(), elementPointer);
+
+					if (currentType.Get() != expected[k].Type.Get())
+						value = Value::CastValue(value, expected[k].Type);
+
+					args.push_back(value);
+				}
 			}
 			k++;
 		}

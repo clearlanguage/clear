@@ -20,16 +20,41 @@ namespace clear {
         return s;
     }
 
-    std::vector<std::string> Split(const std::string& str) 
-    {
-        std::istringstream iss(str);
-        std::vector<std::string> words;
-        std::string word;
-        while (iss >> word) 
-            words.push_back(word);
-        
-        return words;
 
+    std::vector<std::string> Split(const std::string& str, const std::string& delimiter)
+    {
+        std::vector<std::string> words;
+
+        size_t position = 0;
+        size_t start = 0;
+
+        while ((position = str.find(delimiter, start)) != std::string::npos)
+        {
+            words.push_back(str.substr(start, position - start));  
+            start = position + delimiter.length();  
+        }
+
+        words.push_back(str.substr(start));
+
+        return words;
+    }
+
+    std::vector<std::string> Split(const std::string& str, char delimiter)
+    {
+        std::vector<std::string> words;
+
+        size_t position = 0;
+        size_t start = 0;
+
+        while ((position = str.find_first_of(delimiter, start)) != std::string::npos)
+        {
+            words.push_back(str.substr(start, position - start));
+            start = position + 1;
+        }
+
+        words.push_back(str.substr(start));
+
+        return words;
     }
 
     int HexStringToInteger(const std::string& hexString)
