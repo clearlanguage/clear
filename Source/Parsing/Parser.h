@@ -18,9 +18,10 @@ namespace clear
 		std::vector<Token> Tokens;
 	};
 
-	struct ArrayDeclarationReturn {
+	struct ArrayDeclarationReturn 
+	{
 		std::vector<Token> Tokens;
-		bool error;
+		bool error = false;
 		std::string errormsg;
 	};
 
