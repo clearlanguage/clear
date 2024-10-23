@@ -25,6 +25,16 @@ namespace clear {
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
         {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
         {"&",{.NextState = ParserState::RValue, .TokenToPush = TokenType::AddressOp}},
+        {"^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseXor}},
+        {"|",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseOr}},
+        {"~",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseNot}},
+        {"<<",{.NextState = ParserState::RValue, .TokenToPush = TokenType::LeftShift}},
+        {">>",{.NextState = ParserState::RValue, .TokenToPush = TokenType::RightShift}},
+        {"*=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MultiplyAssign}},
+        {"/=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivideAssign}},
+        {"%=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModuloAssign}},
+        {"+=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::PlusAssign}},
+        {"-=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MinusAssign}},
     };
 
     const KeyWordMapType g_KeyWordMap = {
@@ -128,6 +138,16 @@ namespace clear {
             case TokenType::CharType: return "CharType";
             case TokenType::Declaration: return "Declaration";
             case TokenType::Defer: return "Defer";
+            case TokenType::BitwiseNot: return "BitwiseNot";
+            case TokenType::BitwiseOr: return "BitwiseOr";
+            case TokenType::BitwiseXor: return "BitwiseXor";
+            case TokenType::DivideAssign: return "DivideAssign";
+            case TokenType::LeftShift: return "LeftShift";
+            case TokenType::RightShift: return "RightShift";
+            case TokenType::MinusAssign: return "MinusAssign";
+            case TokenType::PlusAssign: return "PlusAssign";
+            case TokenType::ModuloAssign: return "ModuloAssign";
+            case TokenType::MultiplyAssign: return "MultiplyAssign";
 
             default:
                 break;
