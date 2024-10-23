@@ -64,6 +64,7 @@ namespace clear
 		void _ParseChar();
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
+		void _ParseList();
 		std::vector<std::string> _ParseBrackets(char end,bool commas);
 
 		void _ParseArrayDecleration(ArrayDeclarationReturn& output);

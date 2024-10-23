@@ -54,7 +54,7 @@ namespace clear {
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
     };
 
-    const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','}'}};
+    const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
     const std::set<char> g_Openers = {'(','{','['};
 
     const std::set<std::string> g_DataTypes = {

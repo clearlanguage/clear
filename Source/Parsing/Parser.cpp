@@ -326,6 +326,11 @@ namespace clear
 			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened string");
 			_ParseString();
 		}
+		if (current == '{') {
+			CLEAR_VERIFY(m_CurrentString.empty(), "Cannot start list during");
+			_ParseList();
+
+		}
 		if (current == '\'') {
 			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened char");
 			_ParseChar();
@@ -510,6 +515,8 @@ namespace clear
 		if (current == '"') //strings
 		{
 			_ParseString();
+		}else if(current == '{') {
+			_ParseList();
 		}
 		else if (std::isdigit(current) || current == '-') // postive/negative numbers
 		{
@@ -952,6 +959,31 @@ namespace clear
 		if (!IsSpace(current))
 			_Backtrack();
 	}
+
+	void Parser::_ParseList() {
+		auto list = _ParseBrackets('}',true);
+		_PushToken(TokenType::OpenBracket,"{");
+
+ 		for (const std::string& arg : list) {
+			Parser subParser;
+			subParser.InitParser();
+			subParser.m_Buffer = arg;
+			subParser.m_Buffer+=" ";
+			ProgramInfo info = subParser.ParseProgram();
+			for (const Token& tok :info.Tokens) {
+				m_ProgramInfo.Tokens.push_back(tok);
+			}
+			_PushToken(TokenType::Comma, "");
+		}
+		if (_GetLastToken().TokenType == TokenType::Comma) {
+			m_ProgramInfo.Tokens.pop_back();
+		}
+
+
+		_PushToken(TokenType::CloseBracket,"}");
+		m_CurrentState = ParserState::Default;
+	}
+
 
 	void Parser::_ParseChar() {
 		char current = _GetNextChar();
