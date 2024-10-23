@@ -329,7 +329,6 @@ namespace clear
 		if (current == '{') {
 			CLEAR_VERIFY(m_CurrentString.empty(), "Cannot start list during");
 			_ParseList();
-
 		}
 		if (current == '\'') {
 			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened char");
@@ -383,7 +382,7 @@ namespace clear
 		{
 			m_CurrentState = ParserState::Indentation;
 			m_CurrentString.clear();
-			if (current == '\n' && m_BracketStack.empty())
+			if (current == '\n' && m_BracketStack.empty() && _GetLastToken().TokenType != TokenType::EndLine)
 				_PushToken(TokenType::EndLine, "");
 
 
@@ -572,17 +571,19 @@ namespace clear
 
 	}
 
-	void Parser::_ParsePointerDecleration() {
+	int Parser::_ParsePointerDecleration() {
 		char current = _GetNextChar();
+		int pointers = 0;
 		while (current == '*') {
 			current = _GetNextChar();
-			_PushToken(TokenType::PointerDef,"*");
+			pointers++;
 		}
 		current = _SkipSpaces();
 		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
 		if (!IsSpace(current) && current != '\0') {
 			_Backtrack();
 		}
+		return pointers;
 		
 	}
 
@@ -594,6 +595,7 @@ namespace clear
 		bool CompilerType = g_DataTypes.contains(_GetLastToken().Data);
 		bool variableState = false;
 		bool bracketState = false;
+		int pointers = 0;
 		int prevTokenIndex = 0;
 		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
 			_Backtrack();
@@ -608,9 +610,10 @@ namespace clear
 		}
 
 		if (current == '*') {
+			prevTokenIndex = m_CurrentTokenIndex;
 			variableState = true;
 			_Backtrack();
-			_ParsePointerDecleration();
+			pointers = _ParsePointerDecleration();
 			current = _GetNextChar();
 		}
 
@@ -626,12 +629,12 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
+			CLEAR_VERIFY(!(variableState && bracketState) , "Expected variable name after type declaration");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
-				CLEAR_VERIFY(!variableState, "Expected variable name after type declaration");
 				CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
 			}
-			if (bracketState) {
+			if (bracketState || variableState) {
 				m_CurrentTokenIndex = prevTokenIndex;
 			}
 			m_CurrentState = ParserState::Default;
@@ -644,6 +647,8 @@ namespace clear
 		int commas = 0;
 		int vars = 0;
 		CLEAR_VERIFY(!ArrayDeclarations.error,ArrayDeclarations.errormsg);
+		for (int i = 0; i < pointers; i++) {
+		}
 		for (auto tok :ArrayDeclarations.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}

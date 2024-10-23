@@ -68,7 +68,7 @@ namespace clear
 		std::vector<std::string> _ParseBrackets(char end,bool commas);
 
 		void _ParseArrayDecleration(ArrayDeclarationReturn& output);
-		void _ParsePointerDecleration();
+		int _ParsePointerDecleration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
 		bool _IsLineClosed();
