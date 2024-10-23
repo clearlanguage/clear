@@ -7,7 +7,8 @@ namespace clear {
 
     extern bool IsSpace(char c);
     extern std::string Str(char c);
-    extern std::vector<std::string> Split(const std::string& str);
+    extern std::vector<std::string> Split(const std::string& str, const std::string& delimiter);
+    extern std::vector<std::string> Split(const std::string& str, char delimiter = ' ');
     extern bool IsVarNameChar(char c);
     extern bool IsValidNumber(const std::string_view& str);
     extern int BinaryStringToInteger(const std::string& binaryString);

@@ -7,6 +7,13 @@
 
 namespace clear {
 
+	struct VariableMetaData
+	{
+		llvm::AllocaInst* Alloca = nullptr;
+		AbstractType Type;
+		std::string Name;
+	};
+
 	//deals with constants, variables declerations and references
 	class Value 
 	{
@@ -21,11 +28,11 @@ namespace clear {
 		static llvm::Value*		 CastValue(llvm::Value* value, AbstractType to);
 		static llvm::Value*		 GetConstantString(const std::string& data);
 		static llvm::Value*		 GetConstant(const AbstractType& type, const std::string& data);
-		static llvm::AllocaInst* GetVariable(const std::string& name);
+		static VariableMetaData& GetVariableMetaData(const std::string& name);
 
 		static Ref<Value> Cast(const Ref<Value>& casting, AbstractType to);
 
-		static void RegisterVariable(llvm::AllocaInst* alloc, const std::string& name);
+		static void RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const AbstractType& type);
 		static void RemoveVariable(const std::string& name);
 
 		inline const llvm::Value*	   Get()	   const { return m_Value; }

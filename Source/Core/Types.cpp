@@ -6,7 +6,7 @@
 
 namespace clear {
 
-	static std::map<std::string, StructMetaData>   s_StructTypes;
+	static std::map<std::string, StructMetaData>  s_StructTypes;
 
 	llvm::Type* GetLLVMVariableType(VariableType type)
 	{

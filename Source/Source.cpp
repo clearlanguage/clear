@@ -1,6 +1,7 @@
 ﻿#include "Parsing/Parser.h"
 #include "AST/AST.h"
 #include "Core/Log.h"
+#include "Core/Utils.h"
 
 #include "API/LLVM/LLVMBackend.h"
 

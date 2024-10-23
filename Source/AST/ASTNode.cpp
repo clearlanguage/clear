@@ -3,6 +3,7 @@
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
 #include "Core/Types.h"
+#include "Core/Utils.h"
 
 #include <iostream>
 #include <map>
@@ -89,51 +90,34 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
+		if (!m_ExpectedType)
+		{
+			auto& str = m_ExpectedType.GetUserDefinedType();
+
+			std::vector<std::string> words = Split(str, '.');
+
+			VariableMetaData& metaData = Value::GetVariableMetaData(words[0]);
+			AbstractType type = metaData.Type;
+
+			for (size_t i = 1; i < words.size(); i++)
+			{
+				StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
+				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+
+				size_t indexToNextType = structMetaData.Indices[words[i]];
+				type = structMetaData.Types[indexToNextType];
+			}
+
+			m_ExpectedType = type;
+		}
+
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
 
-		switch (m_ExpectedType.Get())
-		{
-			case VariableType::Int8:
-			case VariableType::Int16:
-			case VariableType::Int32:
-			case VariableType::Int64:
-			case VariableType::Uint8:
-			case VariableType::Uint16:
-			case VariableType::Uint32:
-			case VariableType::Uint64:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
+		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
-				break;
-			}
-			case VariableType::Float32:
-			case VariableType::Float64:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
-
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
-				break;
-			}
-			case VariableType::Bool:
-			{
-				if (LHSRawValue->getType() != expectedLLVMType)
-					LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
-
-				if (RHSRawValue->getType() != expectedLLVMType)
-					RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
-
-				break;
-			}
-			case VariableType::None:
-			default:
-				//no special handling just assume the types are compatible
-				break;
-		}
+		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 	}
@@ -245,7 +229,7 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 
-		llvm::AllocaInst* value = Value::GetVariable(*m_Chain.begin());
+		llvm::AllocaInst* value = Value::GetVariableMetaData(*m_Chain.begin()).Alloca;
 
 		CLEAR_VERIFY(value, "value was nullptr");
 
@@ -351,7 +335,7 @@ namespace clear {
 			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramater.Type), nullptr, Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
 			
-			Value::RegisterVariable(argAlloc, m_Name + "::" + Paramater.Name);
+			Value::RegisterVariable(argAlloc, m_Name + "::" + Paramater.Name, Paramater.Type);
 
 			k++;
 		}
@@ -463,7 +447,7 @@ namespace clear {
 			{
 				auto& variableName = argument.Data;
 				auto& variableType = argument.Field;
-				auto variable = Value::GetVariable(variableName);
+				auto variable = Value::GetVariableMetaData(variableName).Alloca;
 
 				llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
 

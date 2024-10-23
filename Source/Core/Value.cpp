@@ -5,7 +5,7 @@
 
 namespace clear {
 
-	static std::map<std::string, llvm::AllocaInst*>     s_VariableMap;
+	static std::map<std::string, VariableMetaData> s_VariableMetaData;
 
 	static size_t s_StringCount = 0;
 
@@ -34,19 +34,20 @@ namespace clear {
 
 	}
 
-	llvm::AllocaInst* Value::GetVariable(const std::string& name)
+	VariableMetaData& Value::GetVariableMetaData(const std::string& name)
 	{
-		return s_VariableMap.contains(name) ? s_VariableMap.at(name) : nullptr;
+		static VariableMetaData s_NullVariableMetaData;
+		return s_VariableMetaData.contains(name) ? s_VariableMetaData.at(name) : s_NullVariableMetaData;
 	}
 
-	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name)
+	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const AbstractType& type)
 	{
-		s_VariableMap[name] = alloc;
+		s_VariableMetaData[name] = { .Alloca = alloc, .Type = type, .Name = name };
 	}
 
 	void Value::RemoveVariable(const std::string& name)
 	{
-		s_VariableMap.erase(name);
+		s_VariableMetaData.erase(name);
 	}
 
 	Value::Value(const AbstractType& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value)
@@ -99,14 +100,14 @@ namespace clear {
 		{
 			auto& builder = *LLVM::Backend::GetBuilder();
 
-			CLEAR_VERIFY(!s_VariableMap.contains(m_Data), "variable already declared");
+			CLEAR_VERIFY(!s_VariableMetaData.contains(m_Data), "variable already declared");
 
 			if (m_Type.Get() == VariableType::UserDefinedType)
 			{
 				auto& structType = m_Type.GetUserDefinedType();
 
 				auto value = builder.CreateAlloca(AbstractType::GetStructType(structType), nullptr, m_Data);
-				s_VariableMap[m_Data] = value;
+				s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
 
 				m_Value = value;
 			}
@@ -114,16 +115,16 @@ namespace clear {
 			{
 				auto variableType = m_Type.Get();
 				auto value = builder.CreateAlloca(GetLLVMVariableType(variableType), nullptr, m_Data);
-				s_VariableMap[m_Data] = value;
+				s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
 
 				m_Value = value;
 			}
 		}
 		else if (m_Type.GetKind() == TypeKind::VariableReference)
 		{
-			CLEAR_VERIFY(s_VariableMap.contains(m_Data), "variable does not exist");
+			CLEAR_VERIFY(s_VariableMetaData.contains(m_Data), "variable does not exist");
 
-			llvm::AllocaInst* value = s_VariableMap.at(m_Data);
+			llvm::AllocaInst* value = s_VariableMetaData.at(m_Data).Alloca;
 			m_Value = value;
 		}
 		else

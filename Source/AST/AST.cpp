@@ -98,8 +98,6 @@ namespace clear {
 							}
 							case TokenType::VariableReference:
 							{
-								if()
-
 								arg.Field = AbstractType(tokens[i], TypeKind::Variable);
 								arg.Data = currentRoot->GetName() + "::" + tokens[i].Data;
 
@@ -203,7 +201,7 @@ namespace clear {
 					chain.push_back(previous.Data);
 					chain.front() = currentRoot->GetName() + "::" + chain.front();
 
-					AbstractType type = _RetrieveAssignmentType(tokens, i);
+					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot->GetName(), i);
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
@@ -332,30 +330,52 @@ namespace clear {
 		return list;
 	}
 
-	std::list<std::string> AST::_RetrieveForwardChain(const std::vector<Token>& tokens, size_t current)
+	std::list<std::string> AST::_RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current)
 	{
-		return std::list<std::string>();
+		std::list<std::string> list;
+
+		//(assuming token is currently a variable reference)
+
+		current++;
+
+		while (current < tokens.size() && tokens[current].TokenType == TokenType::DotOp)
+		{
+			current++;
+			list.push_back(tokens[current].Data);
+			current++;
+		}
+
+		return list;
 	}
 
-	AbstractType AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, size_t current)
+	AbstractType AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
 	{
-		current--;
+		current -= 1;
 
 		while (current > 0 && 
 			   GetVariableTypeFromTokenType(tokens[current].TokenType) != VariableType::None || 
-			   tokens[current].TokenType == TokenType::EndLine)
+			   tokens[current].TokenType == TokenType::VariableReference || 
+			   tokens[current].TokenType == TokenType::DotOp)
 		{
 			current--;
 		}
 
+
 		if (tokens[current].TokenType == TokenType::EndLine)
 		{
-			current++;
+			while (tokens[current].TokenType == TokenType::EndLine)
+				current++;
 
-			StructMetaData& metaData = AbstractType::GetStructInfo(tokens[current].Data);
-			CLEAR_VERIFY(metaData.Struct, "invalid type");
+			size_t currentCopy = current;
+			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
 
-			return AbstractType(VariableType::UserDefinedType, TypeKind::VariableReference, tokens[current].Data);
+			std::string concatenated = currentFunctionName + "::" + tokens[current].Data;
+
+			for (auto& str : ls)
+				concatenated += "." + str;
+
+			//need to find the type later when variable has been declared so for now just retrieve the chain
+			return AbstractType(VariableType::None, TypeKind::VariableReference, concatenated);
 		}
 
 		return AbstractType(tokens[current]);
