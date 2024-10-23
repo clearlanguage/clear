@@ -619,8 +619,11 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			CLEAR_VERIFY(!variableState, "Expected variable name after type declaration");
-			CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
+			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
+
+				CLEAR_VERIFY(!variableState, "Expected variable name after type declaration");
+				CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
+			}
 			if (bracketState) {
 				m_CurrentTokenIndex = prevTokenIndex;
 			}
@@ -725,7 +728,6 @@ namespace clear
 		if (current != ')')
 			_Backtrack();
 	}
-
 
 	void Parser::_FunctionNameState() 
 	{
