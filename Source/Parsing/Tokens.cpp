@@ -35,6 +35,7 @@ namespace clear {
         {"%=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModuloAssign}},
         {"+=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::PlusAssign}},
         {"-=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MinusAssign}},
+        {";", {.NextState = ParserState::Default,.TokenToPush=TokenType::EndLine}}
     };
 
     const KeyWordMapType g_KeyWordMap = {
