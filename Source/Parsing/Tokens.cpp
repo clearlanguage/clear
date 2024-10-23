@@ -19,7 +19,7 @@ namespace clear {
         {">=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
         {"...", {.NextState = ParserState::Default, .TokenToPush = TokenType::Ellipsis}},
          {"!", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Not}},
-        {"->", {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::Arrow}},
+        {"->", {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::RightArrow}},
         {".",{.NextState = ParserState::RValue, .TokenToPush = TokenType::DotOp}},
         {"//",{.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
@@ -35,7 +35,9 @@ namespace clear {
         {"%=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModuloAssign}},
         {"+=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::PlusAssign}},
         {"-=", {.NextState = ParserState::RValue, .TokenToPush = TokenType::MinusAssign}},
-        {";", {.NextState = ParserState::Default,.TokenToPush=TokenType::EndLine}}
+        {";", {.NextState = ParserState::Default,.TokenToPush=TokenType::EndLine}},
+        {"<-",{.NextState = ParserState::Default, .TokenToPush=TokenType::LeftArrow}}
+
     };
 
     const KeyWordMapType g_KeyWordMap = {
@@ -118,7 +120,7 @@ namespace clear {
             case TokenType::EndFunctionParameters: return "EndFunctionParameters";
             case TokenType::StartFunctionParameters: return "StartFunctionParameters";
             case TokenType::FunctionType: return "FunctionType";
-            case TokenType::Arrow: return "Arrow";
+            case TokenType::RightArrow: return "RightArrow";
             case TokenType::Lambda: return "Lambda";
             case TokenType::VariableReference: return "VariableReference";
             case TokenType::Struct: return "Struct";
@@ -149,6 +151,7 @@ namespace clear {
             case TokenType::PlusAssign: return "PlusAssign";
             case TokenType::ModuloAssign: return "ModuloAssign";
             case TokenType::MultiplyAssign: return "MultiplyAssign";
+            case TokenType::LeftArrow: return "LeftArrow";
 
             default:
                 break;

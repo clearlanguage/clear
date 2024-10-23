@@ -14,9 +14,9 @@ namespace clear {
         Bool, Float32Type, Float64Type, RValueNumber, RValueString, VariableName, StringType,
         Assignment, MulOp, AddOp, DivOp, SubOp, ModOp, OpenBracket, CloseBracket, BooleanData, ConditionalIf,
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
-        StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,Arrow,FunctionType,
+        StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,RightArrow,FunctionType,
         Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp,CharType,Declaration,Defer,
-        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign
+        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow
     };
 
     enum class ParserState
