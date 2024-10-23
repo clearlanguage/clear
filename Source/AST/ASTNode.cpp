@@ -73,23 +73,7 @@ namespace clear {
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
-		if (llvm::isa<llvm::AllocaInst>(RHS))
-		{
-			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
-			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
-		}
-
-		// Load values if they are alloca instructions
-		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
-		{
-			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
-			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
-		}
-		else if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
-		{
-			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
-		}
-
+	
 		if (!m_ExpectedType)
 		{
 			auto& str = m_ExpectedType.GetUserDefinedType();
@@ -109,6 +93,29 @@ namespace clear {
 			}
 
 			m_ExpectedType = type;
+		}
+
+		if (llvm::isa<llvm::AllocaInst>(RHS))
+		{
+			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
+			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
+		}
+		else if (RHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer())
+		{
+			RHSRawValue = builder.CreateLoad(RHSRawValue->getType(), RHSRawValue, "ptr_load");
+		}
+		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
+		{
+			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
+			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
+		}
+		else if (LHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer() && m_Expression != BinaryExpressionType::Assignment)
+		{
+			LHSRawValue = builder.CreateLoad(LHSRawValue->getType(), LHSRawValue, "ptr_load");
+		}
+		else if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
+		{
+			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
@@ -239,7 +246,6 @@ namespace clear {
 			return value;
 
 		StructMetaData* currentRef = &AbstractType::GetStructMetaDataFromAllocInst(value);
-		size_t totalIndex = 0;
 
 		std::vector<llvm::Value*> indices = 
 		{
@@ -427,6 +433,7 @@ namespace clear {
 
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
+		auto& context = *LLVM::Backend::GetContext();
 
 		auto& expected = s_FunctionToExpectedTypes.at(m_Name);
 
@@ -447,14 +454,51 @@ namespace clear {
 			{
 				auto& variableName = argument.Data;
 				auto& variableType = argument.Field;
-				auto variable = Value::GetVariableMetaData(variableName).Alloca;
 
-				llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
 
-				if (variableType.Get() != expected[k].Type.Get())
-					value = Value::CastValue(value, expected[k].Type);
+				std::vector<std::string> chain = Split(variableName, '.');
 
-				args.push_back(value);
+				auto& metaData = Value::GetVariableMetaData(chain[0]);
+				auto variable  = metaData.Alloca;
+
+				if (chain.size() == 1)
+				{
+					llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
+
+					if (variableType.Get() != expected[k].Type.Get())
+						value = Value::CastValue(value, expected[k].Type);
+
+					args.push_back(value);
+				}
+				else
+				{
+					AbstractType currentType = metaData.Type;
+
+					std::vector<llvm::Value*> indices =
+					{
+						llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
+					};
+
+					for (size_t i = 1; i < chain.size(); i++)
+					{
+						auto& structMetaData = AbstractType::GetStructInfo(currentType.GetUserDefinedType());
+
+						size_t currentIndex = structMetaData.Indices[chain[i]];
+						indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
+
+						currentType = structMetaData.Types[currentIndex];
+					}
+
+
+					llvm::Value* elementPointer = builder.CreateGEP(variable->getAllocatedType(), variable, indices, "struct_ptr");
+
+					llvm::Value* value = builder.CreateLoad(currentType.GetLLVMType(), elementPointer);
+
+					if (currentType.Get() != expected[k].Type.Get())
+						value = Value::CastValue(value, expected[k].Type);
+
+					args.push_back(value);
+				}
 			}
 			k++;
 		}

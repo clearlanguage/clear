@@ -98,10 +98,17 @@ namespace clear {
 							}
 							case TokenType::VariableReference:
 							{
-								arg.Field = AbstractType(tokens[i], TypeKind::Variable);
+								arg.Field = AbstractType(tokens[i], TypeKind::VariableReference);
 								arg.Data = currentRoot->GetName() + "::" + tokens[i].Data;
 
+								std::list<std::string> chain = _RetrieveForwardChain(tokens, i);
+
+								for (auto& str : chain)
+									arg.Data += "." + str;
+
 								args.push_back(arg);
+
+								i--;
 
 								break;
 							}
