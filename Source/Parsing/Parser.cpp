@@ -442,8 +442,11 @@ namespace clear
 		Parser subParser;
 		subParser.InitParser();
 		subParser.m_Buffer = m_CurrentString;
-		subParser.m_Buffer+=" ";
+		subParser.m_Buffer+=" functype ";
 		ProgramInfo info = subParser.ParseProgram();
+		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
+			info.Tokens.pop_back();
+		}
 		for (const Token& tok :info.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
