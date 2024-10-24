@@ -359,6 +359,8 @@ namespace clear
 					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
 				m_CurrentString.clear();
+				if (!IsSpace(current))
+					_Backtrack();
 				return;
 
 			}
@@ -681,6 +683,7 @@ namespace clear
 		int vars = 0;
 		CLEAR_VERIFY(!ArrayDeclarations.error,ArrayDeclarations.errormsg);
 		for (int i = 0; i < pointers; i++) {
+			_PushToken(TokenType::PointerDef,"*");
 		}
 		for (auto tok :ArrayDeclarations.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
