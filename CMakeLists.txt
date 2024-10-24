@@ -12,7 +12,8 @@ endif()
 set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
-add_executable(clear "${MY_SOURCES}")
+add_executable(clear "${MY_SOURCES}"
+        Source/Parsing/errors.h)
 
 find_package(LLVM REQUIRED CONFIG)
 
