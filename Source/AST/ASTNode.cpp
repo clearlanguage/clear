@@ -100,16 +100,27 @@ namespace clear {
 			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
 			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
 		}
+		else if (llvm::isa<llvm::GetElementPtrInst>(RHS))
+		{
+			auto converted = llvm::dyn_cast<llvm::GetElementPtrInst>(RHS);
+			RHSRawValue = builder.CreateLoad(converted->getType(), RHS);
+		}
 		else if (RHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer())
 		{
 			RHSRawValue = builder.CreateLoad(RHSRawValue->getType(), RHSRawValue, "ptr_load");
 		}
+
 		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
 		{
 			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
 			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
 		}
-		else if (LHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer() && m_Expression != BinaryExpressionType::Assignment)
+		else if (llvm::isa<llvm::GetElementPtrInst>(LHS))
+		{
+			auto converted = llvm::dyn_cast<llvm::GetElementPtrInst>(LHS);
+			LHSRawValue = builder.CreateLoad(converted->getType(), LHS);
+		}
+		else if (LHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer() && m_Expression != BinaryExpressionType::Assignment) //TODO: (look into this for both lhs and rhs)
 		{
 			LHSRawValue = builder.CreateLoad(LHSRawValue->getType(), LHSRawValue, "ptr_load");
 		}
@@ -327,7 +338,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			args->setName(Paramater.Name);
+			args->setName(m_Name + "::" + Paramater.Name);
 			args++;
 		}
 

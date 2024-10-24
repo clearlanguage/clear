@@ -272,7 +272,11 @@ namespace clear {
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
-				std::list<std::string> ls = { root + "::" + token.Data }; //TODO: retrieve possible chain here as well
+				std::string startStr = { root + "::" + token.Data };
+				std::list<std::string> ls = _RetrieveForwardChain(tokens, start);
+				ls.push_front(startStr);
+
+				start--;
 				expression->PushChild(Ref<ASTVariableExpression>::Create(ls));
 			}
 			else if (token.TokenType == TokenType::RValueNumber || 
