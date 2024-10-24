@@ -1,5 +1,5 @@
 #include "Parser.h"
-
+#include "Errors.h"
 #include <sstream>
 #include <functional>
 #include <algorithm>
@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <iosfwd>
-#include <stack>
 #include <stack>
 #include <Core/Log.h>
 #include <Core/Utils.h>
@@ -72,13 +71,16 @@ namespace clear
 
 	void Parser::_EndLine() 
 	{
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+		if ( _GetLastToken().TokenType != TokenType::EndLine)
+			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+		m_CurrentLine++;
 	}
 
 	ProgramInfo Parser::ParseProgram() 
 	{
 		while (m_CurrentTokenIndex < m_Buffer.length())
 		{
+			m_TokenIndexStart = m_CurrentTokenIndex;
 			m_StateMap.at(m_CurrentState)();
 		}
 
@@ -348,25 +350,26 @@ namespace clear
 
 		if (!m_CurrentString.empty() && !IsVarNameChar(current))
 		{
+			if (g_KeyWordMap.contains(m_CurrentString) ) {
+				auto& value = g_KeyWordMap.at(m_CurrentString);
+
+				m_CurrentState = value.NextState;
+
+				if (value.TokenToPush != TokenType::None)
+					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+
+				m_CurrentString.clear();
+				if (!IsSpace(current))
+					_Backtrack();
+				return;
+
+			}
 			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) {
-				if (g_KeyWordMap.contains(m_CurrentString) ) {
-					auto& value = g_KeyWordMap.at(m_CurrentString);
+				_PushToken(TokenType::VariableReference, m_CurrentString);
+				m_CurrentState = ParserState::VariableName;
+				m_CurrentString.clear();
 
-					m_CurrentState = value.NextState;
 
-					if (value.TokenToPush != TokenType::None)
-						m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
-
-					m_CurrentString.clear();
-
-				}
-				else
-				{
-					_PushToken(TokenType::VariableReference, m_CurrentString);
-					m_CurrentState = ParserState::VariableName;
-					m_CurrentString.clear();
-
-				}
 				if (!IsSpace(current))
 					_Backtrack();
 
@@ -382,9 +385,8 @@ namespace clear
 		{
 			m_CurrentState = ParserState::Indentation;
 			m_CurrentString.clear();
-			if (current == '\n' && m_BracketStack.empty() && _GetLastToken().TokenType != TokenType::EndLine)
-				_PushToken(TokenType::EndLine, "");
-
+			if (current == '\n' && m_BracketStack.empty())
+				_EndLine();
 
 			return;
 		}
@@ -442,8 +444,11 @@ namespace clear
 		Parser subParser;
 		subParser.InitParser();
 		subParser.m_Buffer = m_CurrentString;
-		subParser.m_Buffer+=" ";
+		subParser.m_Buffer+=" functype ";
 		ProgramInfo info = subParser.ParseProgram();
+		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
+			info.Tokens.pop_back();
+		}
 		for (const Token& tok :info.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
@@ -458,6 +463,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
+		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),"Expected struct name after struct declaration","Maybe add a name after the struct keyword","StructNoName","struct");
 		if (current == ':') {
 			CLEAR_LOG_ERROR("Expected struct name?");
 			CLEAR_HALT();
@@ -587,6 +593,35 @@ namespace clear
 		
 	}
 
+	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType, std::string& Cause) {
+		Error err;
+		err.ErrorMessage = ErrorMsg;
+		err.Advice = Advice;
+		err.ErrorType = ErrorType;
+		err.ErrorCause = Cause+m_Buffer.substr(m_TokenIndexStart,m_CurrentTokenIndex-m_TokenIndexStart);
+		err.ErrorCause = replaceAll(err.ErrorCause,"\n","\\n");
+		err.line = m_CurrentLine-1;
+		if (err.line == 0) {
+			err.line = 1;
+		}
+		return err;
+
+	}
+
+
+	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType,std::string Cause) {
+		if (!condition) {
+			auto err = _CreateError(Error,Advice,ErrorType,Cause);
+			if (!IsSubParser) {
+				PrintError(err);
+				CLEAR_HALT();
+			}else {
+				m_ProgramInfo.Errors.push_back(err);
+			}
+		}
+	}
+
+
 
 	void Parser::_VariableNameState() {
 		char current = _GetNextChar();
@@ -629,7 +664,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			CLEAR_VERIFY(!(variableState && bracketState) , "Expected variable name after type declaration");
+			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName","");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
 				CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
@@ -648,6 +683,7 @@ namespace clear
 		int vars = 0;
 		CLEAR_VERIFY(!ArrayDeclarations.error,ArrayDeclarations.errormsg);
 		for (int i = 0; i < pointers; i++) {
+			_PushToken(TokenType::PointerDef,"*");
 		}
 		for (auto tok :ArrayDeclarations.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);

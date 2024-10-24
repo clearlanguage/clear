@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Tokens.h"
+#include "Errors.h"
 
 #include <vector>
 #include <string>
@@ -16,6 +17,8 @@ namespace clear
 	struct ProgramInfo
 	{
 		std::vector<Token> Tokens;
+		std::vector<Error> Errors;
+
 	};
 
 	struct ArrayDeclarationReturn 
@@ -37,6 +40,7 @@ namespace clear
 		ProgramInfo CreateTokensFromFile(const std::filesystem::path& path);
 		void InitParser();
 		ProgramInfo ParseProgram();
+		bool IsSubParser = false;
 
 	private:
 		void _DefaultState();
@@ -57,6 +61,9 @@ namespace clear
 
 		Token _GetLastToken();
 		Token _CreateToken(const TokenType tok, const std::string& data);
+
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,std::string Cause);
+		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType,std::string& Cause);
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -85,6 +92,8 @@ namespace clear
 		size_t m_CurrentIndentLevel = 0;
 		size_t m_CurrentIndentationLevel = 0;
 		size_t m_Indents = 0;
+		size_t m_TokenIndexStart = 0;
+		size_t m_CurrentLine = 1;
 		bool m_LineStarted = false;
 		std::ifstream m_File;
 		ProgramInfo m_ProgramInfo;
