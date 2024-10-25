@@ -211,8 +211,8 @@ namespace clear {
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot->GetName(), i);
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
-					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
+					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true));
 
 					currentRoot->PushChild(binaryExpression);
 
@@ -249,8 +249,7 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root,
-											  size_t& start, AbstractType expectedType)
+	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		start += 1;
@@ -265,10 +264,12 @@ namespace clear {
 			{TokenType::OpenBracket, 0}
 		};
 
+		AbstractType currentExpectedType;
+
 		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation)
 		{
-			auto& token = tokens[start];
-
+			auto& token    = tokens[start];
+			auto& previous = tokens[start - 1];
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
@@ -277,12 +278,29 @@ namespace clear {
 				ls.push_front(startStr);
 
 				start--;
-				expression->PushChild(Ref<ASTVariableExpression>::Create(ls));
+
+				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
+				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag));
+
+				if (pointerFlag)
+				{
+					currentExpectedType = AbstractType(VariableType::Int8Pointer);
+				}
+				else
+				{
+					std::string concatenated = root + "::" + token.Data;
+
+					for (auto& str : ls)
+						concatenated += "." + str;
+
+					currentExpectedType = AbstractType(VariableType::None, TypeKind::Value, concatenated);
+				}
 			}
 			else if (token.TokenType == TokenType::RValueNumber || 
 					 token.TokenType == TokenType::RValueString)
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+				currentExpectedType = AbstractType(token.Data);
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
@@ -292,7 +310,7 @@ namespace clear {
 			{
 				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket)
 				{
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
 					operators.pop();
 				}
 
@@ -304,7 +322,7 @@ namespace clear {
 				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket &&
 					s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
 				{
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
 					operators.pop();
 				}
 
@@ -318,7 +336,7 @@ namespace clear {
 
 		while (!operators.empty())
 		{
-			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), expectedType));
+			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
 			operators.pop();
 		}
 
@@ -361,10 +379,15 @@ namespace clear {
 
 	AbstractType AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
 	{
-		current -= 1;
+		current -= 2;
+
+		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
+
+		if (isPointer)
+			current -= 1;
 
 		while (current > 0 && 
-			   GetVariableTypeFromTokenType(tokens[current].TokenType) != VariableType::None || 
+			   GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
 			   tokens[current].TokenType == TokenType::DotOp)
 		{
@@ -389,6 +412,6 @@ namespace clear {
 			return AbstractType(VariableType::None, TypeKind::VariableReference, concatenated);
 		}
 
-		return AbstractType(tokens[current]);
+		return AbstractType(tokens[current], TypeKind::VariableReference, isPointer);
 	}
 }

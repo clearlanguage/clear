@@ -110,7 +110,7 @@ namespace clear {
 	bool IsValidNumber(const std::string_view& str)
 	{
 		double result;
-		auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result); 
+		auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);  //same use case as std::from_chars
 		return ec == std::errc() && ptr == str.data() + str.size();
 	}
 

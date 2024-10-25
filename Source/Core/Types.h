@@ -7,7 +7,7 @@
 
 namespace clear {
 
-	enum class VariableType 
+	enum class VariableType //TODO: remove typed pointers and replace with just a single pointer type
 	{
 		None = 0, Int8, Int16, Int32, Int64,
 		Uint8, Uint16, Uint32, Uint64, Bool,
@@ -20,7 +20,7 @@ namespace clear {
 
 	enum class TypeKind
 	{
-		None = 0, RValue, Variable, VariableReference
+		None = 0, RValue, Variable, VariableReference, Value
 	};
 
 
@@ -50,18 +50,21 @@ namespace clear {
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
 
+		static llvm::Type* GetPtrType(const AbstractType& type);
+		static AbstractType TypeToPtrType(const AbstractType& type);
+
 		static llvm::StructType* GetStructType(const std::string& name);
-		static StructMetaData& GetStructInfo(const std::string& name);
-		static StructMetaData& GetStructMetaDataFromAllocInst(llvm::AllocaInst* alloc);
+		static StructMetaData&   GetStructInfo(const std::string& name);
+		static StructMetaData&   GetStructMetaDataFromAllocInst(llvm::AllocaInst* alloc);
+
 
 		static void CreateStructType(const std::string& name, const std::vector<MemberType>& members);
 
 		inline const VariableType Get()				   const { return m_Type; };
-		inline const llvm::Type*  GetLLVMType()		   const { return m_LLVMType; }
 		inline const TypeKind     GetKind()			   const { return m_Kind; }
 		inline const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 
-		inline llvm::Type* GetLLVMType() { return m_LLVMType; }
+		inline llvm::Type* GetLLVMType() const { return m_LLVMType; }
 
 		const bool IsFloatingPoint() const;
 		const bool IsIntegral()		 const;

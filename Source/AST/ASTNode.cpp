@@ -16,8 +16,6 @@ namespace clear {
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
-
-
 		for (auto& child : GetChildren())
 			child->Codegen();
 
@@ -72,7 +70,6 @@ namespace clear {
 
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
-
 	
 		if (!m_ExpectedType)
 		{
@@ -95,36 +92,7 @@ namespace clear {
 			m_ExpectedType = type;
 		}
 
-		if (llvm::isa<llvm::AllocaInst>(RHS))
-		{
-			auto converted = llvm::dyn_cast<llvm::AllocaInst>(RHS);
-			RHSRawValue = builder.CreateLoad(converted->getAllocatedType(), RHS);
-		}
-		else if (llvm::isa<llvm::GetElementPtrInst>(RHS))
-		{
-			auto converted = llvm::dyn_cast<llvm::GetElementPtrInst>(RHS);
-			RHSRawValue = builder.CreateLoad(converted->getType(), RHS);
-		}
-		else if (RHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer())
-		{
-			RHSRawValue = builder.CreateLoad(RHSRawValue->getType(), RHSRawValue, "ptr_load");
-		}
-
-		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression != BinaryExpressionType::Assignment)
-		{
-			auto converted = llvm::dyn_cast<llvm::AllocaInst>(LHS);
-			LHSRawValue = builder.CreateLoad(converted->getAllocatedType(), LHS);
-		}
-		else if (llvm::isa<llvm::GetElementPtrInst>(LHS))
-		{
-			auto converted = llvm::dyn_cast<llvm::GetElementPtrInst>(LHS);
-			LHSRawValue = builder.CreateLoad(converted->getType(), LHS);
-		}
-		else if (LHSRawValue->getType()->isPointerTy() && !m_ExpectedType.IsPointer() && m_Expression != BinaryExpressionType::Assignment) //TODO: (look into this for both lhs and rhs)
-		{
-			LHSRawValue = builder.CreateLoad(LHSRawValue->getType(), LHSRawValue, "ptr_load");
-		}
-		else if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
+		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
 		{
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
@@ -237,8 +205,8 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain)
-		: m_Chain(chain)
+	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer)
+		: m_Chain(chain), m_PointerFlag(isPointer)
 	{
 	}
 
@@ -247,18 +215,21 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 
-		llvm::AllocaInst* value = Value::GetVariableMetaData(*m_Chain.begin()).Alloca;
+		auto& metaData = Value::GetVariableMetaData(*m_Chain.begin());
+		llvm::AllocaInst* value = metaData.Alloca;
 
 		CLEAR_VERIFY(value, "value was nullptr");
 
 		m_Chain.pop_front();
 
-		if(m_Chain.empty())
-			return value;
+		if (m_Chain.empty())
+		{
+			return m_PointerFlag ? (llvm::Value*)value: (llvm::Value*)builder.CreateLoad(value->getAllocatedType(), value, "load_value");
+		}
 
-		StructMetaData* currentRef = &AbstractType::GetStructMetaDataFromAllocInst(value);
+		StructMetaData* currentRef = &AbstractType::GetStructInfo(metaData.Type.GetUserDefinedType());
 
-		std::vector<llvm::Value*> indices = 
+		std::vector<llvm::Value*> indices =
 		{
 			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
 		};
@@ -278,7 +249,8 @@ namespace clear {
 				break;
 		}
 
-		return builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_ptr");
+		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
+		return m_PointerFlag ? gepPtr : builder.CreateLoad(gepPtr->getType(), gepPtr, "load_value");
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
@@ -501,7 +473,7 @@ namespace clear {
 					}
 
 
-					llvm::Value* elementPointer = builder.CreateGEP(variable->getAllocatedType(), variable, indices, "struct_ptr");
+					llvm::Value* elementPointer = builder.CreateGEP(variable->getAllocatedType(), variable, indices, "element_ptr");
 
 					llvm::Value* value = builder.CreateLoad(currentType.GetLLVMType(), elementPointer);
 

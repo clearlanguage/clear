@@ -156,7 +156,7 @@ namespace clear {
 	}
 
 	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedtype)
-		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype), m_Kind(kind)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype)
 	{
 	}
 
@@ -217,6 +217,22 @@ namespace clear {
 		m_LLVMType = GetLLVMVariableType(m_Type);
 
 		return;
+	}
+
+	llvm::Type* AbstractType::GetPtrType(const AbstractType& type)
+	{
+		return llvm::PointerType::get(type.GetLLVMType(), 0);
+	}
+
+	AbstractType AbstractType::TypeToPtrType(const AbstractType& type)
+	{
+		AbstractType newType;
+		newType.m_Kind = TypeKind::VariableReference;
+		newType.m_LLVMType = GetPtrType(type);
+		newType.m_Type = VariableType::Int8Pointer; //(TODO: just pointer sooon)
+		newType.m_UserDefinedType = type.GetUserDefinedType();
+
+		return newType;
 	}
 
 	llvm::StructType* AbstractType::GetStructType(const std::string& name)

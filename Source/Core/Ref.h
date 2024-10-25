@@ -102,6 +102,9 @@ namespace clear {
         inline void Reset()
         {
             Decref();
+
+            m_Ptr = nullptr;
+            m_RefCount = nullptr;
         }
 
         inline Type& operator*() const { return *Get(); }

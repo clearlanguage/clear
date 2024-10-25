@@ -182,7 +182,7 @@ namespace clear {
 	class ASTVariableExpression : public ASTNodeBase
 	{
 	public:
-		ASTVariableExpression(const std::list<std::string>& chain);
+		ASTVariableExpression(const std::list<std::string>& chain, bool isPointer = false);
 		virtual ~ASTVariableExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -192,6 +192,7 @@ namespace clear {
 	private:
 		std::string m_Name;
 		std::list<std::string> m_Chain;
+		bool m_PointerFlag = false;
 	};
 
 	//
