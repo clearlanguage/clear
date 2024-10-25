@@ -63,7 +63,10 @@ namespace clear
 		Token _CreateToken(const TokenType tok, const std::string& data);
 
 		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,std::string Cause);
+		void _RaiseError(Error& err);
 		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType,std::string& Cause);
+
+		ProgramInfo _SubParse(std::string arg);
 
 		void _ParsingRValueState();
 		void _ParseNumber();

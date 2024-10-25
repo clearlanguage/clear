@@ -147,11 +147,7 @@ namespace clear
 		auto argList = _ParseBrackets(')',true);
 		m_CurrentState = ParserState::Default;
 		for (const std::string& arg : argList) {
-			Parser subParser;
-			subParser.InitParser();
-			subParser.m_Buffer = arg;
-			subParser.m_Buffer+=" ";
-			ProgramInfo info = subParser.ParseProgram();
+			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
@@ -280,11 +276,7 @@ namespace clear
 		auto parsed= _ParseBrackets(']',false);
 		CLEAR_VERIFY(!parsed.empty(), "Expected value inside brackets");
 
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = parsed[0];
-		subParser.m_Buffer+=" ";
-		ProgramInfo info = subParser.ParseProgram();
+		ProgramInfo info = _SubParse( parsed[0]);
 		for (const Token& tok :info.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
@@ -441,11 +433,8 @@ namespace clear
 			current = _GetNextChar();
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data =m_CurrentString });
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = m_CurrentString;
-		subParser.m_Buffer+=" functype ";
-		ProgramInfo info = subParser.ParseProgram();
+
+		ProgramInfo info = _SubParse(m_CurrentString+" functype ");
 		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
 			info.Tokens.pop_back();
 		}
@@ -607,14 +596,16 @@ namespace clear
 		return err;
 
 	}
-
+	void Parser::_RaiseError(Error& err) {
+		PrintError(err);
+		CLEAR_HALT();
+	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType,std::string Cause) {
 		if (!condition) {
 			auto err = _CreateError(Error,Advice,ErrorType,Cause);
 			if (!IsSubParser) {
-				PrintError(err);
-				CLEAR_HALT();
+				_RaiseError(err);
 			}else {
 				m_ProgramInfo.Errors.push_back(err);
 			}
@@ -761,11 +752,8 @@ namespace clear
 
 		for (const auto& i: argList) 
 		{
-			Parser subParser;
-			subParser.InitParser();
-			subParser.m_Buffer = i;
-			subParser.m_Buffer+=" ";
-			ProgramInfo info = subParser.ParseProgram();
+
+			ProgramInfo info = _SubParse(i);
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
@@ -1001,16 +989,28 @@ namespace clear
 			_Backtrack();
 	}
 
+	ProgramInfo Parser::_SubParse(std::string arg) {
+		Parser subParser;
+		subParser.InitParser();
+		subParser.m_Buffer = arg;
+		subParser.m_Buffer+=" ";
+		subParser.IsSubParser = true;
+		ProgramInfo info = subParser.ParseProgram();
+
+		if (!info.Errors.empty()) {
+			_RaiseError(info.Errors.front());
+		}
+		return info;
+	}
+
+
 	void Parser::_ParseList() {
 		auto list = _ParseBrackets('}',true);
 		_PushToken(TokenType::OpenBracket,"{");
 
  		for (const std::string& arg : list) {
-			Parser subParser;
-			subParser.InitParser();
-			subParser.m_Buffer = arg;
-			subParser.m_Buffer+=" ";
-			ProgramInfo info = subParser.ParseProgram();
+
+			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
