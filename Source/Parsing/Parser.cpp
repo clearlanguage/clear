@@ -960,7 +960,7 @@ namespace clear
 			return;
 		}
 
-		while (std::isalnum(current))
+		while (std::isalnum(current) || current == '.')
 		{
 			m_CurrentString.push_back(current);
 			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
