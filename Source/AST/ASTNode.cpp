@@ -92,12 +92,16 @@ namespace clear {
 			m_ExpectedType = type;
 		}
 
+		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType();
+
 		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
 		{
+			if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
+
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 		}
 
-		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType(); 
 
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
