@@ -83,6 +83,7 @@ namespace clear
 
 		void _PushToken(const TokenType tok, const std::string& data);
 		bool _IsLineClosed();
+		bool _IsEndOfLine();
 		char _SkipSpaces();
 
 		char _GetNextChar();
@@ -108,6 +109,7 @@ namespace clear
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
+		std::set<std::string> globalTypes;
 
 	};
 
