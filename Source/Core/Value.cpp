@@ -149,45 +149,48 @@ namespace clear {
 
 		if (fromType->isIntegerTy() && to.IsIntegral())
 		{
-			return builder.CreateIntCast(value, toType, to.IsSigned());
+			return builder.CreateIntCast(value, toType, to.IsSigned(), "cast");
 		}
 		else if (fromType->isIntegerTy() && to.IsFloatingPoint())
 		{
 			if (to.IsSigned())
-				return builder.CreateSIToFP(value, toType);  // Signed int to float
+				return builder.CreateSIToFP(value, toType, "cast");  // Signed int to float
 			else
-				return builder.CreateUIToFP(value, toType);  // Unsigned int to float
+				return builder.CreateUIToFP(value, toType, "cast");  // Unsigned int to float
 		}
 		else if (fromType->isFloatingPointTy() && to.IsIntegral())
 		{
 			// Float to integer cast 
 			if (to.IsSigned())
-				return builder.CreateFPToSI(value, toType);  // Float to signed int
+				return builder.CreateFPToSI(value, toType, "cast");  // Float to signed int
 			else
-				return builder.CreateFPToUI(value, toType);  // Float to unsigned int
+				return builder.CreateFPToUI(value, toType, "cast");  // Float to unsigned int
 		}
 		else if (fromType->isFloatingPointTy() && to.IsFloatingPoint())
 		{
 			// Float to float cast
-			return builder.CreateFPCast(value, toType);
+			return builder.CreateFPCast(value, toType, "cast");
 		}
 		else if (fromType->isPointerTy() && to.IsPointer())
 		{
-			// Pointer to pointer cast
-			return builder.CreatePointerCast(value, toType);
+			return builder.CreatePointerCast(value, toType, "cast");
 		}
 		else if (fromType->isIntegerTy() && to.IsPointer())
 		{
-			// Integer to pointer cast
-			return builder.CreateIntToPtr(value, toType);
+			return builder.CreateIntToPtr(value, toType, "cast");
 		}
 		else if (fromType->isPointerTy() && to.IsIntegral())
 		{
-			// Pointer to integer cast
-			return builder.CreatePtrToInt(value, toType);
+			return builder.CreatePtrToInt(value, toType, "cast");
+		}
+		else if (fromType->isPointerTy() && to.IsFloatingPoint())
+		{
+			auto tmp = CastValue(value, VariableType::Int64);
+			return CastValue(tmp, to);
 		}
 
 		CLEAR_ANNOTATED_HALT("failed to find right cast type");
+
 		return nullptr;
 	}
 

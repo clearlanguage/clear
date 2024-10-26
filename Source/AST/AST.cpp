@@ -146,6 +146,9 @@ namespace clear {
 					}
 
 					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot->GetName() + "::" + currentToken.Data, type));
+		
+					AbstractType::RegisterVariableType(currentRoot->GetName() + "::" + currentToken.Data, type);
+
 					break;
 				}
 				case TokenType::Struct:
@@ -211,7 +214,7 @@ namespace clear {
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot->GetName(), i);
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i));
+					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
 					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true));
 
 					currentRoot->PushChild(binaryExpression);
@@ -249,7 +252,7 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start)
+	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		start += 1;
@@ -264,7 +267,7 @@ namespace clear {
 			{TokenType::OpenBracket, 0}
 		};
 
-		AbstractType currentExpectedType;
+		AbstractType currentExpectedType = expected;
 
 		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation)
 		{
@@ -282,9 +285,11 @@ namespace clear {
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag));
 
+				auto& abstractType = AbstractType::GetVariableTypeFromName(startStr);
+
 				if (pointerFlag)
 				{
-					currentExpectedType = AbstractType(VariableType::Int8Pointer);
+					currentExpectedType = AbstractType(VariableType::Pointer);
 				}
 				else
 				{
@@ -301,6 +306,15 @@ namespace clear {
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
 				currentExpectedType = AbstractType(token.Data);
+				
+				//assume the largest value then cast down to the storage type
+				if (currentExpectedType.IsFloatingPoint())
+					currentExpectedType = VariableType::Float64;
+				else if (!currentExpectedType.IsSigned())
+					currentExpectedType = VariableType::Uint64;
+				else if (currentExpectedType.IsIntegral())
+					currentExpectedType = VariableType::Int64;
+
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
@@ -394,7 +408,6 @@ namespace clear {
 			current--;
 		}
 
-
 		if (tokens[current].TokenType == TokenType::EndLine)
 		{
 			while (tokens[current].TokenType == TokenType::EndLine)
@@ -403,13 +416,19 @@ namespace clear {
 			size_t currentCopy = current;
 			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
 
-			std::string concatenated = currentFunctionName + "::" + tokens[current].Data;
+			std::string name = currentFunctionName + "::" + tokens[current].Data;
+			auto& type = AbstractType::GetVariableTypeFromName(name);
 
 			for (auto& str : ls)
-				concatenated += "." + str;
+			{
+				StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
+				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
 
-			//need to find the type later when variable has been declared so for now just retrieve the chain
-			return AbstractType(VariableType::None, TypeKind::VariableReference, concatenated);
+				size_t indexToNextType = structMetaData.Indices[str];
+				type = structMetaData.Types[indexToNextType];
+			}
+			
+			return type;
 		}
 
 		return AbstractType(tokens[current], TypeKind::VariableReference, isPointer);

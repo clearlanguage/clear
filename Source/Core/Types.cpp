@@ -7,6 +7,7 @@
 namespace clear {
 
 	static std::map<std::string, StructMetaData>  s_StructTypes;
+	static std::map<std::string, AbstractType>	  s_RegisteredVariableTypes;
 
 	llvm::Type* GetLLVMVariableType(VariableType type)
 	{
@@ -25,20 +26,10 @@ namespace clear {
 			case VariableType::Bool:		    return llvm::Type::getInt1Ty(context);
 			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
 			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
-			case VariableType::UserDefinedType:	return llvm::PointerType::get(context , 0);
-			case VariableType::String:			return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int8), 0);
-			case VariableType::Int8Pointer:		return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int8), 0);
-			case VariableType::Int16Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int16), 0);
-			case VariableType::Int32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int32), 0);
-			case VariableType::Int64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Int64), 0);
-			case VariableType::Uint8Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint8), 0);
-			case VariableType::Uint16Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint16), 0);
-			case VariableType::Uint32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint32), 0);
-			case VariableType::Uint64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Uint64), 0);
-			case VariableType::BoolPointer:		return llvm::PointerType::get(GetLLVMVariableType(VariableType::Bool), 0);
-			case VariableType::Float32Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Float32), 0);
-			case VariableType::Float64Pointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::Float64), 0);
-			case VariableType::StringPointer:	return llvm::PointerType::get(GetLLVMVariableType(VariableType::String), 0);
+			case VariableType::UserDefinedType:	
+			case VariableType::String:			
+			case VariableType::Array:
+			case VariableType::Pointer:			return llvm::PointerType::get(context , 0);
 			case VariableType::None:
 			default:
 				return llvm::Type::getVoidTy(context);
@@ -72,26 +63,7 @@ namespace clear {
 
 	VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType)
 	{
-		switch (tokenType)
-		{
-			case TokenType::Int8Type:		return VariableType::Int8Pointer;
-			case TokenType::Int16Type:		return VariableType::Int16Pointer;
-			case TokenType::Int32Type:		return VariableType::Int32Pointer;
-			case TokenType::Int64Type:		return VariableType::Int64Pointer;
-			case TokenType::UInt8Type:		return VariableType::Uint8Pointer;
-			case TokenType::UInt16Type:		return VariableType::Uint16Pointer;
-			case TokenType::UInt32Type:		return VariableType::Uint32Pointer;
-			case TokenType::UInt64Type:		return VariableType::Uint64Pointer;
-			case TokenType::Float32Type:	return VariableType::Float32Pointer;
-			case TokenType::Float64Type:	return VariableType::Float64Pointer;
-			case TokenType::Bool:			return VariableType::BoolPointer;
-			case TokenType::StringType:		return VariableType::StringPointer;
-			case TokenType::None:
-			default:
-				break;
-		}
-
-		return VariableType::None;
+		return VariableType::Pointer;
 	}
 
 	BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type)
@@ -135,6 +107,8 @@ namespace clear {
 			m_Kind = TypeKind::Variable;
 		}
 
+		m_UnderlyingType = m_Type;
+		m_LLVMUnderlyingType = m_LLVMType;
 	}
 
 	AbstractType::AbstractType(const Token& token, TypeKind kind, bool isPointer)
@@ -151,12 +125,22 @@ namespace clear {
 			m_Kind = TypeKind::Variable;
 		}
 
-		m_Type = isPointer ? GetVariablePointerTypeFromTokenType(token.TokenType) : GetVariableTypeFromTokenType(token.TokenType);
+		m_Type = isPointer ? VariableType::Pointer : GetVariableTypeFromTokenType(token.TokenType);
 		m_LLVMType = GetLLVMVariableType(m_Type);
+
+		//if its a pointer we need the underlying type here
+		m_UnderlyingType = isPointer ? GetVariableTypeFromTokenType(token.TokenType) : m_Type;
+		m_LLVMUnderlyingType = GetLLVMVariableType(m_UnderlyingType);
 	}
 
-	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedtype)
-		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedtype)
+	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedType)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind)
+	{
+	}
+
+	AbstractType::AbstractType(VariableType type, TypeKind kind, VariableType underlying, const std::string& userDefinedType)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind), 
+		  m_UnderlyingType(underlying), m_LLVMUnderlyingType(GetLLVMVariableType(underlying))
 	{
 	}
 
@@ -165,7 +149,7 @@ namespace clear {
 	{
 		//handle the case where the type may be a number
 		NumberInfo info = GetNumberInfoFromLiteral(value);
-		
+
 		if (info.Valid) 
 		{
 			if (info.IsSigned && !info.IsFloatingPoint)
@@ -216,23 +200,10 @@ namespace clear {
 		CLEAR_VERIFY(m_Type != VariableType::None, "could not evaluate type of ", value);
 		m_LLVMType = GetLLVMVariableType(m_Type);
 
+		m_UnderlyingType = m_Type;
+		m_LLVMUnderlyingType = m_LLVMType;
+
 		return;
-	}
-
-	llvm::Type* AbstractType::GetPtrType(const AbstractType& type)
-	{
-		return llvm::PointerType::get(type.GetLLVMType(), 0);
-	}
-
-	AbstractType AbstractType::TypeToPtrType(const AbstractType& type)
-	{
-		AbstractType newType;
-		newType.m_Kind = TypeKind::VariableReference;
-		newType.m_LLVMType = GetPtrType(type);
-		newType.m_Type = VariableType::Int8Pointer; //(TODO: just pointer sooon)
-		newType.m_UserDefinedType = type.GetUserDefinedType();
-
-		return newType;
 	}
 
 	llvm::StructType* AbstractType::GetStructType(const std::string& name)
@@ -285,6 +256,29 @@ namespace clear {
 		s_StructTypes[name] = info;
 	}
 
+	void AbstractType::RegisterVariableType(const std::string& name, const AbstractType& type)
+	{
+		//we don't care about whether it already exists or not
+		//as this is just meta data we need for previous declerations.
+		//declerations may override eachh othher as long as there previous 
+		//deceleration is out of scope/not in use.
+
+		s_RegisteredVariableTypes[name] = type; 
+	}
+
+	void AbstractType::RemoveVariableType(const std::string& name)
+	{
+		if (s_RegisteredVariableTypes.contains(name))
+			s_RegisteredVariableTypes.erase(name);
+	}
+
+	static AbstractType s_NullAbstractType;
+
+	AbstractType& AbstractType::GetVariableTypeFromName(const std::string& name)
+	{
+		return s_RegisteredVariableTypes.contains(name) ? s_RegisteredVariableTypes.at(name) : s_NullAbstractType;
+	}
+
 	const bool AbstractType::IsSigned() const
 	{
 		switch (m_Type)
@@ -309,20 +303,7 @@ namespace clear {
 		{
 			case VariableType::String:
 			case VariableType::Array:
-			case VariableType::Int8Pointer:
-			case VariableType::Int16Pointer:
-			case VariableType::Int32Pointer:
-			case VariableType::Int64Pointer:
-			case VariableType::Uint8Pointer:
-			case VariableType::Uint16Pointer:
-			case VariableType::Uint32Pointer:
-			case VariableType::Uint64Pointer:
-			case VariableType::BoolPointer:
-			case VariableType::Float32Pointer:
-			case VariableType::Float64Pointer:
-			case VariableType::StringPointer:
-			case VariableType::UserDefinedTypePointer:
-			case VariableType::ArrayPointer:
+			case VariableType::Pointer:
 				return true;
 			default:
 				break;
@@ -365,23 +346,24 @@ namespace clear {
 		return false;
 	}
 
-	const bool AbstractType::operator==(const AbstractType& other) const
+	inline bool AbstractType::operator==(const AbstractType& other) const
 	{
-		return m_Type == other.m_Type && 
+		return m_Type == other.m_Type                      &&
+			   m_UnderlyingType  == other.m_UnderlyingType && 
 			   m_UserDefinedType == other.m_UserDefinedType;
 	}
 
-	const bool AbstractType::operator!=(const AbstractType& other) const
+	inline bool AbstractType::operator!=(const AbstractType& other) const
 	{
 		return !(*this == other);
 	}
 
-	inline const bool AbstractType::operator==(VariableType other) const
+	inline bool AbstractType::operator==(VariableType other) const
 	{
 		return m_Type == other;
 	}
 
-	inline const bool AbstractType::operator!=(VariableType other) const
+	inline bool AbstractType::operator!=(VariableType other) const
 	{
 		return !(*this == other);
 	}

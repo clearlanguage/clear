@@ -121,7 +121,7 @@ namespace clear {
         double result;
         auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);
 
-        if (ec != std::errc())
+        if (ec != std::errc() || ptr != str.data() + str.size())
             return info;
 
         info.Valid = true;
@@ -162,7 +162,7 @@ namespace clear {
     }
 
 
-    std::string replaceAll(std::string str,const std::string& from,const std::string& to)
+    std::string replaceAll(std::string str,const std::string& from, const std::string& to)
     {
         auto&& pos = str.find(from, size_t{});
         while (pos != std::string::npos)

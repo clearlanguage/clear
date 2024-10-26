@@ -356,7 +356,8 @@ namespace clear
 				return;
 
 			}
-			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) {
+			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) 
+			{
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -366,7 +367,9 @@ namespace clear
 					_Backtrack();
 
 				return;
-			}else {
+			}
+			else 
+			{
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
 
@@ -432,7 +435,8 @@ namespace clear
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data =m_CurrentString });
+
+		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
 
 		ProgramInfo info = _SubParse(m_CurrentString+" functype ");
 		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
@@ -530,7 +534,8 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_ParseArrayDecleration(ArrayDeclarationReturn& output) {
+	void Parser::_ParseArrayDecleration(ArrayDeclarationReturn& output) 
+	{
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
 		if (!parsed.empty()) {
@@ -614,7 +619,8 @@ namespace clear
 
 
 
-	void Parser::_VariableNameState() {
+	void Parser::_VariableNameState() 
+	{
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
