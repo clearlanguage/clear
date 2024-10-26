@@ -71,9 +71,10 @@ namespace clear
 
 	void Parser::_EndLine() 
 	{
-		if ( _GetLastToken().TokenType != TokenType::EndLine)
+		if ( _GetLastToken().TokenType != TokenType::EndLine) {
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
-		m_CurrentLine++;
+			m_CurrentLine++;
+		}
 	}
 
 	ProgramInfo Parser::ParseProgram() 
@@ -188,6 +189,12 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 		if (current == '\n')
 			_Backtrack();
+	}
+	bool Parser::_IsEndOfLine() {
+		if (m_ProgramInfo.Tokens.empty())
+			return true;
+		TokenType tok = _GetLastToken().TokenType;
+		return (tok == TokenType::EndLine);
 	}
 
 	bool Parser::_IsLineClosed() {
@@ -356,7 +363,7 @@ namespace clear
 				return;
 
 			}
-			if ((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) {
+			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&')) && globalTypes.contains(m_CurrentString))) {
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -463,6 +470,9 @@ namespace clear
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
+
+		_VerifyCondition(!globalTypes.contains(m_CurrentString),"Struct with name " + m_CurrentString+ " already defined","Change the name of the struct","StructNameDefined","struct ");
+		globalTypes.insert(m_CurrentString);
 
 
 		_PushToken(TokenType::StructName, m_CurrentString);
@@ -589,10 +599,7 @@ namespace clear
 		err.ErrorType = ErrorType;
 		err.ErrorCause = Cause+m_Buffer.substr(m_TokenIndexStart,m_CurrentTokenIndex-m_TokenIndexStart);
 		err.ErrorCause = replaceAll(err.ErrorCause,"\n","\\n");
-		err.line = m_CurrentLine-1;
-		if (err.line == 0) {
-			err.line = 1;
-		}
+		err.line = m_CurrentLine;
 		return err;
 
 	}
