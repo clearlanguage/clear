@@ -58,6 +58,7 @@ namespace clear {
 	{
 		// Assumes the two values in its children are to be added in order
 		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
 		if (children.size() != 2)
@@ -100,6 +101,14 @@ namespace clear {
 				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
+		}
+
+		if (LHSRawValue->getType()->isPointerTy() || RHSRawValue->getType()->isPointerTy())
+		{
+			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
+			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
+			
+			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
 
 
@@ -442,7 +451,6 @@ namespace clear {
 				auto& variableName = argument.Data;
 				auto& variableType = argument.Field;
 
-
 				std::vector<std::string> chain = Split(variableName, '.');
 
 				auto& metaData = Value::GetVariableMetaData(chain[0]);
@@ -452,7 +460,7 @@ namespace clear {
 				{
 					llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
 
-					if (variableType.Get() != expected[k].Type.Get())
+					if (variableType.Get() != expected[k].Type.Get()) 
 						value = Value::CastValue(value, expected[k].Type);
 
 					args.push_back(value);

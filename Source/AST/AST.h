@@ -18,7 +18,7 @@ namespace clear {
         void BuildIR(const std::filesystem::path& out);
 
     private:
-        Ref<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start);
+        Ref<ASTExpression> _CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected);
 
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
         std::list<std::string> _RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current);
