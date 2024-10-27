@@ -27,7 +27,7 @@ namespace clear
 		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
 		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
 		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[ParserState::FunctionParamaters] = [this]()  {_FunctionParamaterState(); };
+		m_StateMap[ParserState::FunctionParamaters] = [this]()  {_FunctionArgumentState(); };
 		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
@@ -139,7 +139,7 @@ namespace clear
 		return current;
 	 }
 
-	void Parser::_FunctionParamaterState() {
+	void Parser::_FunctionArgumentState() {
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
@@ -251,7 +251,7 @@ namespace clear
 					argList.push_back(m_CurrentString);
 				else {
 					if (current == ',') {
-						CLEAR_LOG_ERROR("Expected function Paramater after commas");
+						CLEAR_LOG_ERROR("Expected function Parameter after commas");
 						CLEAR_HALT();
 					}
 				}
@@ -556,7 +556,7 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_ParseArrayDecleration(ArrayDeclarationReturn& output) 
+	void Parser::_ParseArrayDeclaration(ArrayDeclarationReturn& output)
 	{
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
@@ -582,9 +582,9 @@ namespace clear
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
-		CLEAR_VERIFY(current != ']',"Attempting to close unopened array decleration")
+		CLEAR_VERIFY(current != ']',"Attempting to close unopened array declaration")
 		if (current == '[') {
-			_ParseArrayDecleration(output);
+			_ParseArrayDeclaration(output);
 		}else  {
 			if (current != '\0')
 				_Backtrack();
@@ -593,7 +593,7 @@ namespace clear
 
 	}
 
-	int Parser::_ParsePointerDecleration() {
+	int Parser::_ParsePointerDeclaration() {
 		char current = _GetNextChar();
 		int pointers = 0;
 		while (current == '*') {
@@ -676,7 +676,7 @@ namespace clear
 			prevTokenIndex = m_CurrentTokenIndex;
 			variableState = true;
 			_Backtrack();
-			pointers = _ParsePointerDecleration();
+			pointers = _ParsePointerDeclaration();
 			current = _GetNextChar();
 		}
 
@@ -686,7 +686,7 @@ namespace clear
 		if (current == '[') {
 			prevTokenIndex = m_CurrentTokenIndex;
 
-			_ParseArrayDecleration(ArrayDeclarations);
+			_ParseArrayDeclaration(ArrayDeclarations);
 			current = _GetNextChar();
 			bracketState = true;
 		}
@@ -729,7 +729,7 @@ namespace clear
 				ExpectingComma = true;
 			}
 
-			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Seperate values using a comma","Missing variable seperator");
+			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Separate values using a comma","Missing variable separator");
 
 			if (current == ',') {
 				ExpectingComma = false;
@@ -767,7 +767,7 @@ namespace clear
 
 		current = _SkipSpaces();
 		m_CurrentString.clear();
-		CLEAR_VERIFY(current == '(', "expected ( after function decleartion");
+		CLEAR_VERIFY(current == '(', "expected ( after function declaration");
 
 		std::vector<std::string> argList;
 		bool detectedEnd = false;
@@ -795,7 +795,7 @@ namespace clear
 
 		}
 
-		CLEAR_VERIFY(detectedEnd, "Expected ) after function decleartion");
+		CLEAR_VERIFY(detectedEnd, "Expected ) after function declaration");
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 
 		for (const auto& i: argList) 
