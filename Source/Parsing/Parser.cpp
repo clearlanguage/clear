@@ -509,7 +509,8 @@ namespace clear
 		//want to ignore all spaces in between = and actual variable
 		current = _SkipSpaces();
 		m_CurrentString.clear();
-		_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression");
+		if (m_BracketStack.empty())
+			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression");
 		//brackets
 		if (g_OperatorMap.contains(Str(current))) {
 			m_CurrentState = ParserState::Operator;
@@ -627,8 +628,7 @@ namespace clear
 			i--;
 		}
 		err.ErrorCause = m_Buffer.substr(i + 1, j - i - 1);
-		// err.ErrorCause.pop_back();
-		// err.ErrorCause = replaceAll(err.ErrorCause,"\n","");
+
 		err.line = m_CurrentLine;
 		return err;
 
