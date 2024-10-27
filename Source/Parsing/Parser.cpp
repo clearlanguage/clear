@@ -627,7 +627,8 @@ namespace clear
 			i--;
 		}
 		err.ErrorCause = m_Buffer.substr(i + 1, j - i - 1);
-		err.ErrorCause = replaceAll(err.ErrorCause,"\n","");
+		// err.ErrorCause.pop_back();
+		// err.ErrorCause = replaceAll(err.ErrorCause,"\n","");
 		err.line = m_CurrentLine;
 		return err;
 
@@ -662,6 +663,7 @@ namespace clear
 		int prevTokenIndex = 0;
 		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
 			_Backtrack();
+			_VerifyCondition(!IsType,"Cannot perform operator on a type reference","idk man fix your code","Operator on type");
 			m_CurrentState = ParserState::Default;
 			return;
 		}
