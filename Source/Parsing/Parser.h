@@ -28,7 +28,8 @@ namespace clear
 		std::string errormsg;
 	};
 
-	struct Scope {
+	struct TypeScope 
+	{
 		std::set<std::string> TypeDeclarations;
 	};
 
@@ -115,7 +116,7 @@ namespace clear
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
-		std::vector<Scope> m_ScopeStack;
+		std::vector<TypeScope> m_ScopeStack;
 
 	};
 

@@ -53,6 +53,7 @@ namespace clear {
 		static StructMetaData&   GetStructMetaDataFromAllocInst(llvm::AllocaInst* alloc);
 
 		static void CreateStructType(const std::string& name, const std::vector<MemberType>& members);
+		static void RemoveStructType(const std::string& name);
 
 		static void RegisterVariableType(const std::string& name, const AbstractType& type);
 		static void RemoveVariableType(const std::string& name);

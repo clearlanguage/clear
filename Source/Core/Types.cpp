@@ -256,11 +256,17 @@ namespace clear {
 		s_StructTypes[name] = info;
 	}
 
+	void AbstractType::RemoveStructType(const std::string& name)
+	{
+		if (s_StructTypes.contains(name))
+			s_StructTypes.erase(name);
+	}
+
 	void AbstractType::RegisterVariableType(const std::string& name, const AbstractType& type)
 	{
 		//we don't care about whether it already exists or not
 		//as this is just meta data we need for previous declerations.
-		//declerations may override eachh othher as long as there previous 
+		//declerations may override each other as long as there previous 
 		//deceleration is out of scope/not in use.
 
 		s_RegisteredVariableTypes[name] = type; 

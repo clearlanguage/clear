@@ -461,7 +461,7 @@ namespace clear
 	}
 
 	bool Parser::_IsTypeDeclared(const std::string& type) {
-		for (Scope& arg : m_ScopeStack) {
+		for (TypeScope& arg : m_ScopeStack) {
 			if (arg.TypeDeclarations.contains(type)) {
 				return true;
 			}
