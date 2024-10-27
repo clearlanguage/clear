@@ -134,7 +134,8 @@ namespace clear {
 	}
 
 	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedType)
-		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind)
+		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind), 
+		  m_UnderlyingType(m_Type), m_LLVMUnderlyingType(m_LLVMType)
 	{
 	}
 
@@ -307,8 +308,6 @@ namespace clear {
 	{
 		switch (m_Type)
 		{
-			case VariableType::String:
-			case VariableType::Array:
 			case VariableType::Pointer:
 				return true;
 			default:

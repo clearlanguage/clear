@@ -195,7 +195,8 @@ namespace clear {
 						i++;
 					}
 
-					currentRoot->PushChild(Ref<ASTStruct>::Create(structName, memberVars));
+					AbstractType::CreateStructType(structName, memberVars);
+
 					break;
 				}
 				case TokenType::AddOp:
@@ -258,6 +259,7 @@ namespace clear {
 		start += 1;
 
 		std::stack<Token> operators;
+		std::stack<AbstractType> expectedTypes;
 
 		static std::map<TokenType, int> s_Presedence = {
 			{TokenType::DivOp, 2},
@@ -289,32 +291,19 @@ namespace clear {
 
 				if (pointerFlag)
 				{
-					currentExpectedType = AbstractType(VariableType::Pointer);
+					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
 				}
-				else
+				else 
 				{
-					std::string concatenated = root + "::" + token.Data;
-
-					for (auto& str : ls)
-						concatenated += "." + str;
-
-					currentExpectedType = AbstractType(VariableType::None, TypeKind::Value, concatenated);
+					currentExpectedType = abstractType;
 				}
+
 			}
 			else if (token.TokenType == TokenType::RValueNumber || 
-					 token.TokenType == TokenType::RValueString)
+					 token.TokenType == TokenType::RValueString || 
+					 token.TokenType == TokenType::BooleanData)
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
-				currentExpectedType = AbstractType(token.Data);
-				
-				//assume the largest value then cast down to the storage type
-				if (currentExpectedType.IsFloatingPoint())
-					currentExpectedType = VariableType::Float64;
-				else if (!currentExpectedType.IsSigned())
-					currentExpectedType = VariableType::Uint64;
-				else if (currentExpectedType.IsIntegral())
-					currentExpectedType = VariableType::Int64;
-
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
@@ -334,13 +323,14 @@ namespace clear {
 			else if (s_Presedence.contains(token.TokenType))
 			{
 				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket &&
-					s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
+					   s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
 				{
 					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
 					operators.pop();
 				}
 
 				operators.push(token);
+
 			}
 
 			start++;
@@ -400,10 +390,10 @@ namespace clear {
 		if (isPointer)
 			current -= 1;
 
-		while (current > 0 && 
-			   GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
+		while (current > 0 && tokens[current].TokenType != TokenType::EndLine && tokens[current].TokenType != TokenType::EndIndentation &&
+			   (GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
-			   tokens[current].TokenType == TokenType::DotOp)
+			   tokens[current].TokenType == TokenType::DotOp))
 		{
 			current--;
 		}

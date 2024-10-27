@@ -95,7 +95,7 @@ namespace clear {
 
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType();
 
-		if (llvm::isa<llvm::AllocaInst>(LHS) && m_Expression == BinaryExpressionType::Assignment)
+		if (m_Expression == BinaryExpressionType::Assignment)
 		{
 			if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
@@ -108,9 +108,9 @@ namespace clear {
 			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
 			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
 			
+
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
-
 
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
@@ -237,10 +237,11 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			return m_PointerFlag ? (llvm::Value*)value: (llvm::Value*)builder.CreateLoad(value->getAllocatedType(), value, "load_value");
+			return m_PointerFlag ? (llvm::Value*)value: (llvm::Value*)builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "load_value");
 		}
 
 		StructMetaData* currentRef = &AbstractType::GetStructInfo(metaData.Type.GetUserDefinedType());
+
 
 		std::vector<llvm::Value*> indices =
 		{
@@ -261,7 +262,7 @@ namespace clear {
 			if (!currentRef)
 				break;
 		}
-
+		
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
 		return m_PointerFlag ? gepPtr : builder.CreateLoad(gepPtr->getType(), gepPtr, "load_value");
 	}
