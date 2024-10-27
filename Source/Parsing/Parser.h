@@ -28,6 +28,10 @@ namespace clear
 		std::string errormsg;
 	};
 
+	struct Scope {
+		std::set<std::string> TypeDeclarations;
+	};
+
 	class Parser
 	{
 	public:
@@ -62,11 +66,13 @@ namespace clear
 		Token _GetLastToken();
 		Token _CreateToken(const TokenType tok, const std::string& data);
 
-		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,std::string Cause);
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
 		void _RaiseError(Error& err);
-		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType,std::string& Cause);
+		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
 		ProgramInfo _SubParse(std::string arg);
+
+		bool _IsTypeDeclared(const std::string& type);
 
 		void _ParsingRValueState();
 		void _ParseNumber();
@@ -109,7 +115,7 @@ namespace clear
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
-		std::set<std::string> globalTypes;
+		std::vector<Scope> m_ScopeStack;
 
 	};
 

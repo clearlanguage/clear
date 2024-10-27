@@ -73,12 +73,13 @@ namespace clear
 	{
 		if ( _GetLastToken().TokenType != TokenType::EndLine) {
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
-			m_CurrentLine++;
 		}
+		m_CurrentLine++;
 	}
 
 	ProgramInfo Parser::ParseProgram() 
 	{
+		m_ScopeStack.emplace_back();
 		while (m_CurrentTokenIndex < m_Buffer.length())
 		{
 			m_TokenIndexStart = m_CurrentTokenIndex;
@@ -97,6 +98,7 @@ namespace clear
 	void Parser::InitParser() 
 	{
 		m_ProgramInfo.Tokens.clear();
+		m_ScopeStack.clear();
 		m_CurrentTokenIndex = 0;
 		m_Indents = 0;
 		m_CurrentIndentLevel = 0;
@@ -363,7 +365,7 @@ namespace clear
 				return;
 
 			}
-			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&')) && globalTypes.contains(m_CurrentString))) {
+			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&')) && _IsTypeDeclared(m_CurrentString))) {
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -458,11 +460,21 @@ namespace clear
 
 	}
 
+	bool Parser::_IsTypeDeclared(const std::string& type) {
+		for (Scope& arg : m_ScopeStack) {
+			if (arg.TypeDeclarations.contains(type)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
 	void Parser::_StructNameState() {
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),"Expected struct name after struct declaration","Maybe add a name after the struct keyword","StructNoName","struct");
+		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),"Expected struct name after struct declaration","Maybe add a name after the struct keyword","StructNoName");
 		if (current == ':') {
 			CLEAR_LOG_ERROR("Expected struct name?");
 			CLEAR_HALT();
@@ -474,8 +486,8 @@ namespace clear
 			current = _GetNextChar();
 		}
 
-		_VerifyCondition(!globalTypes.contains(m_CurrentString),"Struct with name " + m_CurrentString+ " already defined","Change the name of the struct","StructNameDefined","struct ");
-		globalTypes.insert(m_CurrentString);
+		_VerifyCondition(!_IsTypeDeclared(m_CurrentString),"Struct with name " + m_CurrentString+ " already defined","Change the name of the struct","StructNameDefined");
+		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 
 
 		_PushToken(TokenType::StructName, m_CurrentString);
@@ -587,6 +599,7 @@ namespace clear
 			current = _GetNextChar();
 			pointers++;
 		}
+		_VerifyCondition(std::isspace(current) ,"Expected variable name after type declaration not space","Put variable name after type","NoVariableName");
 		current = _SkipSpaces();
 		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
 		if (!IsSpace(current) && current != '\0') {
@@ -596,13 +609,18 @@ namespace clear
 		
 	}
 
-	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType, std::string& Cause) {
+	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
 		Error err;
 		err.ErrorMessage = ErrorMsg;
 		err.Advice = Advice;
 		err.ErrorType = ErrorType;
-		err.ErrorCause = Cause+m_Buffer.substr(m_TokenIndexStart,m_CurrentTokenIndex-m_TokenIndexStart);
-		err.ErrorCause = replaceAll(err.ErrorCause,"\n","\\n");
+		int i = m_CurrentTokenIndex-1;
+
+		while (i >= 0 && m_Buffer[i] != '\n' && m_Buffer[i] != ';') {
+			i--;
+		}
+		err.ErrorCause = m_Buffer.substr(i + 1, m_CurrentTokenIndex - i);
+		err.ErrorCause = replaceAll(err.ErrorCause,"\n","");
 		err.line = m_CurrentLine;
 		return err;
 
@@ -612,9 +630,9 @@ namespace clear
 		CLEAR_HALT();
 	}
 
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType,std::string Cause) {
+	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
 		if (!condition) {
-			auto err = _CreateError(Error,Advice,ErrorType,Cause);
+			auto err = _CreateError(Error,Advice,ErrorType);
 			if (!IsSubParser) {
 				_RaiseError(err);
 			}else {
@@ -667,7 +685,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName","");
+			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
 				CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
@@ -863,8 +881,11 @@ namespace clear
 	void Parser::_IndentationState()
 	{
 		char next = _GetNextChar();
-		if (next == '\n')
+		if (next == '\n') {
+
+			_EndLine();
 			next = _GetNextChar();
+		}
 
 		bool indenting = true;
 		size_t localIndents = 0;
@@ -901,12 +922,14 @@ namespace clear
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
+			m_ScopeStack.emplace_back();
 		}
 
 		while (m_Indents > localIndents)
 		{
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
+			m_ScopeStack.pop_back();
 		}
 
 		m_CurrentState = ParserState::Default;
