@@ -58,7 +58,7 @@ namespace clear
 		void _FunctionTypeState();
 		void _CommentState();
 		void _StructNameState();
-		void _FunctionParamaterState();
+		void _FunctionArgumentState();
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 		void _AsterisksState();
@@ -85,8 +85,8 @@ namespace clear
 		void _ParseList();
 		std::vector<std::string> _ParseBrackets(char end,bool commas);
 
-		void _ParseArrayDecleration(ArrayDeclarationReturn& output);
-		int _ParsePointerDecleration();
+		void _ParseArrayDeclaration(ArrayDeclarationReturn& output);
+		int _ParsePointerDeclaration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
 		bool _IsLineClosed();
