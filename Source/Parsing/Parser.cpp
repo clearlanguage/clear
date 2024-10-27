@@ -91,6 +91,7 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 		}
+		_VerifyCondition(m_BracketStack.empty(),"Unclosed brackets","Close brackets","");
 
 		return m_ProgramInfo;
 	}
