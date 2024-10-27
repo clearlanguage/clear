@@ -242,7 +242,7 @@ namespace clear {
 			if (type == VariableType::UserDefinedType)
 			{
 				auto& structName = type.GetUserDefinedType();
-				types.push_back(s_StructTypes[structName].Struct);
+				types.push_back(s_StructTypes.at(structName).Struct);
 			}
 			else
 			{
@@ -265,10 +265,8 @@ namespace clear {
 
 	void AbstractType::RegisterVariableType(const std::string& name, const AbstractType& type)
 	{
-		//we don't care about whether it already exists or not
-		//as this is just meta data we need for previous declerations.
-		//declerations may override each other as long as there previous 
-		//deceleration is out of scope/not in use.
+		if (s_RegisteredVariableTypes.contains(name))
+			CLEAR_LOG_INFO("where am i changing you");
 
 		s_RegisteredVariableTypes[name] = type; 
 	}

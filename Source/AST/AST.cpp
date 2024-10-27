@@ -407,7 +407,7 @@ namespace clear {
 			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
 
 			std::string name = currentFunctionName + "::" + tokens[current].Data;
-			auto& type = AbstractType::GetVariableTypeFromName(name);
+			AbstractType type = AbstractType::GetVariableTypeFromName(name);
 
 			for (auto& str : ls)
 			{

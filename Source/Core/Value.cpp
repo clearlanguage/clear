@@ -105,8 +105,10 @@ namespace clear {
 			if (m_Type.Get() == VariableType::UserDefinedType)
 			{
 				auto& structType = m_Type.GetUserDefinedType();
+				
+				auto t = AbstractType::GetStructType(structType);
 
-				auto value = builder.CreateAlloca(AbstractType::GetStructType(structType), nullptr, m_Data);
+				auto value = builder.CreateAlloca(t, nullptr, m_Data);
 				s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
 
 				m_Value = value;
