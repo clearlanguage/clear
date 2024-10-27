@@ -688,7 +688,7 @@ namespace clear
 			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
-				CLEAR_VERIFY(!CompilerType, "cannot index compiler type");
+				_VerifyCondition(!CompilerType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
 			}
 			if (bracketState || variableState) {
 				m_CurrentTokenIndex = prevTokenIndex;
