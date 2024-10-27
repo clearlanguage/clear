@@ -722,7 +722,7 @@ namespace clear
 				ExpectingComma = true;
 			}
 
-			_VerifyCondition(!(ExpectingComma && !IsSpace(current)),"Expected a comma between variables","Seperate values using a comma","Missing variable seperator");
+			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Seperate values using a comma","Missing variable seperator");
 
 			if (current == ',') {
 				ExpectingComma = false;
