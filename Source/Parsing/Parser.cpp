@@ -511,6 +511,9 @@ namespace clear
 		m_CurrentString.clear();
 		if (m_BracketStack.empty())
 			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression");
+		if (current == '\n') {
+			return;
+		}
 		//brackets
 		if (g_OperatorMap.contains(Str(current))) {
 			m_CurrentState = ParserState::Operator;
