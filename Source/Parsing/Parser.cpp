@@ -599,7 +599,7 @@ namespace clear
 			current = _GetNextChar();
 			pointers++;
 		}
-		_VerifyCondition(std::isspace(current) ,"Expected variable name after type declaration not space","Put variable name after type","NoVariableName");
+		_VerifyCondition(std::isspace(current) || current == '[' ,"Expected variable name after type declaration not space","Put variable name after type","NoVariableName");
 		current = _SkipSpaces();
 		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
 		if (!IsSpace(current) && current != '\0') {
@@ -648,7 +648,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		bool CompilerType = g_DataTypes.contains(_GetLastToken().Data);
+		bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);
 		bool variableState = false;
 		bool bracketState = false;
 		int pointers = 0;
@@ -684,11 +684,12 @@ namespace clear
 			bracketState = true;
 		}
 		m_CurrentString.clear();
+		_VerifyCondition(!std::isdigit(current) && !(variableState && bracketState), "Variable name cannot start with a number","","");
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
-				_VerifyCondition(!CompilerType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
+				_VerifyCondition(!IsType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
 			}
 			if (bracketState || variableState) {
 				m_CurrentTokenIndex = prevTokenIndex;
@@ -709,13 +710,23 @@ namespace clear
 		for (auto tok :ArrayDeclarations.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
+		bool ExpectingComma = false;
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
+			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number");
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
 			}
 			current = _GetNextChar();
 
+			if (IsSpace(current)) {
+				ExpectingComma = true;
+			}
+
+			_VerifyCondition(!(ExpectingComma && !IsSpace(current)),"Expected a comma between variables","Seperate values using a comma","Missing variable seperator");
+
 			if (current == ',') {
+				ExpectingComma = false;
+
 				CLEAR_VERIFY(!m_CurrentString.empty(),"Expected variable name after comma")
 				_PushToken(TokenType::VariableName, m_CurrentString);
 				_PushToken(TokenType::Comma,"");
