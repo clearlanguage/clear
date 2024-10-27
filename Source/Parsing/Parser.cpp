@@ -378,6 +378,7 @@ namespace clear
 			}
 			else 
 			{
+				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),"Cannot perform operator on a type reference","idk man fix your code","Operator on type");
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
 
@@ -508,7 +509,7 @@ namespace clear
 		//want to ignore all spaces in between = and actual variable
 		current = _SkipSpaces();
 		m_CurrentString.clear();
-
+		_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression");
 		//brackets
 		if (g_OperatorMap.contains(Str(current))) {
 			m_CurrentState = ParserState::Operator;
@@ -615,11 +616,17 @@ namespace clear
 		err.Advice = Advice;
 		err.ErrorType = ErrorType;
 		int i = m_CurrentTokenIndex-1;
+		if (m_Buffer[i] == '\n')
+			i--;
+		int j = i;
+		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
+			j++;
+		}
 
 		while (i >= 0 && m_Buffer[i] != '\n' && m_Buffer[i] != ';') {
 			i--;
 		}
-		err.ErrorCause = m_Buffer.substr(i + 1, m_CurrentTokenIndex - i);
+		err.ErrorCause = m_Buffer.substr(i + 1, j - i - 1);
 		err.ErrorCause = replaceAll(err.ErrorCause,"\n","");
 		err.line = m_CurrentLine;
 		return err;
@@ -884,7 +891,7 @@ namespace clear
 		}else {
 			_PushToken(TokenType::DereferenceOp,"");
 		}
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = ParserState::RValue;
 
 	}
 
