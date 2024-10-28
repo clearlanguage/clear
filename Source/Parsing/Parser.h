@@ -34,6 +34,11 @@ namespace clear
 		int lastIndex = -1;
 	};
 
+	struct BracketParsingReturn {
+		std::vector<std::string> tokens;
+		std::vector<int> indexes;
+	};
+
 	struct TypeScope 
 	{
 		std::set<std::string> TypeDeclarations;
@@ -122,7 +127,7 @@ namespace clear
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
 		void _ParseList();
-		std::vector<std::string> _ParseBrackets(char end,bool commas);
+		BracketParsingReturn _ParseBrackets(char end,bool commas);
 
 		void _ParseArrayDeclaration(ArrayDeclarationReturn& output);
 		int _ParsePointerDeclaration();
