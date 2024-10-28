@@ -241,14 +241,21 @@ namespace clear
 						stack.push_back(current);
 					}
 					if (g_CloserToOpeners.contains(current)) {
-						CLEAR_VERIFY(g_CloserToOpeners.at(current) == stack.back(),"Attempting to close wrong bracket");
+						_VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(g_CloserToOpeners.at(current)) ,Str(stack.back()));
 						stack.pop_back();
 					}
 				}else {
 					if ((current == '\'' || current == '"')) {
 						if (m_Buffer[m_CurrentTokenIndex-2] != '\\') {
-							CLEAR_VERIFY(current == stack.back(),"Closing unmatched string");
-							stack.pop_back();
+							// std::string type;
+							// if (current == '"') {
+							// 	type = "string";
+							// }else {
+							// 	type = "char";
+							// }
+							// _VerifyCondition(current == stack.back(),19,type,Str(stack.back()),Str(current));
+							if (current == stack.back())
+								stack.pop_back();
 						}
 					}
 				}
