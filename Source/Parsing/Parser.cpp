@@ -620,10 +620,12 @@ namespace clear
 		err.ErrorMessage = ErrorMsg;
 		err.Advice = Advice;
 		err.ErrorType = ErrorType;
-		int i = m_CurrentTokenIndex-1;
+		int i = m_CurrentTokenIndex;
 		if (m_Buffer[i] == '\n')
 			i--;
 		int j = i;
+		err.to = j;
+		err.from = m_TokenIndexStart;
 		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
 			j++;
 		}
@@ -724,8 +726,12 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
 		bool ExpectingComma = false;
+		int lastValidVar = m_CurrentTokenIndex-1;
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
-			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number");
+			if (m_CurrentString.empty() && std::isdigit(current)) {
+				m_TokenIndexStart = m_CurrentTokenIndex-1;
+				_VerifyCondition(false,"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number");
+			}
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
 			}
@@ -735,11 +741,14 @@ namespace clear
 				ExpectingComma = true;
 			}
 
-			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Separate values using a comma","Missing variable separator");
+			if (ExpectingComma && IsVarNameChar(current)) {
+				m_TokenIndexStart = lastValidVar;
+				_VerifyCondition(false,"Expected a comma between variables","Separate values using a comma","Missing variable separator");
+			}
 
 			if (current == ',') {
 				ExpectingComma = false;
-
+				lastValidVar = m_CurrentTokenIndex-1;
 				CLEAR_VERIFY(!m_CurrentString.empty(),"Expected variable name after comma")
 				_PushToken(TokenType::VariableName, m_CurrentString);
 				_PushToken(TokenType::Comma,"");
