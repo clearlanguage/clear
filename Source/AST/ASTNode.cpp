@@ -22,6 +22,11 @@ namespace clear {
 		return nullptr;
 	}
 
+	void ASTNodeBase::SetName(const std::string& name)
+	{
+		m_Name = name;
+	}
+
 	void ASTNodeBase::PushChild(const Ref<ASTNodeBase>& child)
 	{
 		m_Children.push_back(child);
@@ -71,7 +76,7 @@ namespace clear {
 
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
-	
+
 		if (!m_ExpectedType)
 		{
 			auto& str = m_ExpectedType.GetUserDefinedType();
@@ -100,32 +105,32 @@ namespace clear {
 			if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
-			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
+			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
 		}
 
-		if (LHSRawValue->getType()->isPointerTy() || RHSRawValue->getType()->isPointerTy())
+		if ((LHSRawValue->getType()->isPointerTy() || RHSRawValue->getType()->isPointerTy()) && m_ExpectedType.IsPointer())
 		{
 			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
 			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
-			
+
 
 			CLEAR_VERIFY(integer->getType()->isIntegerTy(), "must be integral");
 			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
-			
-			if (m_Expression == BinaryExpressionType::Sub) 
+
+			if (m_Expression == BinaryExpressionType::Sub)
 				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1").first);
-			
+
 
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
-		
+
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
 		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
-		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
+		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
 	}
 	const bool ASTBinaryExpression::_IsMathExpression() const
 	{
@@ -134,15 +139,22 @@ namespace clear {
 
 	const bool ASTBinaryExpression::_IsCmpExpression() const
 	{
-		return (int)m_Expression <= (int)BinaryExpressionType::Eq && !_IsMathExpression();
+		return (int)m_Expression <= (int)BinaryExpressionType::NotEq && !_IsMathExpression();
 	}
 
-	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue)
+	const bool ASTBinaryExpression::_IsBitwiseExpression() const
+	{
+		return (int)m_Expression >= (int)BinaryExpressionType::BitwiseLeftShift;
+	}
+
+	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger)
 	{
 		if (_IsMathExpression())
 			return _CreateMathExpression(LHSRawValue, RHSRawValue);
 		else if (_IsCmpExpression())
 			return _CreateCmpExpression(LHSRawValue, RHSRawValue);
+		else if (_IsBitwiseExpression())
+			return _CreateBitwiseExpression(LHSRawValue, RHSRawValue, signedInteger);
 		
 		return _CreateLoadStoreExpression(LHS, RHSRawValue);
 	}
@@ -174,7 +186,6 @@ namespace clear {
 				if (!isFloat)
 					return builder->CreateSRem(LHS, RHS, "modtmp");
 
-				break;
 			default:
 				break;
 		}
@@ -203,6 +214,9 @@ namespace clear {
 			case BinaryExpressionType::Eq:
 				return isFloat ? builder->CreateFCmpOEQ(LHS, RHS)
 							   : builder->CreateICmpEQ(LHS, RHS);
+			case BinaryExpressionType::NotEq:
+				return isFloat ? builder->CreateFCmpONE(LHS, RHS)
+							   : builder->CreateICmpNE(LHS, RHS);
 			default:
 				break;
 		}
@@ -220,6 +234,35 @@ namespace clear {
 				default:
 					break;
 		}
+
+		return nullptr;
+	}
+
+	llvm::Value* ASTBinaryExpression::_CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::BitwiseLeftShift:	return builder.CreateShl(LHS, RHS, "bitwise_shift_left");
+			case BinaryExpressionType::BitwiseRightShift:   
+			{
+				return signedInteger ? builder.CreateAShr(LHS, RHS, "bitwise_a_shift_right") : builder.CreateLShr(LHS, RHS, "bitwise_l_shift_right");
+			}
+			case BinaryExpressionType::BitwiseNot:
+			{
+				CLEAR_UNREACHABLE("");
+				break; //TODO: new ast node (astSingleExpression) which only applies an operation onto one operand
+			}
+			case BinaryExpressionType::BitwiseAnd:
+			{
+				return builder.CreateAnd(LHS, RHS, "bitwise_and");
+			}
+			default:
+				break;
+		}
+
+		CLEAR_UNREACHABLE("");
 
 		return nullptr;
 	}
@@ -243,11 +286,19 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			if (m_Dereference && metaData.Type.IsPointer())
+			if (m_Dereference && m_PointerFlag)
 			{
 				llvm::Value* loadedPointer = builder.CreateLoad(value->getAllocatedType(), value, "loaded_pointer");
 				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
 			}
+			
+			if (!m_Dereference && !m_PointerFlag)
+			{
+				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "loaded_value");
+			}
+
+			CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
+
 			return value; 
 		}
 
@@ -275,11 +326,18 @@ namespace clear {
 
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
 
-		if (m_Dereference && metaData.Type.IsPointer())
+		if (m_Dereference && m_PointerFlag)
 		{
 			llvm::Value* loadedPointer = builder.CreateLoad(gepPtr->getType(), gepPtr, "loaded_pointer");
 			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
 		}
+
+		if (!m_Dereference && !m_PointerFlag)
+		{
+			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), gepPtr, "loaded_value");
+		}
+
+		CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
 
 		return gepPtr; 
 	}
@@ -296,9 +354,10 @@ namespace clear {
 	}
 
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& Paramaters)
-		: m_Name(name), m_ReturnType(returnType), m_Paramaters(Paramaters)
+		: m_ReturnType(returnType), m_Paramaters(Paramaters)
 	{
-		s_FunctionToExpectedTypes[m_Name] = m_Paramaters;
+		s_FunctionToExpectedTypes[name] = m_Paramaters;
+		SetName(name);
 
 		if (!s_FunctionToExpectedTypes.contains("_sleep")) //TODO: remove thhis immediately
 		{
@@ -332,16 +391,16 @@ namespace clear {
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamaterTypes, false);
 
-		llvm::Function* function = module.getFunction(m_Name);
+		llvm::Function* function = module.getFunction(GetName());
 		CLEAR_VERIFY(!function, "function already defined");
 
-		function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, m_Name, module);
+		function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, GetName(), module);
 
 		llvm::Function::arg_iterator args = function->arg_begin();
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			args->setName(m_Name + "::" + Paramater.Name);
+			args->setName(GetName() + "::" + Paramater.Name);
 			args++;
 		}
 
@@ -355,7 +414,7 @@ namespace clear {
 			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramater.Type), nullptr, Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
 			
-			Value::RegisterVariable(argAlloc, m_Name + "::" + Paramater.Name, Paramater.Type);
+			Value::RegisterVariable(argAlloc, GetName() + "::" + Paramater.Name, Paramater.Type);
 
 			k++;
 		}
@@ -367,7 +426,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			Value::RemoveVariable(m_Name + "::" + Paramater.Name);
+			Value::RemoveVariable(GetName() + "::" + Paramater.Name);
 		}
 
 		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
@@ -556,5 +615,65 @@ namespace clear {
 		CLEAR_VERIFY(callee, "not a valid function");
 
 		return builder.CreateCall(callee, args);
+	}
+	
+	llvm::Value* ASTIfExpression::Codegen()
+	{
+		auto& children = GetChildren();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		CLEAR_VERIFY(children.size() > 1, "size must be greater than 1");
+
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		llvm::BasicBlock* thenBranch  = llvm::BasicBlock::Create(context, "then", function);
+		llvm::BasicBlock* elseBranch  = llvm::BasicBlock::Create(context, "else");
+		llvm::BasicBlock* mergeBranch = llvm::BasicBlock::Create(context, "merge");
+
+		//first child is a condition
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "node must be an expression");
+
+		llvm::Value* condition = children[0]->Codegen();
+		builder.CreateCondBr(condition, thenBranch, elseBranch);
+
+		builder.SetInsertPoint(thenBranch);
+
+		//next has to be a NodeBase/FunctionCall/etc...
+		llvm::Value* ifCode = children[1]->Codegen();
+
+		if (!ifCode)
+			ifCode = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
+
+		builder.CreateBr(mergeBranch);
+
+		thenBranch = builder.GetInsertBlock();
+
+		//TODO: add else if
+
+		function->insert(function->end(), elseBranch);
+		builder.SetInsertPoint(elseBranch);
+
+		
+		llvm::Value* elseCode = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
+
+		if (children.size() > 2)
+		{
+			llvm::Value* val = children[2]->Codegen();
+			elseCode = val == nullptr ? elseCode : val;
+		}
+		
+		builder.CreateBr(mergeBranch);
+		elseBranch = builder.GetInsertBlock();
+
+		function->insert(function->end(), mergeBranch);
+		builder.SetInsertPoint(mergeBranch);
+
+		llvm::PHINode* PN = builder.CreatePHI(llvm::Type::getDoubleTy(context), 2, "iftmp");
+
+		PN->addIncoming(ifCode, thenBranch);
+		PN->addIncoming(elseCode, elseBranch);
+
+		return PN;
 	}
 }

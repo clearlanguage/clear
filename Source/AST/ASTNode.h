@@ -33,6 +33,8 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual llvm::Value* Codegen();
 
+		void SetName(const std::string& name);
+
 		void PushChild(const Ref<ASTNodeBase>& child);
 		void RemoveChild(const Ref<ASTNodeBase>& child);
 
@@ -42,9 +44,12 @@ namespace clear {
 		const auto  GetParent()   const { return m_Parent; }
 		const auto& GetChildren() const { return m_Children; }
 
+		inline const std::string& GetName() const { return m_Name; }
+
 	private:
 		Ref<ASTNodeBase> m_Parent;
 		std::vector<Ref<ASTNodeBase>> m_Children;
+		std::string m_Name;
 	};
 	//
 	// -------------------------------------------------------
@@ -83,13 +88,15 @@ namespace clear {
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
 
 	private:
-		const bool _IsMathExpression() const;
-		const bool _IsCmpExpression() const;
+		const bool _IsMathExpression()    const;
+		const bool _IsCmpExpression()     const;
+		const bool _IsBitwiseExpression() const;
 
-		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue);
+		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger);
 		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
+		llvm::Value* _CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger);
 
 	private:
 		BinaryExpressionType m_Expression;
@@ -117,10 +124,7 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
 
-		inline const std::string& GetName() const { return m_Name; }
-
 	private:
-		std::string m_Name;
 		VariableType m_ReturnType;
 		std::vector<Paramater> m_Paramaters;
 	};

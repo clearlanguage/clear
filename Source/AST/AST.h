@@ -26,7 +26,7 @@ namespace clear {
 
     private:
         Ref<ASTFunctionDecleration> m_Root;
-        std::stack<Ref<ASTFunctionDecleration>> m_Stack;
+        std::stack<Ref<ASTNodeBase>> m_Stack;
     };
 
 }

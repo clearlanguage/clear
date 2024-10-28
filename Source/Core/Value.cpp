@@ -136,7 +136,7 @@ namespace clear {
 		}
 		else
 		{
-			CLEAR_ANNOTATED_HALT("kind of none is not allowed");
+			CLEAR_UNREACHABLE("kind of none is not allowed");
 		}
 
 	}
@@ -196,7 +196,7 @@ namespace clear {
 			return CastValue(tmp, to);
 		}
 
-		CLEAR_ANNOTATED_HALT("failed to find right cast type");
+		CLEAR_UNREACHABLE("failed to find right cast type");
 
 		return nullptr;
 	}

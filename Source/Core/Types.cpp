@@ -82,10 +82,9 @@ namespace clear {
 			case TokenType::LessThan:			return BinaryExpressionType::Less;
 			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
 			case TokenType::GreaterThanEqual:	return BinaryExpressionType::Greater;
-
-				//TODO:
-			case TokenType::Not:
-			case TokenType::BinaryShiftLeft:
+			case TokenType::Not:				return BinaryExpressionType::BitwiseNot;
+			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
+			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
 			default:
 				break;
 		}

@@ -52,6 +52,8 @@ namespace clear {
 						{
 							currentParamater.Name = tokens[i].Data;
 							Paramaters.push_back(currentParamater);
+
+							AbstractType::RegisterVariableType(name + "::" + currentParamater.Name, currentParamater.Type);
 						}
 
 						i++;
@@ -114,7 +116,7 @@ namespace clear {
 							}
 							default:
 							{
-								CLEAR_ANNOTATED_HALT("tokens of all types haven't been dealt with yet"); //TODO
+								CLEAR_UNREACHABLE("tokens of all types haven't been dealt with yet"); //TODO
 								break;
 							}
 						}
@@ -199,11 +201,24 @@ namespace clear {
 
 					break;
 				}
-				case TokenType::AddOp:
-				case TokenType::SubOp:
-				case TokenType::DivOp:
-				case TokenType::MulOp:
+				case TokenType::ConditionalIf:
+				{
+					Ref<ASTIfExpression> ifExpr = Ref<ASTIfExpression>::Create();
+					ifExpr->SetName(currentRoot->GetName());
+
+					//evaluate first condition
+					ifExpr->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, VariableType::Bool));
+					
+					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
+					base->SetName(currentRoot->GetName());
+
+					ifExpr->PushChild(base);
+
+					currentRoot->PushChild(ifExpr);
+					m_Stack.push(base); //once end indentation after else is reached this will be popped off.
+
 					break;
+				}
 				case TokenType::Assignment:
 				{
 					auto& previous = tokens[i - 1];
@@ -226,6 +241,13 @@ namespace clear {
 				{
 					if (m_Stack.size() > 1)
 					{
+						auto& top = m_Stack.top();
+
+						//end of an if/elseif block so we need to check next token (TODO once else and else if implemented)
+						if (top->GetType() == ASTNodeType::Base)
+						{
+						}
+
 						m_Stack.pop();
 					}
 
@@ -267,13 +289,19 @@ namespace clear {
 		std::stack<Operator> operators;
 
 		static std::map<TokenType, int> s_Presedence = {
-			{TokenType::DivOp,    3},
-			{TokenType::MulOp,    3},
-			{TokenType::AddOp,    2},
-			{TokenType::SubOp,    2},
-			{TokenType::IsEqual,  1}, 
-			{TokenType::NotEqual, 1},
-			{TokenType::OpenBracket, 0}
+			{TokenType::DivOp,			  3},
+			{TokenType::MulOp,			  3},
+			{TokenType::LeftShift,		  3},
+			{TokenType::RightShift,   	  3},
+			{TokenType::AddOp,			  2},
+			{TokenType::SubOp,			  2},
+			{TokenType::IsEqual,		  1}, 
+			{TokenType::NotEqual,		  1},
+			{TokenType::LessThan,		  1}, 
+			{TokenType::GreaterThan,      1},
+			{TokenType::LessThanEqual,    1},
+			{TokenType::GreaterThanEqual, 1},
+			{TokenType::OpenBracket,      0}
 		};
 
 		AbstractType currentExpectedType = expected;
@@ -281,7 +309,6 @@ namespace clear {
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
 
 		bool addBracket = false;
-
 
 		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation)
 		{
@@ -346,7 +373,6 @@ namespace clear {
 			}
 			else if (s_Presedence.contains(token.TokenType))
 			{
-				
 				while (!operators.empty() && operators.top().Token.TokenType != TokenType::OpenBracket &&
 					   s_Presedence[token.TokenType] <= s_Presedence[operators.top().Token.TokenType])
 				{
