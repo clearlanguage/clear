@@ -509,7 +509,7 @@ namespace clear
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
-		if (!condition) {
+		if ((!condition) && !IsSubParser) {
 
 		if (startIndex!= -1) {
 			m_TokenIndexStart = startIndex;
@@ -522,7 +522,7 @@ namespace clear
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
-		if (!condition) {
+		if (!condition && !IsSubParser) {
 			if (startIndex!= -1) {
 				m_TokenIndexStart = startIndex;
 				}
