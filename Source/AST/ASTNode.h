@@ -17,7 +17,7 @@ namespace clear {
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
 		FunctionDecleration, ReturnStatement, 
-		Expression, Struct, FunctionCall, StructElement
+		Expression, Struct, FunctionCall, IfExpression
 	};
 
 
@@ -249,6 +249,24 @@ namespace clear {
 	private:
 		std::vector<AbstractType::MemberType> m_Members;
 		std::string m_Name;
+	};
+
+	//
+	// ------------------------------------------------------------------
+	//
+
+	//
+	// ---------------------- IF -----------------------
+	//
+
+	class ASTIfExpression : public ASTNodeBase
+	{
+	public:
+		ASTIfExpression() = default;
+		virtual ~ASTIfExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
+		virtual llvm::Value* Codegen() override;
+
 	};
 
 	//

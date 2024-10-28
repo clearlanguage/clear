@@ -16,13 +16,12 @@
 namespace clear
 {
 	template<typename... Args>
-	concept RestrictToString = ((std::convertible_to<Args, std::string> || std::convertible_to<Args, const char*> || std::convertible_to<Args, char>) && ...);
+	concept RestrictToString = ((std::convertible_to<Args, std::string> || std::convertible_to<Args, const char*> || std::same_as<Args, char>) && ...);
 
 	struct ProgramInfo
 	{
 		std::vector<Token> Tokens;
 		std::vector<Error> Errors;
-
 	};
 
 	struct ArrayDeclarationReturn 

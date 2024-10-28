@@ -127,7 +127,6 @@ namespace clear {
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue);
 	}
-
 	const bool ASTBinaryExpression::_IsMathExpression() const
 	{
 		return (int)m_Expression <= (int)BinaryExpressionType::Mod;

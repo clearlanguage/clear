@@ -267,10 +267,12 @@ namespace clear {
 		std::stack<Operator> operators;
 
 		static std::map<TokenType, int> s_Presedence = {
-			{TokenType::DivOp, 2},
-			{TokenType::MulOp, 2},
-			{TokenType::AddOp, 1},
-			{TokenType::SubOp, 1},
+			{TokenType::DivOp,    3},
+			{TokenType::MulOp,    3},
+			{TokenType::AddOp,    2},
+			{TokenType::SubOp,    2},
+			{TokenType::IsEqual,  1}, 
+			{TokenType::NotEqual, 1},
 			{TokenType::OpenBracket, 0}
 		};
 

@@ -25,7 +25,7 @@ namespace clear {
 	{
 		None = 0, Add, Sub, Mul,
 		Div, Mod, Less, LessEq,
-		Greater, GreaterEq, Eq, Assignment
+		Greater, GreaterEq, Eq, NotEq, Assignment
 	};
 	
 	struct StructMetaData;

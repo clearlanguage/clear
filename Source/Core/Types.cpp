@@ -77,6 +77,7 @@ namespace clear {
 			case TokenType::SubOp:				return BinaryExpressionType::Sub;
 			case TokenType::ModOp:				return BinaryExpressionType::Mod;
 			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
+			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
 			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
 			case TokenType::LessThan:			return BinaryExpressionType::Less;
 			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
@@ -84,7 +85,6 @@ namespace clear {
 
 				//TODO:
 			case TokenType::Not:
-			case TokenType::NotEqual:
 			case TokenType::BinaryShiftLeft:
 			default:
 				break;
