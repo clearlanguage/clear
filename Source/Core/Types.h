@@ -66,6 +66,8 @@ namespace clear {
 		inline  llvm::Type*  GetLLVMType()       const { return m_LLVMType; }
 		inline  llvm::Type*  GetLLVMUnderlying() const { return m_LLVMUnderlyingType; }
 
+		void SetLLVMUnderlyingType(llvm::Type* type);
+
 		inline  const std::string& GetUserDefinedType() const { return m_UserDefinedType; }
 
 		const bool IsFloatingPoint() const;

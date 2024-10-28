@@ -253,7 +253,7 @@ namespace clear {
 			info.Types.push_back(type);
 		}
 
-		info.Struct = llvm::StructType::create(types);
+		info.Struct = llvm::StructType::create(types, name);
 		s_StructTypes[name] = info;
 	}
 
@@ -313,6 +313,11 @@ namespace clear {
 		}
 
 		return false;
+	}
+
+	void AbstractType::SetLLVMUnderlyingType(llvm::Type* type)
+	{
+		m_LLVMUnderlyingType = type;
 	}
 
 	const bool AbstractType::IsFloatingPoint() const

@@ -23,5 +23,6 @@ namespace clear {
         std::cout<<"ErrorType: " <<err.ErrorType<<'\n';
         std::cout<<"ErrorMessage: " <<err.ErrorMessage<<'\n';
         std::cout<<"Advice: " << err.Advice <<'\n';
+
     }
 }

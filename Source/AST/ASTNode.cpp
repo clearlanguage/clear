@@ -108,16 +108,17 @@ namespace clear {
 			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
 			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
 			
-			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
 
-			bool isNegative = m_Expression == BinaryExpressionType::Sub ? true : false;
+			CLEAR_VERIFY(integer->getType()->isIntegerTy(), "must be integral");
+			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
 			
-			if(isNegative)
-				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1"));
+			if (m_Expression == BinaryExpressionType::Sub) 
+				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1").first);
+			
 
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
-
+		
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
@@ -446,7 +447,7 @@ namespace clear {
 			if(argument.Field.GetKind() == TypeKind::RValue)
 			{
 				auto& variableType = argument.Field;
-				auto value = Value::GetConstant(variableType, argument.Data);
+				auto [value, _] = Value::GetConstant(variableType, argument.Data);
 
 				if (variableType.Get() != expected[k].Type.Get())
 					value = Value::CastValue(value, expected[k].Type);

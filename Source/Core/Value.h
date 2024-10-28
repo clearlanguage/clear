@@ -18,6 +18,9 @@ namespace clear {
 	class Value 
 	{
 	public:
+		using ConstantPair = std::pair<llvm::Value*, llvm::Type*>;
+
+	public:
 		Value() = default;
 		Value(const std::string& rValue);
 		Value(const AbstractType& type, const std::string& data);
@@ -25,9 +28,11 @@ namespace clear {
 
 		~Value();
 
+
+
 		static llvm::Value*		 CastValue(llvm::Value* value, AbstractType to);
-		static llvm::Value*		 GetConstantString(const std::string& data);
-		static llvm::Value*		 GetConstant(const AbstractType& type, const std::string& data);
+		static ConstantPair		 GetConstantString(const std::string& data);
+		static ConstantPair		 GetConstant(const AbstractType& type, const std::string& data);
 		static VariableMetaData& GetVariableMetaData(const std::string& name);
 
 		static Ref<Value> Cast(const Ref<Value>& casting, AbstractType to);

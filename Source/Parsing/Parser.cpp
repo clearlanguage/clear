@@ -696,6 +696,8 @@ namespace clear
 	{
 		char current = _GetNextChar();
 
+		
+
 		current = _SkipSpaces();
 		bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);
 		bool variableState = false;
