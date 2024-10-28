@@ -699,7 +699,7 @@ namespace clear
 			bracketState = true;
 		}
 		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current) && !(variableState && bracketState), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number");
+		_VerifyCondition(!std::isdigit(current), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number");
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
