@@ -26,6 +26,8 @@ namespace clear
 		std::vector<Token> Tokens;
 		bool error = false;
 		std::string errormsg;
+		std::string advice;
+		int lastIndex = -1;
 	};
 
 	struct TypeScope 

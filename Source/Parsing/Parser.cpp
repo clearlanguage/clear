@@ -503,16 +503,24 @@ namespace clear
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
-		if (startIndex!= -1)
+		if (!condition) {
+
+		if (startIndex!= -1) {
 			m_TokenIndexStart = startIndex;
-		if (endIndex != -1)
+		}
+		if (endIndex != -1) {
 			m_CurrentTokenIndex = endIndex;
+			}
+		}
 		_VerifyCondition(condition, Error, Advice, ErrorType);
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
-		if (startIndex!= -1)
-			m_TokenIndexStart = startIndex;
+		if (!condition) {
+			if (startIndex!= -1) {
+				m_TokenIndexStart = startIndex;
+				}
+			}
 
 		_VerifyCondition(condition, Error, Advice, ErrorType);
 
@@ -528,7 +536,7 @@ namespace clear
 		current = _SkipSpaces();
 		m_CurrentString.clear();
 		if (m_BracketStack.empty())
-			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression");
+			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression",m_TokenIndexStart-1);
 		if (current == '\n') {
 			return;
 		}
@@ -597,6 +605,8 @@ namespace clear
 			}else {
 				output.error = true;
 				output.errormsg = "Array declaration syntax error only expected numbers or ...";
+				output.advice = "Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty";
+				output.lastIndex = m_CurrentTokenIndex;
 			}
 		}
 		m_CurrentString.clear();
@@ -724,7 +734,7 @@ namespace clear
 			bracketState = true;
 		}
 		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number");
+		_VerifyCondition(!std::isdigit(current), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number",m_CurrentTokenIndex-1);
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
 
@@ -733,6 +743,7 @@ namespace clear
 				_VerifyCondition(!IsType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
 			}
 			if (bracketState || variableState) {
+				_VerifyCondition(!IsType,"Expected variable name after type declaration","Perhaps you forgot to put the variable name","Missing variable name");
 				m_CurrentTokenIndex = prevTokenIndex;
 			}
 			m_CurrentState = ParserState::Default;
@@ -744,7 +755,7 @@ namespace clear
 
 		int commas = 0;
 		int vars = 0;
-		CLEAR_VERIFY(!ArrayDeclarations.error,ArrayDeclarations.errormsg);
+		_VerifyCondition(!ArrayDeclarations.error,ArrayDeclarations.errormsg,ArrayDeclarations.advice,"Array declaration error",prevTokenIndex-1,ArrayDeclarations.lastIndex-1);
 		for (int i = 0; i < pointers; i++) {
 			_PushToken(TokenType::PointerDef,"*");
 		}
