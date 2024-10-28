@@ -45,7 +45,12 @@ namespace clear {
             {"Unknown char escape char \"\\{}\"","Reference existing escape chars and update your code","Unknown char escape character"},
             {"No data inside char literal","Put a character inside the char literal","Empty char literal"},
             {"expected ' after char ","Put a ' after the char","Unclosed char"},
-            {"Did not expect commas in {}","Remove commas or fix brackets","Unexpected commas"}
+            {"Did not expect commas in {}","Remove commas or fix brackets","Unexpected commas"},
+        {"Unclosed multiline comment expected \\* at the end of the comment","Close the comment by adding *\\ at the end","multiline comment unclosed"},
+            {"Attempting to close wrong bracket expected {} not {}","Change the closing bracket to the correct type","Wrong closing bracket"},
+        {"Attempting to close unopened {} expected {} not {}","Change the string closer to the correct type","Wrong closing char"},
+
+
 
         };
 }
