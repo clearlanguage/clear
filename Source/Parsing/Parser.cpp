@@ -502,6 +502,23 @@ namespace clear
 		return Token{ .TokenType = tok, .Data = data };
 	}
 
+	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
+		if (startIndex!= -1)
+			m_TokenIndexStart = startIndex;
+		if (endIndex != -1)
+			m_CurrentTokenIndex = endIndex;
+		_VerifyCondition(condition, Error, Advice, ErrorType);
+	}
+
+	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
+		if (startIndex!= -1)
+			m_TokenIndexStart = startIndex;
+
+		_VerifyCondition(condition, Error, Advice, ErrorType);
+
+	}
+
+
 
 	void Parser::_ParsingRValueState()
 	{
@@ -621,11 +638,16 @@ namespace clear
 		err.Advice = Advice;
 		err.ErrorType = ErrorType;
 		int i = m_CurrentTokenIndex;
+		int offset = m_CurrentTokenIndex-m_TokenIndexStart;
 		if (m_Buffer[i] == '\n')
 			i--;
+		if (m_Buffer[i] == '\n')
+			i--;
+		if ( m_Buffer[i] == '\0') {
+			i-=2;
+		}
 		int j = i;
-		err.to = j;
-		err.from = m_TokenIndexStart;
+
 		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
 			j++;
 		}
@@ -634,6 +656,9 @@ namespace clear
 			i--;
 		}
 		err.ErrorCause = m_Buffer.substr(i + 1, j - i - 1);
+		i++;
+		err.to = m_CurrentTokenIndex-i;
+		err.from = m_TokenIndexStart-i;
 
 		err.line = m_CurrentLine;
 		return err;
@@ -702,8 +727,9 @@ namespace clear
 		_VerifyCondition(!std::isdigit(current), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number");
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
-			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 
+			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
+				_VerifyCondition(!(IsType && g_OperatorMap.contains(Str(current))), "Cannot use operator on a type","","operator on type");
 				_VerifyCondition(!IsType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
 			}
 			if (bracketState || variableState) {
@@ -728,10 +754,8 @@ namespace clear
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
-			if (m_CurrentString.empty() && std::isdigit(current)) {
-				m_TokenIndexStart = m_CurrentTokenIndex-1;
-				_VerifyCondition(false,"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number");
-			}
+			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number", m_CurrentTokenIndex-1,-1);
+
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
 			}
@@ -741,10 +765,9 @@ namespace clear
 				ExpectingComma = true;
 			}
 
-			if (ExpectingComma && IsVarNameChar(current)) {
-				m_TokenIndexStart = lastValidVar;
-				_VerifyCondition(false,"Expected a comma between variables","Separate values using a comma","Missing variable separator");
-			}
+
+			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Separate values using a comma","Missing variable separator",lastValidVar,-1);
+
 
 			if (current == ',') {
 				ExpectingComma = false;

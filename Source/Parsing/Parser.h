@@ -68,6 +68,10 @@ namespace clear
 		Token _CreateToken(const TokenType tok, const std::string& data);
 
 		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex,int endIndex);
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex);
+
+
 		void _RaiseError(Error& err);
 		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
