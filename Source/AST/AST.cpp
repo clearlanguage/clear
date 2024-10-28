@@ -7,7 +7,7 @@
 
 namespace clear {
 
-	AST::AST(const ProgramInfo& info)
+	AST::AST(ProgramInfo& info)
 	{
 		auto& tokens = info.Tokens;
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -253,13 +253,18 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	Ref<ASTExpression> AST::_CreateExpression(const std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
+	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		start += 1;
 
-		std::stack<Token> operators;
-		std::stack<AbstractType> expectedTypes;
+		struct Operator
+		{
+			Token Token;
+			AbstractType ExpectedType;
+		};
+
+		std::stack<Operator> operators;
 
 		static std::map<TokenType, int> s_Presedence = {
 			{TokenType::DivOp, 2},
@@ -270,6 +275,11 @@ namespace clear {
 		};
 
 		AbstractType currentExpectedType = expected;
+		Token openBracket{ .TokenType = TokenType::OpenBracket };
+		Token closeBracket{ .TokenType = TokenType::CloseBracket };
+
+		bool addBracket = false;
+
 
 		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation)
 		{
@@ -292,6 +302,7 @@ namespace clear {
 				if (pointerFlag)
 				{
 					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
+					addBracket = true;
 				}
 				else 
 				{
@@ -304,16 +315,26 @@ namespace clear {
 					 token.TokenType == TokenType::BooleanData)
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+				currentExpectedType = AbstractType(token.Data);
+
+				//cast to the largest value so overflow doesn't happen
+				if (currentExpectedType.IsFloatingPoint())
+					currentExpectedType = VariableType::Float64;
+				else if (currentExpectedType.IsSigned())
+					currentExpectedType = VariableType::Int64;
+				else if (currentExpectedType.IsIntegral())
+					currentExpectedType = VariableType::Uint64;	
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
-				operators.push(token);
+				operators.push({ token, currentExpectedType });
 			}
 			else if (token.TokenType == TokenType::CloseBracket)
 			{
-				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket)
+				while (!operators.empty() && operators.top().Token.TokenType != TokenType::OpenBracket)
 				{
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
+					auto& top = operators.top();
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
 					operators.pop();
 				}
 
@@ -322,14 +343,33 @@ namespace clear {
 			}
 			else if (s_Presedence.contains(token.TokenType))
 			{
-				while (!operators.empty() && operators.top().TokenType != TokenType::OpenBracket &&
-					   s_Presedence[token.TokenType] <= s_Presedence[operators.top().TokenType])
+				
+				while (!operators.empty() && operators.top().Token.TokenType != TokenType::OpenBracket &&
+					   s_Presedence[token.TokenType] <= s_Presedence[operators.top().Token.TokenType])
 				{
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
+					auto& top = operators.top();
+
+					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
 					operators.pop();
 				}
 
-				operators.push(token);
+				operators.push({ token, currentExpectedType });
+
+				if (addBracket)
+				{
+					operators.push({ openBracket, currentExpectedType });
+					//we now need to insert the close bracket at the end of this expression
+
+					size_t copy = start;
+
+					while (copy < tokens.size() && tokens[copy].TokenType != TokenType::EndLine && tokens[copy].TokenType != TokenType::EndIndentation)
+					{
+						copy++;
+					}
+					tokens.insert(tokens.begin() + copy, closeBracket);
+
+					addBracket = false;
+				}
 
 			}
 
@@ -340,7 +380,8 @@ namespace clear {
 
 		while (!operators.empty())
 		{
-			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(operators.top().TokenType), currentExpectedType));
+			auto& top = operators.top();
+			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
 			operators.pop();
 		}
 

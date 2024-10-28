@@ -108,6 +108,12 @@ namespace clear {
 			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
 			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
 			
+			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
+
+			bool isNegative = m_Expression == BinaryExpressionType::Sub ? true : false;
+			
+			if(isNegative)
+				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1"));
 
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
