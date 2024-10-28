@@ -91,7 +91,7 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 		}
-		_VerifyCondition(m_BracketStack.empty(),"Unclosed brackets","Close brackets","");
+		_VerifyCondition(m_BracketStack.empty(),1);
 
 		return m_ProgramInfo;
 	}
@@ -149,6 +149,7 @@ namespace clear
 
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 		auto argList = _ParseBrackets(')',true);
+		std::vector<int> TokenIndexes;
 		m_CurrentState = ParserState::Default;
 		for (const std::string& arg : argList) {
 			ProgramInfo info = _SubParse(arg);
@@ -379,7 +380,7 @@ namespace clear
 			}
 			else 
 			{
-				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),"Cannot perform operator on a type reference","idk man fix your code","Operator on type");
+				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),2);
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
 
@@ -476,7 +477,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),"Expected struct name after struct declaration","Maybe add a name after the struct keyword","StructNoName");
+		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),3);
 		if (current == ':') {
 			CLEAR_LOG_ERROR("Expected struct name?");
 			CLEAR_HALT();
@@ -488,7 +489,7 @@ namespace clear
 			current = _GetNextChar();
 		}
 
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString),"Struct with name " + m_CurrentString+ " already defined","Change the name of the struct","StructNameDefined");
+		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 
 
@@ -536,7 +537,7 @@ namespace clear
 		current = _SkipSpaces();
 		m_CurrentString.clear();
 		if (m_BracketStack.empty())
-			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),"Expected expression","Put an expression after operator","expected expression",m_TokenIndexStart-1);
+			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1);
 		if (current == '\n') {
 			return;
 		}
@@ -632,7 +633,7 @@ namespace clear
 			current = _GetNextChar();
 			pointers++;
 		}
-		_VerifyCondition(std::isspace(current) || current == '[' ,"Expected variable name after type declaration not space","Put variable name after type","NoVariableName");
+		_VerifyCondition(std::isspace(current) || current == '[' ,6);
 		current = _SkipSpaces();
 		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
 		if (!IsSpace(current) && current != '\0') {
@@ -706,7 +707,7 @@ namespace clear
 		int prevTokenIndex = 0;
 		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
 			_Backtrack();
-			_VerifyCondition(!IsType,"Cannot perform operator on a type reference","idk man fix your code","Operator on type");
+			_VerifyCondition(!IsType,7);
 			m_CurrentState = ParserState::Default;
 			return;
 		}
@@ -736,16 +737,16 @@ namespace clear
 			bracketState = true;
 		}
 		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current), "Variable name cannot start with a number","Change variable name so it does not begin with a number","Variable name begins with number",m_CurrentTokenIndex-1);
+		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			_VerifyCondition(!(variableState && bracketState) , "Expected variable name after type declaration","Maybe add a variable name after type declaration","MissingVariableName");
+			_VerifyCondition(!(variableState && bracketState) , 8);
 
 			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
-				_VerifyCondition(!(IsType && g_OperatorMap.contains(Str(current))), "Cannot use operator on a type","","operator on type");
-				_VerifyCondition(!IsType, "Cannot index a type","If you meant to define an array specify the size of the array","Index operator on type");
+				_VerifyCondition(!(IsType && g_OperatorMap.contains(Str(current))), 10);
+				_VerifyCondition(!IsType, 9);
 			}
 			if (bracketState || variableState) {
-				_VerifyCondition(!IsType,"Expected variable name after type declaration","Perhaps you forgot to put the variable name","Missing variable name");
+				_VerifyCondition(!IsType,8);
 				m_CurrentTokenIndex = prevTokenIndex;
 			}
 			m_CurrentState = ParserState::Default;
@@ -767,7 +768,7 @@ namespace clear
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
 		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
-			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number", m_CurrentTokenIndex-1,-1);
+			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),11, m_CurrentTokenIndex-1,-1);
 
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
@@ -779,7 +780,7 @@ namespace clear
 			}
 
 
-			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),"Expected a comma between variables","Separate values using a comma","Missing variable separator",lastValidVar,-1);
+			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),12,lastValidVar);
 
 
 			if (current == ',') {
@@ -1102,7 +1103,10 @@ namespace clear
 		ProgramInfo info = subParser.ParseProgram();
 
 		if (!info.Errors.empty()) {
-			_RaiseError(info.Errors.front());
+			auto cause = info.Errors.front();
+			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
+			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
+			// _RaiseError();
 		}
 		return info;
 	}
@@ -1160,8 +1164,8 @@ namespace clear
 				data = '\a';
 			}
 			else {
-				CLEAR_LOG_ERROR("Unknown char escape char \"\\",current,'"');
-				CLEAR_HALT();
+				std::string message = "Unknown char escape char \"\\"+ Str(current)+"\"";
+				_VerifyCondition(false,13,m_TokenIndexStart+1);
 
 			}
 
@@ -1170,14 +1174,13 @@ namespace clear
 		// if (current == '\'') {
 		// 	current = '';
 		// }
-		CLEAR_VERIFY(current!= '\'',"No data in char") // Allow this?
+		// CLEAR_VERIFY(current!= '\'',"No data in char") // Allow this?
+		_VerifyCondition(current!= '\'',14);
 
 
 		_PushToken(TokenType::RValueChar,Str(data));
 		current = _GetNextChar();
-		CLEAR_VERIFY(current == '\'', "unclosed char: expected ' after char ");
-
-
+		_VerifyCondition(current == '\'',15);
 	}
 
 
