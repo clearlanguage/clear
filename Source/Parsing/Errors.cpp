@@ -1,5 +1,6 @@
 #include "Errors.h"
 #include <iostream>
+#include <vector>
 
 namespace clear {
 
