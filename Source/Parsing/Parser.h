@@ -56,6 +56,7 @@ namespace clear
 		ProgramInfo CreateTokensFromFile(const std::filesystem::path& path);
 		void InitParser();
 		ProgramInfo ParseProgram();
+		std::string m_CurrentErrorState;
 		bool IsSubParser = false;
 
 	private:

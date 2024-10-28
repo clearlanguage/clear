@@ -44,7 +44,8 @@ namespace clear {
             {"Expected a comma between variables","Separate values using a comma","Missing variable separator"},
             {"Unknown char escape char \"\\{}\"","Reference existing escape chars and update your code","Unknown char escape character"},
             {"No data inside char literal","Put a character inside the char literal","Empty char literal"},
-            {"expected ' after char ","Put a ' after the char","Unclosed char"}
+            {"expected ' after char ","Put a ' after the char","Unclosed char"},
+            {"Did not expect commas in {}","Remove commas or fix brackets","Unexpected commas"}
 
         };
 }

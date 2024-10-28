@@ -101,6 +101,7 @@ namespace clear
 		m_ProgramInfo.Tokens.clear();
 		m_ScopeStack.clear();
 		m_CurrentTokenIndex = 0;
+		m_CurrentErrorState.clear();
 		m_Indents = 0;
 		m_CurrentIndentLevel = 0;
 		m_CurrentIndentationLevel = 0;
@@ -248,7 +249,9 @@ namespace clear
 			}
 			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
-				CLEAR_VERIFY((current == ',' && commas) || current != ',',"Did not expect commas" );
+				CLEAR_VERIFY(!m_CurrentErrorState.empty(),"internal error: compiler error state empty in _ParseBrackets()")
+				_VerifyCondition((current == ',' && commas) || current!= ',',16,m_CurrentErrorState);
+				m_CurrentErrorState.clear();
 				if (current == end)
 					detectedEnd = true;
 
@@ -262,6 +265,9 @@ namespace clear
 				}
 
 				m_CurrentString.clear();
+				m_CurrentTokenIndex++;
+				_SkipSpaces();
+				_Backtrack();
 				ret.indexes.push_back(m_CurrentTokenIndex);
 
 
@@ -288,7 +294,7 @@ namespace clear
 		char current = _GetNextChar();
 		CLEAR_VERIFY(current == '[', "index op should start with [");
 
-
+		m_CurrentErrorState = "array index";
 		auto parsed= _ParseBrackets(']',false);
 		CLEAR_VERIFY(!parsed.tokens.empty(), "Expected value inside brackets");
 
@@ -372,7 +378,7 @@ namespace clear
 				return;
 
 			}
-			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&')) && _IsTypeDeclared(m_CurrentString))) {
+			if ((((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) && _IsTypeDeclared(m_CurrentString))) {
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -594,6 +600,7 @@ namespace clear
 
 	void Parser::_ParseArrayDeclaration(ArrayDeclarationReturn& output)
 	{
+		m_CurrentErrorState = "Array declaration";
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
 		if (!parsed.tokens.empty()) {
