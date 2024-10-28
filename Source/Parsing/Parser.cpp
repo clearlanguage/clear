@@ -175,6 +175,7 @@ namespace clear
 
 	void Parser::_MultiLineCommentState() {
 		char current = _GetNextChar();
+		m_TokenIndexStart = m_CurrentTokenIndex-3;
 		while (current!= '\0') {
 			current = _GetNextChar();
 			if (current == '*') {
@@ -187,6 +188,12 @@ namespace clear
 				}
 			}
 		}
+		int j = m_TokenIndexStart;
+		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
+			j++;
+		}
+
+		_VerifyCondition(false,17,m_TokenIndexStart,j);
 	}
 
 	void Parser::_CommentState() {
@@ -249,8 +256,10 @@ namespace clear
 			}
 			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
-				CLEAR_VERIFY(!m_CurrentErrorState.empty(),"internal error: compiler error state empty in _ParseBrackets()")
-				_VerifyCondition((current == ',' && commas) || current!= ',',16,m_CurrentErrorState);
+				if (!((current == ',' && commas) || current!= ',')) {
+					CLEAR_VERIFY(!m_CurrentErrorState.empty(),"internal error: compiler error state empty in _ParseBrackets()")
+					_VerifyCondition(false,16,m_CurrentErrorState);
+				}
 				m_CurrentErrorState.clear();
 				if (current == end)
 					detectedEnd = true;
