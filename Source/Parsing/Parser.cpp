@@ -148,15 +148,17 @@ namespace clear
 		CLEAR_VERIFY(current == '(', "expected ( after function call");
 
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
-		auto argList = _ParseBrackets(')',true);
-		std::vector<int> TokenIndexes;
+		auto bracketsInfo = _ParseBrackets(')',true);
 		m_CurrentState = ParserState::Default;
-		for (const std::string& arg : argList) {
+		int i = 0;
+		for (const std::string& arg : bracketsInfo.tokens) {
+			m_TokenIndexStart = bracketsInfo.indexes.at(i);
 			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
 			_PushToken(TokenType::Comma, "");
+			i++;
 		}
 		if (_GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
@@ -164,8 +166,9 @@ namespace clear
 
 		_PushToken(TokenType::CloseBracket,")");
 		current = _GetNextChar();
-		_SkipSpaces();		
-		_Backtrack();
+		_SkipSpaces();
+		if (current != ')')
+			_Backtrack();
 	}
 
 
@@ -210,15 +213,15 @@ namespace clear
 	}
 
 
-	std::vector<std::string> Parser::_ParseBrackets(char end, bool commas) {
+	BracketParsingReturn Parser::_ParseBrackets(char end, bool commas) {
 		char start = g_CloserToOpeners.at(end);
 		char current = start;
-		std::vector<std::string> argList;
 		std::vector<char> stack;
 		stack.push_back(start);
 		bool detectedEnd = false;
+		BracketParsingReturn ret;
 
-
+		ret.indexes.push_back(m_CurrentTokenIndex);
 		while (!stack.empty() && current != '\0') {
 			current = _GetNextChar();
 			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
@@ -250,7 +253,7 @@ namespace clear
 					detectedEnd = true;
 
 				if (!m_CurrentString.empty())
-					argList.push_back(m_CurrentString);
+					ret.tokens.push_back(m_CurrentString);
 				else {
 					if (current == ',') {
 						CLEAR_LOG_ERROR("Expected function Parameter after commas");
@@ -259,6 +262,8 @@ namespace clear
 				}
 
 				m_CurrentString.clear();
+				ret.indexes.push_back(m_CurrentTokenIndex);
+
 
 			}
 			else
@@ -274,7 +279,7 @@ namespace clear
 
 		CLEAR_VERIFY(detectedEnd, "Expected " , end );
 
-		return argList;
+		return ret;
 
 	}
 
@@ -285,9 +290,9 @@ namespace clear
 
 
 		auto parsed= _ParseBrackets(']',false);
-		CLEAR_VERIFY(!parsed.empty(), "Expected value inside brackets");
+		CLEAR_VERIFY(!parsed.tokens.empty(), "Expected value inside brackets");
 
-		ProgramInfo info = _SubParse( parsed[0]);
+		ProgramInfo info = _SubParse( parsed.tokens[0]);
 		for (const Token& tok :info.Tokens) {
 			m_ProgramInfo.Tokens.push_back(tok);
 		}
@@ -591,8 +596,8 @@ namespace clear
 	{
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
-		if (!parsed.empty()) {
-			m_CurrentString = parsed.at(0);
+		if (!parsed.tokens.empty()) {
+			m_CurrentString = parsed.tokens.at(0);
 		}
 
 		if (m_CurrentString.empty()) {
@@ -1113,10 +1118,10 @@ namespace clear
 
 
 	void Parser::_ParseList() {
-		auto list = _ParseBrackets('}',true);
+		auto  bracketInfo = _ParseBrackets('}',true);
 		_PushToken(TokenType::OpenBracket,"{");
 
- 		for (const std::string& arg : list) {
+ 		for (const std::string& arg : bracketInfo.tokens) {
 
 			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
