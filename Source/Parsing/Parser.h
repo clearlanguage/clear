@@ -9,11 +9,15 @@
 #include <fstream>
 #include <filesystem>
 #include <map>
+#include <concepts>
 #include <functional>
 #include <queue>
 
 namespace clear
 {
+	template<typename... Args>
+	concept RestrictToString = ((std::convertible_to<Args, std::string> || std::convertible_to<Args, const char*> || std::convertible_to<Args, char>) && ...);
+
 	struct ProgramInfo
 	{
 		std::vector<Token> Tokens;
@@ -68,6 +72,35 @@ namespace clear
 
 		Token _GetLastToken();
 		Token _CreateToken(const TokenType tok, const std::string& data);
+
+
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, int endIndex, Args&&... args) requires RestrictToString<Args...>
+		{
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			_VerifyCondition(condition, msg, err.Advice, err.ErrorType, startIndex, endIndex);
+		}
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, Args&&... args) requires RestrictToString<Args...>
+		{
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			_VerifyCondition(condition, msg, err.Advice, err.ErrorType, startIndex);
+		}
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, Args&&... args) requires RestrictToString<Args...>
+		{
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			_VerifyCondition(condition, msg, err.Advice, err.ErrorType);
+		}
 
 		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
 		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex,int endIndex);
