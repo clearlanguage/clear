@@ -295,7 +295,8 @@ namespace clear {
 				start--;
 
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
-				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag));
+				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
+				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
 
 				auto& abstractType = AbstractType::GetVariableTypeFromName(startStr);
 

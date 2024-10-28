@@ -225,8 +225,8 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer)
-		: m_Chain(chain), m_PointerFlag(isPointer)
+	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer, bool dereference)
+		: m_Chain(chain), m_PointerFlag(isPointer), m_Dereference(dereference)
 	{
 	}
 
@@ -244,15 +244,19 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			return m_PointerFlag ? (llvm::Value*)value: (llvm::Value*)builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "load_value");
+			if (m_Dereference && metaData.Type.IsPointer())
+			{
+				llvm::Value* loadedPointer = builder.CreateLoad(value->getAllocatedType(), value, "loaded_pointer");
+				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
+			}
+			return value; 
 		}
 
 		StructMetaData* currentRef = &AbstractType::GetStructInfo(metaData.Type.GetUserDefinedType());
 
-
 		std::vector<llvm::Value*> indices =
 		{
-			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
+			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0) 
 		};
 
 		for (;;)
@@ -269,9 +273,16 @@ namespace clear {
 			if (!currentRef)
 				break;
 		}
-		
+
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
-		return m_PointerFlag ? gepPtr : builder.CreateLoad(gepPtr->getType(), gepPtr, "load_value");
+
+		if (m_Dereference && metaData.Type.IsPointer())
+		{
+			llvm::Value* loadedPointer = builder.CreateLoad(gepPtr->getType(), gepPtr, "loaded_pointer");
+			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
+		}
+
+		return gepPtr; 
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
