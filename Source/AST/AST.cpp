@@ -67,64 +67,7 @@ namespace clear {
 				}
 				case TokenType::FunctionCall:
 				{
-					const std::string& name = tokens[i].Data;
-					std::vector<Argument> args;
-
-					i++;
-
-					CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket,"");
-					i++;
-
-					while (tokens[i].TokenType != TokenType::CloseBracket)
-					{
-						if (tokens[i].TokenType == TokenType::Comma)
-						{
-							i++;
-							continue;
-						}
-
-						Argument arg;
-
-						switch (tokens[i].TokenType)
-						{
-							case TokenType::RValueNumber:
-							case TokenType::RValueString:
-							case TokenType::BooleanData:
-							{
-								arg.Field = AbstractType(tokens[i].Data);
-								arg.Data = tokens[i].Data;
-
-								args.push_back(arg);
-
-								break;
-							}
-							case TokenType::VariableReference:
-							{
-								arg.Field = AbstractType(tokens[i], TypeKind::VariableReference);
-								arg.Data = currentRoot->GetName() + "::" + tokens[i].Data;
-
-								std::list<std::string> chain = _RetrieveForwardChain(tokens, i);
-
-								for (auto& str : chain)
-									arg.Data += "." + str;
-
-								args.push_back(arg);
-
-								i--;
-
-								break;
-							}
-							default:
-							{
-								CLEAR_UNREACHABLE("tokens of all types haven't been dealt with yet"); //TODO
-								break;
-							}
-						}
-
-						i++;
-					}
-
-					currentRoot->PushChild(Ref<ASTFunctionCall>::Create(name, args));
+					currentRoot->PushChild(_CreateFunctionCall(tokens, currentRoot->GetName(), i));
 					break;
 				}
 				case TokenType::VariableName:
@@ -419,6 +362,68 @@ namespace clear {
 		}
 
 		return expression;
+	}
+
+	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
+	{
+		const std::string& name = tokens[i].Data;
+		std::vector<Argument> args;
+
+		i++;
+
+		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
+		i++;
+
+		while (tokens[i].TokenType != TokenType::CloseBracket)
+		{
+			if (tokens[i].TokenType == TokenType::Comma)
+			{
+				i++;
+				continue;
+			}
+
+			Argument arg;
+
+			switch (tokens[i].TokenType)
+			{
+				case TokenType::RValueNumber:
+				case TokenType::RValueString:
+				case TokenType::BooleanData:
+				{
+					arg.Field = AbstractType(tokens[i].Data);
+					arg.Data = tokens[i].Data;
+
+					args.push_back(arg);
+
+					break;
+				}
+				case TokenType::VariableReference:
+				{
+					arg.Field = AbstractType(tokens[i], TypeKind::VariableReference);
+					arg.Data = root + "::" + tokens[i].Data;
+
+					std::list<std::string> chain = _RetrieveForwardChain(tokens, i);
+
+					for (auto& str : chain)
+						arg.Data += "." + str;
+
+					args.push_back(arg);
+
+					i--;
+
+					break;
+				}
+				default:
+				{
+					CLEAR_UNREACHABLE("tokens of all types haven't been dealt with yet"); //TODO
+					break;
+				}
+			}
+				i++;
+		}
+
+
+		return Ref<ASTFunctionCall>::Create(name, args);
 	}
 	
 	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)
