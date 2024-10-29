@@ -125,7 +125,7 @@ namespace clear {
 		}
 
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
-			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
+ 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
 		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
@@ -282,7 +282,7 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			if (m_Dereference && m_PointerFlag)
+			if (m_Dereference)
 			{
 				llvm::Value* loadedPointer = builder.CreateLoad(value->getAllocatedType(), value, "loaded_pointer");
 				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
@@ -349,7 +349,7 @@ namespace clear {
 		return m_Value.Get();
 	}
 
-	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& Paramaters)
+	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
 		: m_ReturnType(returnType), m_Paramaters(Paramaters)
 	{
 		s_FunctionToExpectedTypes[name] = m_Paramaters;
@@ -377,7 +377,7 @@ namespace clear {
 
 		s_InsertPoints.push(builder.saveIP());
 
-		llvm::Type* returnType = GetLLVMVariableType(m_ReturnType);
+		llvm::Type* returnType = m_ReturnType.GetLLVMType();
 
 		std::vector<llvm::Type*> ParamaterTypes;
 		for (const auto& Paramater : m_Paramaters)
@@ -491,8 +491,8 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTFunctionCall::ASTFunctionCall(const std::string& name, const std::vector<Argument>& arguments)
-		:  m_Name(name), m_Arguments(arguments)
+	ASTFunctionCall::ASTFunctionCall(const std::string& name)
+		: m_Name(name)
 	{
 	}
 
@@ -503,10 +503,11 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
 
 		auto& expected = s_FunctionToExpectedTypes.at(m_Name);
 
-		uint32_t k = 0;
+		/*uint32_t k = 0;
 		for (const auto& argument : m_Arguments)
 		{
 			if(argument.Field.GetKind() == TypeKind::RValue)
@@ -569,6 +570,19 @@ namespace clear {
 				}
 			}
 			k++;
+		}*/
+
+		uint32_t k = 0;
+
+		for (auto& child : children)
+		{
+			llvm::Value* gen = child->Codegen();
+
+			if (gen->getType() != expected[k].Type.GetLLVMType())
+				gen = Value::CastValue(gen, expected[k].Type);
+
+			CLEAR_VERIFY(gen, "not a valid argument");
+			args.push_back(gen);
 		}
 
 

@@ -119,13 +119,13 @@ namespace clear {
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, VariableType returnType, const std::vector<Paramater>& arugments);
+		ASTFunctionDecleration(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& arugments);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		VariableType m_ReturnType;
+		AbstractType m_ReturnType;
 		std::vector<Paramater> m_Paramaters;
 	};
 	//
@@ -145,7 +145,7 @@ namespace clear {
 	class ASTFunctionCall : public ASTNodeBase
 	{
 	public:
-		ASTFunctionCall(const std::string& name, const std::vector<Argument>& arugments);
+		ASTFunctionCall(const std::string& name);
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual llvm::Value* Codegen() override;
@@ -153,7 +153,6 @@ namespace clear {
 
 	private:
 		std::string m_Name;
-		std::vector<Argument> m_Arguments;
 	};
 	//
 	// -------------------------------------------------------------------

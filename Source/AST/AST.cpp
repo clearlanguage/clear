@@ -28,7 +28,7 @@ namespace clear {
 			{
 				case TokenType::Function:
 				{
-					VariableType returnType = VariableType::None;
+					AbstractType returnType = VariableType::None;
 					Paramaters.clear();
 
 					i++;
@@ -57,6 +57,12 @@ namespace clear {
 						}
 
 						i++;
+					}
+
+					if (tokens[i + 1].TokenType == TokenType::RightArrow)
+					{
+						i += 2;
+						returnType = AbstractType(tokens[i]);
 					}
 
 					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, Paramaters);
@@ -221,7 +227,6 @@ namespace clear {
 	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
-		start += 1;
 
 		struct Operator
 		{
@@ -257,7 +262,7 @@ namespace clear {
 
 		bool addBracket = false;
 
-		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation)
+		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation && tokens[start].TokenType != TokenType::Comma)
 		{
 			auto& token    = tokens[start];
 			auto& previous = tokens[start - 1];
@@ -283,7 +288,7 @@ namespace clear {
 				}
 				else 
 				{
-					currentExpectedType = abstractType;
+					currentExpectedType = AbstractType(abstractType.GetUnderlying(), abstractType.GetKind(), abstractType.GetUnderlying(), abstractType.GetUserDefinedType());
 				}
 
 			}
@@ -338,10 +343,11 @@ namespace clear {
 
 					size_t copy = start;
 
-					while (copy < tokens.size() && tokens[copy].TokenType != TokenType::EndLine && tokens[copy].TokenType != TokenType::EndIndentation)
+					while (copy < tokens.size() && tokens[copy].TokenType != TokenType::EndLine && tokens[copy].TokenType != TokenType::EndIndentation && tokens[copy].TokenType != TokenType::Comma)
 					{
 						copy++;
 					}
+
 					tokens.insert(tokens.begin() + copy, closeBracket);
 
 					addBracket = false;
@@ -352,7 +358,6 @@ namespace clear {
 			start++;
 		}
 
-		start--;
 
 		while (!operators.empty())
 		{
@@ -367,14 +372,14 @@ namespace clear {
 	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
 	{
 		const std::string& name = tokens[i].Data;
-		std::vector<Argument> args;
+		Ref<ASTFunctionCall> functionCall = Ref<ASTFunctionCall>::Create(name);
 
 		i++;
 
 		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
 		i++;
 
-		while (tokens[i].TokenType != TokenType::CloseBracket)
+		while (i < tokens.size() && tokens[i].TokenType != TokenType::CloseBracket && tokens[i].TokenType != TokenType::EndLine && tokens[i].TokenType != TokenType::EndIndentation)
 		{
 			if (tokens[i].TokenType == TokenType::Comma)
 			{
@@ -382,48 +387,11 @@ namespace clear {
 				continue;
 			}
 
-			Argument arg;
-
-			switch (tokens[i].TokenType)
-			{
-				case TokenType::RValueNumber:
-				case TokenType::RValueString:
-				case TokenType::BooleanData:
-				{
-					arg.Field = AbstractType(tokens[i].Data);
-					arg.Data = tokens[i].Data;
-
-					args.push_back(arg);
-
-					break;
-				}
-				case TokenType::VariableReference:
-				{
-					arg.Field = AbstractType(tokens[i], TypeKind::VariableReference);
-					arg.Data = root + "::" + tokens[i].Data;
-
-					std::list<std::string> chain = _RetrieveForwardChain(tokens, i);
-
-					for (auto& str : chain)
-						arg.Data += "." + str;
-
-					args.push_back(arg);
-
-					i--;
-
-					break;
-				}
-				default:
-				{
-					CLEAR_UNREACHABLE("tokens of all types haven't been dealt with yet"); //TODO
-					break;
-				}
-			}
-				i++;
+			functionCall->PushChild(_CreateExpression(tokens, root, i, AbstractType()));
 		}
 
 
-		return Ref<ASTFunctionCall>::Create(name, args);
+		return functionCall;
 	}
 	
 	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)

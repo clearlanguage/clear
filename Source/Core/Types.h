@@ -63,7 +63,7 @@ namespace clear {
 		static AbstractType& GetVariableTypeFromName(const std::string& name);
 
 		inline  VariableType Get()			     const { return m_Type; };
-		inline  VariableType GetUnderlying()     const { return m_Type; }
+		inline  VariableType GetUnderlying()     const { return m_UnderlyingType; }
 		inline  TypeKind     GetKind()		     const { return m_Kind; }
 		inline  llvm::Type*  GetLLVMType()       const { return m_LLVMType; }
 		inline  llvm::Type*  GetLLVMUnderlying() const { return m_LLVMUnderlyingType; }
