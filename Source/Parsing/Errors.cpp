@@ -22,9 +22,9 @@ namespace clear {
             }
         }
         std::cout<<std::endl;
-        std::cout<<"ErrorType: " <<err.ErrorType<<'\n';
         std::cout<<"ErrorMessage: " <<err.ErrorMessage<<'\n';
         std::cout<<"Advice: " << err.Advice <<'\n';
+        std::cout<<"ErrorType: " <<err.ErrorType<<'\n';
 
     }
 
@@ -49,6 +49,17 @@ namespace clear {
         {"Unclosed multiline comment expected \\* at the end of the comment","Close the comment by adding *\\ at the end","multiline comment unclosed"},
             {"Attempting to close wrong bracket expected {} not {}","Change the closing bracket to the correct type","Wrong closing bracket"},
         {"Attempting to close unopened {} expected {} not {}","Change the string closer to the correct type","Wrong closing char"},
+            {"Expected a valid number","Perhaps you forgot an operator in between","Invalid number"},
+        {"Expected one decimal point in a float","Perhaps you forgot an operator in between two numbers","Invalid number two decimal points"},
+        {"expected {} literal to begin with 0","Change the starting number for the literal to 0","{} literal not starting with 0"},
+        {"Unclosed string expected \" at the end of the string","Close the string by adding a \" at the end of it","Unclosed string"},
+        {"Expected value inside index operator","Perhaps you forgot to put a value","Index operator empty"},
+        {"Attempting to close unopened {}","Perhaps you forgot to open the {}","Closing unopened {}"},
+        {"No spaces between pointer definitions allowed","Remove the spaces if you were trying to define a pointer to a pointer otherwise check your code","Space between pointer definitions"},
+            {"Unclosed brackets for {} expected {} at the end","Add the correct closing bracket at the end of {}","Unclosed {}"},
+        {"Expected variable name after comma","Remove the comma or add a variable name after the comma","Expected variable name"},
+        {"Expected ( after function declaration","Add brackets after function declaration and include the types inside","Missing brackets after function declarationx"}
+
 
 
 

@@ -85,8 +85,10 @@ namespace clear
 		{
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
-			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
-			_VerifyCondition(condition, msg, err.Advice, err.ErrorType, startIndex, endIndex);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex, endIndex);
 		}
 
 		template<typename ...Args>
@@ -94,6 +96,9 @@ namespace clear
 		{
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
 			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			_VerifyCondition(condition, msg, err.Advice, err.ErrorType, startIndex);
 		}
@@ -103,6 +108,9 @@ namespace clear
 		{
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
 			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			_VerifyCondition(condition, msg, err.Advice, err.ErrorType);
 		}
@@ -136,6 +144,8 @@ namespace clear
 		bool _IsLineClosed();
 		bool _IsEndOfLine();
 		char _SkipSpaces();
+
+		std::string _GetCurrentErrorContext(std::string ErrorRef);
 
 		char _GetNextChar();
 		void _Backtrack();
