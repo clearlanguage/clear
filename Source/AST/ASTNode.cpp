@@ -12,7 +12,6 @@
 namespace clear {
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
-	static std::map<std::string, std::vector<Paramater>> s_FunctionToExpectedTypes;
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
@@ -285,12 +284,12 @@ namespace clear {
 			if (m_Dereference)
 			{
 				llvm::Value* loadedPointer = builder.CreateLoad(value->getAllocatedType(), value, "loaded_pointer");
-				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
+				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_pointer");
 			}
 			
 			if (!m_Dereference && !m_PointerFlag)
 			{
-				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "loaded_value");
+				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_value");
 			}
 
 			CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
@@ -352,18 +351,18 @@ namespace clear {
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
 		: m_ReturnType(returnType), m_Paramaters(Paramaters)
 	{
-		s_FunctionToExpectedTypes[name] = m_Paramaters;
+		g_FunctionToExpectedTypes[name] = m_Paramaters;
 		SetName(name);
 
-		if (!s_FunctionToExpectedTypes.contains("_sleep")) //TODO: remove thhis immediately
+		if (!g_FunctionToExpectedTypes.contains("_sleep")) //TODO: remove thhis immediately
 		{
-			auto& e = s_FunctionToExpectedTypes["_sleep"];
+			auto& e = g_FunctionToExpectedTypes["_sleep"];
 			e.push_back({ .Name = "time", .Type = AbstractType(VariableType::Int32) });
 		}
 
-		if (!s_FunctionToExpectedTypes.contains("printf"))
+		if (!g_FunctionToExpectedTypes.contains("printf"))
 		{
-			auto& e = s_FunctionToExpectedTypes["printf"];
+			auto& e = g_FunctionToExpectedTypes["printf"];
 			e.push_back({ .Name = "fmt", .Type = AbstractType(VariableType::String) });
 			e.push_back({ .Name = "msg", .Type = AbstractType(VariableType::String) });
 		}
@@ -514,72 +513,7 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
-		auto& expected = s_FunctionToExpectedTypes.at(m_Name);
-
-		/*uint32_t k = 0;
-		for (const auto& argument : m_Arguments)
-		{
-			if(argument.Field.GetKind() == TypeKind::RValue)
-			{
-				auto& variableType = argument.Field;
-				auto [value, _] = Value::GetConstant(variableType, argument.Data);
-
-				if (variableType.Get() != expected[k].Type.Get())
-					value = Value::CastValue(value, expected[k].Type);
-
-				args.push_back(value);
-			}
-			else
-			{
-				auto& variableName = argument.Data;
-				auto& variableType = argument.Field;
-
-				std::vector<std::string> chain = Split(variableName, '.');
-
-				auto& metaData = Value::GetVariableMetaData(chain[0]);
-				auto variable  = metaData.Alloca;
-
-				if (chain.size() == 1)
-				{
-					llvm::Value* value = builder.CreateLoad(variable->getAllocatedType(), variable);
-
-					if (variableType.Get() != expected[k].Type.Get()) 
-						value = Value::CastValue(value, expected[k].Type);
-
-					args.push_back(value);
-				}
-				else
-				{
-					AbstractType currentType = metaData.Type;
-
-					std::vector<llvm::Value*> indices =
-					{
-						llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0)
-					};
-
-					for (size_t i = 1; i < chain.size(); i++)
-					{
-						auto& structMetaData = AbstractType::GetStructInfo(currentType.GetUserDefinedType());
-
-						size_t currentIndex = structMetaData.Indices[chain[i]];
-						indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
-
-						currentType = structMetaData.Types[currentIndex];
-					}
-
-
-					llvm::Value* elementPointer = builder.CreateGEP(variable->getAllocatedType(), variable, indices, "element_ptr");
-
-					llvm::Value* value = builder.CreateLoad(currentType.GetLLVMType(), elementPointer);
-
-					if (currentType.Get() != expected[k].Type.Get())
-						value = Value::CastValue(value, expected[k].Type);
-
-					args.push_back(value);
-				}
-			}
-			k++;
-		}*/
+		auto& expected = g_FunctionToExpectedTypes.at(m_Name);
 
 		uint32_t k = 0;
 

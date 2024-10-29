@@ -24,7 +24,7 @@ namespace clear {
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
         std::list<std::string> _RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current);
         AbstractType _RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
-        AbstractType _GetFunctionTypeFromToken(const Token& token, bool isPointer);
+        AbstractType _GetTypeFromToken(const Token& token, bool isPointer);
 
     private:
 

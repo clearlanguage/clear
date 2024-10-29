@@ -46,7 +46,10 @@ namespace clear {
 					{
 						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
 						{
-							currentParamater.Type = GetVariableTypeFromTokenType(tokens[i].TokenType);
+							currentParamater.Type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
+							
+							if (tokens[i + 1].TokenType == TokenType::PointerDef)
+								i++;
 						}
 						else
 						{
@@ -62,7 +65,7 @@ namespace clear {
 					if (tokens[i + 1].TokenType == TokenType::RightArrow)
 					{
 						i += 3;
-						returnType = _GetFunctionTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
+						returnType = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
 					}
 
 					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, Paramaters);
@@ -253,7 +256,7 @@ namespace clear {
 			{TokenType::LeftShift,		  3},
 			{TokenType::RightShift,   	  3},
 			{TokenType::BitwiseOr,		  3},
-		    //{TokenType::BitwiseAnd ,        3},
+		    {TokenType::BitwiseAnd ,      3},
 			{TokenType::BitwiseNot,		  3},
 			{TokenType::BitwiseXor,		  3},
 			{TokenType::AddOp,			  2},
@@ -288,6 +291,7 @@ namespace clear {
 
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
+
 				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
 
 				auto& abstractType = AbstractType::GetVariableTypeFromName(startStr);
@@ -390,6 +394,7 @@ namespace clear {
 		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
 		i++;
 
+		uint32_t k = 0;
 		while (i < tokens.size() && tokens[i].TokenType != TokenType::CloseBracket && tokens[i].TokenType != TokenType::EndLine && tokens[i].TokenType != TokenType::EndIndentation)
 		{
 			if (tokens[i].TokenType == TokenType::Comma)
@@ -398,7 +403,7 @@ namespace clear {
 				continue;
 			}
 
-			functionCall->PushChild(_CreateExpression(tokens, root, i, AbstractType()));
+			functionCall->PushChild(_CreateExpression(tokens, root, i, g_FunctionToExpectedTypes.at(name)[k++].Type));
 		}
 
 
@@ -482,7 +487,7 @@ namespace clear {
 		return AbstractType(tokens[current], TypeKind::VariableReference, isPointer);
 	}
 
-	AbstractType AST::_GetFunctionTypeFromToken(const Token& token, bool isPointer)
+	AbstractType AST::_GetTypeFromToken(const Token& token, bool isPointer)
 	{
 		AbstractType type;
 

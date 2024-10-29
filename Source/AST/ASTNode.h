@@ -12,6 +12,15 @@
 
 namespace clear {
 
+	struct Paramater
+	{
+		std::string Name;
+		AbstractType Type;
+	};
+
+
+	inline std::map<std::string, std::vector<Paramater>> g_FunctionToExpectedTypes;
+
 	enum class ASTNodeType
 	{
 		Base = 0, Literal, BinaryExpression, 
@@ -107,11 +116,6 @@ namespace clear {
 	//
 
 
-	struct Paramater
-	{
-		std::string Name;
-		AbstractType Type; 
-	};
 
 	//
 	// ---------------------- FUNCTION DECELRATION -----------------------

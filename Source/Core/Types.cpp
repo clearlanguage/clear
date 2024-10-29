@@ -89,6 +89,7 @@ namespace clear {
 			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
 			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
+			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
 			default:
 				break;
 		}
