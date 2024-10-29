@@ -146,9 +146,10 @@ namespace clear
 
 		current = _SkipSpaces();
 		m_CurrentString.clear();
-		CLEAR_VERIFY(current == '(', "expected ( after function call");
+		CLEAR_PARSER_VERIFY(current == '(', "149.FAS");
 
 		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
+		m_CurrentErrorState = "function arguments";
 		auto bracketsInfo = _ParseBrackets(')',true);
 		m_CurrentState = ParserState::Default;
 		int i = 0;
@@ -220,6 +221,14 @@ namespace clear
 		return !(tok == TokenType::CloseBracket);
 	}
 
+	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
+		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
+		std::string ret = m_CurrentErrorState;
+		m_CurrentErrorState.clear();
+		return ret;
+	}
+
+
 
 	BracketParsingReturn Parser::_ParseBrackets(char end, bool commas) {
 		char start = g_CloserToOpeners.at(end);
@@ -264,10 +273,8 @@ namespace clear
 			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
 				if (!((current == ',' && commas) || current!= ',')) {
-					CLEAR_VERIFY(!m_CurrentErrorState.empty(),"internal error: compiler error state empty in _ParseBrackets()")
-					_VerifyCondition(false,16,m_CurrentErrorState);
+					_VerifyCondition(false,16,_GetCurrentErrorContext("267.PBMESE"));
 				}
-				m_CurrentErrorState.clear();
 				if (current == end)
 					detectedEnd = true;
 
@@ -299,7 +306,8 @@ namespace clear
 
 
 
-		CLEAR_VERIFY(detectedEnd, "Expected " , end );
+		_VerifyCondition(detectedEnd, 27,_GetCurrentErrorContext("308.F"), Str(end) );
+
 
 		return ret;
 
@@ -308,11 +316,11 @@ namespace clear
 
 	void Parser::_IndexOperatorState() {
 		char current = _GetNextChar();
-		CLEAR_VERIFY(current == '[', "index op should start with [");
+		CLEAR_PARSER_VERIFY(current == '[', "318.IOS");
 
 		m_CurrentErrorState = "array index";
 		auto parsed= _ParseBrackets(']',false);
-		CLEAR_VERIFY(!parsed.tokens.empty(), "Expected value inside brackets");
+		_VerifyCondition(!parsed.tokens.empty(),24);
 
 		ProgramInfo info = _SubParse( parsed.tokens[0]);
 		for (const Token& tok :info.Tokens) {
@@ -354,16 +362,17 @@ namespace clear
 
 			return;
 		}
+		_VerifyCondition(current!=']',25,"index operator");
 		if (current == '"' ) {
-			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened string");
+			_VerifyCondition(m_CurrentString.empty(), 25,"string");
 			_ParseString();
 		}
 		if (current == '{') {
-			CLEAR_VERIFY(m_CurrentString.empty(), "Cannot start list during");
+			_VerifyCondition(m_CurrentString.empty(), 25,"list");
 			_ParseList();
 		}
 		if (current == '\'') {
-			CLEAR_VERIFY(m_CurrentString.empty(), "Attempting to close unopened char");
+			_VerifyCondition(m_CurrentString.empty(), 25,"char");
 			_ParseChar();
 		}
 
@@ -439,13 +448,15 @@ namespace clear
 		}
 		if (current == ')')
 		{
-			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "Closing brackets unmatched");
+			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back(),25,"Brackets");
 
 			m_BracketStack.pop_back();
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 
 			return;
 		}
+
+
 	}
 	void Parser::_ArrowState() 
 	{
@@ -585,7 +596,7 @@ namespace clear
 			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = ParserState::RValue;
 			
-			CLEAR_VERIFY(!m_BracketStack.empty() && m_BracketStack.back() == '(', "closing brackets unmatched");
+			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
 			m_BracketStack.pop_back();
 
 			return;
@@ -643,7 +654,7 @@ namespace clear
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
-		CLEAR_VERIFY(current != ']',"Attempting to close unopened array declaration")
+		_VerifyCondition(current != ']',25,"Array declaration");
 		if (current == '[') {
 			_ParseArrayDeclaration(output);
 		}else  {
@@ -663,7 +674,8 @@ namespace clear
 		}
 		_VerifyCondition(std::isspace(current) || current == '[' ,6);
 		current = _SkipSpaces();
-		CLEAR_VERIFY(current != '*', "No spaces between pointer defs allowed");
+		_VerifyCondition(current!= '*',26);
+
 		if (!IsSpace(current) && current != '\0') {
 			_Backtrack();
 		}
@@ -677,7 +689,6 @@ namespace clear
 		err.Advice = Advice;
 		err.ErrorType = ErrorType;
 		int i = m_CurrentTokenIndex;
-		int offset = m_CurrentTokenIndex-m_TokenIndexStart;
 		if (m_Buffer[i] == '\n')
 			i--;
 		if (m_Buffer[i] == '\n')
@@ -814,7 +825,7 @@ namespace clear
 			if (current == ',') {
 				ExpectingComma = false;
 				lastValidVar = m_CurrentTokenIndex-1;
-				CLEAR_VERIFY(!m_CurrentString.empty(),"Expected variable name after comma")
+				_VerifyCondition(!m_CurrentString.empty(),28);
 				_PushToken(TokenType::VariableName, m_CurrentString);
 				_PushToken(TokenType::Comma,"");
 				m_CurrentString.clear();
@@ -825,14 +836,14 @@ namespace clear
 				}
 				vars ++;
 			}
-			CLEAR_VERIFY(current != ',',"Expected variable name after comma")
+			_VerifyCondition(current != ',',28);
 		}
 		if (!m_CurrentString.empty()) {
 			_PushToken(TokenType::VariableName, m_CurrentString);
 			vars++;
 
 		}
-		CLEAR_VERIFY(commas < vars, "Expected variable names after comma did not expect trailing comma");
+		_VerifyCondition(commas < vars,28);
 		if (!IsSpace(current)) {
 			_Backtrack();
 		}
@@ -844,10 +855,11 @@ namespace clear
 	void Parser::_FunctionParameterState() 
 	{
 		char current = _GetNextChar();
-
+		int curtok = m_CurrentTokenIndex;
 		current = _SkipSpaces();
+		int skipped = m_CurrentTokenIndex-curtok;
 		m_CurrentString.clear();
-		CLEAR_VERIFY(current == '(', "expected ( after function declaration");
+		_VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
 
 		std::vector<std::string> argList;
 		bool detectedEnd = false;
@@ -964,12 +976,13 @@ namespace clear
 	}
 
 	void Parser::_AsterisksState() {
-		TokenType tok = _GetLastToken().TokenType;
+		auto token = _GetLastToken();
+		auto tok =token.TokenType;
 
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString) {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
 			_PushToken(TokenType::MulOp,"*");
 		}else {
-			_PushToken(TokenType::DereferenceOp,"");
+			_PushToken(TokenType::DereferenceOp,"*");
 		}
 		m_CurrentState = ParserState::RValue;
 
@@ -1082,13 +1095,13 @@ namespace clear
 
 		bool usedDecimal = false;
 		if (current == 'b') {
-			CLEAR_VERIFY(m_CurrentString == "0", "expected binary literal to start with 0");
+			_VerifyCondition(m_CurrentString == "0", 22,"binary");
 			_ParseBinaryLiteral();
 			return;
 		}
 
 		if (current == 'x') {
-			CLEAR_VERIFY(m_CurrentString == "0", "expected hex literal to start with 0");
+			_VerifyCondition(m_CurrentString == "0", 22,"hex");
 			_ParseHexLiteral();
 			return;
 		}
@@ -1098,8 +1111,7 @@ namespace clear
 			m_CurrentString.push_back(current);
 			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
 			{
-				CLEAR_LOG_ERROR("float cannot have two decimal points");
-				CLEAR_HALT();
+				_VerifyCondition(false,21);
 			}
 			if (current == '.')
 			{
@@ -1109,8 +1121,7 @@ namespace clear
 
 			current = _GetNextChar();
 		}
-
-		CLEAR_VERIFY(IsValidNumber(m_CurrentString),"Expected a valid number");
+		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
 		if (m_CurrentString == "-") {
 			_PushToken(TokenType::SubOp,"-");
 		}else {
@@ -1141,6 +1152,7 @@ namespace clear
 
 
 	void Parser::_ParseList() {
+		m_CurrentErrorState = "List literal";
 		auto  bracketInfo = _ParseBrackets('}',true);
 		_PushToken(TokenType::OpenBracket,"{");
 
@@ -1217,7 +1229,7 @@ namespace clear
 		char current = _GetNextChar();
 		while (current != '"')
 		{
-			CLEAR_VERIFY(!(current == '\n' || current == '\0'),"String never closed expected \"")
+			_VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
 			if (current == '\\') {
 				current = _GetNextChar();
 				if (current == '"') {

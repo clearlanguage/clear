@@ -29,6 +29,7 @@ namespace clear {
 	#define CLEAR_LOG_INFO(...)    clear::Log(TextColor::Green,  "[Info] ",    __VA_ARGS__)
 	#define CLEAR_LOG_WARNING(...) clear::Log(TextColor::Yellow, "[Warning] ", __VA_ARGS__)
 	#define CLEAR_LOG_ERROR(...)   clear::Log(TextColor::Red,    "[Error] ",   __VA_ARGS__)
+	#define INTERNAL_PARSER_ERROR_MESSAGE "Clear parser internal error: oops that was not supposed to happen!\nDo not worry your code is not the problem\nPlease help make clear better by reporting this issue on https://github.com/clearlanguage/clear/ or on the clear language discord\nPlease provide all your code as well as the reference number\nreference number: "
 	
 	#ifdef WIN32
 		#define CLEAR_HALT() __debugbreak()
@@ -45,6 +46,7 @@ namespace clear {
 	#endif
 
 	#define CLEAR_VERIFY(condition, ...) if(!(condition)) {CLEAR_LOG_ERROR(__VA_ARGS__); CLEAR_HALT();}
+	#define CLEAR_PARSER_VERIFY(condition, ...) if(!(condition)) {CLEAR_LOG_ERROR(INTERNAL_PARSER_ERROR_MESSAGE,__VA_ARGS__); CLEAR_HALT();}
 
 	#define CLEAR_ANNOTATED_HALT(...) { CLEAR_LOG_WARNING(__VA_ARGS__); CLEAR_HALT(); }
 }

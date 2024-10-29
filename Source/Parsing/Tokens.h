@@ -45,11 +45,16 @@ namespace clear {
         TokenType TokenToPush = TokenType::None;
     };
 
+    struct TokenLocation {
+        int to=-1;
+        int from=-1;
+    };
 
     struct Token
     {
         TokenType TokenType = TokenType::None;
         std::string Data = "";
+        TokenLocation Location;
     };
 
     std::string_view TokenToString(TokenType token);
