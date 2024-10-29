@@ -83,7 +83,7 @@ namespace clear {
 			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
 			case TokenType::LessThan:			return BinaryExpressionType::Less;
 			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
-			case TokenType::GreaterThanEqual:	return BinaryExpressionType::Greater;
+			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
 			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
 			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
 			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;

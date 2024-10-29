@@ -175,7 +175,7 @@ namespace clear
 			m_ProgramInfo.Tokens.pop_back();
 		}
 
-		_PushToken(TokenType::CloseBracket,")");
+		_PushToken(TokenType::EndFunctionParameters, ")"); //TODO: change me to end function args
 		current = _GetNextChar();
 		_SkipSpaces();
 		if (current != ')')
@@ -737,8 +737,6 @@ namespace clear
 	void Parser::_VariableNameState() 
 	{
 		char current = _GetNextChar();
-
-		
 
 		current = _SkipSpaces();
 		bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);

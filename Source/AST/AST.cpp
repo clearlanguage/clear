@@ -276,13 +276,25 @@ namespace clear {
 
 		bool addBracket = false;
 
-		while (start < tokens.size() && tokens[start].TokenType != TokenType::EndLine && tokens[start].TokenType != TokenType::EndIndentation && tokens[start].TokenType != TokenType::Comma)
+		while (start < tokens.size() && 
+			  tokens[start].TokenType != TokenType::EndLine && 
+			  tokens[start].TokenType != TokenType::EndIndentation && 
+			  tokens[start].TokenType != TokenType::Comma && 
+			  tokens[start].TokenType != TokenType::EndFunctionParameters)
 		{
 			auto& token    = tokens[start];
 			auto& previous = tokens[start - 1];
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
+				if (start + 1 < tokens.size() && tokens[start + 1].TokenType == TokenType::FunctionCall)
+				{
+					start++;
+					expression->PushChild(_CreateFunctionCall(tokens, root, start));
+					start++;
+					continue;
+				}
+
 				std::string startStr = { root + "::" + token.Data };
 				std::list<std::string> ls = _RetrieveForwardChain(tokens, start);
 				ls.push_front(startStr);
@@ -307,6 +319,7 @@ namespace clear {
 				}
 
 			}
+
 			else if (token.TokenType == TokenType::RValueNumber || 
 					 token.TokenType == TokenType::RValueString || 
 					 token.TokenType == TokenType::BooleanData)
@@ -395,7 +408,11 @@ namespace clear {
 		i++;
 
 		uint32_t k = 0;
-		while (i < tokens.size() && tokens[i].TokenType != TokenType::CloseBracket && tokens[i].TokenType != TokenType::EndLine && tokens[i].TokenType != TokenType::EndIndentation)
+		while (i < tokens.size() && 
+			  tokens[i].TokenType != TokenType::CloseBracket && 
+			  tokens[i].TokenType != TokenType::EndLine && 
+			  tokens[i].TokenType != TokenType::EndIndentation && 
+			  tokens[i].TokenType != TokenType::EndFunctionParameters)
 		{
 			if (tokens[i].TokenType == TokenType::Comma)
 			{

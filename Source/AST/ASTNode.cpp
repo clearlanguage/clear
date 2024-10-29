@@ -123,10 +123,10 @@ namespace clear {
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
 
-		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
  			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
 
-		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
+		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
 			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
@@ -467,7 +467,8 @@ namespace clear {
 		for (const auto& child : children)
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
-				child->GetType() == ASTNodeType::VariableExpression)
+				child->GetType() == ASTNodeType::VariableExpression || 
+				child->GetType() == ASTNodeType::FunctionCall)
 			{
 				stack.push(child);
 				continue;
