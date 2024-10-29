@@ -243,20 +243,16 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		switch (m_Expression)
-		{
-			case BinaryExpressionType::BitwiseLeftShift:	return builder.CreateShl(LHS, RHS, "bitwise_shift_left");
-			case BinaryExpressionType::BitwiseRightShift:   
-			{
-				return signedInteger ? builder.CreateAShr(LHS, RHS, "bitwise_a_shift_right") : builder.CreateLShr(LHS, RHS, "bitwise_l_shift_right");
-			}
+		{ 
+			case BinaryExpressionType::BitwiseLeftShift:  return builder.CreateShl(LHS, RHS, "bitwise_shift_left");
+			case BinaryExpressionType::BitwiseRightShift: return signedInteger ? builder.CreateAShr(LHS, RHS, "bitwise_a_shift_right") : builder.CreateLShr(LHS, RHS, "bitwise_l_shift_right");
+			case BinaryExpressionType::BitwiseXor:		  return builder.CreateXor(LHS, RHS, "bitwise_xor");
+			case BinaryExpressionType::BitwiseOr:		  return builder.CreateOr(LHS,  RHS, "bitwise_or");
+			case BinaryExpressionType::BitwiseAnd:		  return builder.CreateAnd(LHS, RHS, "bitwise_and");
 			case BinaryExpressionType::BitwiseNot:
 			{
 				CLEAR_UNREACHABLE("");
 				break; //TODO: new ast node (astSingleExpression) which only applies an operation onto one operand
-			}
-			case BinaryExpressionType::BitwiseAnd:
-			{
-				return builder.CreateAnd(LHS, RHS, "bitwise_and");
 			}
 			default:
 				break;

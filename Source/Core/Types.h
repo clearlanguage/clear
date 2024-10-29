@@ -27,7 +27,7 @@ namespace clear {
 		Div, Mod, Less, LessEq,
 		Greater, GreaterEq, Eq, NotEq, 
 		Assignment, BitwiseLeftShift, BitwiseRightShift, 
-		BitwiseNot, BitwiseAnd
+		BitwiseNot, BitwiseAnd, BitwiseOr, BitwiseXor
 	};
 	
 	struct StructMetaData;
