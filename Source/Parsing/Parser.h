@@ -132,6 +132,7 @@ namespace clear
 		void _ParseString();
 		void _ParseOther();
 		void _ParseChar();
+		void _AmpersandState();
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
 		void _ParseList();

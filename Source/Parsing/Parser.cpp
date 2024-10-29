@@ -32,6 +32,7 @@ namespace clear
 		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
 		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
+		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
 
 	}
 
@@ -966,6 +967,19 @@ namespace clear
 			_PushToken(TokenType::MulOp,"*");
 		}else {
 			_PushToken(TokenType::DereferenceOp,"*");
+		}
+		m_CurrentState = ParserState::RValue;
+
+	}
+
+	void Parser::_AmpersandState() {
+		auto token = _GetLastToken();
+		auto tok =token.TokenType;
+
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
+			_PushToken(TokenType::BitwiseAnd,"&");
+		}else {
+			_PushToken(TokenType::AddressOp,"&");
 		}
 		m_CurrentState = ParserState::RValue;
 

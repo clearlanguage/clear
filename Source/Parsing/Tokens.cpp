@@ -24,7 +24,7 @@ namespace clear {
         {"//",{.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
         {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
-        {"&",{.NextState = ParserState::RValue, .TokenToPush = TokenType::AddressOp}},
+        {"&",{.NextState = ParserState::AmpersandOperator, .TokenToPush = TokenType::None}},
         {"^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseXor}},
         {"|",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseOr}},
         {"~",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseNot}},
@@ -153,6 +153,8 @@ namespace clear {
             case TokenType::ModuloAssign: return "ModuloAssign";
             case TokenType::MultiplyAssign: return "MultiplyAssign";
             case TokenType::LeftArrow: return "LeftArrow";
+            case TokenType::Else: return "Else";
+            case TokenType::BitwiseAnd: return "BitwiseAnd";
 
             default:
                 break;
