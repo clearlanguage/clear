@@ -16,7 +16,7 @@ namespace clear {
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
         StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,RightArrow,FunctionType,
         Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp,CharType,Declaration,Defer,
-        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow
+        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow,Else
     };
 
     enum class ParserState
@@ -48,6 +48,7 @@ namespace clear {
     struct TokenLocation {
         int to=-1;
         int from=-1;
+        int line= -1;
     };
 
     struct Token

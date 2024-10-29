@@ -35,9 +35,18 @@ namespace clear
 
 	}
 
+	void Parser::_PushToken(Token tok) {
+		_PushToken(tok.TokenType,tok.Data);
+	}
+
+
 	void Parser::_PushToken(const TokenType tok, const std::string &data) 
 	{
-		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data });
+		TokenLocation location;
+		location.from = m_TokenIndexStart;
+		location.to = m_CurrentTokenIndex;
+		location.line = m_CurrentLine;
+		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data ,.Location = location});
 	}
 
 	Token Parser::_GetLastToken() {
@@ -72,7 +81,7 @@ namespace clear
 	void Parser::_EndLine() 
 	{
 		if ( _GetLastToken().TokenType != TokenType::EndLine) {
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndLine });
+			_PushToken({ .TokenType = TokenType::EndLine });
 		}
 		m_CurrentLine++;
 	}
@@ -88,7 +97,7 @@ namespace clear
 
 		while (m_Indents > 0)
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
+			_PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 		}
 		_VerifyCondition(m_BracketStack.empty(),1);
@@ -148,7 +157,6 @@ namespace clear
 		m_CurrentString.clear();
 		CLEAR_PARSER_VERIFY(current == '(', "149.FAS");
 
-		// m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 		m_CurrentErrorState = "function arguments";
 		auto bracketsInfo = _ParseBrackets(')',true);
 		m_CurrentState = ParserState::Default;
@@ -157,7 +165,7 @@ namespace clear
 			m_TokenIndexStart = bracketsInfo.indexes.at(i);
 			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
-				m_ProgramInfo.Tokens.push_back(tok);
+				_PushToken(tok);
 			}
 			_PushToken(TokenType::Comma, "");
 			i++;
@@ -321,7 +329,7 @@ namespace clear
 
 		ProgramInfo info = _SubParse( parsed.tokens[0]);
 		for (const Token& tok :info.Tokens) {
-			m_ProgramInfo.Tokens.push_back(tok);
+			_PushToken(tok);
 		}
 
 		m_CurrentString.clear();
@@ -342,7 +350,6 @@ namespace clear
 			{
 				if (!m_CurrentString.empty()) 
 				{
-					CLEAR_VERIFY(!IsValidNumber(m_CurrentString),"Cannot call a number")
 					_PushToken(TokenType::VariableReference, m_CurrentString);
 				}
 
@@ -354,7 +361,7 @@ namespace clear
 				m_BracketStack.push_back('(');
 			}
 
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 
 
 			return;
@@ -392,7 +399,7 @@ namespace clear
 				m_CurrentState = value.NextState;
 
 				if (value.TokenToPush != TokenType::None)
-					m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+					_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
 				m_CurrentString.clear();
 				if (!IsSpace(current))
@@ -448,7 +455,7 @@ namespace clear
 			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back(),25,"Brackets");
 
 			m_BracketStack.pop_back();
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")"});
+			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 
 			return;
 		}
@@ -482,14 +489,14 @@ namespace clear
 			current = _GetNextChar();
 		}
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
+		_PushToken({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
 
 		ProgramInfo info = _SubParse(m_CurrentString+" functype ");
 		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
 			info.Tokens.pop_back();
 		}
 		for (const Token& tok :info.Tokens) {
-			m_ProgramInfo.Tokens.push_back(tok);
+			_PushToken(tok);
 		}
 
 		_Backtrack();
@@ -581,13 +588,13 @@ namespace clear
 		if (current == '(')
 		{
 			m_BracketStack.push_back('(');
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 			m_CurrentState = ParserState::RValue;
 			return;
 		}
 		if (current == ')')
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::CloseBracket, .Data = ")" });
+			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = ParserState::RValue;
 			
 			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
@@ -796,7 +803,7 @@ namespace clear
 			_PushToken(TokenType::PointerDef,"*");
 		}
 		for (auto tok :ArrayDeclarations.Tokens) {
-			m_ProgramInfo.Tokens.push_back(tok);
+			_PushToken(tok);
 		}
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
@@ -858,21 +865,23 @@ namespace clear
 		m_CurrentErrorState = "function parameters";
 		auto info = _ParseBrackets(')',true);
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
-
+		_PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
+		int ind = 0;
 		for (const auto& i: info.tokens)
 		{
-			ProgramInfo info = _SubParse(i);
-			for (const Token& tok :info.Tokens) {
-				m_ProgramInfo.Tokens.push_back(tok);
+			ProgramInfo ParameterTokens = _SubParse(i);
+			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
+			_VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || _IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
+			for (const Token& tok :ParameterTokens.Tokens) {
+				_PushToken(tok);
 			}
 			_PushToken(TokenType::Comma,",");
-
+			ind++;
 		}
 		if (_GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
+		_PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
 		m_CurrentState = ParserState::Default;
 		current = _SkipSpaces();
 		if (current != ')')
@@ -889,7 +898,7 @@ namespace clear
 		{
 			_Backtrack();
 			m_CurrentState = ParserState::FunctionParameters;
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::Lambda, .Data = ""});
+			_PushToken({ .TokenType = TokenType::Lambda, .Data = ""});
 			return;
 		}
 
@@ -902,7 +911,7 @@ namespace clear
 		if (current =='(')
 			_Backtrack();
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+		_PushToken({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
 		m_CurrentString.clear();
 
 		_VerifyCondition(current != '\n',29);
@@ -944,7 +953,7 @@ namespace clear
 
 		}
 		if (value.TokenToPush != TokenType::None)
-			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = data });
+			_PushToken({ .TokenType = value.TokenToPush, .Data = data });
 
 		m_CurrentState = value.NextState;
 	}
@@ -1005,14 +1014,14 @@ namespace clear
 
 		if (localIndents > m_Indents)
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartIndentation });
+			_PushToken({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
 			m_ScopeStack.emplace_back();
 		}
 
 		while (m_Indents > localIndents)
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndIndentation });
+			_PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 			m_ScopeStack.pop_back();
 		}
@@ -1062,7 +1071,7 @@ namespace clear
 
 		if (current == '\0')
 		{
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 			m_CurrentString.clear();
 			return;
 		}
@@ -1100,7 +1109,7 @@ namespace clear
 			_PushToken(TokenType::SubOp,"-");
 		}else {
 
-			m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 		}
 		m_CurrentString.clear();
 		if (!IsSpace(current))
@@ -1134,7 +1143,7 @@ namespace clear
 
 			ProgramInfo info = _SubParse(arg);
 			for (const Token& tok :info.Tokens) {
-				m_ProgramInfo.Tokens.push_back(tok);
+				_PushToken(tok);
 			}
 			_PushToken(TokenType::Comma, "");
 		}
@@ -1243,7 +1252,7 @@ namespace clear
 
 		}
 
-		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
+		_PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
 		m_CurrentString.clear();
 	}
 
@@ -1269,7 +1278,7 @@ namespace clear
 		if (g_KeyWordMap.contains(m_CurrentString))
 		{
 			auto& value = g_KeyWordMap.at(m_CurrentString);
-			m_ProgramInfo.Tokens.push_back({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+			_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 		}else {
 			_PushToken(TokenType::VariableReference, m_CurrentString);
 		}

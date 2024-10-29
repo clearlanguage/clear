@@ -4,7 +4,7 @@
 
 namespace clear {
 
-    void PrintError(const Error& err) 
+    void PrintError(const Error& err)
     {
         int from =err.from;
         int to = err.to;
@@ -56,15 +56,13 @@ namespace clear {
         {"Expected value inside index operator","Perhaps you forgot to put a value","Index operator empty"},
         {"Attempting to close unopened {}","Perhaps you forgot to open the {}","Closing unopened {}"},
         {"No spaces between pointer definitions allowed","Remove the spaces if you were trying to define a pointer to a pointer otherwise check your code","Space between pointer definitions"},
-            {"Unclosed brackets for {} expected {} at the end","Add the correct closing bracket at the end of {}","Unclosed {}"},
+          {"Unclosed brackets for {} expected {} at the end","Add the correct closing bracket at the end of {}","Unclosed {}"},
         {"Expected variable name after comma","Remove the comma or add a variable name after the comma","Expected variable name"},
         {"Expected ( after function declaration","Add brackets after function declaration and include the types inside","Missing brackets after function declaration"},
         {"Only expected hexadecimal characters in hexadecimal literal","Ensure there are only valid hexadecimal characters in the literal","Invalid char in hex literal"},
         {"Only expected 1 and 0 only in binary literal","Ensure there are only 1s and 0s in the literal","Invalid char in binary literal"},
-            {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"}
-
-
-
+            {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"},
+        {"Function parameter can only begin with a type not a {}","Change the parameter so that it begins with a valid type","Function parameter begins with none type declaration"}
 
         };
 }

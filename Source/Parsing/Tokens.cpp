@@ -65,6 +65,7 @@ namespace clear {
         {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
+            {"else",{.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};

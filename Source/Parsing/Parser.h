@@ -141,6 +141,7 @@ namespace clear
 		int _ParsePointerDeclaration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
+		void _PushToken(Token tok);
 		bool _IsLineClosed();
 		bool _IsEndOfLine();
 		char _SkipSpaces();
