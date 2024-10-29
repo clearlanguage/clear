@@ -437,6 +437,11 @@ namespace clear {
 		return function;
 	}
 
+	ASTReturnStatement::ASTReturnStatement(const AbstractType& expectedReturnType)
+		: m_ExpectedReturnType(expectedReturnType)
+	{
+	}
+
 	llvm::Value* ASTReturnStatement::Codegen()
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -444,8 +449,12 @@ namespace clear {
 		if (GetChildren().size() > 0)
 		{
 			llvm::Value* returnValue = GetChildren()[0]->Codegen();
+			CLEAR_VERIFY(returnValue->getType() == m_ExpectedReturnType.GetLLVMType(), "unexpected return type");
+
 			return builder.CreateRet(returnValue);
 		}
+
+		CLEAR_VERIFY(m_ExpectedReturnType.Get() == VariableType::None, "unexpected return type");
 
 		return builder.CreateRetVoid();
 	}

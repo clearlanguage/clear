@@ -24,10 +24,19 @@ namespace clear {
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
         std::list<std::string> _RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current);
         AbstractType _RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
+        AbstractType _GetFunctionTypeFromToken(const Token& token, bool isPointer);
+
+    private:
+
+        struct StackNode
+        {
+            Ref<ASTNodeBase> Node;
+            AbstractType ExpectedReturnType;
+        };
 
     private:
         Ref<ASTFunctionDecleration> m_Root;
-        std::stack<Ref<ASTNodeBase>> m_Stack;
+        std::stack<StackNode> m_Stack;
     };
 
 }

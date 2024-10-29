@@ -16,13 +16,13 @@ namespace clear {
 		std::vector<Paramater> Paramaters;
 
 		m_Root = Ref<ASTFunctionDecleration>::Create("main", VariableType::None, Paramaters);
-		m_Stack.push(m_Root);
+		m_Stack.push({ m_Root, {} });
 
 		for (size_t i = 0; i < tokens.size(); i++)
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
-			auto& currentChildren = currentRoot->GetChildren();
+			auto& currentChildren = currentRoot.Node->GetChildren();
 
 			switch (currentToken.TokenType)
 			{
@@ -61,19 +61,19 @@ namespace clear {
 
 					if (tokens[i + 1].TokenType == TokenType::RightArrow)
 					{
-						i += 2;
-						returnType = AbstractType(tokens[i]);
+						i += 3;
+						returnType = _GetFunctionTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
 					}
 
 					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, Paramaters);
-					currentRoot->PushChild(funcDec);
-					m_Stack.push(funcDec);
+					currentRoot.Node->PushChild(funcDec);
+					m_Stack.push({ funcDec, returnType });
 
 					break;
 				}
 				case TokenType::FunctionCall:
 				{
-					currentRoot->PushChild(_CreateFunctionCall(tokens, currentRoot->GetName(), i));
+					currentRoot.Node->PushChild(_CreateFunctionCall(tokens, currentRoot.Node->GetName(), i));
 					break;
 				}
 				case TokenType::VariableName:
@@ -96,9 +96,9 @@ namespace clear {
 						type = AbstractType(previous, TypeKind::Variable);
 					}
 
-					currentRoot->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot->GetName() + "::" + currentToken.Data, type));
+					currentRoot.Node->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
 		
-					AbstractType::RegisterVariableType(currentRoot->GetName() + "::" + currentToken.Data, type);
+					AbstractType::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
 
 					break;
 				}
@@ -153,18 +153,18 @@ namespace clear {
 				case TokenType::ConditionalIf:
 				{
 					Ref<ASTIfExpression> ifExpr = Ref<ASTIfExpression>::Create();
-					ifExpr->SetName(currentRoot->GetName());
+					ifExpr->SetName(currentRoot.Node->GetName());
 
 					//evaluate first condition
-					ifExpr->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, VariableType::Bool));
+					ifExpr->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
 					
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
-					base->SetName(currentRoot->GetName());
+					base->SetName(currentRoot.Node->GetName());
 
 					ifExpr->PushChild(base);
 
-					currentRoot->PushChild(ifExpr);
-					m_Stack.push(base); //once end indentation after else is reached this will be popped off.
+					currentRoot.Node->PushChild(ifExpr);
+					m_Stack.push({ base, currentRoot.ExpectedReturnType });
 
 					break;
 				}
@@ -174,15 +174,15 @@ namespace clear {
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(previous.Data);
-					chain.front() = currentRoot->GetName() + "::" + chain.front();
+					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot->GetName(), i);
+					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot->GetName(), i, type));
+					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
 					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true));
 
-					currentRoot->PushChild(binaryExpression);
+					currentRoot.Node->PushChild(binaryExpression);
 
 					break;
 				}
@@ -193,12 +193,23 @@ namespace clear {
 						auto& top = m_Stack.top();
 
 						//end of an if/elseif block so we need to check next token (TODO once else and else if implemented)
-						if (top->GetType() == ASTNodeType::Base)
+						if (top.Node->GetType() == ASTNodeType::Base)
 						{
 						}
 
 						m_Stack.pop();
 					}
+
+					break;
+				}
+				case TokenType::Return:
+				{
+					Ref<ASTReturnStatement> returnStatement = Ref<ASTReturnStatement>::Create(currentRoot.ExpectedReturnType);
+					if (i + 1 < tokens.size() && tokens[i].TokenType != TokenType::EndLine)
+						returnStatement->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+
+
+					currentRoot.Node->PushChild(returnStatement);
 
 					break;
 				}
@@ -469,5 +480,30 @@ namespace clear {
 		}
 
 		return AbstractType(tokens[current], TypeKind::VariableReference, isPointer);
+	}
+
+	AbstractType AST::_GetFunctionTypeFromToken(const Token& token, bool isPointer)
+	{
+		AbstractType type;
+
+		VariableType variableType = GetVariableTypeFromTokenType(token.TokenType);
+		auto& structMetaData = AbstractType::GetStructInfo(token.Data);
+
+		std::string userDefinedType;
+		VariableType currentType{};
+
+		if (variableType != VariableType::None)
+		{
+			currentType = variableType;
+		}
+		else if (structMetaData.Struct)
+		{
+			userDefinedType = token.Data;
+		}
+
+		if (isPointer)
+			return AbstractType(VariableType::Pointer, TypeKind::None, currentType, userDefinedType);
+		
+		return AbstractType(currentType, TypeKind::None, userDefinedType);
 	}
 }
