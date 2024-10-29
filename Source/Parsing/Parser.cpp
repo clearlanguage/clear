@@ -281,10 +281,7 @@ namespace clear
 				if (!m_CurrentString.empty())
 					ret.tokens.push_back(m_CurrentString);
 				else {
-					if (current == ',') {
-						CLEAR_LOG_ERROR("Expected function Parameter after commas");
-						CLEAR_HALT();
-					}
+					_VerifyCondition(false,32,ret.indexes.back()-2);
 				}
 
 				m_CurrentString.clear();
@@ -516,10 +513,7 @@ namespace clear
 
 		current = _SkipSpaces();
 		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),3);
-		if (current == ':') {
-			CLEAR_LOG_ERROR("Expected struct name?");
-			CLEAR_HALT();
-		}
+
 		m_CurrentString.clear();
 		while (IsVarNameChar(current))
 		{
@@ -861,46 +855,26 @@ namespace clear
 		m_CurrentString.clear();
 		_VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
 
-		std::vector<std::string> argList;
-		bool detectedEnd = false;
+		m_CurrentErrorState = "function parameters";
+		auto info = _ParseBrackets(')',true);
 
-		while (current != ')' && current != '\0') 
-		{
-			current = _GetNextChar();
-
-			if (current==',' || current ==')' || current == '\0' )
-			{
-				if (current == ')') 
-					detectedEnd = true;
-
-				if (!m_CurrentString.empty())
-					argList.push_back(m_CurrentString);
-
-				m_CurrentString.clear();
-
-			}
-			else 
-			{
-				if(!(IsSpace(current) && m_CurrentString.empty()))
-					m_CurrentString += current;
-			}
-
-		}
-
-		CLEAR_VERIFY(detectedEnd, "Expected ) after function declaration");
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 
-		for (const auto& i: argList) 
+		for (const auto& i: info.tokens)
 		{
-
 			ProgramInfo info = _SubParse(i);
 			for (const Token& tok :info.Tokens) {
 				m_ProgramInfo.Tokens.push_back(tok);
 			}
+			_PushToken(TokenType::Comma,",");
 
+		}
+		if (_GetLastToken().TokenType == TokenType::Comma) {
+			m_ProgramInfo.Tokens.pop_back();
 		}
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
 		m_CurrentState = ParserState::Default;
+		current = _SkipSpaces();
 		if (current != ')')
 			_Backtrack();
 	}
@@ -931,7 +905,7 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
 		m_CurrentString.clear();
 
-		CLEAR_VERIFY(current != '\n', "did not expect new line after function def")
+		_VerifyCondition(current != '\n',29);
 		m_CurrentState = ParserState::FunctionParameters;
 	}
 
@@ -1051,7 +1025,7 @@ namespace clear
 		m_CurrentString.clear();
 		char current = _GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			CLEAR_VERIFY(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',"Expected   hexadecimal characters only in hexadecimal literal");
+			_VerifyCondition(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
@@ -1067,7 +1041,7 @@ namespace clear
 		m_CurrentString.clear();
 		char current = _GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			CLEAR_VERIFY(current == '0' || current == '1',"Expected 1 and 0 only in binary literal");
+			_VerifyCondition(current == '0' || current == '1',31);
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
@@ -1214,7 +1188,6 @@ namespace clear
 		// if (current == '\'') {
 		// 	current = '';
 		// }
-		// CLEAR_VERIFY(current!= '\'',"No data in char") // Allow this?
 		_VerifyCondition(current!= '\'',14);
 
 
