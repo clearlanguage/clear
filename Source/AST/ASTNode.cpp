@@ -625,7 +625,7 @@ return builder.CreateCall(callee, args);
 			size_t ExpressionIdx = 0;
 		};
 
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression);
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression,"");
 
 		std::vector<Branch> branches;
 		branches.push_back({ llvm::BasicBlock::Create(context, "then", function), 0 });
