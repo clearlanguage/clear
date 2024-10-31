@@ -10,7 +10,7 @@
 #include <stack>
 #include <Core/Log.h>
 #include <Core/Utils.h>
-
+#include <llvm/ADT/StringExtras.h>
 
 
 namespace clear
@@ -232,6 +232,9 @@ namespace clear
 
 	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
 		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
+		if (IsSubParser) {
+			return m_CurrentErrorState;
+		}
 		std::string ret = m_CurrentErrorState;
 		m_CurrentErrorState.clear();
 		return ret;
@@ -245,7 +248,10 @@ namespace clear
 		std::vector<char> stack;
 		stack.push_back(start);
 		bool detectedEnd = false;
+		bool ExpectingValue = false;
 		BracketParsingReturn ret;
+
+		std::string ErrorReference = _GetCurrentErrorContext("25410");
 
 		ret.indexes.push_back(m_CurrentTokenIndex);
 		while (!stack.empty() && current != '\0') {
@@ -282,15 +288,23 @@ namespace clear
 			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
 				if (!((current == ',' && commas) || current!= ',')) {
-					_VerifyCondition(false,16,_GetCurrentErrorContext("267.PBMESE"));
+					_VerifyCondition(false,16,ErrorReference);
 				}
-				if (current == end)
+				_VerifyCondition(!(current == ',' && ExpectingValue),38,ErrorReference);
+				if (current ==',') {
+					ExpectingValue = true;
+				}
+				if (current == end) {
+					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
 					detectedEnd = true;
+				}
 
-				if (!m_CurrentString.empty())
+				if (!m_CurrentString.empty()) {
 					ret.tokens.push_back(m_CurrentString);
+					ExpectingValue = false;
+				}
 				else {
-					_VerifyCondition(false,32,ret.indexes.back()-2);
+					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
 				}
 
 				m_CurrentString.clear();
@@ -312,7 +326,7 @@ namespace clear
 
 
 
-		_VerifyCondition(detectedEnd, 27,_GetCurrentErrorContext("308.F"), Str(end) );
+		_VerifyCondition(detectedEnd, 27,ErrorReference, Str(end) );
 
 
 		return ret;
@@ -421,7 +435,7 @@ namespace clear
 			}
 			else 
 			{
-				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),2);
+				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),34);
 				_PushToken(TokenType::VariableReference, m_CurrentString);
 				m_CurrentString.clear();
 
@@ -521,14 +535,22 @@ namespace clear
 
 		current = _SkipSpaces();
 		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),3);
-
+		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
-		while (IsVarNameChar(current))
+		bool expectingEnd = false;
+		while (current!= '\n' && current != '\0' && current != ':')
 		{
+			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2);
+			if (IsSpace(current)) {
+				expectingEnd = true;
+			}else {
+
+			_VerifyCondition(IsVarNameChar(current),36,Str(current));
+			}
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
-
+		_VerifyCondition(!(std::isdigit(m_CurrentString[0])),35);
 		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 

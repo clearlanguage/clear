@@ -8,7 +8,6 @@ namespace clear {
     {
         int from =err.from;
         int to = err.to;
-         std::cout<<"Line number: " << err.line<<'\n';
 
         std::cout <<  err.ErrorCause<<'\n';
         for (int i = 0; i <from; i++) {
@@ -22,6 +21,7 @@ namespace clear {
             }
         }
         std::cout<<std::endl;
+        std::cout<<"Line number: " << err.line<<'\n';
         std::cout<<"ErrorMessage: " <<err.ErrorMessage<<'\n';
         std::cout<<"Advice: " << err.Advice <<'\n';
         std::cout<<"ErrorType: " <<err.ErrorType<<'\n';
@@ -62,7 +62,13 @@ namespace clear {
         {"Only expected hexadecimal characters in hexadecimal literal","Ensure there are only valid hexadecimal characters in the literal","Invalid char in hex literal"},
         {"Only expected 1 and 0 only in binary literal","Ensure there are only 1s and 0s in the literal","Invalid char in binary literal"},
             {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"},
-        {"Function parameter can only begin with a type not a {}","Change the parameter so that it begins with a valid type","Function parameter begins with none type declaration"}
+        {"Function parameter can only begin with a type not a {}","Change the parameter so that it begins with a valid type","Function parameter begins with none type declaration"},
+        {"Did not expect new line after type declaration  ","Add a variable name after type declaration","Expected variable name after type declaration"},
+        {"Struct name cannot start with a number","Change the name of the struct to not begin with a number maybe prefix it with '_'","struct name invalid"},
+            {"Unexpected character \"{}\" in struct name","change struct name to only include valid charecters","struct name invalid"},
+        {"Did not expect a space in the middle of struct name","Separate words using underscores not spaces","Invalid struct name"},
+        {"Expected a value not another comma","Remove the extra comma","Unexpected commas"},
+
 
         };
 }
