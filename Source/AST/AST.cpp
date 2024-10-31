@@ -167,7 +167,8 @@ namespace clear {
 					ifExpr->PushChild(base);
 
 					currentRoot.Node->PushChild(ifExpr);
-					m_Stack.push({ base, currentRoot.ExpectedReturnType });
+					m_Stack.push({ ifExpr, currentRoot.ExpectedReturnType });
+					m_Stack.push({ base,   currentRoot.ExpectedReturnType });
 
 					break;
 				}
@@ -191,23 +192,65 @@ namespace clear {
 				}
 				case TokenType::EndIndentation:
 				{
-					if (m_Stack.size() > 1)
+					if (m_Stack.size() <= 1)
 					{
-						auto& top = m_Stack.top();
+						continue;
+					}
 
-						//end of an if/elseif block so we need to check next token (TODO once else and else if implemented)
-						if (top.Node->GetType() == ASTNodeType::Base)
-						{
-						}
+					auto& top = m_Stack.top();
+
+					//end of an if/elseif block so we need to check next token (TODO once else and else if implemented)
+					if (top.Node->GetType() == ASTNodeType::Base &&
+						(i + 1) < tokens.size() &&
+						(tokens[i + 1].TokenType == TokenType::Else ||
+							tokens[i + 1].TokenType == TokenType::ElseIf))
+					{
+						size_t start = i + 1;
+
+						if (tokens[start].TokenType == TokenType::Else)
+							i += 4;
+						else
+							i += 1;
 
 						m_Stack.pop();
+
+						CLEAR_VERIFY(!m_Stack.empty(), "stack was empty");
+
+						auto& newTop = m_Stack.top();
+
+						CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression, "top was not an if expression");
+
+						Ref<ASTNodeBase> astNode = Ref<ASTNodeBase>::Create();
+
+						if (tokens[start].TokenType == TokenType::ElseIf)
+						{
+							newTop.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+						}
+
+						astNode->SetName(currentRoot.Node->GetName());
+						newTop.Node->PushChild(astNode);
+
+						m_Stack.push({ astNode, newTop.ExpectedReturnType });
+					}
+					else
+					{
+						m_Stack.pop();
+
+						if (m_Stack.empty())
+							continue;
+
+						auto& newTop = m_Stack.top();
+
+						if (newTop.Node->GetType() == ASTNodeType::IfExpression)
+							m_Stack.pop();
 					}
 
 					break;
 				}
 				case TokenType::Return:
 				{
-					Ref<ASTReturnStatement> returnStatement = Ref<ASTReturnStatement>::Create(currentRoot.ExpectedReturnType);
+					bool createReturn = m_Stack.top().Node->GetType() != ASTNodeType::Base;
+					Ref<ASTReturnStatement> returnStatement = Ref<ASTReturnStatement>::Create(currentRoot.ExpectedReturnType, createReturn);
 					if (i + 1 < tokens.size() && tokens[i].TokenType != TokenType::EndLine)
 						returnStatement->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
 
@@ -220,6 +263,9 @@ namespace clear {
 					break;
 			}
 		}
+
+		CLEAR_VERIFY(m_Stack.size() == 1, "program wasn't parsed properly");
+
 	}
 	void AST::BuildIR(const std::filesystem::path& out)
 	{

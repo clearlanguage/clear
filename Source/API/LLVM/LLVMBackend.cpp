@@ -23,6 +23,17 @@ namespace clear {
 
 		void Backend::BuildModule() //TODO: be able to change output filepath
 		{
+			std::string errorStr;
+			llvm::raw_string_ostream errorStream(errorStr);
+
+			/*bool isValid = llvm::verifyModule(*s_Module, &errorStream);
+
+			if (isValid) 
+				llvm::errs() << "Module verification failed:\n" << errorStream.str() << "\n";
+			else 
+				llvm::outs() << "Module verified successfully!\n";*/
+			
+
 			llvm::InitializeNativeTarget();
 			llvm::InitializeNativeTargetAsmPrinter();
 			llvm::InitializeNativeTargetAsmParser();
@@ -54,8 +65,16 @@ namespace clear {
 
 			CLEAR_VERIFY(!(targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)), "TargetMachine can't emit a file of this type");
 
-			pass.run(*s_Module);
-			dest.flush();
+
+			try
+			{
+				pass.run(*s_Module);
+				dest.flush();
+			}
+			catch (const std::exception& e)
+			{
+				CLEAR_UNREACHABLE(e.what());
+			}
 		}
 
 	}

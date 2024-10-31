@@ -28,8 +28,6 @@ namespace clear {
 
 		~Value();
 
-
-
 		static llvm::Value*		 CastValue(llvm::Value* value, AbstractType to);
 		static ConstantPair		 GetConstantString(const std::string& data);
 		static ConstantPair		 GetConstant(const AbstractType& type, const std::string& data);

@@ -213,13 +213,14 @@ namespace clear {
 	class ASTReturnStatement : public ASTNodeBase
 	{
 	public:
-		ASTReturnStatement(const AbstractType& expectedReturnType);
+		ASTReturnStatement(const AbstractType& expectedReturnType, bool createReturn = true);
 		virtual ~ASTReturnStatement() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
 		AbstractType m_ExpectedReturnType;
+		bool m_CreateReturn;
 	};
 
 	//

@@ -11,14 +11,23 @@
 
 namespace clear {
 
+	struct ReturnValue
+	{
+		llvm::AllocaInst* Alloca;
+		llvm::BasicBlock* Return;
+	};
+
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
+	static std::stack<ReturnValue> s_ReturnValues;
 
 	llvm::Value* ASTNodeBase::Codegen()
 	{
-		for (auto& child : GetChildren())
-			child->Codegen();
+		llvm::Value* value = nullptr;
 
-		return nullptr;
+		for (auto& child : GetChildren())
+			value = child->Codegen();
+
+		return value;
 	}
 
 	void ASTNodeBase::SetName(const std::string& name)
@@ -321,7 +330,7 @@ namespace clear {
 
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
 
-		if (m_Dereference && m_PointerFlag)
+		if (m_Dereference)
 		{
 			llvm::Value* loadedPointer = builder.CreateLoad(gepPtr->getType(), gepPtr, "loaded_pointer");
 			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
@@ -370,7 +379,7 @@ namespace clear {
 	}
 	llvm::Value* ASTFunctionDecleration::Codegen()
 	{
-		auto& module  = *LLVM::Backend::GetModule();
+		auto& module = *LLVM::Backend::GetModule();
 		auto& context = *LLVM::Backend::GetContext();
 		auto& builder = *LLVM::Backend::GetBuilder();
 
@@ -379,6 +388,7 @@ namespace clear {
 		llvm::Type* returnType = m_ReturnType.GetLLVMType();
 
 		std::vector<llvm::Type*> ParamaterTypes;
+
 		for (const auto& Paramater : m_Paramaters)
 		{
 			ParamaterTypes.push_back(GetLLVMVariableType(Paramater.Type));
@@ -402,6 +412,14 @@ namespace clear {
 		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", function);
 		builder.SetInsertPoint(entry);
 
+		llvm::BasicBlock* returnBlock = llvm::BasicBlock::Create(context, "return");
+
+		ReturnValue returnStatement{};
+		returnStatement.Alloca = !returnType->isVoidTy() ? builder.CreateAlloca(returnType) : nullptr;
+		returnStatement.Return = returnBlock;
+
+		s_ReturnValues.push(returnStatement);
+
 		uint32_t k = 0;
 
 		for (const auto& Paramater : m_Paramaters)
@@ -424,9 +442,23 @@ namespace clear {
 			Value::RemoveVariable(GetName() + "::" + Paramater.Name);
 		}
 
-		if (returnType->isVoidTy() && !builder.GetInsertBlock()->getTerminator())
+		ReturnValue value = s_ReturnValues.top();
+		s_ReturnValues.pop();
+
+		if(!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(returnBlock);
+
+		function->insert(function->end(), returnBlock);
+		builder.SetInsertPoint(returnBlock);
+
+		if (returnType->isVoidTy())
 		{
 			builder.CreateRetVoid();
+		}
+		else
+		{
+			llvm::Value* load = builder.CreateLoad(value.Alloca->getAllocatedType(), value.Alloca, "loaded_value");
+			builder.CreateRet(load);
 		}
 
 		auto& ip = s_InsertPoints.top();
@@ -436,8 +468,8 @@ namespace clear {
 		return function;
 	}
 
-	ASTReturnStatement::ASTReturnStatement(const AbstractType& expectedReturnType)
-		: m_ExpectedReturnType(expectedReturnType)
+	ASTReturnStatement::ASTReturnStatement(const AbstractType& expectedReturnType, bool createReturn)
+		: m_ExpectedReturnType(expectedReturnType), m_CreateReturn(createReturn)
 	{
 	}
 
@@ -448,15 +480,21 @@ namespace clear {
 		if (GetChildren().size() > 0)
 		{
 			llvm::Value* returnValue = GetChildren()[0]->Codegen();
+			if (returnValue->getType() != m_ExpectedReturnType.GetLLVMType())
+				returnValue = Value::CastValue(returnValue, m_ExpectedReturnType);
+			
 			CLEAR_VERIFY(returnValue->getType() == m_ExpectedReturnType.GetLLVMType(), "unexpected return type");
 
-			return builder.CreateRet(returnValue);
+			llvm::AllocaInst* alloc = s_ReturnValues.top().Alloca;
+			
+			builder.CreateStore(returnValue, alloc);
 		}
+		
+		builder.CreateBr(s_ReturnValues.top().Return);
 
-		CLEAR_VERIFY(m_ExpectedReturnType.Get() == VariableType::None, "unexpected return type");
-
-		return builder.CreateRetVoid();
+		return nullptr;
 	}
+	
 	llvm::Value* ASTExpression::Codegen()
 	{
 		auto& builder  = *LLVM::Backend::GetBuilder();
@@ -516,61 +554,61 @@ namespace clear {
 
 		auto& expected = g_FunctionToExpectedTypes.at(m_Name);
 
-		uint32_t k = 0;
+uint32_t k = 0;
 
-		for (auto& child : children)
-		{
-			llvm::Value* gen = child->Codegen();
+for (auto& child : children)
+{
+	llvm::Value* gen = child->Codegen();
 
-			if (gen->getType() != expected[k].Type.GetLLVMType())
-				gen = Value::CastValue(gen, expected[k].Type);
+	if (gen->getType() != expected[k].Type.GetLLVMType())
+		gen = Value::CastValue(gen, expected[k].Type);
 
-			CLEAR_VERIFY(gen, "not a valid argument");
-			args.push_back(gen);
-		}
+	CLEAR_VERIFY(gen, "not a valid argument");
+	args.push_back(gen);
+}
 
 
-		if (m_Name == "_sleep")
-		{
-			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-				module.getOrInsertFunction("_sleep",
-					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-						llvm::Type::getInt32Ty(module.getContext()),
-						false)).getCallee());
-		}
-		else if (m_Name == "sleep")
-		{
-			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-				module.getOrInsertFunction("sleep",
-					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-						llvm::Type::getInt32Ty(module.getContext()),
-						false)).getCallee());
-		}
-		else if (m_Name == "nanosleep")
-		{
-			llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-				module.getOrInsertFunction("nanosleep",
-					llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-						llvm::Type::getInt32Ty(module.getContext()),
-						false)).getCallee());
-		}
-		else if (m_Name == "printf")
-		{
-			llvm::Function* printfFunc = llvm::cast<llvm::Function>(
-				module.getOrInsertFunction("printf",
-					llvm::FunctionType::get(
-						llvm::Type::getInt32Ty(module.getContext()),              // Return type: int
-						{ llvm::PointerType::get(llvm::Type::getInt8Ty(module.getContext()), 0) }, // First arg: const char*
-						true                                                      // Is variadic
-					)).getCallee());
-		}
-		
-		llvm::Function* callee = module.getFunction(m_Name);
-		CLEAR_VERIFY(callee, "not a valid function");
+if (m_Name == "_sleep")
+{
+	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+		module.getOrInsertFunction("_sleep",
+			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+				llvm::Type::getInt32Ty(module.getContext()),
+				false)).getCallee());
+}
+else if (m_Name == "sleep")
+{
+	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+		module.getOrInsertFunction("sleep",
+			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+				llvm::Type::getInt32Ty(module.getContext()),
+				false)).getCallee());
+}
+else if (m_Name == "nanosleep")
+{
+	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
+		module.getOrInsertFunction("nanosleep",
+			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
+				llvm::Type::getInt32Ty(module.getContext()),
+				false)).getCallee());
+}
+else if (m_Name == "printf")
+{
+	llvm::Function* printfFunc = llvm::cast<llvm::Function>(
+		module.getOrInsertFunction("printf",
+			llvm::FunctionType::get(
+				llvm::Type::getInt32Ty(module.getContext()),              // Return type: int
+				{ llvm::PointerType::get(llvm::Type::getInt8Ty(module.getContext()), 0) }, // First arg: const char*
+				true                                                      // Is variadic
+			)).getCallee());
+}
 
-		return builder.CreateCall(callee, args);
+llvm::Function* callee = module.getFunction(m_Name);
+CLEAR_VERIFY(callee, "not a valid function");
+
+return builder.CreateCall(callee, args);
 	}
-	
+
 	llvm::Value* ASTIfExpression::Codegen()
 	{
 		auto& children = GetChildren();
@@ -581,53 +619,73 @@ namespace clear {
 
 		llvm::Function* function = builder.GetInsertBlock()->getParent();
 
-		llvm::BasicBlock* thenBranch  = llvm::BasicBlock::Create(context, "then", function);
-		llvm::BasicBlock* elseBranch  = llvm::BasicBlock::Create(context, "else");
+		struct Branch
+		{
+			llvm::BasicBlock* Block = nullptr;
+			size_t ExpressionIdx = 0;
+		};
+
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression);
+
+		std::vector<Branch> branches;
+		branches.push_back({ llvm::BasicBlock::Create(context, "then", function), 0 });
+
+		for (size_t i = 1; i < children.size(); i++)
+		{
+			if (children[i]->GetType() == ASTNodeType::Expression)
+				branches.push_back({ llvm::BasicBlock::Create(context, "else_then"), i });
+		}
+
+		llvm::BasicBlock* elseBlock = llvm::BasicBlock::Create(context, "else");
 		llvm::BasicBlock* mergeBranch = llvm::BasicBlock::Create(context, "merge");
 
-		//first child is a condition
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "node must be an expression");
+		Ref<ASTNodeBase> condition = children[branches[0].ExpressionIdx];
 
-		llvm::Value* condition = children[0]->Codegen();
-		builder.CreateCondBr(condition, thenBranch, elseBranch);
+		builder.CreateCondBr(condition->Codegen(), branches[0].Block, branches.size() > 1 ? branches[1].Block : elseBlock);
+		builder.SetInsertPoint(branches[0].Block);
 
-		builder.SetInsertPoint(thenBranch);
+		size_t lastBranchIndex = 0;
 
-		//next has to be a NodeBase/FunctionCall/etc...
-		llvm::Value* ifCode = children[1]->Codegen();
-
-		if (!ifCode)
-			ifCode = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
-
-		builder.CreateBr(mergeBranch);
-
-		thenBranch = builder.GetInsertBlock();
-
-		//TODO: add else if
-
-		function->insert(function->end(), elseBranch);
-		builder.SetInsertPoint(elseBranch);
-
-		
-		llvm::Value* elseCode = llvm::ConstantFP::get(context, llvm::APFloat(0.0));
-
-		if (children.size() > 2)
+		for (size_t i = 1; i < branches.size(); i++)
 		{
-			llvm::Value* val = children[2]->Codegen();
-			elseCode = val == nullptr ? elseCode : val;
-		}
-		
-		builder.CreateBr(mergeBranch);
-		elseBranch = builder.GetInsertBlock();
+			llvm::BasicBlock* nextBranch = (i + 1) == branches.size() ? elseBlock : branches[i + 1].Block;
 
+			children[lastBranchIndex + 1]->Codegen();
+
+			condition = children[branches[i].ExpressionIdx];
+
+			if (!builder.GetInsertBlock()->getTerminator())
+			{
+				llvm::Value* conditionVal = condition->Codegen();
+				builder.CreateCondBr(conditionVal, branches[i].Block, nextBranch);
+			}
+
+			function->insert(function->end(), branches[i].Block);
+			builder.SetInsertPoint(branches[i].Block);
+
+			lastBranchIndex = branches[i].ExpressionIdx;
+		}
+
+		children[lastBranchIndex + 1]->Codegen();
+
+		if (!builder.GetInsertBlock()->getTerminator())
+		{
+			llvm::Value* conditionVal = children[branches.back().ExpressionIdx]->Codegen();
+			builder.CreateCondBr(conditionVal, branches.back().Block, elseBlock);
+		}
+
+		function->insert(function->end(), elseBlock);
+		builder.SetInsertPoint(elseBlock);
+
+		size_t lastChild = children.size() - 1;
+		if (children[lastChild - 1]->GetType() != ASTNodeType::Expression)
+			children.back()->Codegen();
+
+		builder.CreateBr(mergeBranch);
+		
 		function->insert(function->end(), mergeBranch);
 		builder.SetInsertPoint(mergeBranch);
 
-		llvm::PHINode* PN = builder.CreatePHI(llvm::Type::getDoubleTy(context), 2, "iftmp");
-
-		PN->addIncoming(ifCode, thenBranch);
-		PN->addIncoming(elseCode, elseBranch);
-
-		return PN;
+		return nullptr;
 	}
 }

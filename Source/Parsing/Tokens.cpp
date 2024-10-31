@@ -65,7 +65,8 @@ namespace clear {
         {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
-            {"else",{.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
+        {"else", {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
+        {"elseif", {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}}
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
@@ -154,6 +155,7 @@ namespace clear {
             case TokenType::MultiplyAssign: return "MultiplyAssign";
             case TokenType::LeftArrow: return "LeftArrow";
             case TokenType::Else: return "Else";
+            case TokenType::ElseIf: return "ElseIf";
             case TokenType::BitwiseAnd: return "BitwiseAnd";
 
             default:
