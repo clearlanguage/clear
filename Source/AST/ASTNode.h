@@ -16,6 +16,7 @@ namespace clear {
 	{
 		std::string Name;
 		AbstractType Type;
+		bool IsVariadic = false;
 	};
 
 
@@ -25,14 +26,11 @@ namespace clear {
 	{
 		Base = 0, Literal, BinaryExpression, 
 		VariableExpression, VariableDecleration, 
-		FunctionDecleration, ReturnStatement, 
-		Expression, Struct, FunctionCall, IfExpression
+		FunctionDefinition, FunctionDecleration,
+		ReturnStatement, Expression, Struct, 
+	    FunctionCall, IfExpression,
 	};
 
-
-	//
-	// ---------------------- BASE -----------------------
-	//
 
 	class ASTNodeBase 
 	{
@@ -60,13 +58,8 @@ namespace clear {
 		std::vector<Ref<ASTNodeBase>> m_Children;
 		std::string m_Name;
 	};
-	//
-	// -------------------------------------------------------
-	//
 
-	//
-	// ---------------------- LITERAL -----------------------
-	//
+
 	class ASTNodeLiteral : public ASTNodeBase
 	{
 	public:
@@ -79,13 +72,7 @@ namespace clear {
 		Value m_Constant;
 	};
 
-	//
-	// -----------------------------------------------------------
-	//
 
-	//
-	// ---------------------- BINARY EXPRESSION -----------------------
-	//
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
@@ -111,30 +98,35 @@ namespace clear {
 		BinaryExpressionType m_Expression;
 		AbstractType m_ExpectedType;
 	};
-	//
-	// ------------------------------------------------------------------
-	//
 
 
-
-	//
-	// ---------------------- FUNCTION DECELRATION -----------------------
-	//
-	class ASTFunctionDecleration : public ASTNodeBase
+	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& arugments);
-		virtual ~ASTFunctionDecleration() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
+		ASTFunctionDefinition(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& arugments);
+		virtual ~ASTFunctionDefinition() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
 		AbstractType m_ReturnType;
 		std::vector<Paramater> m_Paramaters;
 	};
-	//
-	// -------------------------------------------------------------------
-	//
+
+
+	class ASTFunctionDecleration : public ASTNodeBase
+	{
+	public:
+		ASTFunctionDecleration(const std::string& name, const AbstractType& expectedReturnType, const std::vector<Paramater>& types);
+		virtual ~ASTFunctionDecleration() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
+		virtual llvm::Value* Codegen() override;
+
+	private:
+		std::string m_Name;
+		AbstractType m_ExpectedReturnType;
+		std::vector<Paramater> m_ExpectedTypes;
+	};
 
 
 	struct Argument
@@ -143,9 +135,6 @@ namespace clear {
 		std::string Data;
 	};
 
-	//
-	// ---------------------- FUNCTION CALL -----------------------
-	//
 	class ASTFunctionCall : public ASTNodeBase
 	{
 	public:
@@ -158,14 +147,7 @@ namespace clear {
 	private:
 		std::string m_Name;
 	};
-	//
-	// -------------------------------------------------------------------
-	//
 
-
-	//
-	// ---------------------- VARIABLE DECELRATION -----------------------
-	//
 	class ASTVariableDecleration : public ASTNodeBase
 	{
 	public:
@@ -183,9 +165,6 @@ namespace clear {
 	};
 
 
-	//
-	// ---------------------- VARIABLE EXPRESSION -----------------------
-	//
 	class ASTVariableExpression : public ASTNodeBase
 	{
 	public:
@@ -203,13 +182,6 @@ namespace clear {
 		bool m_Dereference = false;
 	};
 
-	//
-	// ------------------------------------------------------------------
-	//
-
-	//
-	// ---------------------- RETURN STATEMENT -----------------------
-	//
 	class ASTReturnStatement : public ASTNodeBase
 	{
 	public:
@@ -223,13 +195,6 @@ namespace clear {
 		bool m_CreateReturn;
 	};
 
-	//
-	// ------------------------------------------------------------------
-	//
-
-	//
-	// ---------------------- EXPRESSION -----------------------
-	//
 
 	class ASTExpression : public ASTNodeBase
 	{
@@ -240,14 +205,6 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	};
-
-	//
-	// ------------------------------------------------------------------
-	//
-
-	//
-	// ---------------------- STRUCT -----------------------
-	//
 
 	class ASTStruct : public ASTNodeBase
 	{
@@ -262,14 +219,6 @@ namespace clear {
 		std::string m_Name;
 	};
 
-	//
-	// ------------------------------------------------------------------
-	//
-
-	//
-	// ---------------------- IF -----------------------
-	//
-
 	class ASTIfExpression : public ASTNodeBase
 	{
 	public:
@@ -280,7 +229,4 @@ namespace clear {
 
 	};
 
-	//
-	// ------------------------------------------------------------------
-	//
 }

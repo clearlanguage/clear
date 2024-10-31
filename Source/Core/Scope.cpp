@@ -4,7 +4,7 @@
 
 namespace clear {
 
-	Scope::Scope(const std::string& name, const Ref<ASTFunctionDecleration>& function)
+	Scope::Scope(const std::string& name, const Ref<ASTFunctionDefinition>& function)
 		: m_Name(name), m_CurrentFunction(function)
 	{
 	}

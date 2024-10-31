@@ -357,27 +357,13 @@ namespace clear {
 		return m_Value.Get();
 	}
 
-	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
+	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
 		: m_ReturnType(returnType), m_Paramaters(Paramaters)
 	{
 		g_FunctionToExpectedTypes[name] = m_Paramaters;
 		SetName(name);
-
-		if (!g_FunctionToExpectedTypes.contains("_sleep")) //TODO: remove thhis immediately
-		{
-			auto& e = g_FunctionToExpectedTypes["_sleep"];
-			e.push_back({ .Name = "time", .Type = AbstractType(VariableType::Int32) });
-		}
-
-		if (!g_FunctionToExpectedTypes.contains("printf"))
-		{
-			auto& e = g_FunctionToExpectedTypes["printf"];
-			e.push_back({ .Name = "fmt", .Type = AbstractType(VariableType::String) });
-			e.push_back({ .Name = "msg", .Type = AbstractType(VariableType::String) });
-		}
-
 	}
-	llvm::Value* ASTFunctionDecleration::Codegen()
+	llvm::Value* ASTFunctionDefinition::Codegen()
 	{
 		auto& module = *LLVM::Backend::GetModule();
 		auto& context = *LLVM::Backend::GetContext();
@@ -391,7 +377,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			ParamaterTypes.push_back(GetLLVMVariableType(Paramater.Type));
+			ParamaterTypes.push_back(Paramater.Type.GetLLVMType());
 		}
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamaterTypes, false);
@@ -415,7 +401,7 @@ namespace clear {
 		llvm::BasicBlock* returnBlock = llvm::BasicBlock::Create(context, "return");
 
 		ReturnValue returnStatement{};
-		returnStatement.Alloca = !returnType->isVoidTy() ? builder.CreateAlloca(returnType) : nullptr;
+		returnStatement.Alloca = !returnType->isVoidTy() ? builder.CreateAlloca(returnType, nullptr, "return_value") : nullptr;
 		returnStatement.Return = returnBlock;
 
 		s_ReturnValues.push(returnStatement);
@@ -424,7 +410,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(GetLLVMVariableType(Paramater.Type), nullptr, Paramater.Name);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(Paramater.Type.GetLLVMType(), nullptr, Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
 			
 			Value::RegisterVariable(argAlloc, GetName() + "::" + Paramater.Name, Paramater.Type);
@@ -466,6 +452,36 @@ namespace clear {
 		s_InsertPoints.pop();
 
 		return function;
+	}
+
+	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& expectedReturnType, const std::vector<Paramater>& types)
+		: m_Name(name), m_ExpectedReturnType(expectedReturnType), m_ExpectedTypes(types)
+	{
+		g_FunctionToExpectedTypes[name] = types;
+	}
+
+	llvm::Value* ASTFunctionDecleration::Codegen()
+	{
+		auto& module = *LLVM::Backend::GetModule();
+
+		std::vector<llvm::Type*> types;
+
+		bool isVariadic = false;
+
+		for (auto& type : m_ExpectedTypes)
+		{
+			if (type.IsVariadic)
+			{
+				isVariadic = true;
+				break;
+			}
+
+			types.push_back(type.Type.GetLLVMType());
+		}
+
+		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ExpectedReturnType.GetLLVMType(), types, isVariadic);
+		module.getOrInsertFunction(m_Name, functionType);
+		return nullptr;
 	}
 
 	ASTReturnStatement::ASTReturnStatement(const AbstractType& expectedReturnType, bool createReturn)
@@ -554,59 +570,28 @@ namespace clear {
 
 		auto& expected = g_FunctionToExpectedTypes.at(m_Name);
 
-uint32_t k = 0;
+		uint32_t k = 0;
+		
+		for (auto& child : children)
+		{
+			llvm::Value* gen = child->Codegen();
+		
+			if (k < expected.size() && !expected[k].IsVariadic && gen->getType() != expected[k].Type.GetLLVMType())
+			{
+				gen = Value::CastValue(gen, expected[k].Type);
+			}
 
-for (auto& child : children)
-{
-	llvm::Value* gen = child->Codegen();
-
-	if (gen->getType() != expected[k].Type.GetLLVMType())
-		gen = Value::CastValue(gen, expected[k].Type);
-
-	CLEAR_VERIFY(gen, "not a valid argument");
-	args.push_back(gen);
-}
-
-
-if (m_Name == "_sleep")
-{
-	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-		module.getOrInsertFunction("_sleep",
-			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-				llvm::Type::getInt32Ty(module.getContext()),
-				false)).getCallee());
-}
-else if (m_Name == "sleep")
-{
-	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-		module.getOrInsertFunction("sleep",
-			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-				llvm::Type::getInt32Ty(module.getContext()),
-				false)).getCallee());
-}
-else if (m_Name == "nanosleep")
-{
-	llvm::Function* sleepFunc = llvm::cast<llvm::Function>(
-		module.getOrInsertFunction("nanosleep",
-			llvm::FunctionType::get(llvm::Type::getInt32Ty(module.getContext()),
-				llvm::Type::getInt32Ty(module.getContext()),
-				false)).getCallee());
-}
-else if (m_Name == "printf")
-{
-	llvm::Function* printfFunc = llvm::cast<llvm::Function>(
-		module.getOrInsertFunction("printf",
-			llvm::FunctionType::get(
-				llvm::Type::getInt32Ty(module.getContext()),              // Return type: int
-				{ llvm::PointerType::get(llvm::Type::getInt8Ty(module.getContext()), 0) }, // First arg: const char*
-				true                                                      // Is variadic
-			)).getCallee());
-}
-
-llvm::Function* callee = module.getFunction(m_Name);
-CLEAR_VERIFY(callee, "not a valid function");
-
-return builder.CreateCall(callee, args);
+			k++;
+		
+			CLEAR_VERIFY(gen, "not a valid argument");
+			args.push_back(gen);
+		}
+		
+		
+		llvm::Function* callee = module.getFunction(m_Name);
+		CLEAR_VERIFY(callee, "not a valid function");
+		
+		return builder.CreateCall(callee, args);
 	}
 
 	llvm::Value* ASTIfExpression::Codegen()
@@ -688,4 +673,6 @@ return builder.CreateCall(callee, args);
 
 		return nullptr;
 	}
+
+
 }

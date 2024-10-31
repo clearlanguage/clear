@@ -10,7 +10,7 @@ namespace clear {
 	class Scope
 	{
 	public:
-		Scope(const std::string& name, const Ref<ASTFunctionDecleration>& function);
+		Scope(const std::string& name, const Ref<ASTFunctionDefinition>& function);
 		~Scope();
 
 		void DeclareVariable(const std::string& name);
@@ -18,7 +18,7 @@ namespace clear {
 		void DeclareFunction(const std::string& function) = delete;
 
 	private:
-		Ref<ASTFunctionDecleration> m_CurrentFunction;
+		Ref<ASTFunctionDefinition> m_CurrentFunction;
 		std::set<std::string> m_VariableDeclerations;
 		std::set<std::string> m_StructDeclerations;
 		std::set<std::string> m_FunctionDeclerations;

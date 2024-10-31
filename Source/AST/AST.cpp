@@ -15,7 +15,7 @@ namespace clear {
 		//possibly add command line arguments in the future
 		std::vector<Paramater> Paramaters;
 
-		m_Root = Ref<ASTFunctionDecleration>::Create("main", VariableType::None, Paramaters);
+		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, Paramaters);
 		m_Stack.push({ m_Root, {} });
 
 		for (size_t i = 0; i < tokens.size(); i++)
@@ -26,6 +26,53 @@ namespace clear {
 
 			switch (currentToken.TokenType)
 			{
+				case TokenType::Declaration:
+				{
+					i++;
+					CLEAR_VERIFY(tokens[i].TokenType == TokenType::VariableReference, "must be variable reference");
+
+					std::string& name = tokens[i].Data;
+
+					i += 3;
+					AbstractType type = VariableType::None;
+
+					std::vector<Paramater> paramaters;
+
+					while (i < tokens.size())
+					{
+						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef;
+						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
+						paramaters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
+
+						if (isPointer)
+							i++;
+
+						i++;
+						if (tokens[i].TokenType == TokenType::VariableName)
+							i++;
+
+						if (tokens[i].TokenType == TokenType::Comma)
+							i++;
+
+						if (tokens[i].TokenType == TokenType::EndFunctionParameters)
+							break;
+					}
+
+					AbstractType returnType;
+					i++;
+
+					if (tokens[i].TokenType == TokenType::RightArrow)
+					{
+						i += 2;
+
+						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef;
+						returnType = _GetTypeFromToken(tokens[i], isPointer);							
+					}
+
+					currentRoot.Node->PushChild(Ref<ASTFunctionDecleration>::Create(name, returnType, paramaters));
+
+					break;
+				}
 				case TokenType::Function:
 				{
 					AbstractType returnType = VariableType::None;
@@ -68,7 +115,7 @@ namespace clear {
 						returnType = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
 					}
 
-					Ref<ASTFunctionDecleration> funcDec = Ref<ASTFunctionDecleration>::Create(name, returnType, Paramaters);
+					Ref<ASTFunctionDefinition> funcDec = Ref<ASTFunctionDefinition>::Create(name, returnType, Paramaters);
 					currentRoot.Node->PushChild(funcDec);
 					m_Stack.push({ funcDec, returnType });
 
@@ -453,6 +500,9 @@ namespace clear {
 		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
 		i++;
 
+		auto& expectedTypes = g_FunctionToExpectedTypes.at(name);
+
+
 		uint32_t k = 0;
 		while (i < tokens.size() && 
 			  tokens[i].TokenType != TokenType::CloseBracket && 
@@ -466,7 +516,10 @@ namespace clear {
 				continue;
 			}
 
-			functionCall->PushChild(_CreateExpression(tokens, root, i, g_FunctionToExpectedTypes.at(name)[k++].Type));
+			auto type = k < expectedTypes.size() && !expectedTypes[k].IsVariadic ? expectedTypes[k] : Paramater{};
+			functionCall->PushChild(_CreateExpression(tokens, root, i, type.Type));
+
+			k++;
 		}
 
 

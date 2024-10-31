@@ -35,7 +35,7 @@ namespace clear {
         };
 
     private:
-        Ref<ASTFunctionDecleration> m_Root;
+        Ref<ASTFunctionDefinition> m_Root;
         std::stack<StackNode> m_Stack;
     };
 
