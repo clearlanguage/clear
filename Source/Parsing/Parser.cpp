@@ -986,52 +986,46 @@ namespace clear
 
 	void Parser::_IndentationState()
 	{
+		size_t tabWidth = 4; 
 		char next = _GetNextChar();
-		if (next == '\n') {
-
+		
+		if (next == '\n') 
+		{
 			_EndLine();
 			next = _GetNextChar();
 		}
 
 		bool indenting = true;
-		size_t localIndents = 0;
+		size_t totalSpaces = 0;
 
 		while (indenting)
 		{
-			if (next == '\t')
+			if (next == '\t') 
 			{
-				localIndents++;
+				totalSpaces += tabWidth;
 				next = _GetNextChar();
-				continue;
 			}
-
-			size_t spaceCounter = 0;
-
-			if (next == ' ')
+			else if (next == ' ') 
 			{
-				spaceCounter = 1;
-
-				while (next == ' ' && spaceCounter < 4)
-				{
-					next = _GetNextChar();
-					spaceCounter++;
-				}
+				totalSpaces++;
+				next = _GetNextChar();
 			}
-
-			if (spaceCounter == 4)
-				localIndents++;
-			else
+			else 
+			{
 				indenting = false;
+			}
 		}
 
-		if (localIndents > m_Indents)
+		size_t localIndents = totalSpaces / 4;
+
+		if (localIndents > m_Indents) 
 		{
 			_PushToken({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
 			m_ScopeStack.emplace_back();
 		}
 
-		while (m_Indents > localIndents)
+		while (m_Indents > localIndents) 
 		{
 			_PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
