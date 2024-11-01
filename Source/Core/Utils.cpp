@@ -116,6 +116,8 @@ namespace clear {
 
     NumberInfo GetNumberInfoFromLiteral(const std::string_view& str)
     {
+        bool isFloatingPoint = str.find_first_of('.') != std::string_view::npos;
+
         NumberInfo info;
 
         double result;
@@ -148,10 +150,10 @@ namespace clear {
                 return false;
             };
 
-        if (testTypeAgainst(uint8_t{}) || testTypeAgainst(uint16_t{}) || testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{}))
+        if (!isFloatingPoint && (testTypeAgainst(uint8_t{}) || testTypeAgainst(uint16_t{}) || testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{})))
             return info;
 
-        if (testTypeAgainst(int8_t{}) || testTypeAgainst(int16_t{}) || testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{}))
+        if (!isFloatingPoint && (testTypeAgainst(int8_t{}) || testTypeAgainst(int16_t{}) || testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{})))
             return info;
 
         if (testTypeAgainst(float{}) || testTypeAgainst(double{}))

@@ -463,7 +463,10 @@ namespace clear {
 					operators.pop();
 				}
 
-				operators.push({ token, currentExpectedType });
+				if (token.TokenType == TokenType::DivOp)
+					operators.push({ token, VariableType::Float64 });
+				else 
+					operators.push({ token, currentExpectedType });
 
 				if (addBracket)
 				{
