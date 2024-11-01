@@ -77,7 +77,7 @@ namespace clear {
     };
 
     std::string_view TokenToString(TokenType token) {
-        switch (token) 
+        switch (token)
         {
             case TokenType::None: return "None";
             case TokenType::Int8Type: return "Int8Type";

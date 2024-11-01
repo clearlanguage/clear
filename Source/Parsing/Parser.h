@@ -24,7 +24,7 @@ namespace clear
 		std::vector<Error> Errors;
 	};
 
-	struct ArrayDeclarationReturn 
+	struct ArrayDeclarationReturn
 	{
 		std::vector<Token> Tokens;
 		bool error = false;
@@ -38,7 +38,7 @@ namespace clear
 		std::vector<int> indexes;
 	};
 
-	struct TypeScope 
+	struct TypeScope
 	{
 		std::set<std::string> TypeDeclarations;
 	};
