@@ -26,9 +26,7 @@ namespace clear {
 			case VariableType::Bool:		    return llvm::Type::getInt1Ty(context);
 			case VariableType::Float32:		    return llvm::Type::getFloatTy(context);
 			case VariableType::Float64:		    return llvm::Type::getDoubleTy(context);
-			case VariableType::UserDefinedType:	
 			case VariableType::String:			
-			case VariableType::Array:
 			case VariableType::Pointer:			return llvm::PointerType::get(context , 0);
 			case VariableType::None:
 			default:
@@ -240,6 +238,13 @@ namespace clear {
 		m_LLVMUnderlyingType = m_LLVMType;
 
 		return;
+	}
+
+	AbstractType::AbstractType(const AbstractType& underlyingType, size_t elementCount)
+		: m_LLVMUnderlyingType(underlyingType.GetLLVMType()), m_UnderlyingType(underlyingType.Get()), 
+		  m_Type(VariableType::Array)
+	{
+		m_LLVMType = llvm::ArrayType::get(m_LLVMUnderlyingType, elementCount);
 	}
 
 	llvm::StructType* AbstractType::GetStructType(const std::string& name)

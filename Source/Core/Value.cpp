@@ -170,15 +170,15 @@ namespace clear {
 		{
 			return builder.CreateIntToPtr(value, toType, "cast");
 		}
-		else if (fromType->isPointerTy() && to.IsIntegral())
-		{
-			return builder.CreatePtrToInt(value, toType, "cast");
-		}
-		else if (fromType->isPointerTy() && to.IsFloatingPoint())
-		{
-			auto tmp = CastValue(value, VariableType::Int64);
-			return CastValue(tmp, to);
-		}
+		//else if (fromType->isPointerTy() && to.IsIntegral())
+		//{
+		//	return builder.CreatePtrToInt(value, toType, "cast");
+		//}
+		//else if (fromType->isPointerTy() && to.IsFloatingPoint())
+		//{
+		//	auto tmp = CastValue(value, VariableType::Int64);
+		//	return CastValue(tmp, to);
+		//}
 
 		CLEAR_UNREACHABLE("failed to find right cast type");
 

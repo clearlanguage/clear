@@ -49,6 +49,7 @@ namespace clear {
 		AbstractType(VariableType type, TypeKind kind = TypeKind::RValue, const std::string& userDefinedType = "");
 		AbstractType(VariableType type, TypeKind kind, VariableType underlying, const std::string& userDefinedType = "");
 		AbstractType(const std::string_view& value); //auto generate type from a value
+		AbstractType(const AbstractType& underlyingType, size_t elementCount); //(arrays)
 
 		static llvm::StructType* GetStructType(const std::string& name);
 		static StructMetaData&   GetStructInfo(const std::string& name);
