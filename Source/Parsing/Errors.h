@@ -5,7 +5,7 @@
 
 namespace clear{
 
-    struct Error 
+    struct Error
     {
         std::string ErrorType;
         std::string ErrorMessage;

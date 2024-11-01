@@ -41,7 +41,7 @@ namespace clear
 	}
 
 
-	void Parser::_PushToken(const TokenType tok, const std::string &data) 
+	void Parser::_PushToken(const TokenType tok, const std::string &data)
 	{
 		TokenLocation location;
 		location.from = m_TokenIndexStart;
@@ -79,7 +79,7 @@ namespace clear
 	// 	return m_CurrentTokenIndex == m_Buffer.length();
 	// }
 
-	void Parser::_EndLine() 
+	void Parser::_EndLine()
 	{
 		if ( _GetLastToken().TokenType != TokenType::EndLine) {
 			_PushToken({ .TokenType = TokenType::EndLine });
@@ -87,7 +87,7 @@ namespace clear
 		m_CurrentLine++;
 	}
 
-	ProgramInfo Parser::ParseProgram() 
+	ProgramInfo Parser::ParseProgram()
 	{
 		m_ScopeStack.emplace_back();
 		while (m_CurrentTokenIndex < m_Buffer.length())
@@ -106,7 +106,7 @@ namespace clear
 		return m_ProgramInfo;
 	}
 
-	void Parser::InitParser() 
+	void Parser::InitParser()
 	{
 		m_ProgramInfo.Tokens.clear();
 		m_ScopeStack.clear();
@@ -361,9 +361,9 @@ namespace clear
 
 		if (current == '(')
 		{
-			if (!m_CurrentString.empty() || !_IsLineClosed()) 
+			if (!m_CurrentString.empty() || !_IsLineClosed())
 			{
-				if (!m_CurrentString.empty()) 
+				if (!m_CurrentString.empty())
 				{
 					_PushToken(TokenType::VariableReference, m_CurrentString);
 				}
@@ -433,7 +433,7 @@ namespace clear
 
 				return;
 			}
-			else 
+			else
 			{
 				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),34);
 				_PushToken(TokenType::VariableReference, m_CurrentString);
@@ -477,9 +477,9 @@ namespace clear
 
 
 	}
-	void Parser::_ArrowState() 
+	void Parser::_ArrowState()
 	{
-		if (m_ProgramInfo.Tokens.size() > 1 && 
+		if (m_ProgramInfo.Tokens.size() > 1 &&
 			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionParameters)
 		{
 			m_CurrentState = ParserState::FunctionTypeState;
@@ -489,7 +489,7 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 
 	}
-	void Parser::_FunctionTypeState() 
+	void Parser::_FunctionTypeState()
 	{
 		char current = _GetNextChar();
 
@@ -619,7 +619,7 @@ namespace clear
 		{
 			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = ParserState::RValue;
-			
+
 			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
 			m_BracketStack.pop_back();
 
@@ -704,7 +704,7 @@ namespace clear
 			_Backtrack();
 		}
 		return pointers;
-		
+
 	}
 
 	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
@@ -756,7 +756,7 @@ namespace clear
 
 
 
-	void Parser::_VariableNameState() 
+	void Parser::_VariableNameState()
 	{
 		char current = _GetNextChar();
 
@@ -874,7 +874,7 @@ namespace clear
 		m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_FunctionParameterState() 
+	void Parser::_FunctionParameterState()
 	{
 		char current = _GetNextChar();
 		int curtok = m_CurrentTokenIndex;
@@ -909,13 +909,13 @@ namespace clear
 			_Backtrack();
 	}
 
-	void Parser::_FunctionNameState() 
+	void Parser::_FunctionNameState()
 	{
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
 		m_CurrentString.clear();
-		if (current == '(') 
+		if (current == '(')
 		{
 			_Backtrack();
 			m_CurrentState = ParserState::FunctionParameters;
@@ -1008,10 +1008,10 @@ namespace clear
 
 	void Parser::_IndentationState()
 	{
-		size_t tabWidth = 4; 
+		size_t tabWidth = 4;
 		char next = _GetNextChar();
-		
-		if (next == '\n') 
+
+		if (next == '\n')
 		{
 			_EndLine();
 			next = _GetNextChar();
@@ -1022,17 +1022,17 @@ namespace clear
 
 		while (indenting)
 		{
-			if (next == '\t') 
+			if (next == '\t')
 			{
 				totalSpaces += tabWidth;
 				next = _GetNextChar();
 			}
-			else if (next == ' ') 
+			else if (next == ' ')
 			{
 				totalSpaces++;
 				next = _GetNextChar();
 			}
-			else 
+			else
 			{
 				indenting = false;
 			}
@@ -1040,14 +1040,14 @@ namespace clear
 
 		size_t localIndents = totalSpaces / 4;
 
-		if (localIndents > m_Indents) 
+		if (localIndents > m_Indents)
 		{
 			_PushToken({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
 			m_ScopeStack.emplace_back();
 		}
 
-		while (m_Indents > localIndents) 
+		while (m_Indents > localIndents)
 		{
 			_PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
@@ -1149,6 +1149,7 @@ namespace clear
 		subParser.InitParser();
 		subParser.m_Buffer = arg;
 		subParser.m_Buffer+=" ";
+		subParser.m_ScopeStack = m_ScopeStack;
 		subParser.IsSubParser = true;
 		ProgramInfo info = subParser.ParseProgram();
 
@@ -1165,7 +1166,7 @@ namespace clear
 	void Parser::_ParseList() {
 		m_CurrentErrorState = "List literal";
 		auto  bracketInfo = _ParseBrackets('}',true);
-		_PushToken(TokenType::OpenBracket,"{");
+		_PushToken(TokenType::StartArray,"{");
 
  		for (const std::string& arg : bracketInfo.tokens) {
 
@@ -1180,7 +1181,7 @@ namespace clear
 		}
 
 
-		_PushToken(TokenType::CloseBracket,"}");
+		_PushToken(TokenType::EndArray,"}");
 		m_CurrentState = ParserState::Default;
 	}
 
@@ -1288,7 +1289,7 @@ namespace clear
 	{
 		char current = _GetNextChar();
 		m_CurrentString.clear();
-		
+
 		while (IsVarNameChar(current ) && current)
 		{
 			m_CurrentString += current;

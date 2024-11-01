@@ -61,7 +61,7 @@ namespace clear {
         {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
-        {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
+        {"return", {.NextState = ParserState::Default, .TokenToPush = TokenType::Return}},
         {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
@@ -77,7 +77,7 @@ namespace clear {
     };
 
     std::string_view TokenToString(TokenType token) {
-        switch (token) 
+        switch (token)
         {
             case TokenType::None: return "None";
             case TokenType::Int8Type: return "Int8Type";
@@ -157,6 +157,8 @@ namespace clear {
             case TokenType::Else: return "Else";
             case TokenType::ElseIf: return "ElseIf";
             case TokenType::BitwiseAnd: return "BitwiseAnd";
+            case TokenType::EndArray: return "EndArray";
+            case TokenType::StartArray: return "StartArray";
 
             default:
                 break;

@@ -24,7 +24,7 @@ namespace clear
 		std::vector<Error> Errors;
 	};
 
-	struct ArrayDeclarationReturn 
+	struct ArrayDeclarationReturn
 	{
 		std::vector<Token> Tokens;
 		bool error = false;
@@ -38,7 +38,7 @@ namespace clear
 		std::vector<int> indexes;
 	};
 
-	struct TypeScope 
+	struct TypeScope
 	{
 		std::set<std::string> TypeDeclarations;
 	};
@@ -83,6 +83,7 @@ namespace clear
 		template<typename ...Args>
 		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, int endIndex, Args&&... args) requires RestrictToString<Args...>
 		{
+			if (condition) return;
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
@@ -94,25 +95,25 @@ namespace clear
 		template<typename ...Args>
 		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, Args&&... args) requires RestrictToString<Args...>
 		{
+			if (condition) return;
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
 			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
-			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
-			_VerifyCondition(condition, msg, err.Advice, err.ErrorType, startIndex);
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex);
 		}
 
 		template<typename ...Args>
 		void _VerifyCondition(bool condition, int ErrorNumber, Args&&... args) requires RestrictToString<Args...>
 		{
+			if (condition) return;
 			ErrorNumber--;
 			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
 			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
-			std::string msg = std::vformat(err.ErrorMessage, std::make_format_args(args...));
-			_VerifyCondition(condition, msg, err.Advice, err.ErrorType);
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType);
 		}
 
 		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
