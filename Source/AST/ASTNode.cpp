@@ -298,7 +298,7 @@ namespace clear {
 			
 			if (!m_Dereference && !m_PointerFlag)
 			{
-				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_value");
+				return builder.CreateLoad(value->getAllocatedType(), value, "loaded_value");
 			}
 
 			CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
@@ -312,12 +312,16 @@ namespace clear {
 		{
 			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0) 
 		};
+		
+		AbstractType typeToGet;
 
 		for (;;)
 		{
 			size_t currentIndex = currentRef->Indices[m_Chain.front()];
 			indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
 			m_Chain.pop_front();
+
+			typeToGet = currentRef->Types[currentIndex];
 
 			if (m_Chain.empty())
 				break;
@@ -328,17 +332,17 @@ namespace clear {
 				break;
 		}
 
-		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "element_ptr");
+		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
 
 		if (m_Dereference)
 		{
-			llvm::Value* loadedPointer = builder.CreateLoad(gepPtr->getType(), gepPtr, "loaded_pointer");
-			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_value");
+			gepPtr = builder.CreateLoad(typeToGet.GetLLVMType(), gepPtr, "struct_element_load");
+			return builder.CreateLoad(typeToGet.GetLLVMUnderlying(), gepPtr, "struct_element_dereferenced_value");
 		}
 
 		if (!m_Dereference && !m_PointerFlag)
 		{
-			return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), gepPtr, "loaded_value");
+			return builder.CreateLoad(typeToGet.GetLLVMUnderlying(), gepPtr, "struct_element_loaded_value");
 		}
 
 		CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
@@ -571,7 +575,7 @@ namespace clear {
 		auto& expected = g_FunctionToExpectedTypes.at(m_Name);
 
 		uint32_t k = 0;
-		
+
 		for (auto& child : children)
 		{
 			llvm::Value* gen = child->Codegen();

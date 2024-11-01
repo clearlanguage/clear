@@ -94,10 +94,11 @@ namespace clear {
 						while (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
 							i++;
 
-						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None && tokens[i].TokenType != TokenType::EndFunctionParameters)
+						AbstractType type;
+						if ((type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)) && tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
-							currentParamater.Type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
-							
+							currentParamater.Type = type;
+
 							if (tokens[i + 1].TokenType == TokenType::PointerDef)
 								i++;
 						}

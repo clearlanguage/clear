@@ -135,18 +135,44 @@ namespace clear {
 		//if its a pointer we need the underlying type here
 		m_UnderlyingType = isPointer ? GetVariableTypeFromTokenType(token.TokenType) : m_Type;
 		m_LLVMUnderlyingType = GetLLVMVariableType(m_UnderlyingType);
+
+		if (m_Type == VariableType::None && !m_UserDefinedType.empty())
+		{
+			m_LLVMType = AbstractType::GetStructType(m_UserDefinedType);
+			m_LLVMUnderlyingType = m_LLVMType;
+		}
+
+		if (m_UnderlyingType == VariableType::None && isPointer && !m_UserDefinedType.empty())
+		{
+			m_LLVMUnderlyingType = AbstractType::GetStructType(m_UserDefinedType);
+		}
 	}
 
 	AbstractType::AbstractType(VariableType type, TypeKind kind, const std::string& userDefinedType)
 		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind), 
 		  m_UnderlyingType(m_Type), m_LLVMUnderlyingType(m_LLVMType)
 	{
+		if (m_Type == VariableType::None && !m_UserDefinedType.empty())
+		{
+			m_LLVMType = AbstractType::GetStructType(m_UserDefinedType);
+			m_LLVMUnderlyingType = m_LLVMType;
+		}
+
+		if (m_UnderlyingType == VariableType::None && m_Type == VariableType::Pointer && !m_UserDefinedType.empty())
+		{
+			m_LLVMUnderlyingType = AbstractType::GetStructType(m_UserDefinedType);
+		}
 	}
 
 	AbstractType::AbstractType(VariableType type, TypeKind kind, VariableType underlying, const std::string& userDefinedType)
 		: m_Type(type), m_LLVMType(GetLLVMVariableType(type)), m_UserDefinedType(userDefinedType), m_Kind(kind), 
 		  m_UnderlyingType(underlying), m_LLVMUnderlyingType(GetLLVMVariableType(underlying))
 	{
+		if (m_Type == VariableType::None && !m_UserDefinedType.empty())
+		{
+			m_LLVMType = AbstractType::GetStructType(m_UserDefinedType);
+			m_LLVMUnderlyingType = m_LLVMType;
+		}
 	}
 
 	AbstractType::AbstractType(const std::string_view& value)
@@ -360,8 +386,8 @@ namespace clear {
 
 	inline bool AbstractType::operator==(const AbstractType& other) const
 	{
-		return m_Type == other.m_Type                      &&
-			   m_UnderlyingType  == other.m_UnderlyingType && 
+		return m_LLVMType == other.m_LLVMType && 
+			   m_LLVMUnderlyingType == other.m_LLVMUnderlyingType &&
 			   m_UserDefinedType == other.m_UserDefinedType;
 	}
 
