@@ -24,7 +24,7 @@ namespace clear {
         {"//",{.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",{.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
         {",",{.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
-        {"&",{.NextState = ParserState::RValue, .TokenToPush = TokenType::AddressOp}},
+        {"&",{.NextState = ParserState::AmpersandOperator, .TokenToPush = TokenType::None}},
         {"^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseXor}},
         {"|",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseOr}},
         {"~",{.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseNot}},
@@ -61,10 +61,12 @@ namespace clear {
         {"int",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
         {"uint", {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"struct",{.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
-        {"return", {.NextState = ParserState::RValue, .TokenToPush = TokenType::Return}},
+        {"return", {.NextState = ParserState::Default, .TokenToPush = TokenType::Return}},
         {"char",{.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
+        {"else", {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
+        {"elseif", {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}}
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
@@ -75,7 +77,7 @@ namespace clear {
     };
 
     std::string_view TokenToString(TokenType token) {
-        switch (token) 
+        switch (token)
         {
             case TokenType::None: return "None";
             case TokenType::Int8Type: return "Int8Type";
@@ -152,6 +154,11 @@ namespace clear {
             case TokenType::ModuloAssign: return "ModuloAssign";
             case TokenType::MultiplyAssign: return "MultiplyAssign";
             case TokenType::LeftArrow: return "LeftArrow";
+            case TokenType::Else: return "Else";
+            case TokenType::ElseIf: return "ElseIf";
+            case TokenType::BitwiseAnd: return "BitwiseAnd";
+            case TokenType::EndArray: return "EndArray";
+            case TokenType::StartArray: return "StartArray";
 
             default:
                 break;

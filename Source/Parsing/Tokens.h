@@ -16,7 +16,8 @@ namespace clear {
         IsEqual, Null, NotEqual, GreaterThan, LessThan, LessThanEqual, GreaterThanEqual, Not, Ellipsis, DotOp, BinaryShiftLeft,
         StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,RightArrow,FunctionType,
         Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp,CharType,Declaration,Defer,
-        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow
+        BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow,Else,BitwiseAnd,
+        ElseIf,StartArray,EndArray
     };
 
     enum class ParserState
@@ -35,7 +36,8 @@ namespace clear {
         Comment,
         MultilineComment,
         IndexOperator,
-        AsterisksOperator
+        AsterisksOperator,
+        AmpersandOperator
     };
 
 
@@ -45,11 +47,17 @@ namespace clear {
         TokenType TokenToPush = TokenType::None;
     };
 
+    struct TokenLocation {
+        int to=-1;
+        int from=-1;
+        int line= -1;
+    };
 
     struct Token
     {
         TokenType TokenType = TokenType::None;
         std::string Data = "";
+        TokenLocation Location;
     };
 
     std::string_view TokenToString(TokenType token);

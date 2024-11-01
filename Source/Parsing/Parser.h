@@ -9,23 +9,38 @@
 #include <fstream>
 #include <filesystem>
 #include <map>
+#include <concepts>
 #include <functional>
 #include <queue>
 
 namespace clear
 {
+	template<typename... Args>
+	concept RestrictToString = ((std::convertible_to<Args, std::string> || std::convertible_to<Args, const char*> || std::same_as<Args, char>) && ...);
+
 	struct ProgramInfo
 	{
 		std::vector<Token> Tokens;
 		std::vector<Error> Errors;
-
 	};
 
-	struct ArrayDeclarationReturn 
+	struct ArrayDeclarationReturn
 	{
 		std::vector<Token> Tokens;
 		bool error = false;
 		std::string errormsg;
+		std::string advice;
+		int lastIndex = -1;
+	};
+
+	struct BracketParsingReturn {
+		std::vector<std::string> tokens;
+		std::vector<int> indexes;
+	};
+
+	struct TypeScope
+	{
+		std::set<std::string> TypeDeclarations;
 	};
 
 	class Parser
@@ -40,6 +55,7 @@ namespace clear
 		ProgramInfo CreateTokensFromFile(const std::filesystem::path& path);
 		void InitParser();
 		ProgramInfo ParseProgram();
+		std::string m_CurrentErrorState;
 		bool IsSubParser = false;
 
 	private:
@@ -53,7 +69,7 @@ namespace clear
 		void _FunctionTypeState();
 		void _CommentState();
 		void _StructNameState();
-		void _FunctionParamaterState();
+		void _FunctionArgumentState();
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 		void _AsterisksState();
@@ -62,28 +78,77 @@ namespace clear
 		Token _GetLastToken();
 		Token _CreateToken(const TokenType tok, const std::string& data);
 
-		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,std::string Cause);
+
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, int endIndex, Args&&... args) requires RestrictToString<Args...>
+		{
+			if (condition) return;
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex, endIndex);
+		}
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, Args&&... args) requires RestrictToString<Args...>
+		{
+			if (condition) return;
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex);
+		}
+
+		template<typename ...Args>
+		void _VerifyCondition(bool condition, int ErrorNumber, Args&&... args) requires RestrictToString<Args...>
+		{
+			if (condition) return;
+			ErrorNumber--;
+			ErrorReference err = g_ErrorsReference.at(ErrorNumber);
+			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
+			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
+			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
+			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType);
+		}
+
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex,int endIndex) ;
+		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex);
+
+
 		void _RaiseError(Error& err);
-		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType,std::string& Cause);
+		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
 		ProgramInfo _SubParse(std::string arg);
+
+		bool _IsTypeDeclared(const std::string& type);
 
 		void _ParsingRValueState();
 		void _ParseNumber();
 		void _ParseString();
 		void _ParseOther();
 		void _ParseChar();
+		void _AmpersandState();
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
 		void _ParseList();
-		std::vector<std::string> _ParseBrackets(char end,bool commas);
+		BracketParsingReturn _ParseBrackets(char end,bool commas);
 
-		void _ParseArrayDecleration(ArrayDeclarationReturn& output);
-		int _ParsePointerDecleration();
+		void _ParseArrayDeclaration(ArrayDeclarationReturn& output);
+		int _ParsePointerDeclaration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
+		void _PushToken(Token tok);
 		bool _IsLineClosed();
+		bool _IsEndOfLine();
 		char _SkipSpaces();
+
+		std::string _GetCurrentErrorContext(std::string ErrorRef);
 
 		char _GetNextChar();
 		void _Backtrack();
@@ -108,6 +173,7 @@ namespace clear
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
+		std::vector<TypeScope> m_ScopeStack;
 
 	};
 
