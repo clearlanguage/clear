@@ -40,7 +40,7 @@ namespace clear {
 
 					while (i < tokens.size())
 					{
-						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef;
+						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
 						paramaters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
 
@@ -48,7 +48,7 @@ namespace clear {
 							i++;
 
 						i++;
-						if (tokens[i].TokenType == TokenType::VariableName)
+						if (tokens[i].TokenType == TokenType::VariableReference || tokens[i].TokenType == TokenType::VariableName)
 							i++;
 
 						if (tokens[i].TokenType == TokenType::Comma)
@@ -95,11 +95,11 @@ namespace clear {
 							i++;
 
 						AbstractType type;
-						if ((type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)) && tokens[i].TokenType != TokenType::EndFunctionParameters)
+						if ((type = _GetTypeFromToken(tokens[i], (tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp))) && tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Type = type;
 
-							if (tokens[i + 1].TokenType == TokenType::PointerDef)
+							if (tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp)
 								i++;
 						}
 						else if(tokens[i].TokenType != TokenType::EndFunctionParameters)
@@ -139,7 +139,7 @@ namespace clear {
 
 					if (previous.TokenType == TokenType::VariableReference)
 					{
-						type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, previous.Data);
+						type = AbstractType(VariableType::None, TypeKind::Variable, previous.Data);
 					}
 					else if (previous.TokenType == TokenType::PointerDef)
 					{
@@ -401,6 +401,7 @@ namespace clear {
 
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
+
 
 				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
 

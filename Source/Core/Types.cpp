@@ -173,6 +173,11 @@ namespace clear {
 			m_LLVMType = AbstractType::GetStructType(m_UserDefinedType);
 			m_LLVMUnderlyingType = m_LLVMType;
 		}
+
+		if (m_UnderlyingType == VariableType::None && m_Type == VariableType::Pointer && !m_UserDefinedType.empty())
+		{
+			m_LLVMUnderlyingType = AbstractType::GetStructType(m_UserDefinedType);
+		}
 	}
 
 	AbstractType::AbstractType(const std::string_view& value)

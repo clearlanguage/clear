@@ -281,6 +281,7 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 
+
 		auto& metaData = Value::GetVariableMetaData(*m_Chain.begin());
 		llvm::AllocaInst* value = metaData.Alloca;
 
@@ -292,13 +293,13 @@ namespace clear {
 		{
 			if (m_Dereference)
 			{
-				llvm::Value* loadedPointer = builder.CreateLoad(value->getAllocatedType(), value, "loaded_pointer");
+				llvm::Value* loadedPointer = builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
 				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_pointer");
 			}
 			
 			if (!m_Dereference && !m_PointerFlag)
 			{
-				return builder.CreateLoad(value->getAllocatedType(), value, "loaded_value");
+				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_value");
 			}
 
 			CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");

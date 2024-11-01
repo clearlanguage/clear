@@ -107,25 +107,9 @@ namespace clear {
 
 			CLEAR_VERIFY(!s_VariableMetaData.contains(m_Data), "variable already declared");
 
-			if (m_Type.Get() == VariableType::UserDefinedType)
-			{
-				auto& structType = m_Type.GetUserDefinedType();
-				
-				auto t = AbstractType::GetStructType(structType);
+			auto value = builder.CreateAlloca(type.GetLLVMType(), nullptr, m_Data);
+			s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
 
-				auto value = builder.CreateAlloca(t, nullptr, m_Data);
-				s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
-
-				m_Value = value;
-			}
-			else
-			{
-				auto variableType = m_Type.Get();
-				auto value = builder.CreateAlloca(GetLLVMVariableType(variableType), nullptr, m_Data);
-				s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
-
-				m_Value = value;
-			}
 		}
 		else if (m_Type.GetKind() == TypeKind::VariableReference)
 		{
