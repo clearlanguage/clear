@@ -1149,6 +1149,7 @@ namespace clear
 		subParser.InitParser();
 		subParser.m_Buffer = arg;
 		subParser.m_Buffer+=" ";
+		subParser.m_ScopeStack = m_ScopeStack;
 		subParser.IsSubParser = true;
 		ProgramInfo info = subParser.ParseProgram();
 
@@ -1165,7 +1166,7 @@ namespace clear
 	void Parser::_ParseList() {
 		m_CurrentErrorState = "List literal";
 		auto  bracketInfo = _ParseBrackets('}',true);
-		_PushToken(TokenType::OpenBracket,"{");
+		_PushToken(TokenType::StartArray,"{");
 
  		for (const std::string& arg : bracketInfo.tokens) {
 
@@ -1180,7 +1181,7 @@ namespace clear
 		}
 
 
-		_PushToken(TokenType::CloseBracket,"}");
+		_PushToken(TokenType::EndArray,"}");
 		m_CurrentState = ParserState::Default;
 	}
 
