@@ -146,6 +146,10 @@ namespace clear {
 						auto& before = tokens[i - 2];
 						type = AbstractType(before, TypeKind::Variable, true);
 					}
+					else if (previous.TokenType == TokenType::DynamicArrayDef)
+					{
+
+					}
 					else
 					{
 						type = AbstractType(previous, TypeKind::Variable);
@@ -251,11 +255,10 @@ namespace clear {
 
 					auto& top = m_Stack.top();
 
-					//end of an if/elseif block so we need to check next token (TODO once else and else if implemented)
 					if (top.Node->GetType() == ASTNodeType::Base &&
 						(i + 1) < tokens.size() &&
 						(tokens[i + 1].TokenType == TokenType::Else ||
-							tokens[i + 1].TokenType == TokenType::ElseIf))
+						 tokens[i + 1].TokenType == TokenType::ElseIf))
 					{
 						size_t start = i + 1;
 
@@ -402,12 +405,11 @@ namespace clear {
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
 
-
 				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
 
-				auto& abstractType = AbstractType::GetVariableTypeFromName(startStr);
+				AbstractType abstractType = _GetTypeFromList(ls);
 
-				if (pointerFlag)
+				if (pointerFlag || abstractType.IsPointer())
 				{
 					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
 					addBracket = true;
@@ -631,5 +633,23 @@ namespace clear {
 			return AbstractType(VariableType::Pointer, TypeKind::None, currentType, userDefinedType);
 		
 		return AbstractType(currentType, TypeKind::None, userDefinedType);
+	}
+
+	AbstractType AST::_GetTypeFromList(std::list<std::string>& list)
+	{
+		AbstractType type = AbstractType::GetVariableTypeFromName(list.front());
+		list.pop_front();
+
+		while (!list.empty())
+		{
+			StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
+			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+
+			size_t indexToNextType = structMetaData.Indices[list.front()];
+			type = structMetaData.Types[indexToNextType];
+			list.pop_front();
+		}
+
+		return type;
 	}
 }
