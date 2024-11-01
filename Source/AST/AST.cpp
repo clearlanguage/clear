@@ -91,14 +91,17 @@ namespace clear {
 					Paramater currentParamater;
 					while (tokens[i].TokenType != TokenType::EndFunctionParameters)
 					{
-						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None)
+						while (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
+							i++;
+
+						if (GetVariableTypeFromTokenType(tokens[i].TokenType) != VariableType::None && tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
 							
 							if (tokens[i + 1].TokenType == TokenType::PointerDef)
 								i++;
 						}
-						else
+						else if(tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Name = tokens[i].Data;
 							Paramaters.push_back(currentParamater);
@@ -106,7 +109,8 @@ namespace clear {
 							AbstractType::RegisterVariableType(name + "::" + currentParamater.Name, currentParamater.Type);
 						}
 
-						i++;
+						if (tokens[i].TokenType != TokenType::EndFunctionParameters)
+							i++;
 					}
 
 					if (tokens[i + 1].TokenType == TokenType::RightArrow)
@@ -506,11 +510,10 @@ namespace clear {
 		uint32_t k = 0;
 		while (i < tokens.size() && 
 			  tokens[i].TokenType != TokenType::CloseBracket && 
-			  tokens[i].TokenType != TokenType::EndLine && 
 			  tokens[i].TokenType != TokenType::EndIndentation && 
 			  tokens[i].TokenType != TokenType::EndFunctionParameters)
 		{
-			if (tokens[i].TokenType == TokenType::Comma)
+			if (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
 			{
 				i++;
 				continue;
