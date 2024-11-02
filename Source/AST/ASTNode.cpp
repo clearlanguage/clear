@@ -772,7 +772,7 @@ namespace clear {
 			case UnaryExpressionType::PostIncrement:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst);
+				CLEAR_VERIFY(inst,"");
 
 				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
 				llvm::Value* newValue = nullptr;
@@ -789,7 +789,7 @@ namespace clear {
 			case UnaryExpressionType::PostDecrement:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst);
+				CLEAR_VERIFY(inst,"");
 
 				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
 				llvm::Value* newValue = nullptr;
@@ -806,7 +806,7 @@ namespace clear {
 			case UnaryExpressionType::Increment:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst);
+				CLEAR_VERIFY(inst,"");
 
 				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
 				llvm::Value* newValue = nullptr;
@@ -823,7 +823,7 @@ namespace clear {
 			case UnaryExpressionType::Decrement:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst);
+				CLEAR_VERIFY(inst,"");
 
 				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
 				llvm::Value* newValue = nullptr; 
