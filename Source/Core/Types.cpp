@@ -107,6 +107,7 @@ namespace clear {
 		{
 			case TokenType::Increment:  return UnaryExpressionType::Increment;
 			case TokenType::Decrement:  return UnaryExpressionType::Decrement;
+			case TokenType::BitwiseNot: return UnaryExpressionType::BitwiseNot;
 			//case TokenType::Negate:   return UnaryExpressionType::Negation; 
 
 			default:
@@ -122,7 +123,6 @@ namespace clear {
 		{
 			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
 			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
-			case TokenType::BitwiseNot: return UnaryExpressionType::BitwiseNot;
 			default:
 				break;
 		}

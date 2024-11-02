@@ -455,14 +455,14 @@ namespace clear {
 			auto& token    = tokens[start];
 			auto& previous = tokens[start - 1];
 
+			UnaryExpressionType postType = start + 1 < tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(tokens[start + 1].TokenType) : UnaryExpressionType::None;
+			UnaryExpressionType unaryType = start - 1 < tokens.size() ? GetUnaryExpressionTypeFromTokenType(tokens[start - 1].TokenType) : UnaryExpressionType::None;
+
+			if (unaryType == UnaryExpressionType::None)
+				unaryType = postType;
+
 			if (token.TokenType == TokenType::VariableReference)
 			{
-				UnaryExpressionType postType  = start + 1 < tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(tokens[start + 1].TokenType) : UnaryExpressionType::None;
-				UnaryExpressionType unaryType = start - 1 < tokens.size() ? GetUnaryExpressionTypeFromTokenType(tokens[start - 1].TokenType) : UnaryExpressionType::None;
-
-				if (unaryType == UnaryExpressionType::None)
-					unaryType = postType;
-
 				if (start + 1 < tokens.size() && tokens[start + 1].TokenType == TokenType::FunctionCall)
 				{
 					start++;
@@ -524,7 +524,22 @@ namespace clear {
 					 token.TokenType == TokenType::RValueString || 
 					 token.TokenType == TokenType::BooleanData)
 			{
-				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+				if (unaryType != UnaryExpressionType::None)
+				{
+					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment && 
+							     unaryType != UnaryExpressionType::PostIncrement && 
+								 unaryType != UnaryExpressionType::Decrement &&
+								 unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
+
+					Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
+					unary->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+					expression->PushChild(unary);
+				}
+				else
+				{
+					expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+				}
+
 				currentExpectedType = AbstractType(token.Data);
 
 				if (currentExpectedType.IsFloatingPoint())
