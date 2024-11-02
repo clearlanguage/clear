@@ -15,24 +15,35 @@ namespace clear {
 		Array, Pointer
 	};
 
-	enum class TypeKind
+	enum class TypeKind 
 	{
 		None = 0, RValue, Variable, VariableReference, Value
 	};
 
 
-	enum class BinaryExpressionType
+	enum class BinaryExpressionType 
 	{
 		None = 0, Add, Sub, Mul,
 		Div, Mod, Less, LessEq,
 		Greater, GreaterEq, Eq, NotEq, 
-		Assignment, BitwiseLeftShift, BitwiseRightShift, 
-		BitwiseNot, BitwiseAnd, BitwiseOr, BitwiseXor
+		Assignment, BitwiseLeftShift, BitwiseRightShift,
+		BitwiseNot, BitwiseAnd, BitwiseOr, BitwiseXor 
+	};
+
+	enum class UnaryExpressionType 
+	{
+		None = 0, BitwiseNot,	Increment, 
+		Decrement, Negation, PostIncrement, 
+		PostDecrement
 	};
 	
 	struct StructMetaData;
 
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);
+	extern UnaryExpressionType GetUnaryExpressionTypeFromTokenType(TokenType type);
+	extern UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
+
+
 	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
 	extern VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType);
 	extern llvm::Type*	GetLLVMVariableType(VariableType type);

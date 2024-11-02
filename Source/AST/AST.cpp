@@ -426,7 +426,6 @@ namespace clear {
 			{TokenType::RightShift,   	  3},
 			{TokenType::BitwiseOr,		  3},
 		    {TokenType::BitwiseAnd ,      3},
-			{TokenType::BitwiseNot,		  3},
 			{TokenType::BitwiseXor,		  3},
 			{TokenType::AddOp,			  2},
 			{TokenType::SubOp,			  2},
@@ -444,6 +443,8 @@ namespace clear {
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
 
 		bool addBracket = false;
+		
+		
 
 		while (start < tokens.size() && 
 			  tokens[start].TokenType != TokenType::EndLine && 
@@ -456,10 +457,27 @@ namespace clear {
 
 			if (token.TokenType == TokenType::VariableReference)
 			{
+				UnaryExpressionType postType  = start + 1 < tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(tokens[start + 1].TokenType) : UnaryExpressionType::None;
+				UnaryExpressionType unaryType = start - 1 < tokens.size() ? GetUnaryExpressionTypeFromTokenType(tokens[start - 1].TokenType) : UnaryExpressionType::None;
+
+				if (unaryType == UnaryExpressionType::None)
+					unaryType = postType;
+
 				if (start + 1 < tokens.size() && tokens[start + 1].TokenType == TokenType::FunctionCall)
 				{
 					start++;
-					expression->PushChild(_CreateFunctionCall(tokens, root, start));
+
+					if (unaryType != UnaryExpressionType::None)
+					{
+						Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
+						unary->PushChild(_CreateFunctionCall(tokens, root, start));
+						expression->PushChild(unary);
+					}
+					else
+					{
+						expression->PushChild(_CreateFunctionCall(tokens, root, start));
+					}
+
 					start++;
 					continue;
 				}
@@ -469,11 +487,20 @@ namespace clear {
 				ls.push_front(startStr);
 
 				start--;
-
+				
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
 
-				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
+				if (unaryType != UnaryExpressionType::None)
+				{
+					Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
+					unary->PushChild(Ref<ASTVariableExpression>::Create(ls, true, derferenceFlag));
+					expression->PushChild(unary);
+				}
+				else
+				{
+					expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
+				}
 
 				AbstractType abstractType = _GetTypeFromList(ls);
 
@@ -500,7 +527,6 @@ namespace clear {
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
 				currentExpectedType = AbstractType(token.Data);
 
-				//cast to the largest value so overflow doesn't happen
 				if (currentExpectedType.IsFloatingPoint())
 					currentExpectedType = VariableType::Float64;
 				else if (currentExpectedType.IsSigned())

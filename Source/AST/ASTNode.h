@@ -19,8 +19,8 @@ namespace clear {
 		bool IsVariadic = false;
 	};
 
-
 	inline std::map<std::string, std::vector<Paramater>> g_FunctionToExpectedTypes;
+
 
 	enum class ASTNodeType
 	{
@@ -28,7 +28,8 @@ namespace clear {
 		VariableExpression, VariableDecleration, 
 		FunctionDefinition, FunctionDecleration,
 		ReturnStatement, Expression, Struct, 
-	    FunctionCall, IfExpression, WhileLoop
+	    FunctionCall, IfExpression, WhileLoop, 
+		UnaryExpression
 	};
 
 
@@ -99,6 +100,17 @@ namespace clear {
 		AbstractType m_ExpectedType;
 	};
 
+	class ASTUnaryExpression : public ASTNodeBase
+	{
+	public:
+		ASTUnaryExpression(UnaryExpressionType type);
+		virtual ~ASTUnaryExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
+		virtual llvm::Value* Codegen() override;
+
+	private:
+		UnaryExpressionType m_Type;
+	};
 
 	class ASTFunctionDefinition : public ASTNodeBase
 	{

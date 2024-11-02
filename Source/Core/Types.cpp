@@ -93,11 +93,41 @@ namespace clear {
 			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
+
 			default:
 				break;
 		}
 
 		return BinaryExpressionType::None;
+	}
+
+	UnaryExpressionType GetUnaryExpressionTypeFromTokenType(TokenType type)
+	{
+		switch (type)
+		{
+			case TokenType::Increment:  return UnaryExpressionType::Increment;
+			case TokenType::Decrement:  return UnaryExpressionType::Decrement;
+			//case TokenType::Negate:   return UnaryExpressionType::Negation; 
+
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
+	}
+
+	UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type)
+	{
+		switch (type)
+		{
+			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
+			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
+			case TokenType::BitwiseNot: return UnaryExpressionType::BitwiseNot;
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
 	}
 
 	AbstractType::AbstractType(const Token& token)

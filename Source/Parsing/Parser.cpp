@@ -741,6 +741,7 @@ namespace clear
 	void Parser::_RaiseError(Error& err) {
 		PrintError(err);
 		CLEAR_HALT();
+
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
@@ -888,6 +889,7 @@ namespace clear
 
 		_PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 		int ind = 0;
+
 		for (const auto& i: info.tokens)
 		{
 			ProgramInfo ParameterTokens = _SubParse(i);

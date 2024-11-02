@@ -74,8 +74,7 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
-		if (children.size() != 2)
-			return nullptr;
+		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
 
 		llvm::Value* LHS = children[1]->Codegen();
 		llvm::Value* RHS = children[0]->Codegen();
@@ -536,7 +535,8 @@ namespace clear {
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
 				child->GetType() == ASTNodeType::VariableExpression || 
-				child->GetType() == ASTNodeType::FunctionCall)
+				child->GetType() == ASTNodeType::FunctionCall || 
+				child->GetType() == ASTNodeType::UnaryExpression)
 			{
 				stack.push(child);
 				continue;
@@ -721,6 +721,113 @@ namespace clear {
 		
 		function->insert(function->end(), end);
 		builder.SetInsertPoint(end);
+
+		return nullptr;
+	}
+
+	ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type)
+		: m_Type(type)
+	{
+	}
+
+	llvm::Value* ASTUnaryExpression::Codegen()
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
+
+		llvm::Value* operand = children[0]->Codegen();
+
+		switch (m_Type)
+		{
+			case UnaryExpressionType::BitwiseNot:
+			{
+				return builder.CreateNot(operand, "bitwise_not");
+			}
+			case UnaryExpressionType::PostIncrement:
+			{
+				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
+				CLEAR_VERIFY(inst);
+
+				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
+				llvm::Value* newValue = nullptr;
+
+				if (currentValue->getType()->isFloatingPointTy())
+					newValue = builder.CreateFAdd(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
+				else
+					newValue = builder.CreateAdd(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
+
+				builder.CreateStore(newValue, inst);
+
+				return currentValue;
+			}
+			case UnaryExpressionType::PostDecrement:
+			{
+				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
+				CLEAR_VERIFY(inst);
+
+				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
+				llvm::Value* newValue = nullptr;
+
+				if (currentValue->getType()->isFloatingPointTy())
+					newValue = builder.CreateFSub(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
+				else
+					newValue = builder.CreateSub(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
+
+				builder.CreateStore(newValue, inst);
+
+				return currentValue;
+			}
+			case UnaryExpressionType::Increment:
+			{
+				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
+				CLEAR_VERIFY(inst);
+
+				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
+				llvm::Value* newValue = nullptr;
+
+				if (currentValue->getType()->isFloatingPointTy())
+					newValue = builder.CreateFAdd(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
+				else
+					newValue = builder.CreateAdd(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
+
+				builder.CreateStore(newValue, inst);
+
+				return newValue;
+			}
+			case UnaryExpressionType::Decrement:
+			{
+				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
+				CLEAR_VERIFY(inst);
+
+				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
+				llvm::Value* newValue = nullptr; 
+
+				if(currentValue->getType()->isFloatingPointTy())
+					newValue = builder.CreateFSub(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
+				else 
+					newValue = builder.CreateSub(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
+
+				builder.CreateStore(newValue, inst);
+
+				return newValue;
+			}
+			case UnaryExpressionType::Negation:
+			{	
+				if (operand->getType()->isFloatingPointTy())
+					return builder.CreateFNeg(operand);
+				
+				return builder.CreateNeg(operand);
+			}
+			case UnaryExpressionType::None:
+			default:
+			{
+				CLEAR_UNREACHABLE("how");
+				break;
+			}
+		}
 
 		return nullptr;
 	}
