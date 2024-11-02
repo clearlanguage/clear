@@ -38,7 +38,7 @@ namespace clear {
 
 					std::vector<Paramater> paramaters;
 
-					while (i < tokens.size())
+					while (i < tokens.size() && tokens[i].TokenType != TokenType::EndFunctionParameters)
 					{
 						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
@@ -444,8 +444,6 @@ namespace clear {
 
 		bool addBracket = false;
 		
-		
-
 		while (start < tokens.size() && 
 			  tokens[start].TokenType != TokenType::EndLine && 
 			  tokens[start].TokenType != TokenType::EndIndentation && 
