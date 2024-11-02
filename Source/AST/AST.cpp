@@ -381,6 +381,14 @@ namespace clear {
 
 					break;
 				}
+				case TokenType::VariableReference:
+				{
+					if (tokens[i + 1].TokenType == TokenType::Assignment)
+						continue;
+
+					currentRoot.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+					break;
+				}
 				default:
 					break;
 			}
