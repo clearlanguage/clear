@@ -73,6 +73,11 @@ namespace clear {
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
+    extern const std::map<std::string,std::set<TokenType>> g_TokenTypes = {
+    {"allow_multiply",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference}}
+
+
+    };
     const std::set<char> g_Openers = {'(','{','['};
 
     const std::set<std::string> g_DataTypes = {

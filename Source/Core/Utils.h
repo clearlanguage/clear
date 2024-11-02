@@ -24,4 +24,15 @@ namespace clear {
 
     extern NumberInfo GetNumberInfoFromLiteral(const std::string_view& str);
 
+    class StringIterator {
+    public:
+        StringIterator(const std::string& str);
+        size_t index;
+        char next();
+        void back();
+
+    private:
+        const std::string& str_;
+    };
+
 }

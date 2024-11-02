@@ -19,3 +19,4 @@ cmake-build-debug/
 ThirdParty/
 build_proj
 Source/Tests/
+/run_test

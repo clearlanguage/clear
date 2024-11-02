@@ -1,16 +1,11 @@
 #include "Parser.h"
 #include "Errors.h"
 #include <sstream>
-#include <functional>
-#include <algorithm>
 #include <map>
 #include <fstream>
 #include <iostream>
-#include <iosfwd>
-#include <stack>
 #include <Core/Log.h>
 #include <Core/Utils.h>
-#include <llvm/ADT/StringExtras.h>
 
 
 namespace clear
@@ -89,13 +84,17 @@ namespace clear
 
 	ProgramInfo Parser::ParseProgram()
 	{
-		m_ScopeStack.emplace_back();
-		while (m_CurrentTokenIndex < m_Buffer.length())
+		if (!IsSubParser)
+			m_ScopeStack.emplace_back();
+		while (m_CurrentTokenIndex < m_Buffer.length() && !m_subParserError)
 		{
 			m_TokenIndexStart = m_CurrentTokenIndex;
 			m_StateMap.at(m_CurrentState)();
 		}
-
+		if (m_subParserError) {
+			return m_ProgramInfo;
+		}
+		CLEAR_PARSER_VERIFY(m_ProgramInfo.Errors.empty(),"99");
 		while (m_Indents > 0)
 		{
 			_PushToken({ .TokenType = TokenType::EndIndentation });
@@ -152,9 +151,9 @@ namespace clear
 	 }
 
 	void Parser::_FunctionArgumentState() {
-		char current = _GetNextChar();
+		_GetNextChar();
 
-		current = _SkipSpaces();
+		char current = _SkipSpaces();
 		m_CurrentString.clear();
 		CLEAR_PARSER_VERIFY(current == '(', "149.FAS");
 
@@ -185,9 +184,13 @@ namespace clear
 
 	void Parser::_MultiLineCommentState() {
 		char current = _GetNextChar();
+		if (current =='\n')
+			m_CurrentLine++;
 		m_TokenIndexStart = m_CurrentTokenIndex-3;
 		while (current!= '\0') {
 			current = _GetNextChar();
+			if (current == '\n')
+				m_CurrentLine++;
 			if (current == '*') {
 				current = _GetNextChar();
 				if (current == '\\') {
@@ -318,6 +321,7 @@ namespace clear
 			else
 			{
 				if(!(std::isspace(current) && m_CurrentString.empty()))
+					if (current == '\n') current = ' ';
 					m_CurrentString += current;
 			}
 
@@ -750,6 +754,7 @@ namespace clear
 			if (!IsSubParser) {
 				_RaiseError(err);
 			}else {
+				m_subParserError = true;
 				m_ProgramInfo.Errors.push_back(err);
 			}
 		}
@@ -829,7 +834,7 @@ namespace clear
 		}
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
-		while ((current != '\0' || current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
+		while ((current != '\0' && current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
 			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),11, m_CurrentTokenIndex-1,-1);
 
 			if (!IsSpace(current)) {
@@ -837,7 +842,7 @@ namespace clear
 			}
 			current = _GetNextChar();
 
-			if (IsSpace(current)) {
+			if (IsSpace(current) && !m_CurrentString.empty()) {
 				ExpectingComma = true;
 			}
 
@@ -892,6 +897,7 @@ namespace clear
 
 		for (const auto& i: info.tokens)
 		{
+			// auto ParameterTokens = _ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
 			ProgramInfo ParameterTokens = _SubParse(i);
 			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
 			_VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || _IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
