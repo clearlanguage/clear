@@ -85,7 +85,7 @@ namespace clear {
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
-		if (!m_ExpectedType)
+		/*if (!m_ExpectedType)
 		{
 			auto& str = m_ExpectedType.GetUserDefinedType();
 
@@ -104,7 +104,7 @@ namespace clear {
 			}
 
 			m_ExpectedType = type;
-		}
+		}*/
 
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType();
 
@@ -291,6 +291,11 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
+			if (m_PointerFlag && m_Dereference)
+			{
+				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
+			}
+
 			if (m_Dereference)
 			{
 				llvm::Value* loadedPointer = builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");

@@ -231,6 +231,7 @@ namespace clear {
 				case TokenType::Assignment:
 				{
 					auto& previous = tokens[i - 1];
+					bool shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(previous.Data);
@@ -240,7 +241,7 @@ namespace clear {
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
-					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true, shouldDereference));
 
 					currentRoot.Node->PushChild(binaryExpression);
 
@@ -409,9 +410,14 @@ namespace clear {
 
 				AbstractType abstractType = _GetTypeFromList(ls);
 
-				if (pointerFlag || abstractType.IsPointer())
+				if (pointerFlag)
 				{
 					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
+					addBracket = true;
+				}
+				else if (abstractType.IsPointer())
+				{
+					currentExpectedType = abstractType;
 					addBracket = true;
 				}
 				else 
@@ -579,7 +585,9 @@ namespace clear {
 		if (isPointer)
 			current -= 1;
 
-		while (current > 0 && tokens[current].TokenType != TokenType::EndLine && tokens[current].TokenType != TokenType::EndIndentation &&
+		while (current > 0 && 
+			   tokens[current].TokenType != TokenType::EndLine && 
+			   tokens[current].TokenType != TokenType::EndIndentation &&
 			   (GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
 			   tokens[current].TokenType == TokenType::DotOp))
@@ -587,10 +595,22 @@ namespace clear {
 			current--;
 		}
 
+		if (tokens[current].TokenType == TokenType::DereferenceOp)
+			current++;
+
 		if (tokens[current].TokenType == TokenType::EndLine)
 		{
 			while (tokens[current].TokenType == TokenType::EndLine)
 				current++;
+
+			bool shouldDerference = false;
+
+			if (tokens[current].TokenType == TokenType::DereferenceOp)
+			{
+				shouldDerference = true;
+				current++;
+			}
+
 
 			size_t currentCopy = current;
 			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
@@ -607,6 +627,9 @@ namespace clear {
 				type = structMetaData.Types[indexToNextType];
 			}
 			
+			if (shouldDerference)
+				return AbstractType(type.GetUnderlying(), TypeKind::None, type.GetUserDefinedType());
+
 			return type;
 		}
 
