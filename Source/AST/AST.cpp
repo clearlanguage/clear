@@ -345,7 +345,7 @@ namespace clear {
 
 						if (tokens[start].TokenType == TokenType::ElseIf)
 						{
-							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression);
+							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression,"");
 							newTop.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
 						}
 
