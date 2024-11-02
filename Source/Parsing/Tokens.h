@@ -61,6 +61,7 @@ namespace clear {
     };
 
     std::string_view TokenToString(TokenType token);
+    bool IsTokenOfType(Token tok,std::string type);
 
     using OperatorMapType = std::map<std::string, ParserMapValue>;
     using KeyWordMapType  = std::map<std::string, ParserMapValue>;
@@ -70,4 +71,5 @@ namespace clear {
     extern const std::set<std::string> g_DataTypes;
     extern const std::map<char,char> g_CloserToOpeners;
     extern const std::set<char> g_Openers;
+    extern const std::map<std::string,std::set<TokenType>> g_TokenTypes;
 }

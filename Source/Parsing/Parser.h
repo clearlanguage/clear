@@ -174,6 +174,7 @@ namespace clear
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
 		std::vector<TypeScope> m_ScopeStack;
+		bool m_subParserError = false;
 
 	};
 

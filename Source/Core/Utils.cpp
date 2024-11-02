@@ -162,4 +162,21 @@ namespace clear {
 
         return info;
     }
+
+
+    StringIterator::StringIterator(const std::string& str) : str_(str), index(0) {}
+
+    char StringIterator::next() {
+        if (index < str_.length()) {
+            return str_[index++];
+        } else {
+            return '\0';
+        }
+    }
+
+    void StringIterator::back() {
+        if (index <1 )
+            index--;
+    }
+
 }
