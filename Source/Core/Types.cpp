@@ -71,10 +71,15 @@ namespace clear {
 		switch (type)
 		{
 			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
+			case TokenType::MultiplyAssign:
 			case TokenType::MulOp:				return BinaryExpressionType::Mul;
+			case TokenType::PlusAssign:
 			case TokenType::AddOp:				return BinaryExpressionType::Add;
+			case TokenType::DivideAssign:
 			case TokenType::DivOp:				return BinaryExpressionType::Div;
+			case TokenType::MinusAssign:
 			case TokenType::SubOp:				return BinaryExpressionType::Sub;
+			case TokenType::ModuloAssign:
 			case TokenType::ModOp:				return BinaryExpressionType::Mod;
 			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
 			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;

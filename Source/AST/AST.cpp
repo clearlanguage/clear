@@ -285,6 +285,34 @@ namespace clear {
 
 					break;
 				}
+				case TokenType::PlusAssign:
+				case TokenType::MultiplyAssign:
+				case TokenType::DivideAssign:
+				case TokenType::ModuloAssign:
+				case TokenType::MinusAssign:
+				{
+					auto& previous = tokens[i - 1];
+					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
+
+					std::list<std::string> chain = _RetrieveChain(tokens, i);
+					chain.push_back(previous.Data);
+					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
+
+					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+
+					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(tokens[i].TokenType), type);
+					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
+
+					operationExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
+					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false , shouldDereference));
+
+					assignmentExpression->PushChild(operationExpression);
+					assignmentExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true, shouldDereference));
+
+					currentRoot.Node->PushChild(assignmentExpression);
+
+					break;
+				}
 				case TokenType::EndIndentation:
 				{
 					if (m_Stack.size() <= 1)
