@@ -32,7 +32,6 @@ namespace clear {
 					CLEAR_VERIFY(tokens[i].TokenType == TokenType::VariableReference, "must be variable reference");
 
 					std::string& name = tokens[i].Data;
-
 					i += 3;
 					AbstractType type = VariableType::None;
 
@@ -437,11 +436,9 @@ namespace clear {
 			{TokenType::GreaterThanEqual, 1},
 			{TokenType::OpenBracket,      0}
 		};
-
 		AbstractType currentExpectedType = expected;
 		Token openBracket{ .TokenType = TokenType::OpenBracket };
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
-
 		bool addBracket = false;
 		
 		while (start < tokens.size() && 

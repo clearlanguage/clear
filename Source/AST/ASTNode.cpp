@@ -291,6 +291,7 @@ namespace clear {
 		{
 			if (m_PointerFlag && m_Dereference)
 			{
+				llvm::LoadInst* load = builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
 				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
 			}
 
@@ -366,7 +367,18 @@ namespace clear {
 
 	llvm::Value* ASTVariableDecleration::Codegen()
 	{		
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		auto ip = builder.saveIP();
+
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		builder.SetInsertPoint(&function->getEntryBlock());
+	
 		m_Value = Value(m_Type, m_Name);
+
+		builder.restoreIP(ip);
+
 		return m_Value.Get();
 	}
 
@@ -409,6 +421,7 @@ namespace clear {
 		}
 
 		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "body");
 		builder.SetInsertPoint(entry);
 
 		llvm::BasicBlock* returnBlock = llvm::BasicBlock::Create(context, "return");
@@ -431,6 +444,9 @@ namespace clear {
 			k++;
 		}
 
+		function->insert(function->end(), body);
+		builder.SetInsertPoint(body);
+
 		for (const auto& child : GetChildren())
 		{
 			child->Codegen();
@@ -440,6 +456,13 @@ namespace clear {
 		{
 			Value::RemoveVariable(GetName() + "::" + Paramater.Name);
 		}
+
+		auto currip = builder.saveIP();
+
+		builder.SetInsertPoint(entry);
+		builder.CreateBr(body);
+
+		builder.restoreIP(currip);
 
 		ReturnValue value = s_ReturnValues.top();
 		s_ReturnValues.pop();
