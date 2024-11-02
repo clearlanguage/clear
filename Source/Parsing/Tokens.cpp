@@ -66,7 +66,8 @@ namespace clear {
         {"declare", {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
         {"defer",{.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
         {"else", {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
-        {"elseif", {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}}
+        {"elseif", {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}},
+        {"while", {.NextState = ParserState::Default, .TokenToPush = TokenType::While }}
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
@@ -159,7 +160,7 @@ namespace clear {
             case TokenType::BitwiseAnd: return "BitwiseAnd";
             case TokenType::EndArray: return "EndArray";
             case TokenType::StartArray: return "StartArray";
-
+            case TokenType::While:  return "While";
             default:
                 break;
         }

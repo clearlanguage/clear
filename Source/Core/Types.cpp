@@ -242,7 +242,7 @@ namespace clear {
 
 	AbstractType::AbstractType(const AbstractType& underlyingType, size_t elementCount)
 		: m_LLVMUnderlyingType(underlyingType.GetLLVMType()), m_UnderlyingType(underlyingType.Get()), 
-		  m_Type(VariableType::Array)
+		  m_Type(VariableType::Array), m_Kind(TypeKind::Variable)
 	{
 		m_LLVMType = llvm::ArrayType::get(m_LLVMUnderlyingType, elementCount);
 	}

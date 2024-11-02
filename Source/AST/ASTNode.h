@@ -28,7 +28,7 @@ namespace clear {
 		VariableExpression, VariableDecleration, 
 		FunctionDefinition, FunctionDecleration,
 		ReturnStatement, Expression, Struct, 
-	    FunctionCall, IfExpression,
+	    FunctionCall, IfExpression, WhileLoop
 	};
 
 
@@ -227,6 +227,15 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
 		virtual llvm::Value* Codegen() override;
 
+	};
+
+	class ASTWhileLoop : public ASTNodeBase
+	{
+	public:
+		ASTWhileLoop() = default;
+		virtual ~ASTWhileLoop() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
+		virtual llvm::Value* Codegen() override;
 	};
 
 }

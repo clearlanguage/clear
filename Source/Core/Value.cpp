@@ -70,7 +70,7 @@ namespace clear {
 			true,
 			llvm::GlobalValue::PrivateLinkage,
 			strConstant,
-			".str" + std::to_string(s_StringCount++)
+			"str" + std::to_string(s_StringCount++)
 		);
 
 		llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);

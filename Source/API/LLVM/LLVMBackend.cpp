@@ -26,12 +26,12 @@ namespace clear {
 			std::string errorStr;
 			llvm::raw_string_ostream errorStream(errorStr);
 
-			/*bool isValid = llvm::verifyModule(*s_Module, &errorStream);
+			bool isValid = llvm::verifyModule(*s_Module, &errorStream);
 
 			if (isValid) 
 				llvm::errs() << "Module verification failed:\n" << errorStream.str() << "\n";
 			else 
-				llvm::outs() << "Module verified successfully!\n";*/
+				llvm::outs() << "Module verified successfully!\n";
 			
 
 			llvm::InitializeNativeTarget();

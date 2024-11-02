@@ -281,7 +281,6 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 
-
 		auto& metaData = Value::GetVariableMetaData(*m_Chain.begin());
 		llvm::AllocaInst* value = metaData.Alloca;
 
@@ -316,7 +315,7 @@ namespace clear {
 
 		std::vector<llvm::Value*> indices =
 		{
-			llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0) 
+			llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0) 
 		};
 		
 		AbstractType typeToGet;
@@ -324,7 +323,7 @@ namespace clear {
 		for (;;)
 		{
 			size_t currentIndex = currentRef->Indices[m_Chain.front()];
-			indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), currentIndex));
+			indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), currentIndex));
 			m_Chain.pop_front();
 
 			typeToGet = currentRef->Types[currentIndex];
@@ -339,6 +338,11 @@ namespace clear {
 		}
 
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
+
+		if (m_PointerFlag && m_Dereference)
+		{
+			return builder.CreateLoad(typeToGet.GetLLVMType(), gepPtr, "struct_element_loaded_pointer");
+		}
 
 		if (m_Dereference)
 		{
@@ -560,7 +564,6 @@ namespace clear {
 	llvm::Value* ASTStruct::Codegen()
 	{
 		AbstractType::CreateStructType(m_Name, m_Members);
-
 		return nullptr;
 	}
 
@@ -684,5 +687,42 @@ namespace clear {
 		return nullptr;
 	}
 
+	llvm::Value* ASTWhileLoop::Codegen()
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "incorrect node type");
+
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(context, "while_condition", function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "while_body");
+		llvm::BasicBlock* end   = llvm::BasicBlock::Create(context, "while_end");
+
+
+		if (!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(conditionBlock);
+
+		builder.SetInsertPoint(conditionBlock);
+
+		llvm::Value* condition = children[0]->Codegen();
+		builder.CreateCondBr(condition, body, end);
+
+		function->insert(function->end(), body);
+		builder.SetInsertPoint(body);
+
+		children[1]->Codegen();
+
+		if (!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(conditionBlock);
+		
+		function->insert(function->end(), end);
+		builder.SetInsertPoint(end);
+
+		return nullptr;
+	}
 
 }

@@ -146,9 +146,27 @@ namespace clear {
 						auto& before = tokens[i - 2];
 						type = AbstractType(before, TypeKind::Variable, true);
 					}
-					else if (previous.TokenType == TokenType::DynamicArrayDef)
+					else if (previous.TokenType == TokenType::StaticArrayDef)
 					{
+						while (i > 0 && tokens[i].TokenType != TokenType::EndLine)
+							i--;
 
+						i++;
+						AbstractType typeToGet;
+						while ((typeToGet = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)))
+						{
+							i++;
+							if (tokens[i].TokenType == TokenType::PointerDef)
+								i++;
+
+							type = typeToGet;
+						}
+
+						while (tokens[i].TokenType == TokenType::StaticArrayDef)
+						{
+							type = AbstractType(type, std::stoll(tokens[i].Data));
+							i++;
+						}
 					}
 					else
 					{
@@ -158,6 +176,26 @@ namespace clear {
 					currentRoot.Node->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
 		
 					AbstractType::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
+
+					break;
+				}
+				case TokenType::While:
+				{
+					Ref<ASTWhileLoop> whileNode = Ref<ASTWhileLoop>::Create();
+					whileNode->SetName(currentRoot.Node->GetName());
+
+					i++;
+					whileNode->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+
+					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
+					base->SetName(currentRoot.Node->GetName());
+
+					whileNode->PushChild(base);
+
+					currentRoot.Node->PushChild(whileNode);
+
+					m_Stack.push({ whileNode, currentRoot.ExpectedReturnType });
+					m_Stack.push({ base,      currentRoot.ExpectedReturnType });
 
 					break;
 				}
@@ -231,7 +269,7 @@ namespace clear {
 				case TokenType::Assignment:
 				{
 					auto& previous = tokens[i - 1];
-					bool shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
+					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(previous.Data);
@@ -259,7 +297,7 @@ namespace clear {
 					if (top.Node->GetType() == ASTNodeType::Base &&
 						(i + 1) < tokens.size() &&
 						(tokens[i + 1].TokenType == TokenType::Else ||
-						 tokens[i + 1].TokenType == TokenType::ElseIf))
+						tokens[i + 1].TokenType == TokenType::ElseIf))
 					{
 						size_t start = i + 1;
 
@@ -274,12 +312,13 @@ namespace clear {
 
 						auto& newTop = m_Stack.top();
 
-						CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression, "top was not an if expression");
+						CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression || newTop.Node->GetType() == ASTNodeType::WhileLoop, "top was not an if expression");
 
 						Ref<ASTNodeBase> astNode = Ref<ASTNodeBase>::Create();
 
 						if (tokens[start].TokenType == TokenType::ElseIf)
 						{
+							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression);
 							newTop.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
 						}
 
@@ -297,7 +336,7 @@ namespace clear {
 
 						auto& newTop = m_Stack.top();
 
-						if (newTop.Node->GetType() == ASTNodeType::IfExpression)
+						if (newTop.Node->GetType() == ASTNodeType::IfExpression || newTop.Node->GetType() == ASTNodeType::WhileLoop)
 							m_Stack.pop();
 					}
 
@@ -426,7 +465,6 @@ namespace clear {
 				}
 
 			}
-
 			else if (token.TokenType == TokenType::RValueNumber || 
 					 token.TokenType == TokenType::RValueString || 
 					 token.TokenType == TokenType::BooleanData)
@@ -538,9 +576,9 @@ namespace clear {
 			k++;
 		}
 
-
 		return functionCall;
 	}
+
 	
 	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)
 	{
@@ -656,9 +694,9 @@ namespace clear {
 		}
 
 		if (isPointer)
-			return AbstractType(VariableType::Pointer, TypeKind::None, currentType, userDefinedType);
+			return AbstractType(VariableType::Pointer, TypeKind::Variable, currentType, userDefinedType);
 		
-		return AbstractType(currentType, TypeKind::None, userDefinedType);
+		return AbstractType(currentType, TypeKind::Variable, userDefinedType);
 	}
 
 	AbstractType AST::_GetTypeFromList(std::list<std::string>& list)
