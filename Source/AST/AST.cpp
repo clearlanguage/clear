@@ -295,7 +295,30 @@ namespace clear {
 						continue;
 					}
 
+
 					auto& previous = tokens[i - 1];
+
+					if (tokens[i + 1].TokenType == TokenType::StartArray)
+					{
+						std::list<std::string> chain = _RetrieveChain(tokens, i);
+						chain.push_back(previous.Data);
+						chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
+
+						i -= 2;
+						AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+						i += 3;
+
+						i++;
+						Ref<ASTArrayInitializer> initializer = Ref<ASTArrayInitializer>::Create();
+						initializer->PushChild(Ref<ASTVariableExpression>::Create(chain));
+
+						_CreateArrayInitializer(initializer, tokens, currentRoot.Node->GetName(), i, type);
+
+						currentRoot.Node->PushChild(initializer);
+
+						continue;
+					}
+
 					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
@@ -480,9 +503,9 @@ namespace clear {
 	}
 	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
 	{
-		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
+		Ref<ASTExpression> expression = Ref<ASTExpression>::Create(expected);
 
-		static std::map<TokenType, int32_t> s_Presedence = {
+		static std::map<TokenType, int32_t> s_Precedence = {
 			{TokenType::Increment,		  4}, 
 			{TokenType::Decrement,		  4}, 
 			{TokenType::BitwiseNot,		  4}, 
@@ -513,7 +536,7 @@ namespace clear {
 			UnaryExpressionType UnaryExpression;
 			AbstractType ExpectedType;
 			bool IsOpenBracket = false;
-			int32_t Presedence = 0;
+			int32_t Precedence = 0;
 		};
 
 		std::stack<Operator> operators;
@@ -563,9 +586,9 @@ namespace clear {
 				start--;
 				
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
-				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
+				bool dereferenceFlag = previous.TokenType == TokenType::DereferenceOp;
 				
-				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
+				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, dereferenceFlag));
 
 				if (unaryType != UnaryExpressionType::None)
 				{
@@ -663,10 +686,10 @@ namespace clear {
 					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
 				}
 			}
-			else if (!_IsUnary(token) && s_Presedence.contains(token.TokenType))
+			else if (!_IsUnary(token) && s_Precedence.contains(token.TokenType))
 			{
 				while (!operators.empty() && !operators.top().IsOpenBracket &&
-					   s_Presedence[token.TokenType] <= operators.top().Presedence)
+					   s_Precedence[token.TokenType] <= operators.top().Precedence)
 				{
 					auto& top = operators.top();
 
@@ -679,11 +702,11 @@ namespace clear {
 				}
 
 				if (token.TokenType == TokenType::DivOp)
-					operators.push({ BinaryExpressionType::Div, UnaryExpressionType::None, VariableType::Float64, false, s_Presedence.at(token.TokenType)});
+					operators.push({ BinaryExpressionType::Div, UnaryExpressionType::None, VariableType::Float64, false, s_Precedence.at(token.TokenType)});
 				else if (token.TokenType == TokenType::Power)
-					operators.push({ BinaryExpressionType::Pow, UnaryExpressionType::None, VariableType::Float64, false, s_Presedence.at(token.TokenType) });
+					operators.push({ BinaryExpressionType::Pow, UnaryExpressionType::None, VariableType::Float64, false, s_Precedence.at(token.TokenType) });
 				else 
-					operators.push({ GetBinaryExpressionTypeFromTokenType(token.TokenType), UnaryExpressionType::None, currentExpectedType, false, s_Presedence.at(token.TokenType)});
+					operators.push({ GetBinaryExpressionTypeFromTokenType(token.TokenType), UnaryExpressionType::None, currentExpectedType, false, s_Precedence.at(token.TokenType)});
 
 				if (addBracket)
 				{
@@ -721,7 +744,6 @@ namespace clear {
 
 		return expression;
 	}
-
 	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
 	{
 		const std::string& name = tokens[i].Data;
@@ -755,8 +777,21 @@ namespace clear {
 
 		return functionCall;
 	}
+	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
+	{
+		while (tokens[i].TokenType != TokenType::EndLine)
+		{
+			while (tokens[i].TokenType == TokenType::StartArray ||
+				   tokens[i].TokenType == TokenType::Comma ||
+				   tokens[i].TokenType == TokenType::EndArray)
+			{
+				i++;
+			}
 
-	
+			if(tokens[i].TokenType != TokenType::EndLine)
+				initializer->PushChild(_CreateExpression(tokens, root, i, expected));
+		}
+	}
 	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)
 	{
 		std::list<std::string> list;
@@ -801,7 +836,8 @@ namespace clear {
 		while (current > 0 && 
 			   tokens[current].TokenType != TokenType::EndLine && 
 			   tokens[current].TokenType != TokenType::EndIndentation &&
-			   tokens[current].TokenType != TokenType::Comma &&
+			   tokens[current].TokenType != TokenType::Comma && 
+			   tokens[current].TokenType != TokenType::StaticArrayDef &&
 			   (GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
 			   tokens[current].TokenType == TokenType::DotOp))
@@ -809,7 +845,7 @@ namespace clear {
 			current--;
 		}
 
-		if (tokens[current].TokenType == TokenType::DereferenceOp)
+		if (tokens[current].TokenType == TokenType::DereferenceOp || tokens[current].TokenType == TokenType::StaticArrayDef)
 			current++;
 
 		if (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
@@ -824,7 +860,6 @@ namespace clear {
 				shouldDerference = true;
 				current++;
 			}
-
 
 			size_t currentCopy = current;
 			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
@@ -847,7 +882,7 @@ namespace clear {
 			return type;
 		}
 
-		return AbstractType(tokens[current], TypeKind::VariableReference, isPointer);
+		return AbstractType::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
 	}
 
 	AbstractType AST::_GetTypeFromToken(const Token& token, bool isPointer)
@@ -892,7 +927,6 @@ namespace clear {
 
 		return type;
 	}
-	
 	
 	bool AST::_IsUnary(const Token& token)
 	{

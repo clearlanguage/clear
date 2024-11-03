@@ -29,7 +29,8 @@ namespace clear {
 		FunctionDefinition, FunctionDecleration,
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
-		UnaryExpression, Break, Continue
+		UnaryExpression, Break, Continue, 
+		ArrayInitializer
 	};
 
 
@@ -216,11 +217,15 @@ namespace clear {
 	class ASTExpression : public ASTNodeBase
 	{
 	public:
-		ASTExpression() = default;
+		ASTExpression(const AbstractType& expectedType = VariableType::None);
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual llvm::Value* Codegen() override;
 
+		inline AbstractType& GetExpectedType() { return m_ExpectedType; }
+
+	private:
+		AbstractType m_ExpectedType;
 	};
 
 	class ASTStruct : public ASTNodeBase
@@ -273,4 +278,17 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 	};
 
+	class ASTArrayInitializer : public ASTNodeBase
+	{
+	public:
+		ASTArrayInitializer() = default;
+		virtual ~ASTArrayInitializer() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ArrayInitializer; }
+		virtual llvm::Value* Codegen() override;
+
+	private:
+		std::vector<size_t> _GetDimensions(llvm::ArrayType* type);
+		llvm::Type* _GetElementType(llvm::ArrayType* type);
+
+	};
 }

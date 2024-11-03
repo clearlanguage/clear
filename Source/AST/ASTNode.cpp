@@ -20,8 +20,6 @@ namespace clear {
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 	static std::stack<ReturnValue> s_ReturnValues;
 
-	//(for/while loops)
-
 	struct ForWhileBlock
 	{
 		llvm::BasicBlock* End;
@@ -444,7 +442,7 @@ namespace clear {
 
 		for (const auto& Paramater : m_Paramaters)
 		{
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(Paramater.Type.GetLLVMType(), nullptr, Paramater.Name);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(Paramater.Type.GetLLVMType(), nullptr, GetName() + "::" + Paramater.Name);
 			builder.CreateStore(function->getArg(k), argAlloc);
 			
 			Value::RegisterVariable(argAlloc, GetName() + "::" + Paramater.Name, Paramater.Type);
@@ -566,6 +564,11 @@ namespace clear {
 		return nullptr;
 	}
 	
+	ASTExpression::ASTExpression(const AbstractType& expectedType)
+		: m_ExpectedType(expectedType)
+	{
+	}
+
 	llvm::Value* ASTExpression::Codegen()
 	{
 		auto& builder  = *LLVM::Backend::GetBuilder();
@@ -595,7 +598,7 @@ namespace clear {
 				continue;
 			}
 
-			Ref<ASTBinaryExpression> binExp = Ref<ASTBinaryExpression>::DynamicCast<ASTBinaryExpression>(child);
+			Ref<ASTBinaryExpression> binExp = DynamicCast<ASTBinaryExpression>(child);
 
 			binExp->PushChild(stack.top());
 			stack.pop();
@@ -973,6 +976,111 @@ namespace clear {
 		builder.CreateBr(s_ForWhileBlocks.top().Condition);
 
 		return nullptr;
+	}
+
+	llvm::Value* ASTArrayInitializer::Codegen()
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() > 0, "size of children must be bigger than 1");
+
+		llvm::Value* value = children[0]->Codegen();
+		CLEAR_VERIFY(llvm::isa<llvm::AllocaInst>(value), "incorrect type");
+
+		Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
+
+		llvm::AllocaInst* allocaInstance = llvm::dyn_cast<llvm::AllocaInst>(value);
+
+		llvm::Type* type = allocaInstance->getAllocatedType();
+		CLEAR_VERIFY(llvm::isa<llvm::ArrayType>(type), "incorrect type");
+
+		llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(type);
+
+		std::vector<size_t> dimensions = _GetDimensions(arrayType);
+		CLEAR_VERIFY(dimensions.size() > 0, "invalid dimensions");
+
+		llvm::Type* elementType = _GetElementType(arrayType);
+
+		size_t total = 1;
+
+		for (size_t i : dimensions)
+			total *= i;
+
+		CLEAR_VERIFY(total > 0, "cannot have a 0 dimensional array");
+
+		size_t k = 1;
+
+		for (size_t i = 0; i < total; i++)
+		{
+			std::vector<llvm::Value*> indices;
+
+			size_t currentIndex = i;
+			for (size_t dim : dimensions)
+			{
+				indices.push_back(llvm::ConstantInt::get(llvm::IntegerType::getInt64Ty(context), currentIndex % dim));
+				currentIndex /= dim;
+			}
+
+			llvm::Value* gep = builder.CreateGEP(arrayType, allocaInstance, indices, "array_indexing");
+			
+			if (k < children.size())
+			{
+				llvm::Value* childValue = children[k++]->Codegen();
+				CLEAR_VERIFY(childValue, "value must be proper");
+
+				if (childValue->getType() != elementType)
+				{
+					childValue = Value::CastValue(childValue, childValue->getType(), elementType, expression->GetGeneratedType().IsSigned());
+				}
+
+				builder.CreateStore(childValue, gep);
+			}
+			else
+			{
+				llvm::Value* defaultValue = llvm::Constant::getNullValue(elementType); 
+				builder.CreateStore(defaultValue, gep);
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::vector<size_t> ASTArrayInitializer::_GetDimensions(llvm::ArrayType* type)
+	{
+		std::vector<size_t> dimensions;
+
+		while (type)
+		{
+			dimensions.push_back(type->getNumElements());
+
+			llvm::Type* elementType = type->getElementType();
+			llvm::ArrayType* arrayType = nullptr;
+
+			if ((arrayType = llvm::dyn_cast<llvm::ArrayType>(elementType)))
+			{
+				type = arrayType;
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		return dimensions;
+	}
+
+	llvm::Type* ASTArrayInitializer::_GetElementType(llvm::ArrayType* type)
+	{
+		llvm::Type* elementType = type->getElementType();
+
+		while (llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(elementType)) 
+		{
+			elementType = arrayType->getElementType();
+		}
+
+		return elementType;
 	}
 
 }

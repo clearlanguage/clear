@@ -132,54 +132,94 @@ namespace clear {
 
 	llvm::Value* Value::CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from)
 	{
-		auto& builder = *LLVM::Backend::GetBuilder();
 		llvm::Type* fromType = value->getType();
-		llvm::Type* toType = to.GetLLVMType();
+		return Value::CastValue(value, to.GetLLVMType(), fromType, from);
+	}
 
-		if (fromType == toType)
+	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const AbstractType& fromType)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		llvm::Type* toType = to;
+
+		if (from == toType)
 			return value;
 
-		if (fromType->isIntegerTy() && to.IsIntegral())
+		if (from->isIntegerTy() && to->isIntegerTy())
 		{
-			return builder.CreateIntCast(value, toType, to.IsSigned(), "cast");
+			return builder.CreateIntCast(value, toType, fromType.IsSigned(), "cast");
 		}
-		else if (fromType->isIntegerTy() && to.IsFloatingPoint())
+		else if (from->isIntegerTy() && to->isFloatingPointTy())
 		{
-			if (from.IsSigned())
-				return builder.CreateSIToFP(value, toType, "cast");  // Signed int to float
+			if (fromType.IsSigned())
+				return builder.CreateSIToFP(value, toType, "cast");  
 			else
-				return builder.CreateUIToFP(value, toType, "cast");  // Unsigned int to float
+				return builder.CreateUIToFP(value, toType, "cast");  
 		}
-		else if (fromType->isFloatingPointTy() && to.IsIntegral())
+		else if (from->isFloatingPointTy() && to->isIntegerTy())
 		{
-			// Float to integer cast 
-			if (from.IsSigned())
-				return builder.CreateFPToSI(value, toType, "cast");  // Float to signed int
+			if (fromType.IsSigned())
+				return builder.CreateFPToSI(value, toType, "cast");  
 			else
-				return builder.CreateFPToUI(value, toType, "cast");  // Float to unsigned int
+				return builder.CreateFPToUI(value, toType, "cast"); 
 		}
-		else if (fromType->isFloatingPointTy() && to.IsFloatingPoint())
+		else if (from->isFloatingPointTy() && to->isFloatingPointTy())
 		{
-			// Float to float cast
 			return builder.CreateFPCast(value, toType, "cast");
 		}
-		else if (fromType->isPointerTy() && to.IsPointer())
+		else if (from->isPointerTy() && to->isPointerTy())
 		{
 			return builder.CreatePointerCast(value, toType, "cast");
 		}
-		else if (fromType->isIntegerTy() && to.IsPointer())
+		else if (from->isIntegerTy() && to->isPointerTy())
 		{
 			return builder.CreateIntToPtr(value, toType, "cast");
 		}
-		//else if (fromType->isPointerTy() && to.IsIntegral())
-		//{
-		//	return builder.CreatePtrToInt(value, toType, "cast");
-		//}
-		//else if (fromType->isPointerTy() && to.IsFloatingPoint())
-		//{
-		//	auto tmp = CastValue(value, VariableType::Int64);
-		//	return CastValue(tmp, to);
-		//}
+
+		CLEAR_UNREACHABLE("failed to find right cast type");
+
+		return nullptr;
+	}
+
+	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, bool isSigned)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		llvm::Type* toType = to;
+
+		if (from == toType)
+			return value;
+
+		if (from->isIntegerTy() && to->isIntegerTy())
+		{
+			return builder.CreateIntCast(value, toType, isSigned, "cast");
+		}
+		else if (from->isIntegerTy() && to->isFloatingPointTy())
+		{
+			if (isSigned)
+				return builder.CreateSIToFP(value, to, "cast");  
+			else
+				return builder.CreateUIToFP(value, to, "cast");  
+		}
+		else if (from->isFloatingPointTy() && to->isIntegerTy())
+		{
+			if (isSigned)
+				return builder.CreateFPToSI(value, toType, "cast");  
+			else
+				return builder.CreateFPToUI(value, toType, "cast"); 
+		}
+		else if (from->isFloatingPointTy() && to->isFloatingPointTy())
+		{
+			return builder.CreateFPCast(value, toType, "cast");
+		}
+		else if (from->isPointerTy() && to->isPointerTy())
+		{
+			return builder.CreatePointerCast(value, toType, "cast");
+		}
+		else if (from->isIntegerTy() && to->isPointerTy())
+		{
+			return builder.CreateIntToPtr(value, toType, "cast");
+		}
 
 		CLEAR_UNREACHABLE("failed to find right cast type");
 

@@ -28,6 +28,8 @@ namespace clear {
 		~Value();
 
 		static llvm::Value*		 CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from = VariableType::None);
+		static llvm::Value*		 CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const AbstractType& fromType);
+		static llvm::Value*		 CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, bool isSigned);
 		static ConstantPair		 GetConstantString(const std::string& data);
 		static ConstantPair		 GetConstant(const AbstractType& type, const std::string& data);
 		static VariableMetaData& GetVariableMetaData(const std::string& name);
