@@ -69,6 +69,8 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
 
+		inline AbstractType& GetGeneratedType() { return m_Constant.GetType(); }
+
 	private:
 		Value m_Constant;
 	};

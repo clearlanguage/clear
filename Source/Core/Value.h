@@ -27,9 +27,8 @@ namespace clear {
 
 		~Value();
 
-		static llvm::Value*		 CastValue(llvm::Value* value, AbstractType to);
+		static llvm::Value*		 CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from = VariableType::None);
 		static ConstantPair		 GetConstantString(const std::string& data);
-		static ConstantPair		 GetConstantDataArray();
 		static ConstantPair		 GetConstant(const AbstractType& type, const std::string& data);
 		static VariableMetaData& GetVariableMetaData(const std::string& name);
 
@@ -39,11 +38,11 @@ namespace clear {
 		static void RemoveVariable(const std::string& name);
 
 		inline const llvm::Value*	   Get()	   const { return m_Value; }
-		inline const AbstractType&	   GetType()   const { return m_Type; }
 		inline const std::list<Value>& GetChain()  const { return m_Chain; }
 		inline const std::string&      GetData()   const { return m_Data; }
 
 		inline llvm::Value* Get() { return m_Value; }
+		inline AbstractType& GetType() { return m_Type; }
 
 	private:
 		AbstractType m_Type;

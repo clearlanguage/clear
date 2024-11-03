@@ -15,7 +15,6 @@ namespace clear {
 		//possibly add command line arguments in the future
 		std::vector<Paramater> Paramaters;
 
-
 		//TODO: make mandatory for user to define
 		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, Paramaters);
 		m_Stack.push({ m_Root, {} });
@@ -482,6 +481,7 @@ namespace clear {
 			{TokenType::BitwiseNot,		  4}, 
 			{TokenType::DereferenceOp,    4}, 
 			{TokenType::AddressOp,		  4},
+			{TokenType::Power,			  4},
 			{TokenType::DivOp,			  3},
 			{TokenType::MulOp,			  3},
 			{TokenType::LeftShift,		  3},
@@ -671,6 +671,8 @@ namespace clear {
 
 				if (token.TokenType == TokenType::DivOp)
 					operators.push({ BinaryExpressionType::Div, UnaryExpressionType::None, VariableType::Float64, false, s_Presedence.at(token.TokenType)});
+				else if (token.TokenType == TokenType::Power)
+					operators.push({ BinaryExpressionType::Pow, UnaryExpressionType::None, VariableType::Float64, false, s_Presedence.at(token.TokenType) });
 				else 
 					operators.push({ GetBinaryExpressionTypeFromTokenType(token.TokenType), UnaryExpressionType::None, currentExpectedType, false, s_Presedence.at(token.TokenType)});
 

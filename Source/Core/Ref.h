@@ -137,4 +137,15 @@ namespace clear {
         size_t* m_RefCount = nullptr;
     };
 
+    template<typename To, typename From>
+    inline Ref<To> DynamicCast(const Ref<From>& other)
+    {
+        const auto ptr = dynamic_cast<To*>(other.Get());
+
+        if (ptr)
+            return Ref<To>(ptr, other.GetRefCount());
+
+        return {};
+    }
+
 }

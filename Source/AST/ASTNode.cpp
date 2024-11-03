@@ -128,11 +128,35 @@ namespace clear {
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
 
+		AbstractType fromType;
+
+		if (children[1]->GetType() == ASTNodeType::Literal)
+		{
+			Ref<ASTNodeLiteral> literal = DynamicCast<ASTNodeLiteral>(children[1]);
+			fromType = literal->GetGeneratedType();
+		}
+		else if (children[1]->GetType() == ASTNodeType::BinaryExpression)
+		{
+			Ref<ASTBinaryExpression> bin = DynamicCast<ASTBinaryExpression>(children[1]);
+			fromType = bin->GetExpectedType();
+		}
+
 		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
- 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType);
+ 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType, fromType);
+
+		if (children[0]->GetType() == ASTNodeType::Literal)
+		{
+			Ref<ASTNodeLiteral> literal = DynamicCast<ASTNodeLiteral>(children[0]);
+			fromType = literal->GetGeneratedType();
+		}
+		else if (children[0]->GetType() == ASTNodeType::BinaryExpression)
+		{
+			Ref<ASTBinaryExpression> bin = DynamicCast<ASTBinaryExpression>(children[0]);
+			fromType = bin->GetExpectedType();
+		}
 
 		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
-			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
+			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType, fromType);
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
 	}
@@ -165,31 +189,43 @@ namespace clear {
 
 	llvm::Value* ASTBinaryExpression::_CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS)
 	{
-		auto& builder = LLVM::Backend::GetBuilder();
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& module  = *LLVM::Backend::GetModule();
+
 		const bool isFloat = LHS->getType()->isFloatingPointTy();
 
 		switch (m_Expression)
 		{
 			case BinaryExpressionType::Add:
-				return isFloat ? builder->CreateFAdd(LHS, RHS, "faddtmp")
-							   : builder->CreateAdd(LHS, RHS,  "addtmp");
-
+			{
+				return isFloat ? builder.CreateFAdd(LHS, RHS, "faddtmp") : builder.CreateAdd(LHS, RHS, "addtmp");
+			}
 			case BinaryExpressionType::Sub:
-				return isFloat ? builder->CreateFSub(LHS, RHS, "fsubtmp")
-							   : builder->CreateSub(LHS, RHS,  "subtmp");
-
+			{
+				return isFloat ? builder.CreateFSub(LHS, RHS, "fsubtmp") : builder.CreateSub(LHS, RHS, "subtmp");
+			}
 			case BinaryExpressionType::Mul:
-				return isFloat ? builder->CreateFMul(LHS, RHS, "fmultmp")
-							   : builder->CreateMul(LHS, RHS,  "multmp");
-
+			{
+				return isFloat ? builder.CreateFMul(LHS, RHS, "fmultmp") : builder.CreateMul(LHS, RHS, "multmp");
+			}
 			case BinaryExpressionType::Div:
-				return isFloat ? builder->CreateFDiv(LHS, RHS, "fdivtmp")
-							   : builder->CreateSDiv(LHS, RHS, "divtmp");
-
+			{
+				return isFloat ? builder.CreateFDiv(LHS, RHS, "fdivtmp") : builder.CreateSDiv(LHS, RHS, "divtmp");
+			}
 			case BinaryExpressionType::Mod:
+			{
 				if (!isFloat)
-					return builder->CreateSRem(LHS, RHS, "modtmp");
+					return builder.CreateSRem(LHS, RHS, "modtmp");
+				
+				CLEAR_UNREACHABLE("cannot do mod on floating type");
 
+				break;
+			}
+			case BinaryExpressionType::Pow:
+			{
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				return builder.CreateCall(powFunction, { LHS, RHS });
+			}
 			default:
 				break;
 		}

@@ -129,7 +129,7 @@ namespace clear {
 	{
 	}
 
-	llvm::Value* Value::CastValue(llvm::Value* value, AbstractType to)
+	llvm::Value* Value::CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 		llvm::Type* fromType = value->getType();
@@ -144,7 +144,7 @@ namespace clear {
 		}
 		else if (fromType->isIntegerTy() && to.IsFloatingPoint())
 		{
-			if (to.IsSigned())
+			if (from.IsSigned())
 				return builder.CreateSIToFP(value, toType, "cast");  // Signed int to float
 			else
 				return builder.CreateUIToFP(value, toType, "cast");  // Unsigned int to float
@@ -152,7 +152,7 @@ namespace clear {
 		else if (fromType->isFloatingPointTy() && to.IsIntegral())
 		{
 			// Float to integer cast 
-			if (to.IsSigned())
+			if (from.IsSigned())
 				return builder.CreateFPToSI(value, toType, "cast");  // Float to signed int
 			else
 				return builder.CreateFPToUI(value, toType, "cast");  // Float to unsigned int
