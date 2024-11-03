@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <Core/Log.h>
+#include <cmath>
 #include <Core/Utils.h>
 
 
@@ -28,6 +29,9 @@ namespace clear
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
 		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
 		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
+
+		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
+
 
 	}
 
@@ -149,6 +153,19 @@ namespace clear
 
 		return current;
 	 }
+
+	void Parser::_MinusOperator() {
+		auto token = _GetLastToken();
+		auto tok =token.TokenType;
+
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
+			_PushToken(TokenType::SubOp,"-");
+		}else {
+			_PushToken(TokenType::Negation,"-");
+		}
+		m_CurrentState = ParserState::RValue;
+	}
+
 
 	void Parser::_FunctionArgumentState() {
 		_GetNextChar();
@@ -1099,6 +1116,35 @@ namespace clear
 
 	}
 
+	void Parser::_ParseExponentNumber(std::string x) {
+		m_TokenIndexStart = m_CurrentTokenIndex;
+		char current = _GetNextChar();
+		bool usedDecimal = false;
+		m_CurrentString.clear();
+		while (std::isalnum(current) || current == '.' || current == '_')
+		{
+			if (current != '_')
+			{
+				m_CurrentString.push_back(current);
+			}
+
+			_VerifyCondition(!(current == '.' && usedDecimal),21);
+
+			if (current == '.')
+			{
+				usedDecimal = true;
+			}
+
+
+			current = _GetNextChar();
+		}
+
+		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
+		_PushToken(TokenType::RValueNumber,std::to_string(pow(std::stod(x),std::stod(m_CurrentString))));
+		m_CurrentString.clear();
+	}
+
+
 
 	void Parser::_ParseNumber()
 	{
@@ -1124,13 +1170,19 @@ namespace clear
 			return;
 		}
 
-		while (std::isalnum(current) || current == '.')
+		while (std::isalnum(current) || current == '.' || current == '_')
 		{
-			m_CurrentString.push_back(current);
-			if (current == '.' && usedDecimal) // need to throw some type of error again TODO
-			{
-				_VerifyCondition(false,21);
+			if (current == 'e') {
+				_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
+				return _ParseExponentNumber(m_CurrentString);
 			}
+			if (current != '_')
+			{
+				m_CurrentString.push_back(current);
+			}
+
+			_VerifyCondition(!(current == '.' && usedDecimal),21);
+
 			if (current == '.')
 			{
 				usedDecimal = true;

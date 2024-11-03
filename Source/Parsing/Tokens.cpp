@@ -8,7 +8,7 @@ namespace clear {
         {"=",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::Assignment}},
         {"*",   {.NextState = ParserState::AsterisksOperator, .TokenToPush = TokenType::None}},
         {"/",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivOp}},
-        {"-",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::SubOp}},
+        {"-",   {.NextState = ParserState::MinusOperator, .TokenToPush = TokenType::None}},
         {"%",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModOp}},
         {"+",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::AddOp}},
         {"==",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::IsEqual}},
@@ -172,6 +172,7 @@ namespace clear {
             case TokenType::While:  return "While";
             case TokenType::Increment:  return "Increment";
             case TokenType::Decrement:  return "Decrement";
+            case TokenType::Negation: return "Negation";
             default:
                 break;
         }

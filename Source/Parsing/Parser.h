@@ -73,6 +73,7 @@ namespace clear
 		void _MultiLineCommentState();
 		void _IndexOperatorState();
 		void _AsterisksState();
+		void _MinusOperator();
 
 
 		Token _GetLastToken();
@@ -136,6 +137,7 @@ namespace clear
 		void _AmpersandState();
 		void _ParseBinaryLiteral();
 		void _ParseHexLiteral();
+		void _ParseExponentNumber(std::string x);
 		void _ParseList();
 		BracketParsingReturn _ParseBrackets(char end,bool commas);
 

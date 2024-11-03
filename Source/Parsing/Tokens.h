@@ -17,7 +17,7 @@ namespace clear {
         StartIndentation, EndIndentation, EndLine,VariableReference ,Function,FunctionName,StartFunctionParameters,EndFunctionParameters,RightArrow,FunctionType,
         Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp,CharType,Declaration,Defer,
         BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow,Else,BitwiseAnd,
-        ElseIf,StartArray, EndArray, While, Increment, Decrement
+        ElseIf,StartArray, EndArray, While, Increment, Decrement,Negation
     };
 
     enum class ParserState
@@ -37,7 +37,8 @@ namespace clear {
         MultilineComment,
         IndexOperator,
         AsterisksOperator,
-        AmpersandOperator
+        AmpersandOperator,
+        MinusOperator
     };
 
 
