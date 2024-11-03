@@ -1268,7 +1268,7 @@ namespace clear
 			}else if(current == 'b') {
 				data= '\b';
 			}else if(current == '0') {
-				data+= '\0';
+				data= '\0';
 			}else if(current == 'f') {
 				data = '\f';
 			}else if(current == 'v') {
