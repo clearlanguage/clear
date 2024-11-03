@@ -513,6 +513,9 @@ namespace clear {
 			types.push_back(type.Type.GetLLVMType());
 		}
 
+		if (!m_ExpectedReturnType)
+			m_ExpectedReturnType = VariableType::None;
+
 		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ExpectedReturnType.GetLLVMType(), types, isVariadic);
 		module.getOrInsertFunction(m_Name, functionType);
 		return nullptr;
