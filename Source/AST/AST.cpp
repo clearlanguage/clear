@@ -446,6 +446,16 @@ namespace clear {
 					CLEAR_VERIFY(variableReferencesToAssign.empty(), "deal with me later");
 					break;
 				}
+				case TokenType::Continue:
+				{
+					currentRoot.Node->PushChild(Ref<ASTContinue>::Create());
+					break;
+				}
+				case TokenType::Break:
+				{
+					currentRoot.Node->PushChild(Ref<ASTBreak>::Create());
+					break;
+				}
 				default:
 					break;
 			}

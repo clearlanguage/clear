@@ -20,6 +20,16 @@ namespace clear {
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 	static std::stack<ReturnValue> s_ReturnValues;
 
+	//(for/while loops)
+
+	struct ForWhileBlock
+	{
+		llvm::BasicBlock* End;
+		llvm::BasicBlock* Condition;
+	};
+
+	static std::stack<ForWhileBlock> s_ForWhileBlocks;
+
 	llvm::Value* ASTNodeBase::Codegen()
 	{
 		llvm::Value* value = nullptr;
@@ -751,7 +761,6 @@ namespace clear {
 		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "while_body");
 		llvm::BasicBlock* end   = llvm::BasicBlock::Create(context, "while_end");
 
-
 		if (!builder.GetInsertBlock()->getTerminator())
 			builder.CreateBr(conditionBlock);
 
@@ -763,6 +772,8 @@ namespace clear {
 		function->insert(function->end(), body);
 		builder.SetInsertPoint(body);
 
+		s_ForWhileBlocks.push({ end, conditionBlock });
+
 		children[1]->Codegen();
 
 		if (!builder.GetInsertBlock()->getTerminator())
@@ -770,6 +781,8 @@ namespace clear {
 		
 		function->insert(function->end(), end);
 		builder.SetInsertPoint(end);
+
+		s_ForWhileBlocks.pop();
 
 		return nullptr;
 	}
@@ -911,6 +924,27 @@ namespace clear {
 				break;
 			}
 		}
+
+		return nullptr;
+	}
+
+	llvm::Value* ASTBreak::Codegen()
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		CLEAR_VERIFY(!s_ForWhileBlocks.empty() && !builder.GetInsertBlock()->getTerminator(), "have to be in a for or a while loop");
+		builder.CreateBr(s_ForWhileBlocks.top().End);
+		
+
+		return nullptr;
+	}
+
+	llvm::Value* ASTContinue::Codegen()
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		CLEAR_VERIFY(!s_ForWhileBlocks.empty() && !builder.GetInsertBlock()->getTerminator(), "have to be in a for or a while loop");
+		builder.CreateBr(s_ForWhileBlocks.top().Condition);
 
 		return nullptr;
 	}

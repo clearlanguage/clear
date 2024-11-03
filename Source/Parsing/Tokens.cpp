@@ -70,7 +70,10 @@ namespace clear {
         {"defer",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
         {"else",      {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
         {"elseif",    {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}},
-        {"while",     {.NextState = ParserState::Default, .TokenToPush = TokenType::While }}
+        {"while",     {.NextState = ParserState::Default, .TokenToPush = TokenType::While }}, 
+        {"break",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Break }},
+        {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }}
+
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
@@ -175,6 +178,9 @@ namespace clear {
             case TokenType::Decrement:  return "Decrement";
             case TokenType::Negation: return "Negation";
             case TokenType::Power: return "Power";
+            case TokenType::Continue:   return "Continue";
+            case TokenType::Break:   return "Break";
+
             default:
                 break;
         }

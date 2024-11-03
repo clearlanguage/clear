@@ -24,16 +24,16 @@ namespace clear {
 
 	enum class ASTNodeType
 	{
-		Base = 0, Literal, BinaryExpression, 
-		VariableExpression, VariableDecleration, 
+		Base = 0, Literal, BinaryExpression,
+		VariableExpression, VariableDecleration,
 		FunctionDefinition, FunctionDecleration,
-		ReturnStatement, Expression, Struct, 
-	    FunctionCall, IfExpression, WhileLoop, 
-		UnaryExpression
+		ReturnStatement, Expression, Struct,
+		FunctionCall, IfExpression, WhileLoop,
+		UnaryExpression, Break, Continue
 	};
 
 
-	class ASTNodeBase 
+	class ASTNodeBase
 	{
 	public:
 		ASTNodeBase() = default;
@@ -252,6 +252,24 @@ namespace clear {
 		ASTWhileLoop() = default;
 		virtual ~ASTWhileLoop() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
+		virtual llvm::Value* Codegen() override;
+	};
+
+	class ASTBreak : public ASTNodeBase
+	{
+	public:
+		ASTBreak() = default;
+		virtual ~ASTBreak() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Break; }
+		virtual llvm::Value* Codegen() override;
+	};
+
+	class ASTContinue : public ASTNodeBase
+	{
+	public:
+		ASTContinue() = default;
+		virtual ~ASTContinue() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Continue; }
 		virtual llvm::Value* Codegen() override;
 	};
 
