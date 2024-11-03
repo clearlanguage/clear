@@ -639,7 +639,6 @@ namespace clear {
 				{
 					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
 				}
-				llvm::Twine;
 				operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, currentExpectedType, true, 0 });
 			}
 			else if (token.TokenType == TokenType::CloseBracket)
