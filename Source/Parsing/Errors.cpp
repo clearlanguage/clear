@@ -68,7 +68,7 @@ namespace clear {
         {"Unexpected character \"{}\" in struct name","change struct name to only include valid charecters","struct name invalid"},
         {"Did not expect a space in the middle of struct name","Separate words using underscores not spaces","Invalid struct name"},
         {"Expected a value not another comma","Remove the extra comma","Unexpected commas"},//38
-        {"error 39","",""}, //39
+        {"The identifier {} is a reserved keyword and cannot be used as a variable name","Please choose a different name for your variable. Avoid using reserved keywords as identifiers.","Variable name is keyword"}, //39
         {"error 40","f","f"}, //40
         {"error 41 {}","d","s"} //41
 

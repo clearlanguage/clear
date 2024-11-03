@@ -868,8 +868,9 @@ namespace clear
 
 			if (current == ',') {
 				ExpectingComma = false;
-				lastValidVar = m_CurrentTokenIndex-1;
 				_VerifyCondition(!m_CurrentString.empty(),28);
+				_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,lastValidVar+1,m_CurrentTokenIndex-2,m_CurrentString);
+				lastValidVar = m_CurrentTokenIndex-1;
 				_PushToken(TokenType::VariableName, m_CurrentString);
 				_PushToken(TokenType::Comma,"");
 				m_CurrentString.clear();
@@ -883,6 +884,7 @@ namespace clear
 			_VerifyCondition(current != ',',28);
 		}
 		if (!m_CurrentString.empty()) {
+			_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,m_CurrentString);
 			_PushToken(TokenType::VariableName, m_CurrentString);
 			vars++;
 
