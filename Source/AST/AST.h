@@ -27,6 +27,8 @@ namespace clear {
         AbstractType _GetTypeFromToken(const Token& token, bool isPointer);
         AbstractType _GetTypeFromList(std::list<std::string>& list);
 
+        bool _IsUnary(const Token& token);
+
     private:
 
         struct StackNode

@@ -83,6 +83,7 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
+		inline AbstractType& GetExpectedType() { return m_ExpectedType; }
 
 	private:
 		const bool _IsMathExpression()    const;
@@ -186,12 +187,14 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 		inline const std::string& GetName() const { return m_Name; }
+		inline AbstractType& GetGeneratedType() { return m_GeneratedType; }
 
 	private:
 		std::string m_Name;
 		std::list<std::string> m_Chain;
 		bool m_PointerFlag = false;
 		bool m_Dereference = false;
+		AbstractType m_GeneratedType;
 	};
 
 	class ASTReturnStatement : public ASTNodeBase

@@ -308,10 +308,11 @@ namespace clear {
 
 					i -= 2;
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+					i += 3;
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
-					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true, shouldDereference));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false, shouldDereference));
 
 					currentRoot.Node->PushChild(binaryExpression);
 
@@ -475,15 +476,12 @@ namespace clear {
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 
-		struct Operator
-		{
-			Token Token;
-			AbstractType ExpectedType;
-		};
-
-		std::stack<Operator> operators;
-
-		static std::map<TokenType, int> s_Presedence = {
+		static std::map<TokenType, int32_t> s_Presedence = {
+			{TokenType::Increment,		  4}, 
+			{TokenType::Decrement,		  4}, 
+			{TokenType::BitwiseNot,		  4}, 
+			{TokenType::DereferenceOp,    4}, 
+			{TokenType::AddressOp,		  4},
 			{TokenType::DivOp,			  3},
 			{TokenType::MulOp,			  3},
 			{TokenType::LeftShift,		  3},
@@ -501,16 +499,27 @@ namespace clear {
 			{TokenType::GreaterThanEqual, 1},
 			{TokenType::OpenBracket,      0}
 		};
+
+		struct Operator
+		{
+			BinaryExpressionType BinaryExpression;
+			UnaryExpressionType UnaryExpression;
+			AbstractType ExpectedType;
+			bool IsOpenBracket = false;
+			int32_t Presedence = 0;
+		};
+
+		std::stack<Operator> operators;
+
 		AbstractType currentExpectedType = expected;
 		Token openBracket{ .TokenType = TokenType::OpenBracket };
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
 		bool addBracket = false;
 		
+		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionParameters};
+			
 		while (start < tokens.size() && 
-			  tokens[start].TokenType != TokenType::EndLine && 
-			  tokens[start].TokenType != TokenType::EndIndentation && 
-			  tokens[start].TokenType != TokenType::Comma && 
-			  tokens[start].TokenType != TokenType::EndFunctionParameters)
+			  !s_Terminators.contains(tokens[start].TokenType))
 		{
 			auto& token    = tokens[start];
 			auto& previous = tokens[start - 1];
@@ -518,24 +527,22 @@ namespace clear {
 			UnaryExpressionType postType = start + 1 < tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(tokens[start + 1].TokenType) : UnaryExpressionType::None;
 			UnaryExpressionType unaryType = start - 1 < tokens.size() ? GetUnaryExpressionTypeFromTokenType(tokens[start - 1].TokenType) : UnaryExpressionType::None;
 
-			if (unaryType == UnaryExpressionType::None)
-				unaryType = postType;
-
 			if (token.TokenType == TokenType::VariableReference)
 			{
 				if (start + 1 < tokens.size() && tokens[start + 1].TokenType == TokenType::FunctionCall)
 				{
 					start++;
 
+					expression->PushChild(_CreateFunctionCall(tokens, root, start));
+					
 					if (unaryType != UnaryExpressionType::None)
 					{
-						Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
-						unary->PushChild(_CreateFunctionCall(tokens, root, start));
-						expression->PushChild(unary);
+						operators.push({BinaryExpressionType::None, unaryType, currentExpectedType, false, 4});
 					}
-					else
+					
+					if (postType != UnaryExpressionType::None)
 					{
-						expression->PushChild(_CreateFunctionCall(tokens, root, start));
+						operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
 					}
 
 					start++;
@@ -550,16 +557,17 @@ namespace clear {
 				
 				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
 				bool derferenceFlag = previous.TokenType == TokenType::DereferenceOp;
+				
+				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
 
 				if (unaryType != UnaryExpressionType::None)
 				{
-					Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
-					unary->PushChild(Ref<ASTVariableExpression>::Create(ls, true, derferenceFlag));
-					expression->PushChild(unary);
+					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
 				}
-				else
+
+				if (postType != UnaryExpressionType::None)
 				{
-					expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, derferenceFlag));
+					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
 				}
 
 				AbstractType abstractType = _GetTypeFromList(ls);
@@ -583,21 +591,27 @@ namespace clear {
 			else if (token.TokenType == TokenType::RValueNumber || 
 					 token.TokenType == TokenType::RValueString || 
 					 token.TokenType == TokenType::BooleanData)
-			{
+			{		
+				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+				
 				if (unaryType != UnaryExpressionType::None)
 				{
-					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment && 
-							     unaryType != UnaryExpressionType::PostIncrement && 
-								 unaryType != UnaryExpressionType::Decrement &&
-								 unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
+					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment &&
+						unaryType != UnaryExpressionType::PostIncrement &&
+						unaryType != UnaryExpressionType::Decrement &&
+						unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
 
-					Ref<ASTUnaryExpression> unary = Ref<ASTUnaryExpression>::Create(unaryType);
-					unary->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
-					expression->PushChild(unary);
+					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
 				}
-				else
+
+				if (postType != UnaryExpressionType::None)
 				{
-					expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
+					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment &&
+							     unaryType != UnaryExpressionType::PostIncrement &&
+							     unaryType != UnaryExpressionType::Decrement &&
+							     unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
+
+					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
 				}
 
 				currentExpectedType = AbstractType(token.Data);
@@ -611,44 +625,62 @@ namespace clear {
 			}
 			else if (token.TokenType == TokenType::OpenBracket)
 			{
-				operators.push({ token, currentExpectedType });
+				if (unaryType != UnaryExpressionType::None)
+				{
+					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
+				}
+
+				operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, currentExpectedType, true, 0 });
 			}
 			else if (token.TokenType == TokenType::CloseBracket)
 			{
-				while (!operators.empty() && operators.top().Token.TokenType != TokenType::OpenBracket)
+				while (!operators.empty() && !operators.top().IsOpenBracket)
 				{
 					auto& top = operators.top();
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
+
+					if(top.BinaryExpression != BinaryExpressionType::None)
+						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+					else 
+						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
+
 					operators.pop();
 				}
 
 				if (!operators.empty())
 					operators.pop();
+
+				if (postType != UnaryExpressionType::None)
+				{
+					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
+				}
 			}
-			else if (s_Presedence.contains(token.TokenType))
+			else if (!_IsUnary(token) && s_Presedence.contains(token.TokenType))
 			{
-				while (!operators.empty() && operators.top().Token.TokenType != TokenType::OpenBracket &&
-					   s_Presedence[token.TokenType] <= s_Presedence[operators.top().Token.TokenType])
+				while (!operators.empty() && !operators.top().IsOpenBracket &&
+					   s_Presedence[token.TokenType] <= operators.top().Presedence)
 				{
 					auto& top = operators.top();
 
-					expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
+					if (top.BinaryExpression != BinaryExpressionType::None)
+						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+					else
+						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
+
 					operators.pop();
 				}
 
 				if (token.TokenType == TokenType::DivOp)
-					operators.push({ token, VariableType::Float64 });
+					operators.push({ BinaryExpressionType::Div, UnaryExpressionType::None, VariableType::Float64, false, s_Presedence.at(token.TokenType)});
 				else 
-					operators.push({ token, currentExpectedType });
+					operators.push({ GetBinaryExpressionTypeFromTokenType(token.TokenType), UnaryExpressionType::None, currentExpectedType, false, s_Presedence.at(token.TokenType)});
 
 				if (addBracket)
 				{
-					operators.push({ openBracket, currentExpectedType });
-					//we now need to insert the close bracket at the end of this expression
+					operators.push({ BinaryExpressionType::None, UnaryExpressionType::None , currentExpectedType, true, 0 });
 
 					size_t copy = start;
 
-					while (copy < tokens.size() && tokens[copy].TokenType != TokenType::EndLine && tokens[copy].TokenType != TokenType::EndIndentation && tokens[copy].TokenType != TokenType::Comma)
+					while (copy < tokens.size() && !s_Terminators.contains(tokens[copy].TokenType))
 					{
 						copy++;
 					}
@@ -667,7 +699,12 @@ namespace clear {
 		while (!operators.empty())
 		{
 			auto& top = operators.top();
-			expression->PushChild(Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(top.Token.TokenType), top.ExpectedType));
+
+			if (top.BinaryExpression != BinaryExpressionType::None)
+				expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+			else
+				expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
+			
 			operators.pop();
 		}
 
@@ -843,5 +880,23 @@ namespace clear {
 		}
 
 		return type;
+	}
+	
+	
+	bool AST::_IsUnary(const Token& token)
+	{
+		switch (token.TokenType)
+		{
+			case TokenType::Increment:
+			case TokenType::Decrement:
+			case TokenType::BitwiseNot:
+			case TokenType::DereferenceOp:
+			case TokenType::AddressOp:
+				return true;
+			default:
+				break;
+		}
+
+		return false;
 	}
 }

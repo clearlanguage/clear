@@ -105,9 +105,11 @@ namespace clear {
 	{
 		switch (type)
 		{
-			case TokenType::Increment:  return UnaryExpressionType::Increment;
-			case TokenType::Decrement:  return UnaryExpressionType::Decrement;
-			case TokenType::BitwiseNot: return UnaryExpressionType::BitwiseNot;
+			case TokenType::Increment:      return UnaryExpressionType::Increment;
+			case TokenType::Decrement:      return UnaryExpressionType::Decrement;
+			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
+			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
+			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
 			//case TokenType::Negate:   return UnaryExpressionType::Negation; 
 
 			default:

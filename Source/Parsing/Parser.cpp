@@ -334,7 +334,6 @@ namespace clear
 
 
 		return ret;
-
 	}
 
 

@@ -84,49 +84,46 @@ namespace clear {
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
-		/*if (!m_ExpectedType)
-		{
-			auto& str = m_ExpectedType.GetUserDefinedType();
-
-			std::vector<std::string> words = Split(str, '.');
-
-			VariableMetaData& metaData = Value::GetVariableMetaData(words[0]);
-			AbstractType type = metaData.Type;
-
-			for (size_t i = 1; i < words.size(); i++)
-			{
-				StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
-				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
-
-				size_t indexToNextType = structMetaData.Indices[words[i]];
-				type = structMetaData.Types[indexToNextType];
-			}
-
-			m_ExpectedType = type;
-		}*/
-
 		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType();
 
 		if (m_Expression == BinaryExpressionType::Assignment)
 		{
+			llvm::AllocaInst* tmp = nullptr;
+
+			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+			{
+				RHSRawValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+			}
+
 			if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
 				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
 
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
 		}
 
-		if ((LHSRawValue->getType()->isPointerTy() || RHSRawValue->getType()->isPointerTy()) && m_ExpectedType.IsPointer())
+		llvm::AllocaInst* tmp1 = nullptr;
+		llvm::AllocaInst* tmp2 = nullptr;
+
+		if ((tmp1 = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue)))
+		{
+			LHSRawValue = builder.CreateLoad(tmp1->getAllocatedType(), tmp1, "loaded_value");
+		}
+
+		if ((tmp2 = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+		{
+			RHSRawValue = builder.CreateLoad(tmp2->getAllocatedType(), tmp2, "loaded_value");
+		}
+
+		if (m_ExpectedType.IsPointer())
 		{
 			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
 			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
-
 
 			CLEAR_VERIFY(integer->getType()->isIntegerTy(), "must be integral");
 			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
 
 			if (m_Expression == BinaryExpressionType::Sub)
 				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1").first);
-
 
 			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
 		}
@@ -289,25 +286,7 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			if (m_PointerFlag && m_Dereference)
-			{
-				llvm::LoadInst* load = builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
-				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
-			}
-
-			if (m_Dereference)
-			{
-				llvm::Value* loadedPointer = builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_pointer");
-				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), loadedPointer, "dereferenced_pointer");
-			}
-			
-			if (!m_Dereference && !m_PointerFlag)
-			{
-				return builder.CreateLoad(metaData.Type.GetLLVMType(), value, "loaded_value");
-			}
-
-			CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
-
+			m_GeneratedType = metaData.Type;
 			return value; 
 		}
 
@@ -338,24 +317,7 @@ namespace clear {
 		}
 
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
-
-		if (m_PointerFlag && m_Dereference)
-		{
-			return builder.CreateLoad(typeToGet.GetLLVMType(), gepPtr, "struct_element_loaded_pointer");
-		}
-
-		if (m_Dereference)
-		{
-			gepPtr = builder.CreateLoad(typeToGet.GetLLVMType(), gepPtr, "struct_element_load");
-			return builder.CreateLoad(typeToGet.GetLLVMUnderlying(), gepPtr, "struct_element_dereferenced_value");
-		}
-
-		if (!m_Dereference && !m_PointerFlag)
-		{
-			return builder.CreateLoad(typeToGet.GetLLVMUnderlying(), gepPtr, "struct_element_loaded_value");
-		}
-
-		CLEAR_VERIFY(m_PointerFlag && !m_Dereference, "cannot dereference a non pointer type");
+		m_GeneratedType = typeToGet;
 
 		return gepPtr; 
 	}
@@ -532,6 +494,14 @@ namespace clear {
 		if (GetChildren().size() > 0)
 		{
 			llvm::Value* returnValue = GetChildren()[0]->Codegen();
+
+			llvm::AllocaInst* tmp = nullptr;
+
+			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(returnValue)))
+			{
+				returnValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+			}
+
 			if (returnValue->getType() != m_ExpectedReturnType.GetLLVMType())
 				returnValue = Value::CastValue(returnValue, m_ExpectedReturnType);
 			
@@ -558,10 +528,21 @@ namespace clear {
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
 				child->GetType() == ASTNodeType::VariableExpression || 
-				child->GetType() == ASTNodeType::FunctionCall || 
-				child->GetType() == ASTNodeType::UnaryExpression)
+				child->GetType() == ASTNodeType::FunctionCall)
 			{
 				stack.push(child);
+				continue;
+			}
+
+			if (child->GetType() == ASTNodeType::UnaryExpression)
+			{
+				Ref<ASTUnaryExpression> unaryExpression = Ref<ASTUnaryExpression>::DynamicCast<ASTUnaryExpression>(child);
+
+				unaryExpression->PushChild(stack.top());
+				stack.pop();
+
+				stack.push(unaryExpression);
+
 				continue;
 			}
 
@@ -611,6 +592,12 @@ namespace clear {
 		for (auto& child : children)
 		{
 			llvm::Value* gen = child->Codegen();
+
+			llvm::AllocaInst* tmp = nullptr;
+			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(gen)))
+			{
+				gen = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+			}
 		
 			if (k < expected.size() && !expected[k].IsVariadic && gen->getType() != expected[k].Type.GetLLVMType())
 			{
@@ -843,6 +830,40 @@ namespace clear {
 					return builder.CreateFNeg(operand);
 				
 				return builder.CreateNeg(operand);
+			}
+			case UnaryExpressionType::Dereference:
+			{
+				llvm::PointerType* ptrType = llvm::dyn_cast<llvm::PointerType>(operand->getType());
+				CLEAR_VERIFY(ptrType, "Dereference operand must be a pointer");
+
+				CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::BinaryExpression || 
+							 children[0]->GetType() == ASTNodeType::VariableExpression, "invalid child");
+
+				if (children[0]->GetType() == ASTNodeType::BinaryExpression)
+				{
+					Ref<ASTBinaryExpression> expression = Ref<ASTBinaryExpression>::DynamicCast<ASTBinaryExpression>(children[0]);
+					llvm::Value* value = operand;
+					
+					if (!llvm::isa<llvm::GetElementPtrInst>(operand))
+						value = builder.CreateLoad(expression->GetExpectedType().GetLLVMType(), operand, "loaded_pointer");
+
+					return builder.CreateLoad(expression->GetExpectedType().GetLLVMUnderlying(), value, "dereferenced_value");
+				}
+
+				Ref<ASTVariableExpression> expression = Ref<ASTVariableExpression>::DynamicCast<ASTVariableExpression>(children[0]);
+				llvm::Value* value = operand;
+
+				if (!llvm::isa<llvm::GetElementPtrInst>(operand))
+					value = builder.CreateLoad(expression->GetGeneratedType().GetLLVMType(), operand, "loaded_pointer");
+
+				return builder.CreateLoad(expression->GetGeneratedType().GetLLVMUnderlying(), value, "dereferenced_value");
+			}
+			case UnaryExpressionType::Reference:
+			{
+				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
+				CLEAR_VERIFY(inst, "must be an alloca");
+
+				return inst;
 			}
 			case UnaryExpressionType::None:
 			default:

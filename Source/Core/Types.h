@@ -34,7 +34,7 @@ namespace clear {
 	{
 		None = 0, BitwiseNot,	Increment, 
 		Decrement, Negation, PostIncrement, 
-		PostDecrement
+		PostDecrement, Reference, Dereference
 	};
 	
 	struct StructMetaData;
