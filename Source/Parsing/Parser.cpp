@@ -1277,8 +1277,8 @@ namespace clear
 				data = '\a';
 			}
 			else {
-				std::string message = "Unknown char escape char \"\\"+ Str(current)+"\"";
-				_VerifyCondition(false,13,m_TokenIndexStart+1);
+				std::string message = "\"\\"+ Str(current)+"\"";
+				_VerifyCondition(false,13,m_TokenIndexStart+1,message);
 
 			}
 
