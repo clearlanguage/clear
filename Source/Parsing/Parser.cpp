@@ -158,7 +158,7 @@ namespace clear
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
 			_PushToken(TokenType::SubOp,"-");
 		}else {
 			_PushToken(TokenType::Negation,"-");
@@ -191,7 +191,7 @@ namespace clear
 			m_ProgramInfo.Tokens.pop_back();
 		}
 
-		_PushToken(TokenType::EndFunctionParameters, ")"); //TODO: change me to end function args
+		_PushToken(TokenType::EndFunctionArguments, ")"); //TODO: change me to end function args
 		current = _GetNextChar();
 		_SkipSpaces();
 		if (current != ')')
@@ -1009,7 +1009,7 @@ namespace clear
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket|| tok == TokenType::EndFunctionArguments) {
 			_PushToken(TokenType::MulOp,"*");
 		}else {
 			_PushToken(TokenType::DereferenceOp,"*");
@@ -1022,7 +1022,7 @@ namespace clear
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket) {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
 			_PushToken(TokenType::BitwiseAnd,"&");
 		}else {
 			_PushToken(TokenType::AddressOp,"&");

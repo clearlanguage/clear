@@ -180,6 +180,7 @@ namespace clear {
             case TokenType::Power: return "Power";
             case TokenType::Continue:   return "Continue";
             case TokenType::Break:   return "Break";
+            case TokenType::EndFunctionArguments: return "EndFunctionArguments";
 
             default:
                 break;
