@@ -1140,7 +1140,7 @@ namespace clear
 		}
 
 		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-		_PushToken(TokenType::RValueNumber,std::to_string(pow(std::stod(x),std::stod(m_CurrentString))));
+		_PushToken(TokenType::RValueNumber,std::to_string(std::stod(x)*std::pow(10.0,std::stod(m_CurrentString))));
 		m_CurrentString.clear();
 	}
 
