@@ -15,8 +15,20 @@ namespace clear {
 		//possibly add command line arguments in the future
 		std::vector<Paramater> Paramaters;
 
+
+		//TODO: make mandatory for user to define
 		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, Paramaters);
 		m_Stack.push({ m_Root, {} });
+
+		// variableReference, variableReference = someExpression, someExpression
+
+		struct ReferenceToAssign
+		{
+			Ref<ASTVariableExpression> Expression;
+			AbstractType Type;
+		};
+
+		std::queue<ReferenceToAssign> variableReferencesToAssign;
 
 		for (size_t i = 0; i < tokens.size(); i++)
 		{
@@ -266,6 +278,27 @@ namespace clear {
 				}
 				case TokenType::Assignment:
 				{
+					if (!variableReferencesToAssign.empty())
+					{
+						while (!variableReferencesToAssign.empty())
+						{
+							auto& ref = variableReferencesToAssign.front();
+
+							Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, ref.Type);
+							binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, ref.Type));
+							binaryExpression->PushChild(ref.Expression);
+
+							currentRoot.Node->PushChild(binaryExpression);
+
+							variableReferencesToAssign.pop();
+
+							if (tokens[i].TokenType == TokenType::Comma)
+								i++;
+						}
+
+						continue;
+					}
+
 					auto& previous = tokens[i - 1];
 					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
@@ -273,6 +306,7 @@ namespace clear {
 					chain.push_back(previous.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
+					i -= 2;
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
@@ -382,10 +416,34 @@ namespace clear {
 				}
 				case TokenType::VariableReference:
 				{
-					if (tokens[i + 1].TokenType == TokenType::Assignment)
+					if (tokens[i + 1].TokenType == TokenType::FunctionCall)
 						continue;
 
-					currentRoot.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+					UnaryExpressionType unaryType = UnaryExpressionType::None;
+
+					if ((unaryType = GetPostUnaryExpressionTypeFromTokenType(tokens[i + 1].TokenType)) != UnaryExpressionType::None)
+					{
+						currentRoot.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+						continue;
+					}
+
+					bool  shouldDereference = tokens[i - 1].TokenType == TokenType::DereferenceOp;
+
+					std::list<std::string> chain = _RetrieveChain(tokens, i);
+					chain.push_back(currentToken.Data);
+					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
+
+					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+
+					variableReferencesToAssign.push({ Ref<ASTVariableExpression>::Create(chain, true, shouldDereference), type });
+					
+					CLEAR_VERIFY(tokens[i + 1].TokenType == TokenType::Comma || tokens[i + 1].TokenType == TokenType::Assignment, "cannot have variable reference here");
+
+					break;
+				}
+				case TokenType::EndLine:
+				{
+					CLEAR_VERIFY(variableReferencesToAssign.empty(), "deal with me later");
 					break;
 				}
 				default:
@@ -687,8 +745,6 @@ namespace clear {
 
 	AbstractType AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
 	{
-		current -= 2;
-
 		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
 
 		if (isPointer)
@@ -697,6 +753,7 @@ namespace clear {
 		while (current > 0 && 
 			   tokens[current].TokenType != TokenType::EndLine && 
 			   tokens[current].TokenType != TokenType::EndIndentation &&
+			   tokens[current].TokenType != TokenType::Comma &&
 			   (GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
 			   tokens[current].TokenType == TokenType::DotOp))
@@ -707,9 +764,9 @@ namespace clear {
 		if (tokens[current].TokenType == TokenType::DereferenceOp)
 			current++;
 
-		if (tokens[current].TokenType == TokenType::EndLine)
+		if (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
 		{
-			while (tokens[current].TokenType == TokenType::EndLine)
+			while (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
 				current++;
 
 			bool shouldDerference = false;
