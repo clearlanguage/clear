@@ -47,7 +47,7 @@ namespace clear {
 
 					std::vector<Paramater> paramaters;
 
-					while (i < tokens.size() && tokens[i].TokenType != TokenType::EndFunctionParameters)
+					while (i < tokens.size() && tokens[i].TokenType != TokenType::EndFunctionArguments)
 					{
 						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
@@ -62,9 +62,6 @@ namespace clear {
 
 						if (tokens[i].TokenType == TokenType::Comma)
 							i++;
-
-						if (tokens[i].TokenType == TokenType::EndFunctionParameters)
-							break;
 					}
 
 					AbstractType returnType;
@@ -526,7 +523,7 @@ namespace clear {
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
 		bool addBracket = false;
 		
-		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionParameters};
+		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionArguments};
 			
 		while (start < tokens.size() && 
 			  !s_Terminators.contains(tokens[start].TokenType))
@@ -642,7 +639,7 @@ namespace clear {
 				{
 					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
 				}
-
+				llvm::Twine;
 				operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, currentExpectedType, true, 0 });
 			}
 			else if (token.TokenType == TokenType::CloseBracket)
@@ -743,7 +740,7 @@ namespace clear {
 		while (i < tokens.size() && 
 			  tokens[i].TokenType != TokenType::CloseBracket && 
 			  tokens[i].TokenType != TokenType::EndIndentation && 
-			  tokens[i].TokenType != TokenType::EndFunctionParameters)
+			  tokens[i].TokenType != TokenType::EndFunctionArguments)
 		{
 			if (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
 			{
