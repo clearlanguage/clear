@@ -585,12 +585,14 @@ namespace clear {
 				if (pointerFlag)
 				{
 					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
-					addBracket = true;
+					if(tokens[start - 1].TokenType != TokenType::OpenBracket)
+						addBracket = true;
 				}
 				else if (abstractType.IsPointer())
 				{
 					currentExpectedType = abstractType;
-					addBracket = true;
+					if (tokens[start - 1].TokenType != TokenType::OpenBracket)
+						addBracket = true;
 				}
 				else 
 				{
@@ -600,10 +602,11 @@ namespace clear {
 			}
 			else if (token.TokenType == TokenType::RValueNumber || 
 					 token.TokenType == TokenType::RValueString || 
-					 token.TokenType == TokenType::BooleanData)
+					 token.TokenType == TokenType::BooleanData  ||
+					 token.TokenType == TokenType::Null)
 			{		
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
-				
+			
 				if (unaryType != UnaryExpressionType::None)
 				{
 					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment &&

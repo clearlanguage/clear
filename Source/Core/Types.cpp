@@ -262,6 +262,10 @@ namespace clear {
 		{
 			m_Type = VariableType::Bool;
 		}
+		else if (value == "null")
+		{
+			m_Type = VariableType::Pointer;
+		}
 		else 
 		{
 			m_Type = VariableType::String;

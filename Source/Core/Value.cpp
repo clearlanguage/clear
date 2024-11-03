@@ -27,6 +27,7 @@ namespace clear {
 			case VariableType::Float64: return { llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data)), nullptr };
 			case VariableType::Bool:	return { llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr };
 			case VariableType::String:	return Value::GetConstantString(data);
+			case VariableType::Pointer: return { llvm::ConstantPointerNull::get((llvm::PointerType*)type.GetLLVMType()), nullptr };
 			case VariableType::None:
 			default:
 				return { nullptr, nullptr };

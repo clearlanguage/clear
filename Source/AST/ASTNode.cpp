@@ -698,7 +698,15 @@ namespace clear {
 
 		Ref<ASTNodeBase> condition = children[branches[0].ExpressionIdx];
 
-		builder.CreateCondBr(condition->Codegen(), branches[0].Block, branches.size() > 1 ? branches[1].Block : elseBlock);
+		llvm::Value* conditionVal = condition->Codegen();
+
+		if (conditionVal->getType()->isIntegerTy())
+			conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
+		else if (conditionVal->getType()->isFloatingPointTy())
+			conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
+
+
+		builder.CreateCondBr(conditionVal, branches[0].Block, branches.size() > 1 ? branches[1].Block : elseBlock);
 		builder.SetInsertPoint(branches[0].Block);
 
 		size_t lastBranchIndex = 0;
@@ -713,7 +721,14 @@ namespace clear {
 
 			if (!builder.GetInsertBlock()->getTerminator())
 			{
-				llvm::Value* conditionVal = condition->Codegen();
+				conditionVal = condition->Codegen();
+
+				if (conditionVal->getType()->isIntegerTy())
+					conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
+				else if (conditionVal->getType()->isFloatingPointTy())
+					conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
+
+
 				builder.CreateCondBr(conditionVal, branches[i].Block, nextBranch);
 			}
 
@@ -727,7 +742,13 @@ namespace clear {
 
 		if (!builder.GetInsertBlock()->getTerminator())
 		{
-			llvm::Value* conditionVal = children[branches.back().ExpressionIdx]->Codegen();
+			conditionVal = children[branches.back().ExpressionIdx]->Codegen();
+
+			if (conditionVal->getType()->isIntegerTy())
+				conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
+			else if (conditionVal->getType()->isFloatingPointTy())
+				conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
+
 			builder.CreateCondBr(conditionVal, branches.back().Block, elseBlock);
 		}
 
@@ -767,6 +788,11 @@ namespace clear {
 		builder.SetInsertPoint(conditionBlock);
 
 		llvm::Value* condition = children[0]->Codegen();
+		if (condition->getType()->isIntegerTy())
+			condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
+		else if (condition->getType()->isFloatingPointTy())
+			condition = builder.CreateFCmpONE(condition, llvm::ConstantFP::get(condition->getType(), 0.0));
+
 		builder.CreateCondBr(condition, body, end);
 
 		function->insert(function->end(), body);
