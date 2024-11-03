@@ -187,7 +187,7 @@ namespace clear {
 
 		llvm::Type* toType = to;
 
-		if (from == toType)
+		if (from == to)
 			return value;
 
 		if (from->isIntegerTy() && to->isIntegerTy())

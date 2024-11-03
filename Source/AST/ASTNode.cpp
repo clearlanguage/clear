@@ -1032,7 +1032,7 @@ namespace clear {
 
 				if (childValue->getType() != elementType)
 				{
-					childValue = Value::CastValue(childValue, childValue->getType(), elementType, expression->GetGeneratedType().IsSigned());
+					childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetGeneratedType().IsSigned());
 				}
 
 				builder.CreateStore(childValue, gep);
