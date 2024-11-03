@@ -38,7 +38,8 @@ namespace clear {
         {";",   {.NextState = ParserState::Default,.TokenToPush  =TokenType::EndLine}},
         {"<-",  {.NextState = ParserState::Default, .TokenToPush =TokenType::LeftArrow}},
         { "++", {.NextState = ParserState::Default, .TokenToPush = TokenType::Increment} },
-        { "--", {.NextState = ParserState::Default, .TokenToPush = TokenType::Decrement} }
+        { "--", {.NextState = ParserState::Default, .TokenToPush = TokenType::Decrement}},
+        {"^^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::Power}},
 
     };
 
@@ -173,6 +174,7 @@ namespace clear {
             case TokenType::Increment:  return "Increment";
             case TokenType::Decrement:  return "Decrement";
             case TokenType::Negation: return "Negation";
+            case TokenType::Power: return "Power";
             default:
                 break;
         }
