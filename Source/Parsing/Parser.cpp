@@ -29,7 +29,7 @@ namespace clear
 		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
 		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
 		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
-
+		m_StateMap[ParserState::Declaration] = [this](){_DeclarationState();};
 		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
 
 
@@ -78,11 +78,26 @@ namespace clear
 	// 	return m_CurrentTokenIndex == m_Buffer.length();
 	// }
 
+	void Parser::_ResetSecondState() {
+		if (m_SecondState == ParserSecondaryState::None) {
+			return;
+		}
+
+		if (m_SecondState == ParserSecondaryState::Declaration) {
+			// auto tok = _GetLastToken().TokenType;
+			// _VerifyCondition(tok== TokenType::EndFunctionArguments,40);
+
+		}
+		m_SecondState = ParserSecondaryState::None;
+	}
+
+
 	void Parser::_EndLine()
 	{
 		if ( _GetLastToken().TokenType != TokenType::EndLine) {
 			_PushToken({ .TokenType = TokenType::EndLine });
 		}
+		_ResetSecondState();
 		m_CurrentLine++;
 	}
 
@@ -165,6 +180,12 @@ namespace clear
 		}
 		m_CurrentState = ParserState::RValue;
 	}
+
+	void Parser::_DeclarationState() {
+		m_SecondState = ParserSecondaryState::Declaration;
+		m_CurrentState = ParserState::Default;
+	}
+
 
 
 	void Parser::_FunctionArgumentState() {
@@ -499,8 +520,8 @@ namespace clear
 	}
 	void Parser::_ArrowState()
 	{
-		if (m_ProgramInfo.Tokens.size() > 1 &&
-			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionParameters)
+		if ((m_ProgramInfo.Tokens.size() > 1 &&
+			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionParameters) || m_SecondState == ParserSecondaryState::Declaration)
 		{
 			m_CurrentState = ParserState::FunctionTypeState;
 			return;
@@ -518,7 +539,7 @@ namespace clear
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
-		while (current != '\n' && current != '\0' && current != ':')
+		while (current != '\n' && current != '\0' && current != ':' && current!=';')
 		{
 			m_CurrentString += current;
 			current = _GetNextChar();

@@ -20,6 +20,11 @@ namespace clear {
         ElseIf,StartArray, EndArray, While, Increment, Decrement,Negation,Power, Break, Continue,EndFunctionArguments
     };
 
+    enum class ParserSecondaryState {
+        None = 0,
+        Declaration
+    };
+
     enum class ParserState
     {
         Default = 0,
@@ -38,7 +43,8 @@ namespace clear {
         IndexOperator,
         AsterisksOperator,
         AmpersandOperator,
-        MinusOperator
+        MinusOperator,
+        Declaration
     };
 
 

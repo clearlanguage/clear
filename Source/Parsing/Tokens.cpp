@@ -66,7 +66,7 @@ namespace clear {
         {"struct",    {.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
         {"return",    {.NextState = ParserState::Default, .TokenToPush = TokenType::Return}},
         {"char",      {.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
-        {"declare",   {.NextState = ParserState::Default, .TokenToPush = TokenType::Declaration}},
+        {"declare",   {.NextState = ParserState::Declaration, .TokenToPush = TokenType::Declaration}},
         {"defer",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
         {"else",      {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
         {"elseif",    {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}},

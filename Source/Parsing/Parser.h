@@ -74,6 +74,7 @@ namespace clear
 		void _IndexOperatorState();
 		void _AsterisksState();
 		void _MinusOperator();
+		void _DeclarationState();
 
 
 		Token _GetLastToken();
@@ -149,6 +150,7 @@ namespace clear
 		bool _IsLineClosed();
 		bool _IsEndOfLine();
 		char _SkipSpaces();
+		void _ResetSecondState();
 
 		std::string _GetCurrentErrorContext(std::string ErrorRef);
 
@@ -171,6 +173,7 @@ namespace clear
 		StateMapType m_StateMap;
 
 		ParserState m_CurrentState = ParserState::Default;
+		ParserSecondaryState m_SecondState = ParserSecondaryState::None;
 
 		std::string m_Buffer;
 		std::string m_CurrentString;
