@@ -7,21 +7,21 @@ namespace clear {
 
 	struct TextColor
 	{
-		inline static const char* Reset = "\033[0m";
-		inline static const char* Black = "\033[0;30m";
-		inline static const char* Red = "\033[0;31m";
-		inline static const char* Green = "\033[0;32m";
-		inline static const char* Yellow = "\033[0;33m";
-		inline static const char* Blue = "\033[0;34m";
-		inline static const char* Magenta = "\033[0;35m";
-		inline static const char* Cyan = "\033[0;36m";
-		inline static const char* White = "\033[0;37m";
+		inline static std::string_view Reset = "\033[0m";
+		inline static std::string_view Black = "\033[0;30m";
+		inline static std::string_view Red = "\033[0;31m";
+		inline static std::string_view Green = "\033[0;32m";
+		inline static std::string_view Yellow = "\033[0;33m";
+		inline static std::string_view Blue = "\033[0;34m";
+		inline static std::string_view Magenta = "\033[0;35m";
+		inline static std::string_view Cyan = "\033[0;36m";
+		inline static std::string_view White = "\033[0;37m";
 	};
 
 	template<typename ...Args>
-	void Log(const char* Color, Args&&... args)
+	void Log(std::string_view color, Args&&... args)
 	{
-		std::cout << Color;
+		std::cout << color;
 		(std::cout << ... << std::forward<Args>(args));
 		std::cout << TextColor::Reset << std::endl;
 	}

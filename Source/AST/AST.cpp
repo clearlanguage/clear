@@ -861,9 +861,6 @@ namespace clear {
 	{
 		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
 
-		if (isPointer)
-			current += 1;
-
 		while (current > 0 && 
 			   tokens[current].TokenType != TokenType::EndLine && 
 			   tokens[current].TokenType != TokenType::EndIndentation &&
@@ -875,6 +872,10 @@ namespace clear {
 		{
 			current--;
 		}
+
+		if (isPointer)
+			current += 1;
+
 
 		if (tokens[current].TokenType == TokenType::DereferenceOp || tokens[current].TokenType == TokenType::StaticArrayDef)
 			current++;
