@@ -308,7 +308,6 @@ namespace clear {
 						AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 						i += 3;
 
-						i++;
 						Ref<ASTArrayInitializer> initializer = Ref<ASTArrayInitializer>::Create();
 						initializer->PushChild(Ref<ASTVariableExpression>::Create(chain));
 
@@ -546,7 +545,7 @@ namespace clear {
 		Token closeBracket{ .TokenType = TokenType::CloseBracket };
 		bool addBracket = false;
 		
-		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionArguments};
+		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionArguments, TokenType::EndArray};
 			
 		while (start < tokens.size() && 
 			  !s_Terminators.contains(tokens[start].TokenType))
@@ -779,17 +778,49 @@ namespace clear {
 	}
 	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
 	{
+		std::vector<size_t> currentIndex = { 0 };
+
+		size_t innerIndex = 0;
+
+		i++;
+
 		while (tokens[i].TokenType != TokenType::EndLine)
 		{
-			while (tokens[i].TokenType == TokenType::StartArray ||
-				   tokens[i].TokenType == TokenType::Comma ||
-				   tokens[i].TokenType == TokenType::EndArray)
+			while (tokens[i].TokenType == TokenType::StartArray || 
+				   tokens[i].TokenType == TokenType::EndArray   || 
+				   tokens[i].TokenType == TokenType::Comma)
 			{
+
+				if (tokens[i].TokenType == TokenType::StartArray)
+				{
+					currentIndex.push_back(0);
+					innerIndex = 0;
+				}
+				else if (tokens[i].TokenType == TokenType::EndArray)
+				{
+					if (!currentIndex.empty())
+					{
+						currentIndex.pop_back();
+						
+						if(!currentIndex.empty())
+							currentIndex.back()++;
+					}
+				}
+				else if (tokens[i].TokenType == TokenType::Comma)
+				{
+					innerIndex++;
+				}
+				
 				i++;
 			}
 
-			if(tokens[i].TokenType != TokenType::EndLine)
+			if (tokens[i].TokenType != TokenType::EndLine)
+			{
 				initializer->PushChild(_CreateExpression(tokens, root, i, expected));
+
+				currentIndex.back() = innerIndex;
+				initializer->PushElementIndex(currentIndex);
+			}
 		}
 	}
 	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)
@@ -831,7 +862,7 @@ namespace clear {
 		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
 
 		if (isPointer)
-			current -= 1;
+			current += 1;
 
 		while (current > 0 && 
 			   tokens[current].TokenType != TokenType::EndLine && 

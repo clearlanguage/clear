@@ -286,9 +286,12 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ArrayInitializer; }
 		virtual llvm::Value* Codegen() override;
 
+		void PushElementIndex(const std::vector<size_t>& elementIndex);
+
 	private:
-		std::vector<size_t> _GetDimensions(llvm::ArrayType* type);
 		llvm::Type* _GetElementType(llvm::ArrayType* type);
 
+	private:
+		std::vector<std::vector<llvm::Value*>> m_Indices;
 	};
 }

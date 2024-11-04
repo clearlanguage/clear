@@ -120,17 +120,6 @@ namespace clear {
 
             return Ref<Type>(object, refCount);
         }
-        
-        template<typename To, typename From>
-        static Ref<To> DynamicCast(const Ref<From>& other)
-        {
-            const auto ptr = dynamic_cast<To*>(other.Get());
-
-            if (ptr)
-                return Ref<To>(ptr, other.GetRefCount());
-
-            return {};
-        }
 
     private:
         Type* m_Ptr = nullptr;

@@ -98,7 +98,7 @@ namespace clear {
 		{
 			llvm::AllocaInst* tmp = nullptr;
 
-			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+			if (!m_ExpectedType.IsPointer() && (tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
 			{
 				RHSRawValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
 			}
@@ -588,7 +588,7 @@ namespace clear {
 
 			if (child->GetType() == ASTNodeType::UnaryExpression)
 			{
-				Ref<ASTUnaryExpression> unaryExpression = Ref<ASTUnaryExpression>::DynamicCast<ASTUnaryExpression>(child);
+				Ref<ASTUnaryExpression> unaryExpression = DynamicCast<ASTUnaryExpression>(child);
 
 				unaryExpression->PushChild(stack.top());
 				stack.pop();
@@ -922,7 +922,7 @@ namespace clear {
 
 				if (children[0]->GetType() == ASTNodeType::BinaryExpression)
 				{
-					Ref<ASTBinaryExpression> expression = Ref<ASTBinaryExpression>::DynamicCast<ASTBinaryExpression>(children[0]);
+					Ref<ASTBinaryExpression> expression = DynamicCast<ASTBinaryExpression>(children[0]);
 					llvm::Value* value = operand;
 					
 					if (!llvm::isa<llvm::GetElementPtrInst>(operand))
@@ -931,7 +931,7 @@ namespace clear {
 					return builder.CreateLoad(expression->GetExpectedType().GetLLVMUnderlying(), value, "dereferenced_value");
 				}
 
-				Ref<ASTVariableExpression> expression = Ref<ASTVariableExpression>::DynamicCast<ASTVariableExpression>(children[0]);
+				Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
 				llvm::Value* value = operand;
 
 				if (!llvm::isa<llvm::GetElementPtrInst>(operand))
@@ -998,77 +998,43 @@ namespace clear {
 
 		llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(type);
 
-		std::vector<size_t> dimensions = _GetDimensions(arrayType);
-		CLEAR_VERIFY(dimensions.size() > 0, "invalid dimensions");
-
 		llvm::Type* elementType = _GetElementType(arrayType);
 
-		size_t total = 1;
+		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(arrayType);
+		builder.CreateStore(zeroArray, allocaInstance);
 
-		for (size_t i : dimensions)
-			total *= i;
-
-		CLEAR_VERIFY(total > 0, "cannot have a 0 dimensional array");
-
-		size_t k = 1;
-
-		for (size_t i = 0; i < total; i++)
+		for (size_t i = 1; i < children.size(); i++)
 		{
-			std::vector<llvm::Value*> indices;
+			CLEAR_VERIFY(i - 1 < m_Indices.size(), "child doesn't have an index");
 
-			size_t currentIndex = i;
-			for (size_t dim : dimensions)
+			llvm::Value* childValue = children[i]->Codegen();
+			CLEAR_VERIFY(childValue, "value must be proper");
+
+			if (childValue->getType() != elementType)
 			{
-				indices.push_back(llvm::ConstantInt::get(llvm::IntegerType::getInt64Ty(context), currentIndex % dim));
-				currentIndex /= dim;
+				childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetGeneratedType().IsSigned());
 			}
 
-			llvm::Value* gep = builder.CreateGEP(arrayType, allocaInstance, indices, "array_indexing");
-			
-			if (k < children.size())
-			{
-				llvm::Value* childValue = children[k++]->Codegen();
-				CLEAR_VERIFY(childValue, "value must be proper");
-
-				if (childValue->getType() != elementType)
-				{
-					childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetGeneratedType().IsSigned());
-				}
-
-				builder.CreateStore(childValue, gep);
-			}
-			else
-			{
-				llvm::Value* defaultValue = llvm::Constant::getNullValue(elementType); 
-				builder.CreateStore(defaultValue, gep);
-			}
+			llvm::Value* gep = builder.CreateGEP(arrayType, allocaInstance, m_Indices[i - 1], "array_indexing");
+			builder.CreateStore(childValue, gep);
 		}
+		
 
 		return nullptr;
 	}
 
-	std::vector<size_t> ASTArrayInitializer::_GetDimensions(llvm::ArrayType* type)
+	void ASTArrayInitializer::PushElementIndex(const std::vector<size_t>& elementIndex)
 	{
-		std::vector<size_t> dimensions;
+		auto& context = *LLVM::Backend::GetContext();
 
-		while (type)
+		std::vector<llvm::Value*> indices;
+
+		for (size_t i : elementIndex)
 		{
-			dimensions.push_back(type->getNumElements());
-
-			llvm::Type* elementType = type->getElementType();
-			llvm::ArrayType* arrayType = nullptr;
-
-			if ((arrayType = llvm::dyn_cast<llvm::ArrayType>(elementType)))
-			{
-				type = arrayType;
-			}
-			else
-			{
-				break;
-			}
+			indices.push_back(llvm::ConstantInt::get(llvm::IntegerType::get(context, 64), i));
 		}
 
-		return dimensions;
+		m_Indices.push_back(indices);
 	}
 
 	llvm::Type* ASTArrayInitializer::_GetElementType(llvm::ArrayType* type)
