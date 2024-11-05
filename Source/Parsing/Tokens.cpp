@@ -181,6 +181,7 @@ namespace clear {
             case TokenType::Continue:   return "Continue";
             case TokenType::Break:   return "Break";
             case TokenType::EndFunctionArguments: return "EndFunctionArguments";
+            case TokenType::TypeIdentifier: return "TypeIdentifier";
 
             default:
                 break;

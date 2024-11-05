@@ -467,7 +467,7 @@ namespace clear
 
 			}
 			if ((((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) && _IsTypeDeclared(m_CurrentString))) {
-				_PushToken(TokenType::VariableReference, m_CurrentString);
+				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
 
