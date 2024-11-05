@@ -2,6 +2,7 @@
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
+#include "ExpressionBuilder.h"
 
 #include <iostream>
 
@@ -502,7 +503,10 @@ namespace clear {
 	}
 	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
 	{
-		Ref<ASTExpression> expression = Ref<ASTExpression>::Create(expected);
+		ExpressionBuilder builder(tokens, root, start);
+		return builder.Create(expected);
+
+		/*Ref<ASTExpression> expression = Ref<ASTExpression>::Create(expected);
 
 		static std::map<TokenType, int32_t> s_Precedence = {
 			{TokenType::Increment,		  4}, 
@@ -741,7 +745,7 @@ namespace clear {
 			operators.pop();
 		}
 
-		return expression;
+		return expression;*/
 	}
 	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
 	{
@@ -914,6 +918,8 @@ namespace clear {
 			return type;
 		}
 
+
+		current++;
 		return AbstractType::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
 	}
 

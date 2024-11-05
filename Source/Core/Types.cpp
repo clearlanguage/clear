@@ -110,7 +110,7 @@ namespace clear {
 			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
 			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
 			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
-			//case TokenType::Negate:   return UnaryExpressionType::Negation; 
+			case TokenType::Negation:       return UnaryExpressionType::Negation; 
 
 			default:
 				break;

@@ -816,8 +816,8 @@ namespace clear {
 		return nullptr;
 	}
 
-	ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type)
-		: m_Type(type)
+	ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type, const AbstractType& typeToCast)
+		: m_Type(type), m_TypeToCast(typeToCast)
 	{
 	}
 
@@ -945,6 +945,28 @@ namespace clear {
 				CLEAR_VERIFY(inst, "must be an alloca");
 
 				return inst;
+			}
+			case UnaryExpressionType::Cast:
+			{
+				AbstractType from;
+
+				if (children[0]->GetType() == ASTNodeType::BinaryExpression)
+				{
+					Ref<ASTBinaryExpression> expression = DynamicCast<ASTBinaryExpression>(children[0]);
+					from = expression->GetExpectedType();
+				}
+				else if (children[0]->GetType() == ASTNodeType::Expression)
+				{
+					Ref<ASTExpression> expression = DynamicCast<ASTExpression>(children[0]);
+					from = expression->GetExpectedType();
+				}
+				else if (children[0]->GetType() == ASTNodeType::VariableExpression)
+				{
+					Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
+					from = expression->GetGeneratedType();
+				}
+
+				return Value::CastValue(operand, m_TypeToCast, from);
 			}
 			case UnaryExpressionType::None:
 			default:

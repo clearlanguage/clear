@@ -107,13 +107,16 @@ namespace clear {
 	class ASTUnaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTUnaryExpression(UnaryExpressionType type);
+		ASTUnaryExpression(UnaryExpressionType type, const AbstractType& cast = VariableType::None);
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual llvm::Value* Codegen() override;
 
+		inline AbstractType& GetTypeToCast() { return m_TypeToCast; }
+
 	private:
 		UnaryExpressionType m_Type;
+		AbstractType m_TypeToCast;
 	};
 
 	class ASTFunctionDefinition : public ASTNodeBase
