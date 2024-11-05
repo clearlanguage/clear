@@ -42,7 +42,7 @@ namespace clear {
             {"Cannot use operator on a type","","operator on type"},
             {"Variable name cannot begin with a number","Change variable name so it does not begin with a number","Variable name begins with number"},
             {"Expected a comma between variables","Separate values using a comma","Missing variable separator"},
-            {"Unknown char escape char \"\\{}\"","Reference existing escape chars and update your code","Unknown char escape character"},
+            {R"(Unknown char escape char "\{}")","Reference existing escape chars and update your code","Unknown char escape character"},
             {"No data inside char literal","Put a character inside the char literal","Empty char literal"},
             {"expected ' after char ","Put a ' after the char","Unclosed char"},
             {"Did not expect commas in {}","Remove commas or fix brackets","Unexpected commas"},
@@ -69,7 +69,7 @@ namespace clear {
         {"Did not expect a space in the middle of struct name","Separate words using underscores not spaces","Invalid struct name"},
         {"Expected a value not another comma","Remove the extra comma","Unexpected commas"},//38
         {"The identifier {} is a reserved keyword and cannot be used as a variable name","Please choose a different name for your variable. Avoid using reserved keywords as identifiers.","Variable name is keyword"}, //39
-        {"error 40","f","f"}, //40
+        {"Expected return type after arrow ","if you do not want to specify a type remove the arrow or add a type after","missing function type"}, //40
         {"Invalid character encountered: {}","Please review your input for any typos or special characters that may be causing the issue.","syntax error"} //41
 
         };

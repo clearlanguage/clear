@@ -549,7 +549,14 @@ namespace clear
 		}
 
 		_PushToken({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
-
+		bool containsdata = false;
+		for (auto i : m_CurrentString) {
+			if (!std::isspace(i)) {
+				containsdata = true;
+				break;
+			}
+		}
+		_VerifyCondition(containsdata,40);
 		ProgramInfo info = _SubParse(m_CurrentString+" functype ");
 		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
 			info.Tokens.pop_back();
@@ -578,7 +585,7 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0'),3);
+		_VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
 		bool expectingEnd = false;
@@ -595,7 +602,7 @@ namespace clear
 			current = _GetNextChar();
 		}
 		_VerifyCondition(!(std::isdigit(m_CurrentString[0])),35);
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,m_CurrentString);
+		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 
 
@@ -847,6 +854,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
+		_VerifyCondition(current != '*',26);
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , 8);
 
