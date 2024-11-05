@@ -70,7 +70,7 @@ namespace clear {
         {"Expected a value not another comma","Remove the extra comma","Unexpected commas"},//38
         {"The identifier {} is a reserved keyword and cannot be used as a variable name","Please choose a different name for your variable. Avoid using reserved keywords as identifiers.","Variable name is keyword"}, //39
         {"error 40","f","f"}, //40
-        {"error 41 {}","d","s"} //41
+        {"Invalid character encountered: {}","Please review your input for any typos or special characters that may be causing the issue.","syntax error"} //41
 
         };
 }

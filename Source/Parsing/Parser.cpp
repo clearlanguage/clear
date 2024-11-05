@@ -426,14 +426,17 @@ namespace clear
 		if (current == '"' ) {
 			_VerifyCondition(m_CurrentString.empty(), 25,"string");
 			_ParseString();
+			return;
 		}
 		if (current == '{') {
 			_VerifyCondition(m_CurrentString.empty(), 25,"list");
 			_ParseList();
+			return;
 		}
 		if (current == '\'') {
 			_VerifyCondition(m_CurrentString.empty(), 25,"char");
 			_ParseChar();
+			return;
 		}
 
 		if (std::isdigit(current) && m_CurrentString.empty())
@@ -516,7 +519,7 @@ namespace clear
 			return;
 		}
 
-
+		_VerifyCondition(IsVarNameChar(current)||g_OperatorMap.contains(Str(current)) ||g_Openers.contains(current) || g_CloserToOpeners.contains(current) || std::isspace(current) ,41,Str(current));
 	}
 	void Parser::_ArrowState()
 	{
@@ -640,7 +643,7 @@ namespace clear
 		current = _SkipSpaces();
 		m_CurrentString.clear();
 		if (m_BracketStack.empty())
-			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1);
+			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 		if (current == '\n') {
 			return;
 		}
@@ -679,12 +682,14 @@ namespace clear
 		}else if (current == '\'') {
 			_ParseChar();
 		}
-		else //TODO: implement this later
+		else if(std::isalnum(current))
 		{
 			//could be a variable reference, class/struct reference etc...
 			m_CurrentString.push_back(current);
 			_Backtrack();
 			_ParseOther();
+		}else {
+			_VerifyCondition(false,41,Str(current));
 		}
 
 		m_CurrentState = ParserState::Default;
