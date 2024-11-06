@@ -116,6 +116,29 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
+		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
+		{
+			llvm::AllocaInst* tmp1 = nullptr;
+			llvm::AllocaInst* tmp2 = nullptr;
+
+			if ((tmp1 = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue)))
+			{
+				LHSRawValue = builder.CreateLoad(tmp1->getAllocatedType(), tmp1, "loaded_value");
+			}
+
+			if ((tmp2 = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+			{
+				RHSRawValue = builder.CreateLoad(tmp2->getAllocatedType(), tmp2, "loaded_value");
+			}
+
+			AbstractType intType = AbstractType(VariableType::Int64);
+
+			if (RHSRawValue->getType() != intType.GetLLVMType())
+				RHSRawValue = Value::CastValue(RHSRawValue, intType, children[0]->GetMetaData().Type);
+
+			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue);
+		}
+
 		llvm::AllocaInst* tmp1 = nullptr;
 		llvm::AllocaInst* tmp2 = nullptr;
 
@@ -169,11 +192,6 @@ namespace clear {
 		
 		if (_IsBitwiseExpression())
 			return _CreateBitwiseExpression(LHSRawValue, RHSRawValue, signedInteger);
-		
-		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
-		{
-
-		}
 
 		return _CreateLoadStoreExpression(LHS, RHSRawValue);
 	}
@@ -359,13 +377,13 @@ namespace clear {
 		return gepPtr; 
 	}
 
-	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
+	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, AbstractType type)
 	{
 		p_MetaData.Name = name;
 		p_MetaData.Type = type;
 	}
 
-	llvm::Value* ASTVariableDecleration::Codegen()
+	llvm::Value* ASTVariableDeclaration::Codegen()
 	{		
 		auto& builder = *LLVM::Backend::GetBuilder();
 
@@ -932,7 +950,7 @@ namespace clear {
 			case UnaryExpressionType::Reference:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst, "must be an alloca");
+ 				CLEAR_VERIFY(inst, "must be an alloca");
 
 				return inst;
 			}

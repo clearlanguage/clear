@@ -387,6 +387,8 @@ namespace clear {
 	{
 		switch (m_Type)
 		{
+			case VariableType::Array:
+			case VariableType::String:
 			case VariableType::Pointer:
 				return true;
 			default:

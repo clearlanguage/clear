@@ -181,7 +181,7 @@ namespace clear {
 						type = AbstractType(previous, TypeKind::Variable);
 					}
 
-					currentRoot.Node->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
+					currentRoot.Node->PushChild(Ref<ASTVariableDeclaration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
 		
 					AbstractType::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
 

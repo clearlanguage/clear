@@ -14,7 +14,10 @@ namespace clear {
 		Ref<ASTNodeBase>		  CreateVariableReferenceExpression();
 		Ref<ASTFunctionCall>	  CreateFunctionCall();
 		
+		std::vector<AbstractType> TypeAnalysis(size_t index);
+
 		std::list<std::string> GetVariableChain();
+		std::list<std::string> GetVariableChain(size_t index);
 
 		static AbstractType GetBaseTypeFromList(const std::list<std::string>& list);
 

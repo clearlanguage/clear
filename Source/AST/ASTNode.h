@@ -38,6 +38,7 @@ namespace clear {
 	{
 		std::string Name;
 		AbstractType Type;
+		bool ShouldDereference = true;
 	};
 
 	class ASTNodeBase
@@ -166,11 +167,11 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 	};
 
-	class ASTVariableDecleration : public ASTNodeBase
+	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDecleration(const std::string& name, AbstractType type);
-		virtual ~ASTVariableDecleration() = default;
+		ASTVariableDeclaration(const std::string& name, AbstractType type);
+		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
 

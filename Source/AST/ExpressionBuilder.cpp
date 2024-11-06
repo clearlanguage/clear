@@ -74,10 +74,14 @@ namespace clear {
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		std::stack<Operator> operators;
 
+		std::vector<AbstractType> types = TypeAnalysis(m_Index);
+
 		AbstractType currentExpectedType = expectedType;
 
-		if(expectedType)
-			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, 4 });
+		if(expectedType && expectedType.Get() != VariableType::None)
+			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, 0 });
+
+		size_t typeIndex = 0;
 
 		while (m_Index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[m_Index].TokenType))
 		{
@@ -102,10 +106,12 @@ namespace clear {
 			if (m_Tokens[m_Index].TokenType == TokenType::VariableReference)
 			{
 				expression->PushChild(CreateVariableReferenceExpression());
+				currentExpectedType = types[typeIndex++];
 			}
 			else if (s_RValues.contains(m_Tokens[m_Index].TokenType))
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(m_Tokens[m_Index].Data));
+				currentExpectedType = types[typeIndex++];
 			}
 			else if (m_Tokens[m_Index].TokenType == TokenType::OpenBracket)
 			{
@@ -140,6 +146,21 @@ namespace clear {
 						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression, top.ExpectedType));
 
 					operators.pop();
+				}
+
+				if (currentExpectedType.IsPointer())
+				{
+					if (m_Tokens[m_Index].TokenType == TokenType::AddOp)
+					{
+						operators.push({ BinaryExpressionType::PositivePointerArithmetic, UnaryExpressionType::None, currentExpectedType, false, 1 });
+					}
+					else if (m_Tokens[m_Index].TokenType == TokenType::SubOp)
+					{
+						operators.push({ BinaryExpressionType::NegatedPointerArithmetic, UnaryExpressionType::None, currentExpectedType, false, 1 });
+					}
+
+					m_Index++;
+					continue;
 				}
 
 				if (m_Tokens[m_Index].TokenType == TokenType::DivOp)
@@ -188,7 +209,7 @@ namespace clear {
 			m_Index = change ? tempIndex : m_Index + 1;
 		}
 
-		while (!operators.empty() && !operators.top().IsOpenBracket)
+		while (!operators.empty())
 		{
 			auto& top = operators.top();
 
@@ -251,6 +272,44 @@ namespace clear {
 		return functionCall;
 	}
 
+	std::vector<AbstractType> ExpressionBuilder::TypeAnalysis(size_t index)
+	{
+		std::vector<AbstractType> types;
+
+		bool pointer = false;
+
+		while (index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[index].TokenType))
+		{
+			UnaryExpressionType unaryType = GetUnaryExpressionTypeFromTokenType(m_Tokens[index].TokenType);
+			
+			if(unaryType == UnaryExpressionType::Reference)
+			{
+				pointer = true;
+			}
+
+			if (m_Tokens[index].TokenType == TokenType::VariableReference)
+			{
+				std::list<std::string> variableChain = GetVariableChain(index);
+				AbstractType type = GetBaseTypeFromList(variableChain);
+
+				if (pointer)
+					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.Get(), type.GetUserDefinedType()));
+				else
+					types.push_back(type);
+
+				pointer = false;
+			}
+			else if (s_RValues.contains(m_Tokens[index].TokenType))
+			{
+				types.push_back(AbstractType(m_Tokens[index].Data));
+			}
+
+			index++;
+		}
+
+		return types;
+	}
+
 	std::list<std::string> ExpressionBuilder::GetVariableChain()
 	{
 		CLEAR_VERIFY(m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::VariableReference, "");
@@ -267,6 +326,26 @@ namespace clear {
 		}
 
 		m_Index--;
+
+		return list;
+	}
+
+	std::list<std::string> ExpressionBuilder::GetVariableChain(size_t index)
+	{
+		CLEAR_VERIFY(index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::VariableReference, "");
+
+		std::list<std::string> list = { m_RootName + "::" + m_Tokens[index].Data };
+
+		index++;
+
+		while (index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::DotOp)
+		{
+			index++;
+			list.push_back(m_Tokens[index].Data);
+			index++;
+		}
+
+		index--;
 
 		return list;
 	}
@@ -330,6 +409,9 @@ namespace clear {
 					return false;
 			}
 		}
+
+		if (token.TokenType == TokenType::OpenBracket || token.TokenType == TokenType::CloseBracket)
+			return true;
 
 		return false;
 	}
