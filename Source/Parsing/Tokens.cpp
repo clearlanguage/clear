@@ -4,6 +4,7 @@
 #include <set>
 
 namespace clear {
+    const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','!','.',',','&','^','|','~',';'};
     const OperatorMapType g_OperatorMap = {
         {"=",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::Assignment}},
         {"*",   {.NextState = ParserState::AsterisksOperator, .TokenToPush = TokenType::None}},
@@ -37,8 +38,8 @@ namespace clear {
         {"-=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::MinusAssign}},
         {";",   {.NextState = ParserState::Default,.TokenToPush  =TokenType::EndLine}},
         {"<-",  {.NextState = ParserState::Default, .TokenToPush =TokenType::LeftArrow}},
-        { "++", {.NextState = ParserState::Default, .TokenToPush = TokenType::Increment} },
-        { "--", {.NextState = ParserState::Default, .TokenToPush = TokenType::Decrement}},
+        { "++", {.NextState = ParserState::Increment, .TokenToPush = TokenType::Increment} },
+        { "--", {.NextState = ParserState::Increment, .TokenToPush = TokenType::Decrement}},
         {"^^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::Power}},
 
     };
@@ -78,7 +79,7 @@ namespace clear {
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
     extern const std::map<std::string,std::set<TokenType>> g_TokenTypes = {
-    {"allow_multiply",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference}}
+        {"allow_op",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference,TokenType::EndFunctionArguments,TokenType::Increment,TokenType::Decrement}}
 
 
     };
@@ -87,6 +88,11 @@ namespace clear {
     const std::set<std::string> g_DataTypes = {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char"
     };
+
+    bool IsTokenOfType(Token tok,std::string type) {
+        return g_TokenTypes.at(type).contains(tok.TokenType);
+    }
+
 
     std::string_view TokenToString(TokenType token) 
     {

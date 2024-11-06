@@ -44,7 +44,8 @@ namespace clear {
         AsterisksOperator,
         AmpersandOperator,
         MinusOperator,
-        Declaration
+        Declaration,
+        Increment
     };
 
 
@@ -78,5 +79,6 @@ namespace clear {
     extern const std::set<std::string> g_DataTypes;
     extern const std::map<char,char> g_CloserToOpeners;
     extern const std::set<char> g_Openers;
+    extern const std::set<char> g_Operators;
     extern const std::map<std::string,std::set<TokenType>> g_TokenTypes;
 }

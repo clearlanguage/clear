@@ -31,6 +31,7 @@ namespace clear
 		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
 		m_StateMap[ParserState::Declaration] = [this](){_DeclarationState();};
 		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
+		m_StateMap[ParserState::Increment] = [this]() {_IncrementOperator();};
 
 
 	}
@@ -999,21 +1000,42 @@ namespace clear
 		m_CurrentState = ParserState::FunctionParameters;
 	}
 
+	void Parser::_IncrementOperator() {
+		char current = _GetNextChar();
+		char incrementType = _GetLastToken().Data[0];
+		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
+		if (current != incrementType) {
+			_Backtrack();
+			m_CurrentState = ParserState::RValue;
+			return;
+		}
+		m_ProgramInfo.Tokens.pop_back();
+		if (!IsTokenOfType(_GetLastToken(),"allow_op")) {
+			if (tok == TokenType::SubOp) {
+				tok = TokenType::Negation;
+			}
+		}
+		_PushToken(tok,Str(incrementType));
+		_PushToken(tok,Str(incrementType));
+		while (current == incrementType) {
+			_PushToken(tok,Str(incrementType));
+			current = _GetNextChar();
+		}
+		_Backtrack();
+		m_CurrentState = ParserState::RValue;
+	}
+
 
 	void Parser::_OperatorState()
 	{
 		_Backtrack();
 		std::string before = Str(_GetNextChar());
-		std::string h = before;
+		std::string h = "";
 		char current  = before[0];
-		while (g_OperatorMap.contains(Str(current)))
+		while (g_OperatorMap.contains(Str(current)) && !(h.size()>1 &&g_OperatorMap.contains(h)))
 		{
-			current = _GetNextChar();
-
-			if (!g_OperatorMap.contains(Str(current)))
-				break;
-
 			h+=current;
+			current = _GetNextChar();
 		}
 
 		ParserMapValue value;
@@ -1040,10 +1062,7 @@ namespace clear
 	}
 
 	void Parser::_AsterisksState() {
-		auto token = _GetLastToken();
-		auto tok =token.TokenType;
-
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket|| tok == TokenType::EndFunctionArguments) {
+		if (IsTokenOfType(_GetLastToken(),"allow_op")) {
 			_PushToken(TokenType::MulOp,"*");
 		}else {
 			_PushToken(TokenType::DereferenceOp,"*");

@@ -20,3 +20,4 @@ ThirdParty/
 build_proj
 Source/Tests/
 /run_test
+cmake-build-release/

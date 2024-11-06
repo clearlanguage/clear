@@ -75,6 +75,7 @@ namespace clear
 		void _AsterisksState();
 		void _MinusOperator();
 		void _DeclarationState();
+		void _IncrementOperator();
 
 
 		Token _GetLastToken();
