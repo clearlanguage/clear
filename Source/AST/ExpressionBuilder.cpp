@@ -72,7 +72,6 @@ namespace clear {
 	Ref<ASTExpression> ExpressionBuilder::Create(const AbstractType& expectedType)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
-
 		std::stack<Operator> operators;
 
 		AbstractType currentExpectedType = expectedType;
@@ -186,13 +185,10 @@ namespace clear {
 				}
 			}
 
-			if (change)
-				m_Index = tempIndex;
-			else 
-				m_Index++;
+			m_Index = change ? tempIndex : m_Index + 1;
 		}
 
-		while (!operators.empty())
+		while (!operators.empty() && !operators.top().IsOpenBracket)
 		{
 			auto& top = operators.top();
 
@@ -330,15 +326,10 @@ namespace clear {
 				case clear::UnaryExpressionType::Negation:
 				case clear::UnaryExpressionType::Cast:
 					return true;
-					break;
 				default:
 					return false;
-					break;
 			}
 		}
-
-		if (s_Precedence.contains(token.TokenType))
-			return false;
 
 		return false;
 	}

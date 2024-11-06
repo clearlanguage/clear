@@ -40,7 +40,12 @@ namespace clear {
 
 	void ASTNodeBase::SetName(const std::string& name)
 	{
-		m_Name = name;
+		p_MetaData.Name = name;
+	}
+
+	void ASTNodeBase::SetType(const AbstractType& type)
+	{
+		p_MetaData.Type = type;
 	}
 
 	void ASTNodeBase::PushChild(const Ref<ASTNodeBase>& child)
@@ -68,12 +73,14 @@ namespace clear {
 
 	llvm::Value* ASTNodeLiteral::Codegen()
 	{
+		p_MetaData.Type = m_Constant.GetType();
 		return m_Constant.Get();
 	}
 
-	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, AbstractType expectedType)
-		: m_Expression(type), m_ExpectedType(expectedType)
+	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, const AbstractType& expectedType)
+		: m_Expression(type)
 	{
+		p_MetaData.Type = expectedType;
 	}
 	llvm::Value* ASTBinaryExpression::Codegen()
 	{
@@ -92,21 +99,21 @@ namespace clear {
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
-		llvm::Type* expectedLLVMType = m_ExpectedType.GetLLVMType();
+		llvm::Type* expectedLLVMType = p_MetaData.Type.GetLLVMType();
 
 		if (m_Expression == BinaryExpressionType::Assignment)
 		{
 			llvm::AllocaInst* tmp = nullptr;
 
-			if (!m_ExpectedType.IsPointer() && (tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+			if (!p_MetaData.Type.IsPointer() && (tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
 			{
 				RHSRawValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
 			}
 
-			if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType)
-				RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType);
+			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type)
+				RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type);
 
-			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
+			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
 		llvm::AllocaInst* tmp1 = nullptr;
@@ -122,51 +129,20 @@ namespace clear {
 			RHSRawValue = builder.CreateLoad(tmp2->getAllocatedType(), tmp2, "loaded_value");
 		}
 
-		if (m_ExpectedType.IsPointer())
-		{
-			llvm::Value* pointer = LHSRawValue->getType()->isPointerTy() ? LHSRawValue : RHSRawValue;
-			llvm::Value* integer = LHSRawValue->getType()->isPointerTy() ? RHSRawValue : LHSRawValue;
+		AbstractType fromType = children[1]->GetMetaData().Type;
 
-			CLEAR_VERIFY(integer->getType()->isIntegerTy(), "must be integral");
-			CLEAR_VERIFY(m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub, "not a valid expression");
+		if (LHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type.Get() != VariableType::Bool)
+ 			LHSRawValue = Value::CastValue(LHSRawValue, p_MetaData.Type, fromType);
 
-			if (m_Expression == BinaryExpressionType::Sub)
-				integer = builder.CreateMul(integer, Value::GetConstant(VariableType::Int64, "-1").first);
+		fromType = children[0]->GetMetaData().Type;
 
-			return builder.CreateGEP(m_ExpectedType.GetLLVMUnderlying(), pointer, integer);
-		}
+		if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type.Get() != VariableType::Bool)
+			RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type, fromType);
 
-		AbstractType fromType;
+		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
+			p_MetaData.Type = children[1]->GetMetaData().Type;
 
-		if (children[1]->GetType() == ASTNodeType::Literal)
-		{
-			Ref<ASTNodeLiteral> literal = DynamicCast<ASTNodeLiteral>(children[1]);
-			fromType = literal->GetGeneratedType();
-		}
-		else if (children[1]->GetType() == ASTNodeType::BinaryExpression)
-		{
-			Ref<ASTBinaryExpression> bin = DynamicCast<ASTBinaryExpression>(children[1]);
-			fromType = bin->GetExpectedType();
-		}
-
-		if (LHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
- 			LHSRawValue = Value::CastValue(LHSRawValue, m_ExpectedType, fromType);
-
-		if (children[0]->GetType() == ASTNodeType::Literal)
-		{
-			Ref<ASTNodeLiteral> literal = DynamicCast<ASTNodeLiteral>(children[0]);
-			fromType = literal->GetGeneratedType();
-		}
-		else if (children[0]->GetType() == ASTNodeType::BinaryExpression)
-		{
-			Ref<ASTBinaryExpression> bin = DynamicCast<ASTBinaryExpression>(children[0]);
-			fromType = bin->GetExpectedType();
-		}
-
-		if (RHSRawValue->getType() != expectedLLVMType && m_ExpectedType && m_ExpectedType.Get() != VariableType::Bool)
-			RHSRawValue = Value::CastValue(RHSRawValue, m_ExpectedType, fromType);
-
-		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, m_ExpectedType.IsSigned());
+		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 	}
 	const bool ASTBinaryExpression::_IsMathExpression() const
 	{
@@ -187,11 +163,18 @@ namespace clear {
 	{
 		if (_IsMathExpression())
 			return _CreateMathExpression(LHSRawValue, RHSRawValue);
-		else if (_IsCmpExpression())
+		
+		if (_IsCmpExpression())
 			return _CreateCmpExpression(LHSRawValue, RHSRawValue);
-		else if (_IsBitwiseExpression())
+		
+		if (_IsBitwiseExpression())
 			return _CreateBitwiseExpression(LHSRawValue, RHSRawValue, signedInteger);
 		
+		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
+		{
+
+		}
+
 		return _CreateLoadStoreExpression(LHS, RHSRawValue);
 	}
 
@@ -311,6 +294,16 @@ namespace clear {
 		return nullptr;
 	}
 
+	llvm::Value* ASTBinaryExpression::_CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS)
+	{
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		if (m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
+			RHS = builder.CreateNeg(RHS);
+
+		return builder.CreateGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
+	}
+
 	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer, bool dereference)
 		: m_Chain(chain), m_PointerFlag(isPointer), m_Dereference(dereference)
 	{
@@ -330,7 +323,7 @@ namespace clear {
 
 		if (m_Chain.empty())
 		{
-			m_GeneratedType = metaData.Type;
+			p_MetaData.Type = metaData.Type;
 			return value; 
 		}
 
@@ -361,14 +354,15 @@ namespace clear {
 		}
 
 		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
-		m_GeneratedType = typeToGet;
+		p_MetaData.Type = typeToGet;
 
 		return gepPtr; 
 	}
 
 	ASTVariableDecleration::ASTVariableDecleration(const std::string& name, AbstractType type)
-		: m_Name(name), m_Type(type)
 	{
+		p_MetaData.Name = name;
+		p_MetaData.Type = type;
 	}
 
 	llvm::Value* ASTVariableDecleration::Codegen()
@@ -381,7 +375,7 @@ namespace clear {
 
 		builder.SetInsertPoint(&function->getEntryBlock());
 	
-		m_Value = Value(m_Type, m_Name);
+		m_Value = Value(p_MetaData.Type, p_MetaData.Name);
 
 		builder.restoreIP(ip);
 
@@ -389,10 +383,11 @@ namespace clear {
 	}
 
 	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
-		: m_ReturnType(returnType), m_Paramaters(Paramaters)
+		: m_Paramaters(Paramaters)
 	{
 		g_FunctionToExpectedTypes[name] = m_Paramaters;
-		SetName(name);
+		p_MetaData.Name = name;
+		p_MetaData.Type = returnType;
 	}
 	llvm::Value* ASTFunctionDefinition::Codegen()
 	{
@@ -402,7 +397,7 @@ namespace clear {
 
 		s_InsertPoints.push(builder.saveIP());
 
-		llvm::Type* returnType = m_ReturnType.GetLLVMType();
+		llvm::Type* returnType = p_MetaData.Type.GetLLVMType();
 
 		std::vector<llvm::Type*> ParamaterTypes;
 
@@ -497,9 +492,11 @@ namespace clear {
 	}
 
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& expectedReturnType, const std::vector<Paramater>& types)
-		: m_Name(name), m_ExpectedReturnType(expectedReturnType), m_ExpectedTypes(types)
+		: m_ExpectedTypes(types)
 	{
 		g_FunctionToExpectedTypes[name] = types;
+		p_MetaData.Name = name;
+		p_MetaData.Type = expectedReturnType;
 	}
 
 	llvm::Value* ASTFunctionDecleration::Codegen()
@@ -521,17 +518,18 @@ namespace clear {
 			types.push_back(type.Type.GetLLVMType());
 		}
 
-		if (!m_ExpectedReturnType)
-			m_ExpectedReturnType = VariableType::None;
+		if (!p_MetaData.Type)
+			p_MetaData.Type = VariableType::None;
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ExpectedReturnType.GetLLVMType(), types, isVariadic);
-		module.getOrInsertFunction(m_Name, functionType);
+		llvm::FunctionType* functionType = llvm::FunctionType::get(p_MetaData.Type.GetLLVMType(), types, isVariadic);
+		module.getOrInsertFunction(p_MetaData.Name, functionType);
 		return nullptr;
 	}
 
 	ASTReturnStatement::ASTReturnStatement(const AbstractType& expectedReturnType, bool createReturn)
-		: m_ExpectedReturnType(expectedReturnType), m_CreateReturn(createReturn)
+		: m_CreateReturn(createReturn)
 	{
+		p_MetaData.Type = expectedReturnType;
 	}
 
 	llvm::Value* ASTReturnStatement::Codegen()
@@ -549,10 +547,10 @@ namespace clear {
 				returnValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
 			}
 
-			if (returnValue->getType() != m_ExpectedReturnType.GetLLVMType())
-				returnValue = Value::CastValue(returnValue, m_ExpectedReturnType);
+			if (returnValue->getType() != p_MetaData.Type.GetLLVMType())
+				returnValue = Value::CastValue(returnValue, p_MetaData.Type);
 			
-			CLEAR_VERIFY(returnValue->getType() == m_ExpectedReturnType.GetLLVMType(), "unexpected return type");
+			CLEAR_VERIFY(returnValue->getType() == p_MetaData.Type.GetLLVMType(), "unexpected return type");
 
 			llvm::AllocaInst* alloc = s_ReturnValues.top().Alloca;
 			
@@ -565,8 +563,8 @@ namespace clear {
 	}
 	
 	ASTExpression::ASTExpression(const AbstractType& expectedType)
-		: m_ExpectedType(expectedType)
 	{
+		p_MetaData.Type = expectedType;
 	}
 
 	llvm::Value* ASTExpression::Codegen()
@@ -613,19 +611,20 @@ namespace clear {
 	}
 
 	ASTStruct::ASTStruct(const std::string& name, const std::vector<AbstractType::MemberType>& fields)
-		: m_Name(name), m_Members(fields)
+		:  m_Members(fields)
 	{
+		p_MetaData.Name = name;
 	}
 
 	llvm::Value* ASTStruct::Codegen()
 	{
-		AbstractType::CreateStructType(m_Name, m_Members);
+		AbstractType::CreateStructType(p_MetaData.Name, m_Members);
 		return nullptr;
 	}
 
 	ASTFunctionCall::ASTFunctionCall(const std::string& name)
-		: m_Name(name)
 	{
+		p_MetaData.Name = name;
 	}
 
 	llvm::Value* ASTFunctionCall::Codegen()
@@ -637,7 +636,7 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
-		auto& expected = g_FunctionToExpectedTypes.at(m_Name);
+		auto& expected = g_FunctionToExpectedTypes.at(p_MetaData.Name);
 
 		uint32_t k = 0;
 
@@ -663,7 +662,7 @@ namespace clear {
 		}
 		
 		
-		llvm::Function* callee = module.getFunction(m_Name);
+		llvm::Function* callee = module.getFunction(p_MetaData.Name);
 		CLEAR_VERIFY(callee, "not a valid function");
 		
 		return builder.CreateCall(callee, args);
@@ -817,8 +816,9 @@ namespace clear {
 	}
 
 	ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type, const AbstractType& typeToCast)
-		: m_Type(type), m_TypeToCast(typeToCast)
+		: m_Type(type)
 	{
+		p_MetaData.Type = typeToCast;
 	}
 
 	llvm::Value* ASTUnaryExpression::Codegen()
@@ -830,6 +830,7 @@ namespace clear {
 		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
 
 		llvm::Value* operand = children[0]->Codegen();
+		auto& metaData = children[0]->GetMetaData();
 
 		switch (m_Type)
 		{
@@ -920,24 +921,13 @@ namespace clear {
 				CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::BinaryExpression || 
 							 children[0]->GetType() == ASTNodeType::VariableExpression, "invalid child");
 
-				if (children[0]->GetType() == ASTNodeType::BinaryExpression)
-				{
-					Ref<ASTBinaryExpression> expression = DynamicCast<ASTBinaryExpression>(children[0]);
-					llvm::Value* value = operand;
-					
-					if (!llvm::isa<llvm::GetElementPtrInst>(operand))
-						value = builder.CreateLoad(expression->GetExpectedType().GetLLVMType(), operand, "loaded_pointer");
-
-					return builder.CreateLoad(expression->GetExpectedType().GetLLVMUnderlying(), value, "dereferenced_value");
-				}
-
-				Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
 				llvm::Value* value = operand;
 
-				if (!llvm::isa<llvm::GetElementPtrInst>(operand))
-					value = builder.CreateLoad(expression->GetGeneratedType().GetLLVMType(), operand, "loaded_pointer");
 
-				return builder.CreateLoad(expression->GetGeneratedType().GetLLVMUnderlying(), value, "dereferenced_value");
+				if (!llvm::isa<llvm::GetElementPtrInst>(operand))
+					value = builder.CreateLoad(metaData.Type.GetLLVMType(), operand, "loaded_pointer");
+
+				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "dereferenced_value");
 			}
 			case UnaryExpressionType::Reference:
 			{
@@ -948,25 +938,8 @@ namespace clear {
 			}
 			case UnaryExpressionType::Cast:
 			{
-				AbstractType from;
-
-				if (children[0]->GetType() == ASTNodeType::BinaryExpression)
-				{
-					Ref<ASTBinaryExpression> expression = DynamicCast<ASTBinaryExpression>(children[0]);
-					from = expression->GetExpectedType();
-				}
-				else if (children[0]->GetType() == ASTNodeType::Expression)
-				{
-					Ref<ASTExpression> expression = DynamicCast<ASTExpression>(children[0]);
-					from = expression->GetExpectedType();
-				}
-				else if (children[0]->GetType() == ASTNodeType::VariableExpression)
-				{
-					Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
-					from = expression->GetGeneratedType();
-				}
-
-				return Value::CastValue(operand, m_TypeToCast, from);
+				AbstractType from = metaData.Type;
+				return Value::CastValue(operand, p_MetaData.Type, from);
 			}
 			case UnaryExpressionType::None:
 			default:
@@ -1034,7 +1007,7 @@ namespace clear {
 
 			if (childValue->getType() != elementType)
 			{
-				childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetGeneratedType().IsSigned());
+				childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetMetaData().Type.IsSigned());
 			}
 
 			llvm::Value* gep = builder.CreateGEP(arrayType, allocaInstance, m_Indices[i - 1], "array_indexing");

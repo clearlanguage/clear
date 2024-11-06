@@ -30,9 +30,15 @@ namespace clear {
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer
+		ArrayInitializer, PointerArithmetic
 	};
 
+
+	struct NodeMetaData
+	{
+		std::string Name;
+		AbstractType Type;
+	};
 
 	class ASTNodeBase
 	{
@@ -43,6 +49,7 @@ namespace clear {
 		virtual llvm::Value* Codegen();
 
 		void SetName(const std::string& name);
+		void SetType(const AbstractType& type);
 
 		void PushChild(const Ref<ASTNodeBase>& child);
 		void RemoveChild(const Ref<ASTNodeBase>& child);
@@ -50,15 +57,20 @@ namespace clear {
 		void SetParent(const Ref<ASTNodeBase>& parent);
 		void RemoveParent();
 
+		Ref<ASTNodeBase>& GetTop() { return m_Children.back(); }
+
 		const auto  GetParent()   const { return m_Parent; }
 		const auto& GetChildren() const { return m_Children; }
 
-		inline const std::string& GetName() const { return m_Name; }
+		inline const std::string& GetName() const { return p_MetaData.Name; }
+		inline NodeMetaData& GetMetaData() { return p_MetaData; }
 
 	private:
 		Ref<ASTNodeBase> m_Parent;
 		std::vector<Ref<ASTNodeBase>> m_Children;
-		std::string m_Name;
+
+	protected:
+		NodeMetaData p_MetaData;
 	};
 
 
@@ -70,8 +82,6 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
 
-		inline AbstractType& GetGeneratedType() { return m_Constant.GetType(); }
-
 	private:
 		Value m_Constant;
 	};
@@ -80,13 +90,12 @@ namespace clear {
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type, AbstractType expectedType = VariableType::None);
+		ASTBinaryExpression(BinaryExpressionType type, const AbstractType& expectedType = VariableType::None);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual llvm::Value* Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
-		inline AbstractType& GetExpectedType() { return m_ExpectedType; }
 
 	private:
 		const bool _IsMathExpression()    const;
@@ -98,10 +107,10 @@ namespace clear {
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger);
+		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS);
 
 	private:
 		BinaryExpressionType m_Expression;
-		AbstractType m_ExpectedType;
 	};
 
 	class ASTUnaryExpression : public ASTNodeBase
@@ -112,11 +121,8 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual llvm::Value* Codegen() override;
 
-		inline AbstractType& GetTypeToCast() { return m_TypeToCast; }
-
 	private:
 		UnaryExpressionType m_Type;
-		AbstractType m_TypeToCast;
 	};
 
 	class ASTFunctionDefinition : public ASTNodeBase
@@ -128,7 +134,6 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		AbstractType m_ReturnType;
 		std::vector<Paramater> m_Paramaters;
 	};
 
@@ -142,8 +147,6 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		std::string m_Name;
-		AbstractType m_ExpectedReturnType;
 		std::vector<Paramater> m_ExpectedTypes;
 	};
 
@@ -161,10 +164,6 @@ namespace clear {
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual llvm::Value* Codegen() override;
-
-
-	private:
-		std::string m_Name;
 	};
 
 	class ASTVariableDecleration : public ASTNodeBase
@@ -175,11 +174,7 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
 
-		inline const std::string& GetName() const { return m_Name; }
-
 	private:
-		std::string m_Name;
-		AbstractType m_Type;
 		Value m_Value;
 	};
 
@@ -192,15 +187,10 @@ namespace clear {
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
 		virtual llvm::Value* Codegen() override;
 
-		inline const std::string& GetName() const { return m_Name; }
-		inline AbstractType& GetGeneratedType() { return m_GeneratedType; }
-
 	private:
-		std::string m_Name;
 		std::list<std::string> m_Chain;
 		bool m_PointerFlag = false;
 		bool m_Dereference = false;
-		AbstractType m_GeneratedType;
 	};
 
 	class ASTReturnStatement : public ASTNodeBase
@@ -212,10 +202,8 @@ namespace clear {
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		AbstractType m_ExpectedReturnType;
 		bool m_CreateReturn;
 	};
-
 
 	class ASTExpression : public ASTNodeBase
 	{
@@ -224,11 +212,6 @@ namespace clear {
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual llvm::Value* Codegen() override;
-
-		inline AbstractType& GetExpectedType() { return m_ExpectedType; }
-
-	private:
-		AbstractType m_ExpectedType;
 	};
 
 	class ASTStruct : public ASTNodeBase
@@ -241,7 +224,6 @@ namespace clear {
 
 	private:
 		std::vector<AbstractType::MemberType> m_Members;
-		std::string m_Name;
 	};
 
 	class ASTIfExpression : public ASTNodeBase
