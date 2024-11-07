@@ -957,7 +957,17 @@ namespace clear {
 				if (children[0]->GetMetaData().NeedLoading)
 				{
 					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
-					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+
+					if (alloc->getAllocatedType()->isArrayTy())
+					{
+						CLEAR_VERIFY(p_MetaData.Type.IsPointer(), "");
+						operand = builder.CreateInBoundsGEP(alloc->getAllocatedType(), alloc, { builder.getInt64(0) });
+					}
+					else
+					{
+						operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+					}
+
 				}
 
 				AbstractType from = metaData.Type;

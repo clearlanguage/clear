@@ -178,6 +178,8 @@ namespace clear {
 
 		CLEAR_UNREACHABLE("failed to find right cast type");
 
+		int arr[5] = {};
+
 		return nullptr;
 	}
 
