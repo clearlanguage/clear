@@ -692,105 +692,81 @@ namespace clear {
 		{
 			llvm::BasicBlock* ConditionBlock = nullptr;
 			llvm::BasicBlock* BodyBlock  = nullptr;
-			size_t ExpressionIdx = 0;
+			int64_t ExpressionIdx = 0;
 		};
 
 		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression,"");
 
 		std::vector<Branch> branches;
 
-		size_t i = 0;
-		for (; i < children.size(); i += 2)
+		int64_t i = 0;
+		for (; i + 2 < children.size(); i += 2)
 		{
+			Branch branch;
+			branch.ConditionBlock = llvm::BasicBlock::Create(context, "if_condition");
+			branch.BodyBlock      = llvm::BasicBlock::Create(context, "if_body");
+			branch.ExpressionIdx  = i;
 
+			branches.push_back(branch);
 		}
 
+		llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context, "else");
+		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context, "merge");
 
-	/*	std::vector<Branch> branches;
-		branches.push_back({ llvm::BasicBlock::Create(context, "then", function), 0 });
+		if(!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(branches[0].ConditionBlock);
 
-		for (size_t i = 1; i < children.size(); i++)
+		for (size_t j = 0; j < branches.size(); j++)
 		{
-			if (children[i]->GetType() == ASTNodeType::Expression)
-				branches.push_back({ llvm::BasicBlock::Create(context, "else_then"), i });
-		}
+			auto& branch = branches[j];
 
-		llvm::BasicBlock* elseBlock = llvm::BasicBlock::Create(context, "else");
-		llvm::BasicBlock* mergeBranch = llvm::BasicBlock::Create(context, "merge");
+			llvm::BasicBlock* nextBranch = (j + 1) < branches.size() ? branches[j + 1].ConditionBlock : elseBlock;
+			
+			function->insert(function->end(), branch.ConditionBlock);
+			builder.SetInsertPoint(branch.ConditionBlock);
 
-		Ref<ASTNodeBase> condition = children[branches[0].ExpressionIdx];
+			llvm::Value* condition = children[branch.ExpressionIdx]->Codegen();
 
-		llvm::Value* conditionVal = condition->Codegen();
+			if (condition->getType()->isIntegerTy())
+			{
+				condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
+			}
+			else if (condition->getType()->isFloatingPointTy())
+			{
+				condition = builder.CreateFCmpONE(condition, llvm::ConstantFP::get(condition->getType(), 0.0));
+			}
+			else if (condition->getType()->isPointerTy())
+			{
+				condition = builder.CreatePtrToInt(condition, llvm::IntegerType::get(context, 64), "cast");
+				condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
+			}
 
-		if (conditionVal->getType()->isIntegerTy())
-			conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
-		else if (conditionVal->getType()->isFloatingPointTy())
-			conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
+			builder.CreateCondBr(condition, branch.BodyBlock, nextBranch);
 
-		builder.CreateCondBr(conditionVal, branches[0].Block, branches.size() > 1 ? branches[1].Block : elseBlock);
-		builder.SetInsertPoint(branches[0].Block);
+			function->insert(function->end(), branch.BodyBlock);
+			builder.SetInsertPoint(branch.BodyBlock);
 
-		size_t lastBranchIndex = 0;
-
-		for (size_t i = 1; i < branches.size(); i++)
-		{
-			llvm::BasicBlock* nextBranch = (i + 1) == branches.size() ? elseBlock : branches[i + 1].Block;
-
-			children[lastBranchIndex + 1]->Codegen();
-
-			condition = children[branches[i].ExpressionIdx];
+			CLEAR_VERIFY(branch.ExpressionIdx + 1 < children.size(), "");
+			children[branch.ExpressionIdx + 1]->Codegen();
 
 			if (!builder.GetInsertBlock()->getTerminator())
-			{
-				conditionVal = condition->Codegen();
-
-				if (conditionVal->getType()->isIntegerTy())
-					conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
-				else if (conditionVal->getType()->isFloatingPointTy())
-					conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
-
-
-				builder.CreateCondBr(conditionVal, branches[i].Block, nextBranch);
-			}
-
-			function->insert(function->end(), branches[i].Block);
-			builder.SetInsertPoint(branches[i].Block);
-
-			lastBranchIndex = branches[i].ExpressionIdx;
+				builder.CreateBr(mergeBlock);
 		}
 
-		if (!builder.GetInsertBlock()->getTerminator())
-		{
-			if (branches.back().ExpressionIdx != lastBranchIndex)
-			{
-				conditionVal = children[branches.back().ExpressionIdx]->Codegen();
-
-				if (conditionVal->getType()->isIntegerTy())
-					conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
-				else if (conditionVal->getType()->isFloatingPointTy())
-					conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
-
-				builder.CreateCondBr(conditionVal, mergeBranch, elseBlock);
-			}
-			else
-			{
-				builder.CreateBr(mergeBranch);
-			}
-		}
-
-		children[lastBranchIndex + 1]->Codegen();
 
 		function->insert(function->end(), elseBlock);
 		builder.SetInsertPoint(elseBlock);
 
-		size_t lastChild = children.size() - 1;
-		if (children[lastChild - 1]->GetType() != ASTNodeType::Expression)
-			children.back()->Codegen();
+		size_t last = children.size() - 1;
 
-		builder.CreateBr(mergeBranch);
-		
-		function->insert(function->end(), mergeBranch);
-		builder.SetInsertPoint(mergeBranch);*/
+		if (children.size() > 2 && children[last]->GetType() == children[last - 1]->GetType())
+			children[last]->Codegen();
+	
+		if (!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(mergeBlock);
+
+		function->insert(function->end(), mergeBlock);
+		builder.SetInsertPoint(mergeBlock);
 
 		return nullptr;
 	}
