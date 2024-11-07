@@ -383,6 +383,8 @@ namespace clear
 		m_CurrentErrorState = "array index";
 		auto parsed= _ParseBrackets(']',false);
 		_VerifyCondition(!parsed.tokens.empty(),24);
+		if (parsed.tokens.empty())
+			return;
 
 		ProgramInfo info = _SubParse( parsed.tokens[0]);
 		for (const Token& tok :info.Tokens) {
@@ -856,6 +858,20 @@ namespace clear
 		m_CurrentString.clear();
 		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
 		_VerifyCondition(current != '*',26);
+		if (IsSubParser) {
+			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
+			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+			_VerifyCondition(!ArrayDeclarations.error,ArrayDeclarations.errormsg,ArrayDeclarations.advice,"Array declaration error",prevTokenIndex-1,ArrayDeclarations.lastIndex-1);
+			for (int i = 0; i < pointers; i++) {
+				_PushToken(TokenType::PointerDef,"*");
+			}
+			for (auto tok :ArrayDeclarations.Tokens) {
+				_PushToken(tok);
+			}
+			m_CurrentState = ParserState::Default;
+			return;
+
+		}
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
 			_VerifyCondition(!(variableState && bracketState) , 8);
 
