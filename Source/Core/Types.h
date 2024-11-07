@@ -23,19 +23,18 @@ namespace clear {
 
 	enum class BinaryExpressionType 
 	{
-		None = 0, Add, Sub, Mul,
-		Div, Pow, Mod, Less, LessEq,
-		Greater, GreaterEq, Eq, NotEq, 
-		Assignment, BitwiseLeftShift, BitwiseRightShift,
-		BitwiseNot, BitwiseAnd, BitwiseOr, BitwiseXor, 
-		
+		None = 0, Add, Sub, Mul, Div, Pow, Mod, Less, LessEq,
+		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic, NegatedPointerArithmetic, 
+		Assignment, BitwiseLeftShift, BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr, 
+		BitwiseXor
 	};
 
 	enum class UnaryExpressionType 
 	{
 		None = 0, BitwiseNot,	Increment, 
 		Decrement, Negation, PostIncrement, 
-		PostDecrement, Reference, Dereference
+		PostDecrement, Reference, Dereference, 
+		Cast
 	};
 	
 	struct StructMetaData;
@@ -43,7 +42,6 @@ namespace clear {
 	extern BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type);
 	extern UnaryExpressionType GetUnaryExpressionTypeFromTokenType(TokenType type);
 	extern UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
-
 
 	extern VariableType	GetVariableTypeFromTokenType(TokenType tokenType);
 	extern VariableType GetVariablePointerTypeFromTokenType(TokenType tokenType);
@@ -92,7 +90,7 @@ namespace clear {
 
 		inline operator VariableType() const { return m_Type; }
 		inline operator TypeKind() const { return m_Kind; }
-		inline operator bool() const { return Get() != VariableType::None || !m_UserDefinedType.empty();  }
+		inline operator bool() const { return m_LLVMType && m_LLVMUnderlyingType;  }
 
 		inline bool operator==(const AbstractType& other) const;
 		inline bool operator!=(const AbstractType& other) const;

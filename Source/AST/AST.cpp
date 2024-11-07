@@ -2,6 +2,7 @@
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
+#include "ExpressionBuilder.h"
 
 #include <iostream>
 
@@ -101,11 +102,11 @@ namespace clear {
 							i++;
 
 						AbstractType type;
-						if ((type = _GetTypeFromToken(tokens[i], (tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp))) && tokens[i].TokenType != TokenType::EndFunctionParameters)
+						if ((type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)) && tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Type = type;
 
-							if (tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp)
+							if (tokens[i + 1].TokenType == TokenType::PointerDef)
 								i++;
 						}
 						else if(tokens[i].TokenType != TokenType::EndFunctionParameters)
@@ -134,7 +135,8 @@ namespace clear {
 				}
 				case TokenType::FunctionCall:
 				{
-					currentRoot.Node->PushChild(_CreateFunctionCall(tokens, currentRoot.Node->GetName(), i));
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+					currentRoot.Node->PushChild(builder.CreateFunctionCall());
 					break;
 				}
 				case TokenType::VariableName:
@@ -179,7 +181,7 @@ namespace clear {
 						type = AbstractType(previous, TypeKind::Variable);
 					}
 
-					currentRoot.Node->PushChild(Ref<ASTVariableDecleration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
+					currentRoot.Node->PushChild(Ref<ASTVariableDeclaration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
 		
 					AbstractType::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
 
@@ -191,7 +193,10 @@ namespace clear {
 					whileNode->SetName(currentRoot.Node->GetName());
 
 					i++;
-					whileNode->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					whileNode->PushChild(builder.Create(VariableType::Bool));
 
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -259,7 +264,9 @@ namespace clear {
 					ifExpr->SetName(currentRoot.Node->GetName());
 
 					//evaluate first condition
-					ifExpr->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+					i++;
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+					ifExpr->PushChild(builder.Create(VariableType::Bool));
 					
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -281,7 +288,10 @@ namespace clear {
 							auto& ref = variableReferencesToAssign.front();
 
 							Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, ref.Type);
-							binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, ref.Type));
+							
+							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+							binaryExpression->PushChild(builder.Create(ref.Type));
 							binaryExpression->PushChild(ref.Expression);
 
 							currentRoot.Node->PushChild(binaryExpression);
@@ -329,7 +339,10 @@ namespace clear {
 					i += 3;
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
+
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					binaryExpression->PushChild(builder.Create(type));
 					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false, shouldDereference));
 
 					currentRoot.Node->PushChild(binaryExpression);
@@ -354,7 +367,9 @@ namespace clear {
 					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(tokens[i].TokenType), type);
 					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 
-					operationExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					operationExpression->PushChild(builder.Create(type));
 					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false , shouldDereference));
 
 					assignmentExpression->PushChild(operationExpression);
@@ -398,7 +413,8 @@ namespace clear {
 						if (tokens[start].TokenType == TokenType::ElseIf)
 						{
 							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression,"");
-							newTop.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+							newTop.Node->PushChild(builder.Create(VariableType::Bool));
 						}
 
 						astNode->SetName(currentRoot.Node->GetName());
@@ -410,7 +426,7 @@ namespace clear {
 					{
 						m_Stack.pop();
 
-						if (m_Stack.empty())
+						if (m_Stack.size() == 1)
 							continue;
 
 						auto& newTop = m_Stack.top();
@@ -426,8 +442,10 @@ namespace clear {
 					bool createReturn = m_Stack.top().Node->GetType() != ASTNodeType::Base;
 					Ref<ASTReturnStatement> returnStatement = Ref<ASTReturnStatement>::Create(currentRoot.ExpectedReturnType, createReturn);
 					if (i + 1 < tokens.size() && tokens[i].TokenType != TokenType::EndLine)
-						returnStatement->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
-
+					{
+						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
+					}
 
 					currentRoot.Node->PushChild(returnStatement);
 
@@ -442,7 +460,8 @@ namespace clear {
 
 					if ((unaryType = GetPostUnaryExpressionTypeFromTokenType(tokens[i + 1].TokenType)) != UnaryExpressionType::None)
 					{
-						currentRoot.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
 						continue;
 					}
 
@@ -500,285 +519,10 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
-	{
-		Ref<ASTExpression> expression = Ref<ASTExpression>::Create(expected);
 
-		static std::map<TokenType, int32_t> s_Precedence = {
-			{TokenType::Increment,		  4}, 
-			{TokenType::Decrement,		  4}, 
-			{TokenType::BitwiseNot,		  4}, 
-			{TokenType::DereferenceOp,    4}, 
-			{TokenType::AddressOp,		  4},
-			{TokenType::Power,			  4},
-			{TokenType::DivOp,			  3},
-			{TokenType::MulOp,			  3},
-			{TokenType::LeftShift,		  3},
-			{TokenType::RightShift,   	  3},
-			{TokenType::BitwiseOr,		  3},
-		    {TokenType::BitwiseAnd ,      3},
-			{TokenType::BitwiseXor,		  3},
-			{TokenType::AddOp,			  2},
-			{TokenType::SubOp,			  2},
-			{TokenType::IsEqual,		  1}, 
-			{TokenType::NotEqual,		  1},
-			{TokenType::LessThan,		  1}, 
-			{TokenType::GreaterThan,      1},
-			{TokenType::LessThanEqual,    1},
-			{TokenType::GreaterThanEqual, 1},
-			{TokenType::OpenBracket,      0}
-		};
-
-		struct Operator
-		{
-			BinaryExpressionType BinaryExpression;
-			UnaryExpressionType UnaryExpression;
-			AbstractType ExpectedType;
-			bool IsOpenBracket = false;
-			int32_t Precedence = 0;
-		};
-
-		std::stack<Operator> operators;
-
-		AbstractType currentExpectedType = expected;
-		Token openBracket{ .TokenType = TokenType::OpenBracket };
-		Token closeBracket{ .TokenType = TokenType::CloseBracket };
-		bool addBracket = false;
-		
-		static std::set<TokenType> s_Terminators = { TokenType::EndLine, TokenType::EndIndentation, TokenType::Comma,  TokenType::EndFunctionArguments, TokenType::EndArray};
-			
-		while (start < tokens.size() && 
-			  !s_Terminators.contains(tokens[start].TokenType))
-		{
-			auto& token    = tokens[start];
-			auto& previous = tokens[start - 1];
-
-			UnaryExpressionType postType = start + 1 < tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(tokens[start + 1].TokenType) : UnaryExpressionType::None;
-			UnaryExpressionType unaryType = start - 1 < tokens.size() ? GetUnaryExpressionTypeFromTokenType(tokens[start - 1].TokenType) : UnaryExpressionType::None;
-
-			if (token.TokenType == TokenType::VariableReference)
-			{
-				if (start + 1 < tokens.size() && tokens[start + 1].TokenType == TokenType::FunctionCall)
-				{
-					start++;
-
-					expression->PushChild(_CreateFunctionCall(tokens, root, start));
-					
-					if (unaryType != UnaryExpressionType::None)
-					{
-						operators.push({BinaryExpressionType::None, unaryType, currentExpectedType, false, 4});
-					}
-					
-					if (postType != UnaryExpressionType::None)
-					{
-						operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
-					}
-
-					start++;
-					continue;
-				}
-
-				std::string startStr = { root + "::" + token.Data };
-				std::list<std::string> ls = _RetrieveForwardChain(tokens, start);
-				ls.push_front(startStr);
-
-				start--;
-				
-				bool pointerFlag = previous.TokenType == TokenType::AddressOp;
-				bool dereferenceFlag = previous.TokenType == TokenType::DereferenceOp;
-				
-				expression->PushChild(Ref<ASTVariableExpression>::Create(ls, pointerFlag, dereferenceFlag));
-
-				if (unaryType != UnaryExpressionType::None)
-				{
-					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
-				}
-
-				if (postType != UnaryExpressionType::None)
-				{
-					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
-				}
-
-				AbstractType abstractType = _GetTypeFromList(ls);
-
-				if (pointerFlag)
-				{
-					currentExpectedType = AbstractType(VariableType::Pointer, abstractType.GetKind(), abstractType.Get(), abstractType.GetUserDefinedType());
-					if(tokens[start - 1].TokenType != TokenType::OpenBracket)
-						addBracket = true;
-				}
-				else if (abstractType.IsPointer())
-				{
-					currentExpectedType = abstractType;
-					if (tokens[start - 1].TokenType != TokenType::OpenBracket)
-						addBracket = true;
-				}
-				else 
-				{
-					currentExpectedType = AbstractType(abstractType.GetUnderlying(), abstractType.GetKind(), abstractType.GetUnderlying(), abstractType.GetUserDefinedType());
-				}
-
-			}
-			else if (token.TokenType == TokenType::RValueNumber || 
-					 token.TokenType == TokenType::RValueString || 
-					 token.TokenType == TokenType::BooleanData  ||
-					 token.TokenType == TokenType::Null)
-			{		
-				expression->PushChild(Ref<ASTNodeLiteral>::Create(token.Data));
-			
-				if (unaryType != UnaryExpressionType::None)
-				{
-					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment &&
-						unaryType != UnaryExpressionType::PostIncrement &&
-						unaryType != UnaryExpressionType::Decrement &&
-						unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
-
-					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
-				}
-
-				if (postType != UnaryExpressionType::None)
-				{
-					CLEAR_VERIFY(unaryType != UnaryExpressionType::Increment &&
-							     unaryType != UnaryExpressionType::PostIncrement &&
-							     unaryType != UnaryExpressionType::Decrement &&
-							     unaryType != UnaryExpressionType::PostDecrement, "bad unary type");
-
-					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
-				}
-
-				currentExpectedType = AbstractType(token.Data);
-
-				if (currentExpectedType.IsFloatingPoint())
-					currentExpectedType = VariableType::Float64;
-				else if (currentExpectedType.IsSigned())
-					currentExpectedType = VariableType::Int64;
-				else if (currentExpectedType.IsIntegral())
-					currentExpectedType = VariableType::Uint64;	
-			}
-			else if (token.TokenType == TokenType::OpenBracket)
-			{
-				if (unaryType != UnaryExpressionType::None)
-				{
-					operators.push({ BinaryExpressionType::None, unaryType, currentExpectedType, false, 4 });
-				}
-				operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, currentExpectedType, true, 0 });
-			}
-			else if (token.TokenType == TokenType::CloseBracket)
-			{
-				while (!operators.empty() && !operators.top().IsOpenBracket)
-				{
-					auto& top = operators.top();
-
-					if(top.BinaryExpression != BinaryExpressionType::None)
-						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
-					else 
-						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
-
-					operators.pop();
-				}
-
-				if (!operators.empty())
-					operators.pop();
-
-				if (postType != UnaryExpressionType::None)
-				{
-					operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
-				}
-			}
-			else if (!_IsUnary(token) && s_Precedence.contains(token.TokenType))
-			{
-				while (!operators.empty() && !operators.top().IsOpenBracket &&
-					   s_Precedence[token.TokenType] <= operators.top().Precedence)
-				{
-					auto& top = operators.top();
-
-					if (top.BinaryExpression != BinaryExpressionType::None)
-						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
-					else
-						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
-
-					operators.pop();
-				}
-
-				if (token.TokenType == TokenType::DivOp)
-					operators.push({ BinaryExpressionType::Div, UnaryExpressionType::None, VariableType::Float64, false, s_Precedence.at(token.TokenType)});
-				else if (token.TokenType == TokenType::Power)
-					operators.push({ BinaryExpressionType::Pow, UnaryExpressionType::None, VariableType::Float64, false, s_Precedence.at(token.TokenType) });
-				else 
-					operators.push({ GetBinaryExpressionTypeFromTokenType(token.TokenType), UnaryExpressionType::None, currentExpectedType, false, s_Precedence.at(token.TokenType)});
-
-				if (addBracket)
-				{
-					operators.push({ BinaryExpressionType::None, UnaryExpressionType::None , currentExpectedType, true, 0 });
-
-					size_t copy = start;
-
-					while (copy < tokens.size() && !s_Terminators.contains(tokens[copy].TokenType))
-					{
-						copy++;
-					}
-
-					tokens.insert(tokens.begin() + copy, closeBracket);
-
-					addBracket = false;
-				}
-
-			}
-
-			start++;
-		}
-
-
-		while (!operators.empty())
-		{
-			auto& top = operators.top();
-
-			if (top.BinaryExpression != BinaryExpressionType::None)
-				expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
-			else
-				expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression));
-			
-			operators.pop();
-		}
-
-		return expression;
-	}
-	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
-	{
-		const std::string& name = tokens[i].Data;
-		Ref<ASTFunctionCall> functionCall = Ref<ASTFunctionCall>::Create(name);
-
-		i++;
-
-		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
-		i++;
-
-		auto& expectedTypes = g_FunctionToExpectedTypes.at(name);
-
-
-		uint32_t k = 0;
-		while (i < tokens.size() && 
-			  tokens[i].TokenType != TokenType::CloseBracket && 
-			  tokens[i].TokenType != TokenType::EndIndentation && 
-			  tokens[i].TokenType != TokenType::EndFunctionArguments)
-		{
-			if (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
-			{
-				i++;
-				continue;
-			}
-
-			auto type = k < expectedTypes.size() && !expectedTypes[k].IsVariadic ? expectedTypes[k] : Paramater{};
-			functionCall->PushChild(_CreateExpression(tokens, root, i, type.Type));
-
-			k++;
-		}
-
-		return functionCall;
-	}
 	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
 	{
-		std::vector<size_t> currentIndex = { 0 };
+		std::vector<size_t> currentIndex = { 0, 0 };
 
 		size_t innerIndex = 0;
 
@@ -816,7 +560,8 @@ namespace clear {
 
 			if (tokens[i].TokenType != TokenType::EndLine)
 			{
-				initializer->PushChild(_CreateExpression(tokens, root, i, expected));
+				ExpressionBuilder builder(tokens, root, i);
+				initializer->PushChild(builder.Create(expected));
 
 				currentIndex.back() = innerIndex;
 				initializer->PushElementIndex(currentIndex);
@@ -914,13 +659,13 @@ namespace clear {
 			return type;
 		}
 
+
+		current++;
 		return AbstractType::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
 	}
 
 	AbstractType AST::_GetTypeFromToken(const Token& token, bool isPointer)
 	{
-		AbstractType type;
-
 		VariableType variableType = GetVariableTypeFromTokenType(token.TokenType);
 		auto& structMetaData = AbstractType::GetStructInfo(token.Data);
 
@@ -939,7 +684,10 @@ namespace clear {
 		if (isPointer)
 			return AbstractType(VariableType::Pointer, TypeKind::Variable, currentType, userDefinedType);
 		
-		return AbstractType(currentType, TypeKind::Variable, userDefinedType);
+		if (variableType != VariableType::None)
+			return AbstractType(currentType, TypeKind::Variable, userDefinedType);
+		
+		return AbstractType();
 	}
 
 	AbstractType AST::_GetTypeFromList(std::list<std::string>& list)

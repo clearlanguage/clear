@@ -18,8 +18,6 @@ namespace clear {
         void BuildIR(const std::filesystem::path& out);
 
     private:
-        Ref<ASTExpression>   _CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected);
-        Ref<ASTFunctionCall> _CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i);
         void _CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected);
 
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
