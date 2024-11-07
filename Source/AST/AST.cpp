@@ -193,7 +193,10 @@ namespace clear {
 					whileNode->SetName(currentRoot.Node->GetName());
 
 					i++;
-					whileNode->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					whileNode->PushChild(builder.Create(VariableType::Bool));
 
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -261,7 +264,9 @@ namespace clear {
 					ifExpr->SetName(currentRoot.Node->GetName());
 
 					//evaluate first condition
-					ifExpr->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+					i++;
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+					ifExpr->PushChild(builder.Create(VariableType::Bool));
 					
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -283,7 +288,10 @@ namespace clear {
 							auto& ref = variableReferencesToAssign.front();
 
 							Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, ref.Type);
-							binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, ref.Type));
+							
+							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+							binaryExpression->PushChild(builder.Create(ref.Type));
 							binaryExpression->PushChild(ref.Expression);
 
 							currentRoot.Node->PushChild(binaryExpression);
@@ -331,7 +339,10 @@ namespace clear {
 					i += 3;
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
-					binaryExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
+
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					binaryExpression->PushChild(builder.Create(type));
 					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false, shouldDereference));
 
 					currentRoot.Node->PushChild(binaryExpression);
@@ -356,7 +367,9 @@ namespace clear {
 					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(tokens[i].TokenType), type);
 					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 
-					operationExpression->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, type));
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+
+					operationExpression->PushChild(builder.Create(type));
 					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false , shouldDereference));
 
 					assignmentExpression->PushChild(operationExpression);
@@ -400,7 +413,8 @@ namespace clear {
 						if (tokens[start].TokenType == TokenType::ElseIf)
 						{
 							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression,"");
-							newTop.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, VariableType::Bool));
+							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+							newTop.Node->PushChild(builder.Create(VariableType::Bool));
 						}
 
 						astNode->SetName(currentRoot.Node->GetName());
@@ -412,7 +426,7 @@ namespace clear {
 					{
 						m_Stack.pop();
 
-						if (m_Stack.empty())
+						if (m_Stack.size() == 1)
 							continue;
 
 						auto& newTop = m_Stack.top();
@@ -428,8 +442,10 @@ namespace clear {
 					bool createReturn = m_Stack.top().Node->GetType() != ASTNodeType::Base;
 					Ref<ASTReturnStatement> returnStatement = Ref<ASTReturnStatement>::Create(currentRoot.ExpectedReturnType, createReturn);
 					if (i + 1 < tokens.size() && tokens[i].TokenType != TokenType::EndLine)
-						returnStatement->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
-
+					{
+						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
+					}
 
 					currentRoot.Node->PushChild(returnStatement);
 
@@ -444,7 +460,8 @@ namespace clear {
 
 					if ((unaryType = GetPostUnaryExpressionTypeFromTokenType(tokens[i + 1].TokenType)) != UnaryExpressionType::None)
 					{
-						currentRoot.Node->PushChild(_CreateExpression(tokens, currentRoot.Node->GetName(), i, currentRoot.ExpectedReturnType));
+						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
 						continue;
 					}
 
@@ -502,44 +519,7 @@ namespace clear {
 
 		module.print(stream, nullptr);
 	}
-	Ref<ASTExpression> AST::_CreateExpression(std::vector<Token>& tokens, const std::string& root, size_t& start, const AbstractType& expected)
-	{
-		ExpressionBuilder builder(tokens, root, start);
-		return builder.Create(expected);
-	}
-	Ref<ASTFunctionCall> AST::_CreateFunctionCall(std::vector<Token>& tokens, const std::string& root, size_t& i)
-	{
-		const std::string& name = tokens[i].Data;
-		Ref<ASTFunctionCall> functionCall = Ref<ASTFunctionCall>::Create(name);
 
-		i++;
-
-		CLEAR_VERIFY(tokens[i].TokenType == TokenType::OpenBracket, "");
-		i++;
-
-		auto& expectedTypes = g_FunctionToExpectedTypes.at(name);
-
-
-		uint32_t k = 0;
-		while (i < tokens.size() && 
-			  tokens[i].TokenType != TokenType::CloseBracket && 
-			  tokens[i].TokenType != TokenType::EndIndentation && 
-			  tokens[i].TokenType != TokenType::EndFunctionArguments)
-		{
-			if (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
-			{
-				i++;
-				continue;
-			}
-
-			auto type = k < expectedTypes.size() && !expectedTypes[k].IsVariadic ? expectedTypes[k] : Paramater{};
-			functionCall->PushChild(_CreateExpression(tokens, root, i, type.Type));
-
-			k++;
-		}
-
-		return functionCall;
-	}
 	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
 	{
 		std::vector<size_t> currentIndex = { 0 };
@@ -580,7 +560,8 @@ namespace clear {
 
 			if (tokens[i].TokenType != TokenType::EndLine)
 			{
-				initializer->PushChild(_CreateExpression(tokens, root, i, expected));
+				ExpressionBuilder builder(tokens, root, i);
+				initializer->PushChild(builder.Create(expected));
 
 				currentIndex.back() = innerIndex;
 				initializer->PushElementIndex(currentIndex);

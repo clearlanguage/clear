@@ -39,7 +39,8 @@ namespace clear {
 		TokenType::Comma,  
 		TokenType::EndFunctionArguments, 
 		TokenType::EndArray,
-		TokenType::Assignment
+		TokenType::Assignment, 
+		TokenType::StartIndentation
 	};
 
 	static std::set<TokenType> s_FunctionTerminators =
@@ -248,7 +249,7 @@ namespace clear {
 
 		CLEAR_VERIFY(m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::OpenBracket, "");
 		
-		auto& expectedTypes = g_FunctionToExpectedTypes.at(name);
+		auto& expectedTypes = g_FunctionMetaData.at(name).Parameters;
 
 		m_Index++;
 
@@ -289,6 +290,26 @@ namespace clear {
 
 			if (m_Tokens[index].TokenType == TokenType::VariableReference)
 			{
+				if (m_Tokens[index + 1].TokenType == TokenType::FunctionCall)
+				{
+					CLEAR_VERIFY(g_FunctionMetaData.contains(m_Tokens[index + 1].Data), "");
+					auto& metaData = g_FunctionMetaData.at(m_Tokens[index + 1].Data);
+
+					if (pointer)
+					{
+						AbstractType type(VariableType::Pointer, TypeKind::Variable, metaData.ReturnType.Get(), metaData.ReturnType.GetUserDefinedType());
+						types.push_back(type);
+					}
+					else
+					{
+						types.push_back(metaData.ReturnType);
+					}
+
+					index += 2;
+					pointer = false;
+					continue;
+				}
+
 				std::list<std::string> variableChain = GetVariableChain(index);
 				AbstractType type = GetBaseTypeFromList(variableChain);
 

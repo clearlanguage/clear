@@ -103,11 +103,11 @@ namespace clear {
 
 		if (m_Expression == BinaryExpressionType::Assignment)
 		{
-			llvm::AllocaInst* tmp = nullptr;
-
-			if (!p_MetaData.Type.IsPointer() && (tmp = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
+			if (children[0]->GetMetaData().NeedLoading)
 			{
-				RHSRawValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+				llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue);
+				CLEAR_VERIFY(alloc, "");
+				RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
 			}
 
 			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type)
@@ -116,40 +116,28 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
+		if (children[1]->GetMetaData().NeedLoading)
+		{
+			llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue);
+			CLEAR_VERIFY(alloc, "");
+			LHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+		}
+
+		if (children[0]->GetMetaData().NeedLoading)
+		{
+			llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue);
+			CLEAR_VERIFY(alloc, "");
+			RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+		}
+
 		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
 		{
-			llvm::AllocaInst* tmp1 = nullptr;
-			llvm::AllocaInst* tmp2 = nullptr;
-
-			if ((tmp1 = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue)))
-			{
-				LHSRawValue = builder.CreateLoad(tmp1->getAllocatedType(), tmp1, "loaded_value");
-			}
-
-			if ((tmp2 = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
-			{
-				RHSRawValue = builder.CreateLoad(tmp2->getAllocatedType(), tmp2, "loaded_value");
-			}
-
 			AbstractType intType = AbstractType(VariableType::Int64);
 
 			if (RHSRawValue->getType() != intType.GetLLVMType())
 				RHSRawValue = Value::CastValue(RHSRawValue, intType, children[0]->GetMetaData().Type);
 
 			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue);
-		}
-
-		llvm::AllocaInst* tmp1 = nullptr;
-		llvm::AllocaInst* tmp2 = nullptr;
-
-		if ((tmp1 = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue)))
-		{
-			LHSRawValue = builder.CreateLoad(tmp1->getAllocatedType(), tmp1, "loaded_value");
-		}
-
-		if ((tmp2 = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue)))
-		{
-			RHSRawValue = builder.CreateLoad(tmp2->getAllocatedType(), tmp2, "loaded_value");
 		}
 
 		AbstractType fromType = children[1]->GetMetaData().Type;
@@ -325,6 +313,7 @@ namespace clear {
 	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer, bool dereference)
 		: m_Chain(chain), m_PointerFlag(isPointer), m_Dereference(dereference)
 	{
+		p_MetaData.NeedLoading = true;
 	}
 
 	llvm::Value* ASTVariableExpression::Codegen()
@@ -403,7 +392,7 @@ namespace clear {
 	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& Paramaters)
 		: m_Paramaters(Paramaters)
 	{
-		g_FunctionToExpectedTypes[name] = m_Paramaters;
+		g_FunctionMetaData[name] = { m_Paramaters, returnType };
 		p_MetaData.Name = name;
 		p_MetaData.Type = returnType;
 	}
@@ -512,7 +501,7 @@ namespace clear {
 	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const AbstractType& expectedReturnType, const std::vector<Paramater>& types)
 		: m_ExpectedTypes(types)
 	{
-		g_FunctionToExpectedTypes[name] = types;
+		g_FunctionMetaData[name] = { types, expectedReturnType };
 		p_MetaData.Name = name;
 		p_MetaData.Type = expectedReturnType;
 	}
@@ -605,6 +594,7 @@ namespace clear {
 			if (child->GetType() == ASTNodeType::UnaryExpression)
 			{
 				Ref<ASTUnaryExpression> unaryExpression = DynamicCast<ASTUnaryExpression>(child);
+				CLEAR_VERIFY(unaryExpression->GetChildren().size() == 0, "");
 
 				unaryExpression->PushChild(stack.top());
 				stack.pop();
@@ -654,7 +644,7 @@ namespace clear {
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
-		auto& expected = g_FunctionToExpectedTypes.at(p_MetaData.Name);
+		auto& expected = g_FunctionMetaData.at(p_MetaData.Name);
 
 		uint32_t k = 0;
 
@@ -662,15 +652,17 @@ namespace clear {
 		{
 			llvm::Value* gen = child->Codegen();
 
-			llvm::AllocaInst* tmp = nullptr;
-			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(gen)))
+			if (child->GetMetaData().NeedLoading)
 			{
+				llvm::AllocaInst* tmp = llvm::dyn_cast<llvm::AllocaInst>(gen);
+				CLEAR_VERIFY(tmp, "");
+
 				gen = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
 			}
 		
-			if (k < expected.size() && !expected[k].IsVariadic && gen->getType() != expected[k].Type.GetLLVMType())
+			if (k < expected.Parameters.size() && !expected.Parameters[k].IsVariadic && gen->getType() != expected.Parameters[k].Type.GetLLVMType())
 			{
-				gen = Value::CastValue(gen, expected[k].Type);
+				gen = Value::CastValue(gen, expected.Parameters[k].Type);
 			}
 
 			k++;
@@ -698,13 +690,23 @@ namespace clear {
 
 		struct Branch
 		{
-			llvm::BasicBlock* Block = nullptr;
+			llvm::BasicBlock* ConditionBlock = nullptr;
+			llvm::BasicBlock* BodyBlock  = nullptr;
 			size_t ExpressionIdx = 0;
 		};
 
 		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression,"");
 
 		std::vector<Branch> branches;
+
+		size_t i = 0;
+		for (; i < children.size(); i += 2)
+		{
+
+		}
+
+
+	/*	std::vector<Branch> branches;
 		branches.push_back({ llvm::BasicBlock::Create(context, "then", function), 0 });
 
 		for (size_t i = 1; i < children.size(); i++)
@@ -724,7 +726,6 @@ namespace clear {
 			conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
 		else if (conditionVal->getType()->isFloatingPointTy())
 			conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
-
 
 		builder.CreateCondBr(conditionVal, branches[0].Block, branches.size() > 1 ? branches[1].Block : elseBlock);
 		builder.SetInsertPoint(branches[0].Block);
@@ -758,19 +759,26 @@ namespace clear {
 			lastBranchIndex = branches[i].ExpressionIdx;
 		}
 
-		children[lastBranchIndex + 1]->Codegen();
-
 		if (!builder.GetInsertBlock()->getTerminator())
 		{
-			conditionVal = children[branches.back().ExpressionIdx]->Codegen();
+			if (branches.back().ExpressionIdx != lastBranchIndex)
+			{
+				conditionVal = children[branches.back().ExpressionIdx]->Codegen();
 
-			if (conditionVal->getType()->isIntegerTy())
-				conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
-			else if (conditionVal->getType()->isFloatingPointTy())
-				conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
+				if (conditionVal->getType()->isIntegerTy())
+					conditionVal = builder.CreateICmpNE(conditionVal, llvm::ConstantInt::get(conditionVal->getType(), 0));
+				else if (conditionVal->getType()->isFloatingPointTy())
+					conditionVal = builder.CreateFCmpONE(conditionVal, llvm::ConstantFP::get(conditionVal->getType(), 0.0));
 
-			builder.CreateCondBr(conditionVal, branches.back().Block, elseBlock);
+				builder.CreateCondBr(conditionVal, mergeBranch, elseBlock);
+			}
+			else
+			{
+				builder.CreateBr(mergeBranch);
+			}
 		}
+
+		children[lastBranchIndex + 1]->Codegen();
 
 		function->insert(function->end(), elseBlock);
 		builder.SetInsertPoint(elseBlock);
@@ -782,7 +790,7 @@ namespace clear {
 		builder.CreateBr(mergeBranch);
 		
 		function->insert(function->end(), mergeBranch);
-		builder.SetInsertPoint(mergeBranch);
+		builder.SetInsertPoint(mergeBranch);*/
 
 		return nullptr;
 	}
@@ -854,6 +862,12 @@ namespace clear {
 		{
 			case UnaryExpressionType::BitwiseNot:
 			{
+				if (children[0]->GetMetaData().NeedLoading)
+				{
+					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
+					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+				}
+
 				return builder.CreateNot(operand, "bitwise_not");
 			}
 			case UnaryExpressionType::PostIncrement:
@@ -926,6 +940,12 @@ namespace clear {
 			}
 			case UnaryExpressionType::Negation:
 			{	
+				if (children[0]->GetMetaData().NeedLoading)
+				{
+					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
+					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+				}
+
 				if (operand->getType()->isFloatingPointTy())
 					return builder.CreateFNeg(operand);
 				
@@ -933,29 +953,37 @@ namespace clear {
 			}
 			case UnaryExpressionType::Dereference:
 			{
+				if (children[0]->GetMetaData().NeedLoading)
+				{
+					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
+					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_pointer");
+				}
+
 				llvm::PointerType* ptrType = llvm::dyn_cast<llvm::PointerType>(operand->getType());
 				CLEAR_VERIFY(ptrType, "Dereference operand must be a pointer");
 
 				CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::BinaryExpression || 
 							 children[0]->GetType() == ASTNodeType::VariableExpression, "invalid child");
 
-				llvm::Value* value = operand;
-
-
-				if (!llvm::isa<llvm::GetElementPtrInst>(operand))
-					value = builder.CreateLoad(metaData.Type.GetLLVMType(), operand, "loaded_pointer");
-
-				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), value, "dereferenced_value");
+				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), operand, "dereferenced_value");
 			}
 			case UnaryExpressionType::Reference:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
  				CLEAR_VERIFY(inst, "must be an alloca");
 
+				p_MetaData.NeedLoading = false;
+
 				return inst;
 			}
 			case UnaryExpressionType::Cast:
 			{
+				if (children[0]->GetMetaData().NeedLoading)
+				{
+					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
+					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+				}
+
 				AbstractType from = metaData.Type;
 				return Value::CastValue(operand, p_MetaData.Type, from);
 			}

@@ -19,7 +19,13 @@ namespace clear {
 		bool IsVariadic = false;
 	};
 
-	inline std::map<std::string, std::vector<Paramater>> g_FunctionToExpectedTypes;
+	struct FunctionMetaData
+	{
+		std::vector<Paramater> Parameters;
+		AbstractType ReturnType;
+	};
+
+	inline std::map<std::string, FunctionMetaData> g_FunctionMetaData;
 
 
 	enum class ASTNodeType
@@ -30,7 +36,7 @@ namespace clear {
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer, PointerArithmetic
+		ArrayInitializer
 	};
 
 
@@ -38,7 +44,7 @@ namespace clear {
 	{
 		std::string Name;
 		AbstractType Type;
-		bool ShouldDereference = true;
+		bool NeedLoading = false;
 	};
 
 	class ASTNodeBase
