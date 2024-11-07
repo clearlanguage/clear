@@ -202,7 +202,7 @@ namespace clear
 		int i = 0;
 		for (const std::string& arg : bracketsInfo.tokens) {
 			m_TokenIndexStart = bracketsInfo.indexes.at(i);
-			ProgramInfo info = _SubParse(arg);
+			ProgramInfo info = _SubParse(arg,true);
 			for (const Token& tok :info.Tokens) {
 				_PushToken(tok);
 			}
@@ -386,7 +386,7 @@ namespace clear
 		if (parsed.tokens.empty())
 			return;
 
-		ProgramInfo info = _SubParse( parsed.tokens[0]);
+		ProgramInfo info = _SubParse( parsed.tokens.at(0),true);
 		for (const Token& tok :info.Tokens) {
 			_PushToken(tok);
 		}
@@ -560,10 +560,8 @@ namespace clear
 			}
 		}
 		_VerifyCondition(containsdata,40);
-		ProgramInfo info = _SubParse(m_CurrentString+" functype ");
-		if (info.Tokens.back().TokenType ==  TokenType::VariableName && info.Tokens.back().Data == "functype") {
-			info.Tokens.pop_back();
-		}
+		ProgramInfo info = _SubParse(m_CurrentString,true);
+
 		for (const Token& tok :info.Tokens) {
 			_PushToken(tok);
 		}
@@ -604,7 +602,7 @@ namespace clear
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
-		_VerifyCondition(!(std::isdigit(m_CurrentString[0])),35);
+		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35);
 		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 
@@ -858,7 +856,7 @@ namespace clear
 		m_CurrentString.clear();
 		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
 		_VerifyCondition(current != '*',26);
-		if (IsSubParser) {
+		if (m_NoVariableNames) {
 			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
 			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 			_VerifyCondition(!ArrayDeclarations.error,ArrayDeclarations.errormsg,ArrayDeclarations.advice,"Array declaration error",prevTokenIndex-1,ArrayDeclarations.lastIndex-1);
@@ -1018,7 +1016,7 @@ namespace clear
 
 	void Parser::_IncrementOperator() {
 		char current = _GetNextChar();
-		char incrementType = _GetLastToken().Data[0];
+		char incrementType = _GetLastToken().Data.at(0);
 		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
 		if (current != incrementType) {
 			_Backtrack();
@@ -1047,7 +1045,7 @@ namespace clear
 		_Backtrack();
 		std::string before = Str(_GetNextChar());
 		std::string h = "";
-		char current  = before[0];
+		char current  = before.at(0);
 		while (g_OperatorMap.contains(Str(current)) && !(h.size()>1 &&g_OperatorMap.contains(h)))
 		{
 			h+=current;
@@ -1274,6 +1272,25 @@ namespace clear
 			_Backtrack();
 	}
 
+	ProgramInfo Parser::_SubParse(std::string arg, bool allowvarname) {
+		Parser subParser;
+		subParser.InitParser();
+		subParser.m_Buffer = arg;
+		subParser.m_Buffer+=" ";
+		subParser.m_ScopeStack = m_ScopeStack;
+		subParser.IsSubParser = true;
+		subParser.m_NoVariableNames = allowvarname;
+		ProgramInfo info = subParser.ParseProgram();
+
+		if (!info.Errors.empty()) {
+			auto cause = info.Errors.front();
+			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
+			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
+			// _RaiseError();
+		}
+		return info;
+	}
+
 	ProgramInfo Parser::_SubParse(std::string arg) {
 		Parser subParser;
 		subParser.InitParser();
@@ -1300,7 +1317,7 @@ namespace clear
 
  		for (const std::string& arg : bracketInfo.tokens) {
 
-			ProgramInfo info = _SubParse(arg);
+			ProgramInfo info = _SubParse(arg,true);
 			for (const Token& tok :info.Tokens) {
 				_PushToken(tok);
 			}

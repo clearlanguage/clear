@@ -128,6 +128,8 @@ namespace clear
 		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
 		ProgramInfo _SubParse(std::string arg);
+		ProgramInfo _SubParse(std::string arg,bool allowvarname);
+
 
 		bool _IsTypeDeclared(const std::string& type);
 
@@ -181,6 +183,7 @@ namespace clear
 		std::vector<char> m_BracketStack;
 		std::vector<TypeScope> m_ScopeStack;
 		bool m_subParserError = false;
+		bool m_NoVariableNames = false;
 
 	};
 
