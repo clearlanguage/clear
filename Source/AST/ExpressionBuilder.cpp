@@ -315,7 +315,9 @@ namespace clear {
 
 				if (pointer)
 					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.Get(), type.GetUserDefinedType()));
-				else
+				else if (type.Get() == VariableType::Array)
+					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.GetUnderlying(), type.GetUserDefinedType()));
+				else 
 					types.push_back(type);
 
 				pointer = false;

@@ -116,6 +116,7 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
+		//let the array decay to a pointer
 		if (children[1]->GetMetaData().NeedLoading)
 		{
 			llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue);
@@ -307,7 +308,7 @@ namespace clear {
 		if (m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
 			RHS = builder.CreateNeg(RHS);
 
-		return builder.CreateGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
+		return builder.CreateInBoundsGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
 	}
 
 	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer, bool dereference)
@@ -331,6 +332,12 @@ namespace clear {
 		if (m_Chain.empty())
 		{
 			p_MetaData.Type = metaData.Type;
+			
+			if (p_MetaData.Type.Get() == VariableType::Array)
+			{
+				p_MetaData.NeedLoading = false;
+			}
+
 			return value; 
 		}
 
@@ -360,8 +367,13 @@ namespace clear {
 				break;
 		}
 
-		llvm::Value* gepPtr = builder.CreateGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
+		llvm::Value* gepPtr = builder.CreateInBoundsGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
 		p_MetaData.Type = typeToGet;
+
+		if (p_MetaData.Type.Get() == VariableType::Array)
+		{
+			p_MetaData.NeedLoading = false;
+		}
 
 		return gepPtr; 
 	}
@@ -961,7 +973,7 @@ namespace clear {
 					if (alloc->getAllocatedType()->isArrayTy())
 					{
 						CLEAR_VERIFY(p_MetaData.Type.IsPointer(), "");
-						operand = builder.CreateInBoundsGEP(alloc->getAllocatedType(), alloc, { builder.getInt64(0) });
+						operand = builder.CreateInBoundsGEP(alloc->getAllocatedType(), alloc, { builder.getInt64(0), builder.getInt64(0)});
 					}
 					else
 					{
@@ -1042,7 +1054,7 @@ namespace clear {
 				childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetMetaData().Type.IsSigned());
 			}
 
-			llvm::Value* gep = builder.CreateGEP(arrayType, allocaInstance, m_Indices[i - 1], "array_indexing");
+			llvm::Value* gep = builder.CreateInBoundsGEP(arrayType, allocaInstance, m_Indices[i - 1], "array_indexing");
 			builder.CreateStore(childValue, gep);
 		}
 		

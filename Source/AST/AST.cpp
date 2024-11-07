@@ -522,7 +522,7 @@ namespace clear {
 
 	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
 	{
-		std::vector<size_t> currentIndex = { 0 };
+		std::vector<size_t> currentIndex = { 0, 0 };
 
 		size_t innerIndex = 0;
 
