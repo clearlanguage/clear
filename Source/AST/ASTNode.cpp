@@ -711,8 +711,7 @@ namespace clear {
 
 		std::vector<Branch> branches;
 
-		int64_t i = 0;
-		for (; i + 2 < children.size(); i += 2)
+		for (size_t i = 0; i + 2 < children.size(); i += 2)
 		{
 			Branch branch;
 			branch.ConditionBlock = llvm::BasicBlock::Create(context, "if_condition");
@@ -728,11 +727,11 @@ namespace clear {
 		if(!builder.GetInsertBlock()->getTerminator())
 			builder.CreateBr(branches[0].ConditionBlock);
 
-		for (size_t j = 0; j < branches.size(); j++)
+		for (size_t i = 0; i < branches.size(); i++)
 		{
-			auto& branch = branches[j];
+			auto& branch = branches[i];
 
-			llvm::BasicBlock* nextBranch = (j + 1) < branches.size() ? branches[j + 1].ConditionBlock : elseBlock;
+			llvm::BasicBlock* nextBranch = (i + 1) < branches.size() ? branches[i + 1].ConditionBlock : elseBlock;
 			
 			function->insert(function->end(), branch.ConditionBlock);
 			builder.SetInsertPoint(branch.ConditionBlock);

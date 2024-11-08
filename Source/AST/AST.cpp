@@ -14,10 +14,10 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		//possibly add command line arguments in the future
-		std::vector<Paramater> Paramaters;
+		std::vector<Paramater> parameters;
 
 		//TODO: make mandatory for user to define
-		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, Paramaters);
+		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, parameters);
 		m_Stack.push({ m_Root, {} });
 
 		// variableReference, variableReference = someExpression, someExpression
@@ -46,13 +46,13 @@ namespace clear {
 					i += 3;
 					AbstractType type = VariableType::None;
 
-					std::vector<Paramater> paramaters;
+					parameters.clear();
 
 					while (i < tokens.size() && tokens[i].TokenType != TokenType::EndFunctionArguments)
 					{
 						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
-						paramaters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
+						parameters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
 
 						if (isPointer)
 							i++;
@@ -76,14 +76,14 @@ namespace clear {
 						returnType = _GetTypeFromToken(tokens[i], isPointer);							
 					}
 
-					currentRoot.Node->PushChild(Ref<ASTFunctionDecleration>::Create(name, returnType, paramaters));
+					currentRoot.Node->PushChild(Ref<ASTFunctionDecleration>::Create(name, returnType, parameters));
 
 					break;
 				}
 				case TokenType::Function:
 				{
 					AbstractType returnType = VariableType::None;
-					Paramaters.clear();
+					parameters.clear();
 
 					i++;
 					std::string name = tokens[i].Data;
@@ -112,7 +112,7 @@ namespace clear {
 						else if(tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Name = tokens[i].Data;
-							Paramaters.push_back(currentParamater);
+							parameters.push_back(currentParamater);
 
 							AbstractType::RegisterVariableType(name + "::" + currentParamater.Name, currentParamater.Type);
 						}
@@ -127,7 +127,7 @@ namespace clear {
 						returnType = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef);
 					}
 
-					Ref<ASTFunctionDefinition> funcDec = Ref<ASTFunctionDefinition>::Create(name, returnType, Paramaters);
+					Ref<ASTFunctionDefinition> funcDec = Ref<ASTFunctionDefinition>::Create(name, returnType, parameters);
 					currentRoot.Node->PushChild(funcDec);
 					m_Stack.push({ funcDec, returnType });
 
