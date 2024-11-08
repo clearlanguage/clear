@@ -1000,7 +1000,6 @@ namespace clear {
 		CLEAR_VERIFY(!s_ForWhileBlocks.empty() && !builder.GetInsertBlock()->getTerminator(), "have to be in a for or a while loop");
 		builder.CreateBr(s_ForWhileBlocks.top().End);
 		
-
 		return nullptr;
 	}
 

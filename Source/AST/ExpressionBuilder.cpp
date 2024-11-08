@@ -239,7 +239,7 @@ namespace clear {
 
 	Ref<ASTFunctionCall> ExpressionBuilder::CreateFunctionCall()
 	{
-		CLEAR_VERIFY(m_Index < m_Tokens.size());
+		CLEAR_VERIFY(m_Index < m_Tokens.size(), "");
 
 		const std::string& name = m_Tokens[m_Index].Data;
 		Ref<ASTFunctionCall> functionCall = Ref<ASTFunctionCall>::Create(name);
