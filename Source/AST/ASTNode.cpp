@@ -110,7 +110,7 @@ namespace clear {
 				RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
 			}
 
-			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type)
+			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type.Get() != VariableType::None)
 				RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type);
 
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());

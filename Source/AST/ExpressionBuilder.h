@@ -10,9 +10,9 @@ namespace clear {
 		ExpressionBuilder(const std::vector<Token>& tokens, const std::string& rootName, size_t& i);
 		~ExpressionBuilder() = default;
 
-		Ref<ASTExpression>		  Create(const AbstractType& expectedType);
-		Ref<ASTNodeBase>		  CreateVariableReferenceExpression();
-		Ref<ASTFunctionCall>	  CreateFunctionCall();
+		Ref<ASTExpression>	 Create(const AbstractType& expectedType);
+		Ref<ASTNodeBase>	 CreateVariableReferenceExpression();
+		Ref<ASTFunctionCall> CreateFunctionCall();
 		
 		std::vector<AbstractType> TypeAnalysis(size_t index);
 
