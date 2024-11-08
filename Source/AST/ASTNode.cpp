@@ -714,7 +714,7 @@ namespace clear {
 
 		std::vector<Branch> branches;
 
-		for (size_t i = 0; i + 2 < children.size(); i += 2)
+		for (size_t i = 0; i + 1 < children.size(); i += 2)
 		{
 			Branch branch;
 			branch.ConditionBlock = llvm::BasicBlock::Create(context, "if_condition");
