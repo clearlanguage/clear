@@ -683,7 +683,7 @@ namespace clear
 		}else if(current == '{') {
 			_ParseList();
 		}
-		else if (std::isdigit(current) || current == '-') // postive/negative numbers
+		else if (std::isdigit(current) || current == '-') // positive/negative numbers
 		{
 			m_CurrentString.push_back(current);
 			_ParseNumber();
@@ -792,10 +792,10 @@ namespace clear
 		return err;
 
 	}
-	void Parser::_RaiseError(Error& err) {
+	void Parser::_RaiseError(Error& err) 
+	{
 		PrintError(err);
 		CLEAR_HALT();
-
 	}
 
 	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
@@ -1279,7 +1279,7 @@ namespace clear
 		subParser.m_Buffer+=" ";
 		subParser.m_ScopeStack = m_ScopeStack;
 		subParser.IsSubParser = true;
-		subParser.m_NoVariableNames = allowvarname;
+		subParser.m_NoVariableNames = !allowvarname;
 		ProgramInfo info = subParser.ParseProgram();
 
 		if (!info.Errors.empty()) {
