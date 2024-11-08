@@ -328,7 +328,6 @@ namespace clear {
 						continue;
 					}
 
-					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(previous.Data);
@@ -343,7 +342,7 @@ namespace clear {
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
 					binaryExpression->PushChild(builder.Create(type));
-					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false, shouldDereference));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
 
 					currentRoot.Node->PushChild(binaryExpression);
 
@@ -356,7 +355,6 @@ namespace clear {
 				case TokenType::MinusAssign:
 				{
 					auto& previous = tokens[i - 1];
-					bool  shouldDereference = tokens[i - 2].TokenType == TokenType::DereferenceOp;
 
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(previous.Data);
@@ -370,10 +368,10 @@ namespace clear {
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
 					operationExpression->PushChild(builder.Create(type));
-					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, false , shouldDereference));
+					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
 
 					assignmentExpression->PushChild(operationExpression);
-					assignmentExpression->PushChild(Ref<ASTVariableExpression>::Create(chain, true, shouldDereference));
+					assignmentExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
 
 					currentRoot.Node->PushChild(assignmentExpression);
 
@@ -465,15 +463,13 @@ namespace clear {
 						continue;
 					}
 
-					bool  shouldDereference = tokens[i - 1].TokenType == TokenType::DereferenceOp;
-
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(currentToken.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
-					variableReferencesToAssign.push({ Ref<ASTVariableExpression>::Create(chain, true, shouldDereference), type });
+					variableReferencesToAssign.push({ Ref<ASTVariableExpression>::Create(chain), type });
 					
 					CLEAR_VERIFY(tokens[i + 1].TokenType == TokenType::Comma || tokens[i + 1].TokenType == TokenType::Assignment, "cannot have variable reference here");
 

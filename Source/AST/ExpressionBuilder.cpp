@@ -233,9 +233,8 @@ namespace clear {
 			return CreateFunctionCall();
 		}
 
-		//TODO: remove these arguments from class
 		auto l = GetVariableChain();
-		return Ref<ASTVariableExpression>::Create(l, false, false); 
+		return Ref<ASTVariableExpression>::Create(l); 
 	}
 
 	Ref<ASTFunctionCall> ExpressionBuilder::CreateFunctionCall()

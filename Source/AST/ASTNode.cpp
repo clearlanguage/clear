@@ -311,8 +311,8 @@ namespace clear {
 		return builder.CreateInBoundsGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
 	}
 
-	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain, bool isPointer, bool dereference)
-		: m_Chain(chain), m_PointerFlag(isPointer), m_Dereference(dereference)
+	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain)
+		: m_Chain(chain)
 	{
 		p_MetaData.NeedLoading = true;
 	}
@@ -626,6 +626,9 @@ namespace clear {
 
 			stack.push(binExp);
 		}
+
+		if (stack.size() == 1 && stack.top()->GetMetaData().NeedLoading)
+			p_MetaData.NeedLoading = true;
 
 		return stack.top()->Codegen();
 	}
