@@ -116,19 +116,16 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
-		//let the array decay to a pointer
 		if (children[1]->GetMetaData().NeedLoading)
 		{
-			llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(LHSRawValue);
-			CLEAR_VERIFY(alloc, "");
-			LHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
+			LHSRawValue = builder.CreateLoad(children[1]->GetMetaData().Type.GetLLVMType(), LHSRawValue, "loaded_value");
 		}
 
 		if (children[0]->GetMetaData().NeedLoading)
 		{
-			llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue);
-			CLEAR_VERIFY(alloc, "");
-			RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+			CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "");
+			RHSRawValue = builder.CreateLoad(children[0]->GetMetaData().Type.GetLLVMType(), RHSRawValue, "loaded_value");
 		}
 
 		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
@@ -308,6 +305,7 @@ namespace clear {
 		if (m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
 			RHS = builder.CreateNeg(RHS);
 
+		p_MetaData.Type = AbstractType(p_MetaData.Type.GetUnderlying(), TypeKind::Variable, p_MetaData.Type.GetUserDefinedType());
 		return builder.CreateInBoundsGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
 	}
 
@@ -627,10 +625,14 @@ namespace clear {
 			stack.push(binExp);
 		}
 
-		if (stack.size() == 1 && stack.top()->GetMetaData().NeedLoading)
-			p_MetaData.NeedLoading = true;
+		llvm::Value* value = stack.top()->Codegen();
 
-		return stack.top()->Codegen();
+		//TODO: come back to me
+
+		p_MetaData.NeedLoading = stack.top()->GetMetaData().NeedLoading;
+		p_MetaData.Type = stack.top()->GetMetaData().Type;
+
+		return value;
 	}
 
 	ASTStruct::ASTStruct(const std::string& name, const std::vector<AbstractType::MemberType>& fields)
@@ -669,10 +671,9 @@ namespace clear {
 
 			if (child->GetMetaData().NeedLoading)
 			{
-				llvm::AllocaInst* tmp = llvm::dyn_cast<llvm::AllocaInst>(gen);
-				CLEAR_VERIFY(tmp, "");
+				CLEAR_VERIFY(gen->getType()->isPointerTy(), "");
 
-				gen = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+				gen = builder.CreateLoad(child->GetMetaData().Type.GetLLVMType(), gen, "loaded_value");
 			}
 		
 			if (k < expected.Parameters.size() && !expected.Parameters[k].IsVariadic && gen->getType() != expected.Parameters[k].Type.GetLLVMType())
@@ -914,7 +915,7 @@ namespace clear {
 			case UnaryExpressionType::Decrement:
 			{
 				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst,"");
+				CLEAR_VERIFY(inst, "");
 
 				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
 				llvm::Value* newValue = nullptr; 
@@ -943,19 +944,13 @@ namespace clear {
 			}
 			case UnaryExpressionType::Dereference:
 			{
-				if (children[0]->GetMetaData().NeedLoading)
-				{
-					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
-					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_pointer");
-				}
+				p_MetaData.Type = AbstractType(metaData.Type.GetUnderlying(), TypeKind::Variable, metaData.Type.GetUserDefinedType());
+	
+				if (metaData.Type.IsPointer())
+					p_MetaData.NeedLoading = true;
 
-				llvm::PointerType* ptrType = llvm::dyn_cast<llvm::PointerType>(operand->getType());
-				CLEAR_VERIFY(ptrType, "Dereference operand must be a pointer");
-
-				CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::BinaryExpression || 
-							 children[0]->GetType() == ASTNodeType::VariableExpression, "invalid child");
-
-				return builder.CreateLoad(metaData.Type.GetLLVMUnderlying(), operand, "dereferenced_value");
+				CLEAR_VERIFY(operand->getType()->isPointerTy(), "Dereference operand must be a pointer");
+				return builder.CreateLoad(metaData.Type.GetLLVMType(), operand, "loaded_value");
 			}
 			case UnaryExpressionType::Reference:
 			{
