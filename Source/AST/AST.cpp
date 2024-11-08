@@ -24,7 +24,7 @@ namespace clear {
 
 		struct ReferenceToAssign
 		{
-			Ref<ASTVariableExpression> Expression;
+			Ref<ASTNodeBase> Expression;
 			AbstractType Type;
 		};
 
@@ -283,6 +283,7 @@ namespace clear {
 				{
 					if (!variableReferencesToAssign.empty())
 					{
+						i++;
 						while (!variableReferencesToAssign.empty())
 						{
 							auto& ref = variableReferencesToAssign.front();
@@ -454,23 +455,16 @@ namespace clear {
 					if (tokens[i + 1].TokenType == TokenType::FunctionCall)
 						continue;
 
-					UnaryExpressionType unaryType = UnaryExpressionType::None;
-
-					if ((unaryType = GetPostUnaryExpressionTypeFromTokenType(tokens[i + 1].TokenType)) != UnaryExpressionType::None)
-					{
-						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
-						continue;
-					}
-
 					std::list<std::string> chain = _RetrieveChain(tokens, i);
 					chain.push_back(currentToken.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
-					variableReferencesToAssign.push({ Ref<ASTVariableExpression>::Create(chain), type });
-					
+					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
+					variableReferencesToAssign.push({ builder.Create({}), type });
+					i--;
+
 					CLEAR_VERIFY(tokens[i + 1].TokenType == TokenType::Comma || tokens[i + 1].TokenType == TokenType::Assignment, "cannot have variable reference here");
 
 					break;
