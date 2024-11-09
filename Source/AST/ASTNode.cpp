@@ -91,8 +91,12 @@ namespace clear {
 
 		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
 
-		llvm::Value* LHS = children[1]->Codegen();
-		llvm::Value* RHS = children[0]->Codegen();
+		auto& leftChild  = children[1];
+		auto& rightChild = children[0];
+
+		llvm::Value* LHS = leftChild->Codegen();
+		llvm::Value* RHS = rightChild->Codegen();
+
 
 		CLEAR_VERIFY(LHS && RHS, "lhs or rhs failed to generate");
 
@@ -103,7 +107,7 @@ namespace clear {
 
 		if (m_Expression == BinaryExpressionType::Assignment)
 		{
-			if (children[0]->GetMetaData().NeedLoading)
+			if (rightChild->GetMetaData().NeedLoading)
 			{
 				llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue);
 				CLEAR_VERIFY(alloc, "");
@@ -116,16 +120,24 @@ namespace clear {
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 		}
 
-		if (children[1]->GetMetaData().NeedLoading)
+		if (leftChild->GetMetaData().Type.Get() == VariableType::Array)
+		{
+			LHSRawValue = builder.CreateInBoundsGEP(leftChild->GetMetaData().Type.GetLLVMType(), LHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+		}
+		else if (leftChild->GetMetaData().NeedLoading)
 		{
 			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
-			LHSRawValue = builder.CreateLoad(children[1]->GetMetaData().Type.GetLLVMType(), LHSRawValue, "loaded_value");
+			LHSRawValue = builder.CreateLoad(leftChild->GetMetaData().Type.GetLLVMType(), LHSRawValue, "loaded_value");
 		}
 
-		if (children[0]->GetMetaData().NeedLoading)
+		if (rightChild->GetMetaData().Type.Get() == VariableType::Array)
+		{
+			RHSRawValue = builder.CreateInBoundsGEP(rightChild->GetMetaData().Type.GetLLVMType(), RHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+		}
+		else if (rightChild->GetMetaData().NeedLoading)
 		{
 			CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "");
-			RHSRawValue = builder.CreateLoad(children[0]->GetMetaData().Type.GetLLVMType(), RHSRawValue, "loaded_value");
+			RHSRawValue = builder.CreateLoad(rightChild->GetMetaData().Type.GetLLVMType(), RHSRawValue, "loaded_value");
 		}
 
 		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
@@ -133,23 +145,23 @@ namespace clear {
 			AbstractType intType = AbstractType(VariableType::Int64);
 
 			if (RHSRawValue->getType() != intType.GetLLVMType())
-				RHSRawValue = Value::CastValue(RHSRawValue, intType, children[0]->GetMetaData().Type);
+				RHSRawValue = Value::CastValue(RHSRawValue, intType, rightChild->GetMetaData().Type);
 
-			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue);
+			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue, leftChild->GetMetaData().Type);
 		}
 
-		AbstractType fromType = children[1]->GetMetaData().Type;
+		AbstractType fromType = leftChild->GetMetaData().Type;
 
 		if (LHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type.Get() != VariableType::Bool)
  			LHSRawValue = Value::CastValue(LHSRawValue, p_MetaData.Type, fromType);
 
-		fromType = children[0]->GetMetaData().Type;
+		fromType = rightChild->GetMetaData().Type;
 
 		if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type.Get() != VariableType::Bool)
 			RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type, fromType);
 
 		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
-			p_MetaData.Type = children[1]->GetMetaData().Type;
+			p_MetaData.Type = leftChild->GetMetaData().Type;
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 	}
@@ -298,15 +310,15 @@ namespace clear {
 		return nullptr;
 	}
 
-	llvm::Value* ASTBinaryExpression::_CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS)
+	llvm::Value* ASTBinaryExpression::_CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const AbstractType& pointerMetaData)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		if (m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
 			RHS = builder.CreateNeg(RHS);
 
-		p_MetaData.Type = AbstractType(p_MetaData.Type.GetUnderlying(), TypeKind::Variable, p_MetaData.Type.GetUserDefinedType());
-		return builder.CreateInBoundsGEP(p_MetaData.Type.GetLLVMUnderlying(), LHS, RHS);
+		CLEAR_VERIFY(pointerMetaData.IsPointer() && pointerMetaData.GetLLVMUnderlying() == p_MetaData.Type.GetLLVMUnderlying(), "");
+		return builder.CreateInBoundsGEP(pointerMetaData.GetLLVMUnderlying(), LHS, RHS);
 	}
 
 	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain)
@@ -330,11 +342,6 @@ namespace clear {
 		if (m_Chain.empty())
 		{
 			p_MetaData.Type = metaData.Type;
-			
-			if (p_MetaData.Type.Get() == VariableType::Array)
-			{
-				p_MetaData.NeedLoading = false;
-			}
 
 			return value; 
 		}
@@ -367,11 +374,6 @@ namespace clear {
 
 		llvm::Value* gepPtr = builder.CreateInBoundsGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
 		p_MetaData.Type = typeToGet;
-
-		if (p_MetaData.Type.Get() == VariableType::Array)
-		{
-			p_MetaData.NeedLoading = false;
-		}
 
 		return gepPtr; 
 	}
@@ -671,6 +673,14 @@ namespace clear {
 
 			if (child->GetMetaData().NeedLoading)
 			{
+				if (gen->getType()->isArrayTy())
+				{
+					llvm::ArrayType* type = llvm::dyn_cast<llvm::ArrayType>(gen->getType());
+
+					CLEAR_VERIFY(type, "");
+					gen = builder.CreateInBoundsGEP(type, gen, { builder.getInt64(0), builder.getInt64(0) }, "array_decay");
+				}
+
 				CLEAR_VERIFY(gen->getType()->isPointerTy(), "");
 
 				gen = builder.CreateLoad(child->GetMetaData().Type.GetLLVMType(), gen, "loaded_value");
@@ -946,11 +956,16 @@ namespace clear {
 			{
 				p_MetaData.Type = AbstractType(metaData.Type.GetUnderlying(), TypeKind::Variable, metaData.Type.GetUserDefinedType());
 	
-				if (metaData.Type.IsPointer())
+				if (metaData.Type.Get() == VariableType::Array)
+				{
+					CLEAR_VERIFY(metaData.Type.IsPointer(), "");
+
 					p_MetaData.NeedLoading = true;
+					return builder.CreateInBoundsGEP(metaData.Type.GetLLVMType(), operand, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+				}
 
 				CLEAR_VERIFY(operand->getType()->isPointerTy(), "Dereference operand must be a pointer");
-				return builder.CreateLoad(metaData.Type.GetLLVMType(), operand, "loaded_value");
+				return builder.CreateLoad(p_MetaData.Type.GetLLVMType(), operand, "loaded_value");
 			}
 			case UnaryExpressionType::Reference:
 			{
@@ -958,6 +973,7 @@ namespace clear {
  				CLEAR_VERIFY(inst, "must be an alloca");
 
 				p_MetaData.NeedLoading = false;
+				p_MetaData.Type = metaData.Type;
 
 				return inst;
 			}
@@ -965,16 +981,14 @@ namespace clear {
 			{
 				if (children[0]->GetMetaData().NeedLoading)
 				{
-					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
-
-					if (alloc->getAllocatedType()->isArrayTy())
+					if (children[0]->GetMetaData().Type.Get() == VariableType::Array)
 					{
 						CLEAR_VERIFY(p_MetaData.Type.IsPointer(), "");
-						operand = builder.CreateInBoundsGEP(alloc->getAllocatedType(), alloc, { builder.getInt64(0), builder.getInt64(0)});
+						operand = builder.CreateInBoundsGEP(children[0]->GetMetaData().Type.GetLLVMType(), operand, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
 					}
 					else
 					{
-						operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+						operand = builder.CreateLoad(children[0]->GetMetaData().Type.GetLLVMType(), operand, "loaded_value");
 					}
 
 				}

@@ -114,7 +114,7 @@ namespace clear {
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger);
-		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS);
+		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const AbstractType& pointerMetaData);
 
 	private:
 		BinaryExpressionType m_Expression;
