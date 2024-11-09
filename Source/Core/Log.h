@@ -33,10 +33,8 @@ namespace clear {
 	
 	#ifdef WIN32
 		#define CLEAR_HALT() __debugbreak()
-	#elif defined(__APPLE__)
+	#else
 		#define CLEAR_HALT() __builtin_trap()
-	#else 
-		#define CLEAR_HALT() std::abort()
 	#endif
 
 	#ifdef _DEBUG
