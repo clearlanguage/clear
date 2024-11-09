@@ -386,7 +386,7 @@ namespace clear
 		if (parsed.tokens.empty())
 			return;
 
-		ProgramInfo info = _SubParse( parsed.tokens.at(0),true);
+		ProgramInfo info = _SubParse( parsed.tokens.at(0),false);
 		for (const Token& tok :info.Tokens) {
 			_PushToken(tok);
 		}
@@ -1020,7 +1020,11 @@ namespace clear
 		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
 		if (current != incrementType) {
 			_Backtrack();
-			m_CurrentState = ParserState::RValue;
+			if (_GetLastToken().TokenType!= TokenType::Increment && _GetLastToken().TokenType!= TokenType::Decrement) {
+				m_CurrentState = ParserState::RValue;
+			}else {
+				m_CurrentState = ParserState::Default;
+			}
 			return;
 		}
 		m_ProgramInfo.Tokens.pop_back();
