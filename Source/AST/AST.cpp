@@ -5,13 +5,13 @@
 #include "ExpressionBuilder.h"
 
 #include <iostream>
+#include <queue>
 
 namespace clear {
 
 	AST::AST(ProgramInfo& info)
 	{
 		auto& tokens = info.Tokens;
-		auto& builder = *LLVM::Backend::GetBuilder();
 
 		//possibly add command line arguments in the future
 		std::vector<Paramater> parameters;
@@ -34,7 +34,7 @@ namespace clear {
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
-			auto& currentChildren = currentRoot.Node->GetChildren();
+
 			switch (currentToken.TokenType)
 			{
 				case TokenType::Declaration:
