@@ -3,6 +3,7 @@
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
 #include "Core/Types.h"
+#include <llvm/IR/Intrinsics.h>
 #include "Core/Utils.h"
 
 #include <iostream>
@@ -230,7 +231,7 @@ namespace clear {
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
 				return builder.CreateCall(powFunction, { LHS, RHS });
 			}
 			default:
