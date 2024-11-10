@@ -3,8 +3,6 @@
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
 #include "Core/Types.h"
-#include <llvm/IR/Intrinsics.h>
-#include "Core/Utils.h"
 
 #include <iostream>
 #include <map>

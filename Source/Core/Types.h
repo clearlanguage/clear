@@ -24,8 +24,9 @@ namespace clear {
 	enum class BinaryExpressionType 
 	{
 		None = 0, Add, Sub, Mul, Div, Pow, Mod, Less, LessEq,
-		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic, NegatedPointerArithmetic, 
-		Assignment, BitwiseLeftShift, BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr, 
+		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
+		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
+		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
 		BitwiseXor
 	};
 

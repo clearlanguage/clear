@@ -462,10 +462,14 @@ namespace clear {
 					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-					variableReferencesToAssign.push({ builder.Create({}), type });
-					i--;
+					Ref<ASTExpression> expression = builder.Create({});
 
-					CLEAR_VERIFY(tokens[i + 1].TokenType == TokenType::Comma || tokens[i + 1].TokenType == TokenType::Assignment, "cannot have variable reference here");
+					if(i < tokens.size() && (tokens[i].TokenType == TokenType::Assignment || tokens[i].TokenType == TokenType::Comma))
+						variableReferencesToAssign.push({ expression, type });
+					else
+						currentRoot.Node->PushChild(expression);
+
+					i--;
 
 					break;
 				}
