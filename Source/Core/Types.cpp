@@ -66,8 +66,6 @@ namespace clear {
 
 	BinaryExpressionType GetBinaryExpressionTypeFromTokenType(TokenType type)
 	{
-		//TODO: once BitwiseAnd implemented in tokenizer add here
-
 		switch (type)
 		{
 			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
@@ -93,6 +91,7 @@ namespace clear {
 			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
+			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
 
 			default:
 				break;

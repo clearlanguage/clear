@@ -105,9 +105,9 @@ namespace clear {
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
 
 	private:
-		const bool _IsMathExpression()    const;
-		const bool _IsCmpExpression()     const;
-		const bool _IsBitwiseExpression() const;
+		bool _IsMathExpression()    const;
+		bool _IsCmpExpression()     const;
+		bool _IsBitwiseExpression() const;
 
 		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger);
 		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);

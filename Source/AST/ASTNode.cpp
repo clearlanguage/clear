@@ -81,8 +81,7 @@ namespace clear {
 	{
 		p_MetaData.Type = expectedType;
 	}
-	llvm::Value* ASTBinaryExpression::Codegen()
-	{
+	llvm::Value* ASTBinaryExpression::Codegen() {
 		// Assumes the two values in its children are to be added in order
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
@@ -149,6 +148,17 @@ namespace clear {
 			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue, leftChild->GetMetaData().Type);
 		}
 
+		if(m_Expression == BinaryExpressionType::Index)
+		{
+			CLEAR_VERIFY(RHSRawValue->getType()->isIntegerTy(), "");
+			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
+
+			auto& leftType = leftChild->GetMetaData().Type;
+			p_MetaData.Type = AbstractType(leftType.GetUnderlying(), TypeKind::Variable, leftType.GetUserDefinedType());
+			p_MetaData.NeedLoading = true;
+			return builder.CreateInBoundsGEP(leftType.GetLLVMUnderlying(), LHSRawValue, RHSRawValue, "array_index");
+		}
+
 		AbstractType fromType = leftChild->GetMetaData().Type;
 
 		if (LHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type.Get() != VariableType::Bool)
@@ -164,19 +174,59 @@ namespace clear {
 
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 	}
-	const bool ASTBinaryExpression::_IsMathExpression() const
+
+	bool ASTBinaryExpression::_IsMathExpression() const
 	{
-		return (int)m_Expression <= (int)BinaryExpressionType::Mod;
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::Add:
+            case BinaryExpressionType::Sub:
+			case BinaryExpressionType::Mul:
+			case BinaryExpressionType::Div:
+			case BinaryExpressionType::Mod:
+			case BinaryExpressionType::Pow:
+				return true;
+			default:
+				break;
+		}
+
+		return false;
 	}
 
-	const bool ASTBinaryExpression::_IsCmpExpression() const
+	bool ASTBinaryExpression::_IsCmpExpression() const
 	{
-		return (int)m_Expression <= (int)BinaryExpressionType::NotEq && !_IsMathExpression();
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::Less:
+			case BinaryExpressionType::LessEq:
+			case BinaryExpressionType::Greater:
+            case BinaryExpressionType::GreaterEq:
+			case BinaryExpressionType::Eq:
+			case BinaryExpressionType::NotEq:
+				return true;
+			default:
+				break;
+		}
+
+		return false;
 	}
 
-	const bool ASTBinaryExpression::_IsBitwiseExpression() const
+	bool ASTBinaryExpression::_IsBitwiseExpression() const
 	{
-		return (int)m_Expression >= (int)BinaryExpressionType::BitwiseLeftShift;
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::BitwiseLeftShift:
+			case BinaryExpressionType::BitwiseRightShift:
+			case BinaryExpressionType::BitwiseNot:
+			case BinaryExpressionType::BitwiseAnd:
+			case BinaryExpressionType::BitwiseOr:
+			case BinaryExpressionType::BitwiseXor:
+				return true;
+			default:
+				break;
+		}
+
+		return false;
 	}
 
 	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger)

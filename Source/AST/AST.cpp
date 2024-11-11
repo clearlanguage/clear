@@ -459,10 +459,9 @@ namespace clear {
 					chain.push_back(currentToken.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
-
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-					Ref<ASTExpression> expression = builder.Create({});
+					AbstractType type;
+					Ref<ASTExpression> expression = builder.Create({}, type);
 
 					if(i < tokens.size() && (tokens[i].TokenType == TokenType::Assignment || tokens[i].TokenType == TokenType::Comma))
 						variableReferencesToAssign.push({ expression, type });

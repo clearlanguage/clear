@@ -29,6 +29,8 @@ namespace clear {
 			{TokenType::GreaterThan,      1},
 			{TokenType::LessThanEqual,    1},
 			{TokenType::GreaterThanEqual, 1},
+			{TokenType::IndexOperator, 1},
+
 			{TokenType::OpenBracket,      0}
 	};
 
@@ -72,10 +74,18 @@ namespace clear {
 
 	Ref<ASTExpression> ExpressionBuilder::Create(const AbstractType& expectedType)
 	{
+		AbstractType dummy;
+		return Create(expectedType, dummy);
+	}
+
+
+	Ref<ASTExpression> ExpressionBuilder::Create(const AbstractType& expectedType, AbstractType& rootType)
+	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		std::stack<Operator> operators;
 
 		std::vector<AbstractType> types = TypeAnalysis(m_Index);
+		rootType = types[0];
 
 		AbstractType currentExpectedType = expectedType;
 
@@ -314,9 +324,11 @@ namespace clear {
 
 				if (pointer)
 					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.Get(), type.GetUserDefinedType()));
-				else if (type.Get() == VariableType::Array)
+				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType != TokenType::IndexOperator)
 					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.GetUnderlying(), type.GetUserDefinedType()));
-				else 
+				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType == TokenType::IndexOperator)
+					types.push_back(AbstractType(type.GetUnderlying(), TypeKind::Variable, type.GetUserDefinedType()));
+				else
 					types.push_back(type);
 
 				pointer = false;
