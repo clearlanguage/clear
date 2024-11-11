@@ -169,6 +169,10 @@ namespace clear {
 					{
 						operators.push({ BinaryExpressionType::NegatedPointerArithmetic, UnaryExpressionType::None, currentExpectedType, false, 1 });
 					}
+					else if (m_Tokens[m_Index].TokenType == TokenType::IndexOperator)
+					{
+						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 1 });
+					}
 
 					m_Index++;
 					continue;

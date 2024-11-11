@@ -678,7 +678,6 @@ namespace clear {
 
 		llvm::Value* value = stack.top()->Codegen();
 
-		//TODO: come back to me
 
 		p_MetaData.NeedLoading = stack.top()->GetMetaData().NeedLoading;
 		p_MetaData.Type = stack.top()->GetMetaData().Type;
