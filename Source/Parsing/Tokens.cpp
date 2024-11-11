@@ -73,7 +73,8 @@ namespace clear {
         {"elseif",    {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}},
         {"while",     {.NextState = ParserState::Default, .TokenToPush = TokenType::While }}, 
         {"break",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Break }},
-        {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }}
+        {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }},
+        {"float",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
 
     };
 
