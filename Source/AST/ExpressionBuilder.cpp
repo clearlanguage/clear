@@ -7,6 +7,7 @@ namespace clear {
 
 	static std::map<TokenType, int32_t> s_Precedence = 
 	{
+			{TokenType::IndexOperator, 4},
 			{TokenType::Negation,         4},
 			{TokenType::Increment,		  4},
 			{TokenType::Decrement,		  4},
@@ -29,8 +30,6 @@ namespace clear {
 			{TokenType::GreaterThan,      1},
 			{TokenType::LessThanEqual,    1},
 			{TokenType::GreaterThanEqual, 1},
-			{TokenType::IndexOperator, 1},
-
 			{TokenType::OpenBracket,      0}
 	};
 

@@ -171,7 +171,7 @@ namespace clear {
 
 		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
 			p_MetaData.Type = leftChild->GetMetaData().Type;
-
+		
 		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
 	}
 
@@ -367,6 +367,7 @@ namespace clear {
 			RHS = builder.CreateNeg(RHS);
 
 		CLEAR_VERIFY(pointerMetaData.IsPointer() && pointerMetaData.GetLLVMUnderlying() == p_MetaData.Type.GetLLVMUnderlying(), "");
+		p_MetaData.Type = AbstractType(pointerMetaData.GetUnderlying(), TypeKind::Variable, pointerMetaData.GetUserDefinedType());
 		return builder.CreateInBoundsGEP(pointerMetaData.GetLLVMUnderlying(), LHS, RHS);
 	}
 
@@ -1003,17 +1004,16 @@ namespace clear {
 			case UnaryExpressionType::Dereference:
 			{
 				p_MetaData.Type = AbstractType(metaData.Type.GetUnderlying(), TypeKind::Variable, metaData.Type.GetUserDefinedType());
-	
+				p_MetaData.NeedLoading = metaData.NeedLoading;
+
 				if (metaData.Type.Get() == VariableType::Array)
 				{
 					CLEAR_VERIFY(metaData.Type.IsPointer(), "");
-
-					p_MetaData.NeedLoading = true;
 					return builder.CreateInBoundsGEP(metaData.Type.GetLLVMType(), operand, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
 				}
 
 				CLEAR_VERIFY(operand->getType()->isPointerTy(), "Dereference operand must be a pointer");
-				return builder.CreateLoad(p_MetaData.Type.GetLLVMType(), operand, "loaded_value");
+				return builder.CreateLoad(metaData.Type.GetLLVMType(), operand, "loaded_value");
 			}
 			case UnaryExpressionType::Reference:
 			{
