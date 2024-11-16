@@ -107,9 +107,8 @@ namespace clear {
 		{
 			if (rightChild->GetMetaData().NeedLoading)
 			{
-				llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(RHSRawValue);
-				CLEAR_VERIFY(alloc, "");
-				RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+				CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "not a valid load type");
+				RHSRawValue = builder.CreateLoad(rightChild->GetMetaData().Type->Get(), RHSRawValue, "loaded_value");
 			}
 
 			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type->GetID() != TypeID::None && !p_MetaData.Type->IsPointer())
