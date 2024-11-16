@@ -7,7 +7,7 @@ namespace clear {
 
 	static std::map<TokenType, int32_t> s_Precedence = 
 	{
-			{TokenType::IndexOperator, 4},
+			{TokenType::IndexOperator,    4},
 			{TokenType::Negation,         4},
 			{TokenType::Increment,		  4},
 			{TokenType::Decrement,		  4},
@@ -325,14 +325,25 @@ namespace clear {
 				std::list<std::string> variableChain = GetVariableChain(index);
 				AbstractType type = GetBaseTypeFromList(variableChain);
 
+
+				//TODO: need to sort this trash out lmao
 				if (pointer)
+				{
 					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.Get(), type.GetUserDefinedType()));
+				}
 				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType != TokenType::IndexOperator)
+				{
 					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.GetUnderlying(), type.GetUserDefinedType()));
+				}
 				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType == TokenType::IndexOperator)
+				{
 					types.push_back(AbstractType(type.GetUnderlying(), TypeKind::Variable, type.GetUserDefinedType()));
+					
+				}
 				else
+				{
 					types.push_back(type);
+				}
 
 				pointer = false;
 			}

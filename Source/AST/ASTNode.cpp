@@ -112,7 +112,7 @@ namespace clear {
 				RHSRawValue = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
 			}
 
-			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type.Get() != VariableType::None)
+			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type.Get() != VariableType::None && !p_MetaData.Type.IsPointer())
 				RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type);
 
 			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type.IsSigned());
@@ -1042,7 +1042,10 @@ namespace clear {
 				}
 
 				AbstractType from = metaData.Type;
-				return Value::CastValue(operand, p_MetaData.Type, from);
+				if(!p_MetaData.Type.IsPointer())
+					return Value::CastValue(operand, p_MetaData.Type, from);
+					
+				return operand;
 			}
 			case UnaryExpressionType::None:
 			default:

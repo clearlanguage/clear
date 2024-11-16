@@ -364,7 +364,12 @@ namespace clear {
 		return s_RegisteredVariableTypes.contains(name) ? s_RegisteredVariableTypes.at(name) : s_NullAbstractType;
 	}
 
-	const bool AbstractType::IsSigned() const
+    AbstractType AbstractType::CreateUnderlying()
+    {
+		return AbstractType(m_UnderlyingType, m_Kind, m_UserDefinedType);
+    }
+
+    const bool AbstractType::IsSigned() const
 	{
 		switch (m_Type)
 		{
