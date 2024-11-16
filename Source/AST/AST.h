@@ -23,6 +23,7 @@ namespace clear {
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
         std::list<std::string> _RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current);
         Ref<Type> _RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
+        Ref<Type> _GetAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
         Ref<Type> _GetTypeFromToken(const Token& token, bool isPointer);
         Ref<Type> _GetTypeFromList(std::list<std::string>& list);
 

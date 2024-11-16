@@ -68,7 +68,7 @@ namespace clear {
         Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members); //leave members empty if referencing an existing struct
         Type(const Ref<Type>& elementType, size_t count); //arrays
         Type(const Ref<Type>& pointTo); //pointers
-        
+
         inline TypeID      GetID() const {return m_ID;}
         inline TypeKindID  GetTypeKindID() const {return m_TypeKindID;}
 

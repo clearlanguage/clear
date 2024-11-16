@@ -186,7 +186,7 @@ namespace clear {
             return;
         }
 
-        if(token.TokenType == TokenType::VariableReference)
+        if(token.TokenType == TokenType::VariableReference || token.TokenType == TokenType::VariableName)
         {
             auto it = s_VariableTypeRegistry.find(token.Data);
             

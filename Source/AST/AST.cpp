@@ -314,14 +314,12 @@ namespace clear {
 						chain.push_back(previous.Data);
 						chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-						i -= 2;
-						Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
-						i += 3;
+						i++;
 
 						Ref<ASTArrayInitializer> initializer = Ref<ASTArrayInitializer>::Create();
 						initializer->PushChild(Ref<ASTVariableExpression>::Create(chain));
 
-						_CreateArrayInitializer(initializer, tokens, currentRoot.Node->GetName(), i, type);
+						_CreateArrayInitializer(initializer, tokens, currentRoot.Node->GetName(), i, {});
 
 						currentRoot.Node->PushChild(initializer);
 
@@ -333,9 +331,8 @@ namespace clear {
 					chain.push_back(previous.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-					i -= 2;
-					Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
-					i += 3;
+					Ref<Type> type = _GetAssignmentType(tokens, currentRoot.Node->GetName(), i);
+					i++;
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 
@@ -662,7 +659,36 @@ namespace clear {
 		return Type::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
 	}
 
-	Ref<Type> AST::_GetTypeFromToken(const Token& token, bool isPointer)
+    Ref<Type> AST::_GetAssignmentType(const std::vector<Token> &tokens, const std::string &currentFunctionName, size_t current)
+    {
+
+		while(tokens[current].TokenType != TokenType::VariableName && 
+			  tokens[current].TokenType != TokenType::VariableReference)
+		{
+			current--;
+		}
+
+		Token token = tokens[current];
+		token.Data = currentFunctionName + "::" + token.Data;
+
+		Ref<Type> currentType = Ref<Type>::Create(token);
+
+		current++;
+
+		while(tokens[current].TokenType == TokenType::PointerDef || tokens[current].TokenType == TokenType::StaticArrayDef)
+		{
+			if(tokens[current].TokenType == TokenType::PointerDef)
+				currentType = Ref<Type>::Create(currentType); //pointer
+			else if(tokens[current].TokenType == TokenType::StaticArrayDef)
+				currentType = Ref<Type>::Create(currentType, std::stoull(tokens[current].Data)); //array
+
+			current++;
+		}
+
+        return currentType;
+    }
+
+    Ref<Type> AST::_GetTypeFromToken(const Token& token, bool isPointer)
 	{
 		Ref<Type> type = Ref<Type>::Create(token, isPointer);
 
