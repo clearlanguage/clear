@@ -139,23 +139,28 @@ namespace clear {
 
 		llvm::Type* toType = to;
 
+		bool sign = false;
+
+		if(fromType)
+			sign = fromType->IsSigned();
+
 		if (from == toType)
 			return value;
 
 		if (from->isIntegerTy() && to->isIntegerTy())
 		{
-			return builder.CreateIntCast(value, toType, fromType->IsSigned(), "cast");
+			return builder.CreateIntCast(value, toType, sign, "cast");
 		}
 		else if (from->isIntegerTy() && to->isFloatingPointTy())
 		{
-			if (fromType->IsSigned())
+			if (sign)
 				return builder.CreateSIToFP(value, toType, "cast");  
 			else
 				return builder.CreateUIToFP(value, toType, "cast");  
 		}
 		else if (from->isFloatingPointTy() && to->isIntegerTy())
 		{
-			if (fromType->IsSigned())
+			if (sign)
 				return builder.CreateFPToSI(value, toType, "cast");  
 			else
 				return builder.CreateFPToUI(value, toType, "cast"); 

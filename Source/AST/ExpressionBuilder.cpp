@@ -7,30 +7,30 @@ namespace clear {
 
 	static std::map<TokenType, int32_t> s_Precedence = 
 	{
-			{TokenType::IndexOperator,    4},
-			{TokenType::Negation,         4},
-			{TokenType::Increment,		  4},
-			{TokenType::Decrement,		  4},
-			{TokenType::BitwiseNot,		  4},
-			{TokenType::DereferenceOp,    4},
-			{TokenType::AddressOp,		  4},
-			{TokenType::Power,			  4},
-			{TokenType::DivOp,			  3},
-			{TokenType::MulOp,			  3},
-			{TokenType::LeftShift,		  3},
-			{TokenType::RightShift,   	  3},
-			{TokenType::BitwiseOr,		  3},
-			{TokenType::BitwiseAnd ,      3},
-			{TokenType::BitwiseXor,		  3},
-			{TokenType::AddOp,			  2},
-			{TokenType::SubOp,			  2},
-			{TokenType::IsEqual,		  1},
-			{TokenType::NotEqual,		  1},
-			{TokenType::LessThan,		  1},
-			{TokenType::GreaterThan,      1},
-			{TokenType::LessThanEqual,    1},
-			{TokenType::GreaterThanEqual, 1},
-			{TokenType::OpenBracket,      0}
+	    {TokenType::IndexOperator,      5}, 
+	    {TokenType::Power,              4}, 
+	    {TokenType::Negation,           4},
+	    {TokenType::Increment,          4},
+	    {TokenType::Decrement,          4},
+	    {TokenType::BitwiseNot,         4},
+	    {TokenType::DereferenceOp,      4},
+	    {TokenType::AddressOp,          4},
+	    {TokenType::DivOp,              3},
+	    {TokenType::MulOp,              3},
+	    {TokenType::LeftShift,          3},
+	    {TokenType::RightShift,         3},
+	    {TokenType::AddOp,              2},
+	    {TokenType::SubOp,              2},
+	    {TokenType::BitwiseAnd,         1}, 
+	    {TokenType::BitwiseXor,         1},
+	    {TokenType::BitwiseOr,          1},
+	    {TokenType::IsEqual,            0}, 
+	    {TokenType::NotEqual,           0},
+	    {TokenType::LessThan,           0},
+	    {TokenType::GreaterThan,        0},
+	    {TokenType::LessThanEqual,      0},
+	    {TokenType::GreaterThanEqual,   0},
+	    {TokenType::OpenBracket,       -1}  
 	};
 
 	static std::set<TokenType> s_Terminators = 
@@ -89,7 +89,7 @@ namespace clear {
 		Ref<Type> currentExpectedType = expectedType;
 
 		if(expectedType && expectedType->GetID() != TypeID::None)
-			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, 0 });
+			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, -1 });
 
 		size_t typeIndex = 0;
 
@@ -170,7 +170,7 @@ namespace clear {
 					}
 					else if (m_Tokens[m_Index].TokenType == TokenType::IndexOperator)
 					{
-						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 1 });
+						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 5 });
 					}
 
 					m_Index++;
