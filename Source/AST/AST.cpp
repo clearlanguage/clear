@@ -149,41 +149,29 @@ namespace clear {
 					auto& previous = tokens[i - 1];
 
 					Ref<Type> type;
+                    size_t copy = i;
 
-					if (previous.TokenType == TokenType::VariableReference)
+					while(!g_DataTypes.contains(tokens[copy].Data) && tokens[copy].TokenType != TokenType::TypeIdentifier)
 					{
-						type = Ref<Type>::Create(previous);
+						copy--;
 					}
-					else if (previous.TokenType == TokenType::PointerDef)
-					{
-						auto& before = tokens[i - 2];
-						type = Ref<Type>::Create(before, true);
-					}
-					else if (previous.TokenType == TokenType::StaticArrayDef)
-					{
-						while (i > 0 && tokens[i].TokenType != TokenType::EndLine)
-							i--;
 
-						i++;
-						Ref<Type> typeToGet;
-						while ((typeToGet = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)))
+					type = Ref<Type>::Create(tokens[copy]);
+
+					copy++;
+
+					while(tokens[copy].TokenType == TokenType::PointerDef || tokens[copy].TokenType == TokenType::StaticArrayDef)
+					{
+						if(tokens[copy].TokenType == TokenType::PointerDef)
 						{
-							i++;
-							if (tokens[i].TokenType == TokenType::PointerDef)
-								i++;
-
-							type = typeToGet;
+							type = Ref<Type>::Create(type); //pointer
+						}
+						else if (tokens[copy].TokenType == TokenType::StaticArrayDef)
+						{
+							type = Ref<Type>::Create(type, std::stoull(tokens[copy].Data));
 						}
 
-						while (tokens[i].TokenType == TokenType::StaticArrayDef)
-						{
-							type = Ref<Type>::Create(type, std::stoll(tokens[i].Data));
-							i++;
-						}
-					}
-					else
-					{
-						type = Ref<Type>::Create(previous);
+						copy++;
 					}
 
 					currentRoot.Node->PushChild(Ref<ASTVariableDeclaration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
@@ -357,7 +345,7 @@ namespace clear {
 					chain.push_back(previous.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-					Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+					Ref<Type> type = _GetAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
 					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(Type::GetBinaryExpressionTypeFromToken(tokens[i].TokenType), type);
 					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
@@ -591,73 +579,6 @@ namespace clear {
 		return list;
 	}
 
-	Ref<Type> AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
-	{
-		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
-
-		while (current > 0 && 
-			   tokens[current].TokenType != TokenType::EndLine && 
-			   tokens[current].TokenType != TokenType::EndIndentation &&
-			   tokens[current].TokenType != TokenType::Comma && 
-			   tokens[current].TokenType != TokenType::StaticArrayDef &&
-			   (!g_DataTypes.contains(tokens[current].Data) || 
-			   tokens[current].TokenType == TokenType::VariableReference || 
-			   tokens[current].TokenType == TokenType::DotOp))
-		{
-			current--;
-		}
-
-		if (isPointer)
-			current++;
-
-
-		if (tokens[current].TokenType == TokenType::DereferenceOp)
-			current++;
-
-
-		if(tokens[current].TokenType == TokenType::StaticArrayDef)
-		{
-			current++;
-			return Type::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);	
-		}
-
-		if (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
-		{
-			while (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
-				current++;
-
-			bool shouldDerference = false;
-
-			if (tokens[current].TokenType == TokenType::DereferenceOp)
-			{
-				shouldDerference = true;
-				current++;
-			}
-
-			size_t currentCopy = current;
-			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
-
-			std::string name = currentFunctionName + "::" + tokens[current].Data;
-			Ref<Type> type = Type::GetVariableTypeFromName(name);
-
-			for (auto& str : ls)
-			{
-				StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
-				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
-
-				size_t indexToNextType = structMetaData.Indices[str];
-				type = structMetaData.Types[indexToNextType];
-			}
-			
-			if (shouldDerference)
-				return type->GetUnderlying();
-
-			return type;
-		}
-
-		current++;
-		return Type::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
-	}
 
     Ref<Type> AST::_GetAssignmentType(const std::vector<Token> &tokens, const std::string &currentFunctionName, size_t current)
     {
@@ -674,7 +595,7 @@ namespace clear {
 		Ref<Type> currentType = Ref<Type>::Create(token);
 
 		current++;
-
+        //TODO: maybe remove?
 		while(tokens[current].TokenType == TokenType::PointerDef || tokens[current].TokenType == TokenType::StaticArrayDef)
 		{
 			if(tokens[current].TokenType == TokenType::PointerDef)
