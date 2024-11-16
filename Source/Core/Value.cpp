@@ -9,26 +9,26 @@ namespace clear {
 
 	static size_t s_StringCount = 0;
 
-	Value::ConstantPair Value::GetConstant(const AbstractType& type, const std::string& data)
+	Value::ConstantPair Value::GetConstant(const Ref<Type>& type, const std::string& data)
 	{
 		auto& context = *LLVM::Backend::GetContext();
 
-		switch (type.Get())
+		switch (type->GetID())
 		{
-			case VariableType::Int8:    return { llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)std::stoi(data),     true), nullptr };
-			case VariableType::Int16:   return { llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (int16_t)std::stoi(data),    true), nullptr };
-			case VariableType::Int32:   return { llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)std::stoi(data),    true), nullptr };
-			case VariableType::Int64:   return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (int64_t)std::stoll(data),   true), nullptr };
-			case VariableType::Uint8:   return { llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (uint8_t)std::stoull(data),  false), nullptr };
-			case VariableType::Uint16:  return { llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (uint16_t)std::stoull(data), false), nullptr };
-			case VariableType::Uint32:  return { llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (uint32_t)std::stoull(data), false), nullptr };
-			case VariableType::Uint64:  return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), false), nullptr };
-			case VariableType::Float32: return { llvm::ConstantFP::get(llvm::Type::getFloatTy(context),  (float)std::stod(data)), nullptr };
-			case VariableType::Float64: return { llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data)), nullptr };
-			case VariableType::Bool:	return { llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr };
-			case VariableType::String:	return Value::GetConstantString(data);
-			case VariableType::Pointer: return { llvm::ConstantPointerNull::get((llvm::PointerType*)type.GetLLVMType()), nullptr };
-			case VariableType::None:
+			case TypeID::Int8:    return { llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)std::stoi(data),     true), nullptr };
+			case TypeID::Int16:   return { llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (int16_t)std::stoi(data),    true), nullptr };
+			case TypeID::Int32:   return { llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)std::stoi(data),    true), nullptr };
+			case TypeID::Int64:   return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (int64_t)std::stoll(data),   true), nullptr };
+			case TypeID::Uint8:   return { llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (uint8_t)std::stoull(data),  false), nullptr };
+			case TypeID::Uint16:  return { llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (uint16_t)std::stoull(data), false), nullptr };
+			case TypeID::Uint32:  return { llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (uint32_t)std::stoull(data), false), nullptr };
+			case TypeID::Uint64:  return { llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), false), nullptr };
+			case TypeID::Float32: return { llvm::ConstantFP::get(llvm::Type::getFloatTy(context),  (float)std::stod(data)), nullptr };
+			case TypeID::Float64: return { llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data)), nullptr };
+			case TypeID::Bool:	  return { llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr };
+			case TypeID::String:  return Value::GetConstantString(data);
+			case TypeID::Pointer: return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
+			case TypeID::None:
 			default:
 				return { nullptr, nullptr };
 		}
@@ -41,7 +41,7 @@ namespace clear {
 		return s_VariableMetaData.contains(name) ? s_VariableMetaData.at(name) : s_NullVariableMetaData;
 	}
 
-	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const AbstractType& type)
+	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const Ref<Type>& type)
 	{
 		s_VariableMetaData[name] = { .Alloca = alloc, .Type = type, .Name = name };
 	}
@@ -51,7 +51,7 @@ namespace clear {
 		s_VariableMetaData.erase(name);
 	}
 
-	Value::Value(const AbstractType& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value)
+	Value::Value(const Ref<Type>& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value)
 		: m_Type(type), m_Data(data), m_Chain(chain), m_Value(value)
 	{
 	}
@@ -85,34 +85,31 @@ namespace clear {
 		return { strPtr, globalStr->getValueType() };
 	}
 
-	Value::Value(const std::string& rValue)
-		: m_Type(rValue), m_Data(rValue)
+	Value::Value(const Token& rValue)
+		: m_Type(Ref<Type>::Create(rValue)), m_Data(rValue.Data)
 	{
 		auto [value, type] = Value::GetConstant(m_Type, m_Data);
-
 		m_Value = value;
-		if (m_Type.Get() == VariableType::String)
-			m_Type.SetLLVMUnderlyingType(type);
 	}
 
-	Value::Value(const AbstractType& type, const std::string& data)
+	Value::Value(const Ref<Type>& type, const std::string& data)
 		: m_Type(type), m_Data(data)
 	{
-		if (m_Type.GetKind() == TypeKind::RValue)
+		if (m_Type->GetTypeKindID() == TypeKindID::Constant)
 		{
 			m_Value = Value::GetConstant(m_Type, m_Data).first;
 		}
-		else if (m_Type.GetKind() == TypeKind::Variable)
+		else if (m_Type->GetTypeKindID() == TypeKindID::Variable)
 		{
 			auto& builder = *LLVM::Backend::GetBuilder();
 
 			CLEAR_VERIFY(!s_VariableMetaData.contains(m_Data), "variable already declared");
 
-			auto value = builder.CreateAlloca(type.GetLLVMType(), nullptr, m_Data);
+			auto value = builder.CreateAlloca(type->Get(), nullptr, m_Data);
 			s_VariableMetaData[m_Data] = { .Alloca = value, .Type = m_Type, .Name = m_Data };
 
 		}
-		else if (m_Type.GetKind() == TypeKind::VariableReference)
+		else if (m_Type->GetTypeKindID() == TypeKindID::Reference)
 		{
 			CLEAR_VERIFY(s_VariableMetaData.contains(m_Data), "variable does not exist");
 
@@ -130,35 +127,40 @@ namespace clear {
 	{
 	}
 
-	llvm::Value* Value::CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from)
+	llvm::Value* Value::CastValue(llvm::Value* value, const Ref<Type>& to, const Ref<Type>& from)
 	{
 		llvm::Type* fromType = value->getType();
-		return Value::CastValue(value, to.GetLLVMType(), fromType, from);
+		return Value::CastValue(value, to->Get(), fromType, from);
 	}
 
-	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const AbstractType& fromType)
+	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const Ref<Type>& fromType)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		llvm::Type* toType = to;
+
+		bool sign = false;
+
+		if(fromType)
+			sign = fromType->IsSigned();
 
 		if (from == toType)
 			return value;
 
 		if (from->isIntegerTy() && to->isIntegerTy())
 		{
-			return builder.CreateIntCast(value, toType, fromType.IsSigned(), "cast");
+			return builder.CreateIntCast(value, toType, sign, "cast");
 		}
 		else if (from->isIntegerTy() && to->isFloatingPointTy())
 		{
-			if (fromType.IsSigned())
+			if (sign)
 				return builder.CreateSIToFP(value, toType, "cast");  
 			else
 				return builder.CreateUIToFP(value, toType, "cast");  
 		}
 		else if (from->isFloatingPointTy() && to->isIntegerTy())
 		{
-			if (fromType.IsSigned())
+			if (sign)
 				return builder.CreateFPToSI(value, toType, "cast");  
 			else
 				return builder.CreateFPToUI(value, toType, "cast"); 
@@ -227,11 +229,11 @@ namespace clear {
 		return nullptr;
 	}
 
-	Ref<Value> Value::Cast(const Ref<Value>& casting, AbstractType to)
+	Ref<Value> Value::Cast(const Ref<Value>& casting, Ref<Type> to)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		llvm::Value* newValue = Value::CastValue(casting->Get(), to);
+		llvm::Value* newValue = Value::CastValue(casting->Get(), to, {});
 		return Ref<Value>::Create(to, casting->GetData(), casting->GetChain(), newValue);
 	}
 }

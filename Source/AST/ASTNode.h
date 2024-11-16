@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Parsing/Tokens.h"
-#include "Core/Types.h"
+#include "Core/Type.h"
 #include "Core/Ref.h"
 #include "Core/Value.h"
 
@@ -15,14 +15,14 @@ namespace clear {
 	struct Paramater
 	{
 		std::string Name;
-		AbstractType Type;
+		Ref<Type> Type;
 		bool IsVariadic = false;
 	};
 
 	struct FunctionMetaData
 	{
 		std::vector<Paramater> Parameters;
-		AbstractType ReturnType;
+		Ref<Type> ReturnType;
 	};
 
 	inline std::map<std::string, FunctionMetaData> g_FunctionMetaData;
@@ -43,7 +43,7 @@ namespace clear {
 	struct NodeMetaData
 	{
 		std::string Name;
-		AbstractType Type;
+		Ref<Type> Type;
 		bool NeedLoading = false;
 	};
 
@@ -56,7 +56,7 @@ namespace clear {
 		virtual llvm::Value* Codegen();
 
 		void SetName(const std::string& name);
-		void SetType(const AbstractType& type);
+		void SetType(const Ref<Type>& type);
 
 		void PushChild(const Ref<ASTNodeBase>& child);
 		void RemoveChild(const Ref<ASTNodeBase>& child);
@@ -84,7 +84,7 @@ namespace clear {
 	class ASTNodeLiteral : public ASTNodeBase
 	{
 	public:
-		ASTNodeLiteral(const std::string& data);
+		ASTNodeLiteral(const Token& data);
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual llvm::Value* Codegen() override;
@@ -97,7 +97,7 @@ namespace clear {
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type, const AbstractType& expectedType = VariableType::None);
+		ASTBinaryExpression(BinaryExpressionType type, const Ref<Type>& expectedType = {});
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -114,7 +114,7 @@ namespace clear {
 		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
 		llvm::Value* _CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger);
-		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const AbstractType& pointerMetaData);
+		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const Ref<Type>& pointerMetaData);
 
 	private:
 		BinaryExpressionType m_Expression;
@@ -123,7 +123,7 @@ namespace clear {
 	class ASTUnaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTUnaryExpression(UnaryExpressionType type, const AbstractType& cast = VariableType::None);
+		ASTUnaryExpression(UnaryExpressionType type, const Ref<Type>& cast = {});
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -135,7 +135,7 @@ namespace clear {
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const AbstractType& returnType, const std::vector<Paramater>& arugments);
+		ASTFunctionDefinition(const std::string& name, const Ref<Type>& returnType, const std::vector<Paramater>& arugments);
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual llvm::Value* Codegen() override;
@@ -148,7 +148,7 @@ namespace clear {
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, const AbstractType& expectedReturnType, const std::vector<Paramater>& types);
+		ASTFunctionDecleration(const std::string& name, const Ref<Type>& expectedReturnType, const std::vector<Paramater>& types);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual llvm::Value* Codegen() override;
@@ -160,7 +160,7 @@ namespace clear {
 
 	struct Argument
 	{
-		AbstractType Field;
+		Ref<Type> Field;
 		std::string Data;
 	};
 
@@ -176,7 +176,7 @@ namespace clear {
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name, AbstractType type);
+		ASTVariableDeclaration(const std::string& name, Ref<Type> type);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual llvm::Value* Codegen() override;
@@ -201,7 +201,7 @@ namespace clear {
 	class ASTReturnStatement : public ASTNodeBase
 	{
 	public:
-		ASTReturnStatement(const AbstractType& expectedReturnType, bool createReturn = true);
+		ASTReturnStatement(const Ref<Type>& expectedReturnType, bool createReturn = true);
 		virtual ~ASTReturnStatement() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual llvm::Value* Codegen() override;
@@ -213,7 +213,7 @@ namespace clear {
 	class ASTExpression : public ASTNodeBase
 	{
 	public:
-		ASTExpression(const AbstractType& expectedType = VariableType::None);
+		ASTExpression(const Ref<Type>& expectedType = {});
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual llvm::Value* Codegen() override;
@@ -222,13 +222,13 @@ namespace clear {
 	class ASTStruct : public ASTNodeBase
 	{
 	public:
-		ASTStruct(const std::string& name, const std::vector<AbstractType::MemberType>& fields);
+		ASTStruct(const std::string& name, const std::vector<MemberType>& fields);
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		std::vector<AbstractType::MemberType> m_Members;
+		std::vector<MemberType> m_Members;
 	};
 
 	class ASTIfExpression : public ASTNodeBase

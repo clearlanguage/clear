@@ -18,13 +18,13 @@ namespace clear {
         void BuildIR(const std::filesystem::path& out);
 
     private:
-        void _CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected);
+        void _CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const Ref<Type>& expected);
 
         std::list<std::string> _RetrieveChain(const std::vector<Token>& tokens, size_t current);
         std::list<std::string> _RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current);
-        AbstractType _RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
-        AbstractType _GetTypeFromToken(const Token& token, bool isPointer);
-        AbstractType _GetTypeFromList(std::list<std::string>& list);
+        Ref<Type> _GetAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current);
+        Ref<Type> _GetTypeFromToken(const Token& token, bool isPointer);
+        Ref<Type> _GetTypeFromList(std::list<std::string>& list);
 
         bool _IsUnary(const Token& token);
 
@@ -33,7 +33,7 @@ namespace clear {
         struct StackNode
         {
             Ref<ASTNodeBase> Node;
-            AbstractType ExpectedReturnType;
+            Ref<Type> ExpectedReturnType;
         };
 
     private:

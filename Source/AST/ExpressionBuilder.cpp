@@ -7,30 +7,30 @@ namespace clear {
 
 	static std::map<TokenType, int32_t> s_Precedence = 
 	{
-			{TokenType::IndexOperator,    4},
-			{TokenType::Negation,         4},
-			{TokenType::Increment,		  4},
-			{TokenType::Decrement,		  4},
-			{TokenType::BitwiseNot,		  4},
-			{TokenType::DereferenceOp,    4},
-			{TokenType::AddressOp,		  4},
-			{TokenType::Power,			  4},
-			{TokenType::DivOp,			  3},
-			{TokenType::MulOp,			  3},
-			{TokenType::LeftShift,		  3},
-			{TokenType::RightShift,   	  3},
-			{TokenType::BitwiseOr,		  3},
-			{TokenType::BitwiseAnd ,      3},
-			{TokenType::BitwiseXor,		  3},
-			{TokenType::AddOp,			  2},
-			{TokenType::SubOp,			  2},
-			{TokenType::IsEqual,		  1},
-			{TokenType::NotEqual,		  1},
-			{TokenType::LessThan,		  1},
-			{TokenType::GreaterThan,      1},
-			{TokenType::LessThanEqual,    1},
-			{TokenType::GreaterThanEqual, 1},
-			{TokenType::OpenBracket,      0}
+	    {TokenType::IndexOperator,      5}, 
+	    {TokenType::Power,              4}, 
+	    {TokenType::Negation,           4},
+	    {TokenType::Increment,          4},
+	    {TokenType::Decrement,          4},
+	    {TokenType::BitwiseNot,         4},
+	    {TokenType::DereferenceOp,      4},
+	    {TokenType::AddressOp,          4},
+	    {TokenType::DivOp,              3},
+	    {TokenType::MulOp,              3},
+	    {TokenType::LeftShift,          3},
+	    {TokenType::RightShift,         3},
+	    {TokenType::AddOp,              2},
+	    {TokenType::SubOp,              2},
+	    {TokenType::BitwiseAnd,         1}, 
+	    {TokenType::BitwiseXor,         1},
+	    {TokenType::BitwiseOr,          1},
+	    {TokenType::IsEqual,            0}, 
+	    {TokenType::NotEqual,           0},
+	    {TokenType::LessThan,           0},
+	    {TokenType::GreaterThan,        0},
+	    {TokenType::LessThanEqual,      0},
+	    {TokenType::GreaterThanEqual,   0},
+	    {TokenType::OpenBracket,       -1}  
 	};
 
 	static std::set<TokenType> s_Terminators = 
@@ -61,7 +61,7 @@ namespace clear {
 	{
 		BinaryExpressionType BinaryExpression;
 		UnaryExpressionType UnaryExpression;
-		AbstractType ExpectedType;
+		Ref<Type> ExpectedType;
 		bool IsOpenBracket = false;
 		int32_t Precedence = 0;
 	};
@@ -71,31 +71,31 @@ namespace clear {
 	{
 	}
 
-	Ref<ASTExpression> ExpressionBuilder::Create(const AbstractType& expectedType)
+	Ref<ASTExpression> ExpressionBuilder::Create(const Ref<Type>& expectedType)
 	{
-		AbstractType dummy;
+		Ref<Type> dummy;
 		return Create(expectedType, dummy);
 	}
 
 
-	Ref<ASTExpression> ExpressionBuilder::Create(const AbstractType& expectedType, AbstractType& rootType)
+	Ref<ASTExpression> ExpressionBuilder::Create(const Ref<Type>& expectedType, Ref<Type>& rootType)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		std::stack<Operator> operators;
 
-		std::vector<AbstractType> types = TypeAnalysis(m_Index);
+		std::vector<Ref<Type>> types = TypeAnalysis(m_Index);
 		rootType = types[0];
 
-		AbstractType currentExpectedType = expectedType;
+		Ref<Type> currentExpectedType = expectedType;
 
-		if(expectedType && expectedType.Get() != VariableType::None)
-			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, 0 });
+		if(expectedType && expectedType->GetID() != TypeID::None)
+			operators.push({ BinaryExpressionType::None, UnaryExpressionType::Cast, currentExpectedType, false, -1 });
 
 		size_t typeIndex = 0;
 
 		while (m_Index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[m_Index].TokenType))
 		{
-			UnaryExpressionType unaryType = m_Index - 1 < m_Tokens.size() ? GetUnaryExpressionTypeFromTokenType(m_Tokens[m_Index - 1].TokenType) : UnaryExpressionType::None;
+			UnaryExpressionType unaryType = m_Index - 1 < m_Tokens.size() ? Type::GetUnaryExpressionTypeFromToken(m_Tokens[m_Index - 1].TokenType) : UnaryExpressionType::None;
 
 			int64_t tempIndex = (int64_t)m_Index - 1;
 
@@ -105,7 +105,7 @@ namespace clear {
 
 				if (--tempIndex > 0)
 				{
-					unaryType = GetUnaryExpressionTypeFromTokenType(m_Tokens[tempIndex].TokenType);
+					unaryType = Type::GetUnaryExpressionTypeFromToken(m_Tokens[tempIndex].TokenType);
 				}
 				else
 				{
@@ -120,7 +120,7 @@ namespace clear {
 			}
 			else if (s_RValues.contains(m_Tokens[m_Index].TokenType))
 			{
-				expression->PushChild(Ref<ASTNodeLiteral>::Create(m_Tokens[m_Index].Data));
+				expression->PushChild(Ref<ASTNodeLiteral>::Create(m_Tokens[m_Index]));
 				currentExpectedType = types[typeIndex++];
 			}
 			else if (m_Tokens[m_Index].TokenType == TokenType::OpenBracket)
@@ -158,7 +158,7 @@ namespace clear {
 					operators.pop();
 				}
 
-				if (currentExpectedType.IsPointer())
+				if (currentExpectedType->IsPointer())
 				{
 					if (m_Tokens[m_Index].TokenType == TokenType::AddOp)
 					{
@@ -170,7 +170,7 @@ namespace clear {
 					}
 					else if (m_Tokens[m_Index].TokenType == TokenType::IndexOperator)
 					{
-						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 1 });
+						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 5 });
 					}
 
 					m_Index++;
@@ -181,7 +181,7 @@ namespace clear {
 				{
 					operators.push({ BinaryExpressionType::Div, 
 									 UnaryExpressionType::None, 
-						             VariableType::Float64, 
+						             Ref<Type>::Create(TypeID::Float64), 
 								     false, s_Precedence.at(m_Tokens[m_Index].TokenType) });
 
 				}
@@ -189,18 +189,18 @@ namespace clear {
 				{
 					operators.push({ BinaryExpressionType::Pow, 
 									 UnaryExpressionType::None, 
-									 VariableType::Float64, 
+									 Ref<Type>::Create(TypeID::Float64), 
 									 false, s_Precedence.at(m_Tokens[m_Index].TokenType) });
 				}
 				else
 				{
-					operators.push({ GetBinaryExpressionTypeFromTokenType(m_Tokens[m_Index].TokenType), 
+					operators.push({ Type::GetBinaryExpressionTypeFromToken(m_Tokens[m_Index].TokenType), 
 									 UnaryExpressionType::None, currentExpectedType, 
 									 false, s_Precedence.at(m_Tokens[m_Index].TokenType) });
 				}
 			}
 
-			UnaryExpressionType postType = m_Index + 1 < m_Tokens.size() ? GetPostUnaryExpressionTypeFromTokenType(m_Tokens[m_Index + 1].TokenType) : UnaryExpressionType::None;
+			UnaryExpressionType postType = m_Index + 1 < m_Tokens.size() ? Type::GetPostUnaryExpressionTypeFromToken(m_Tokens[m_Index + 1].TokenType) : UnaryExpressionType::None;
 
 			tempIndex = (int64_t)m_Index + 1;
 			bool change = false;
@@ -212,7 +212,7 @@ namespace clear {
 
 				if (++tempIndex < m_Tokens.size())
 				{
-					postType = GetUnaryExpressionTypeFromTokenType(m_Tokens[tempIndex].TokenType);
+					postType = Type::GetUnaryExpressionTypeFromToken(m_Tokens[tempIndex].TokenType);
 				}
 				else
 				{
@@ -285,15 +285,15 @@ namespace clear {
 		return functionCall;
 	}
 
-	std::vector<AbstractType> ExpressionBuilder::TypeAnalysis(size_t index)
+	std::vector<Ref<Type>> ExpressionBuilder::TypeAnalysis(size_t index)
 	{
-		std::vector<AbstractType> types;
+		std::vector<Ref<Type>> types;
 
 		bool pointer = false;
 
 		while (index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[index].TokenType))
 		{
-			UnaryExpressionType unaryType = GetUnaryExpressionTypeFromTokenType(m_Tokens[index].TokenType);
+			UnaryExpressionType unaryType = Type::GetUnaryExpressionTypeFromToken(m_Tokens[index].TokenType);
 			
 			if(unaryType == UnaryExpressionType::Reference)
 			{
@@ -309,8 +309,7 @@ namespace clear {
 
 					if (pointer)
 					{
-						AbstractType type(VariableType::Pointer, TypeKind::Variable, metaData.ReturnType.Get(), metaData.ReturnType.GetUserDefinedType());
-						types.push_back(type);
+						types.push_back(Ref<Type>::Create(metaData.ReturnType));
 					}
 					else
 					{
@@ -323,21 +322,21 @@ namespace clear {
 				}
 
 				std::list<std::string> variableChain = GetVariableChain(index);
-				AbstractType type = GetBaseTypeFromList(variableChain);
+				Ref<Type> type = GetBaseTypeFromList(variableChain);
 
 
 				//TODO: need to sort this trash out lmao
 				if (pointer)
 				{
-					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.Get(), type.GetUserDefinedType()));
+					types.push_back(Ref<Type>::Create(type));
 				}
-				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType != TokenType::IndexOperator)
+				else if (type->GetID() == TypeID::Array && m_Tokens[index + 1].TokenType != TokenType::IndexOperator)
 				{
-					types.push_back(AbstractType(VariableType::Pointer, TypeKind::Variable, type.GetUnderlying(), type.GetUserDefinedType()));
+					types.push_back(Ref<Type>::Create(type));
 				}
-				else if (type.Get() == VariableType::Array && m_Tokens[index + 1].TokenType == TokenType::IndexOperator)
+				else if (type->GetID() == TypeID::Array && m_Tokens[index + 1].TokenType == TokenType::IndexOperator)
 				{
-					types.push_back(AbstractType(type.GetUnderlying(), TypeKind::Variable, type.GetUserDefinedType()));
+					types.push_back(type->GetUnderlying());
 					
 				}
 				else
@@ -349,7 +348,7 @@ namespace clear {
 			}
 			else if (s_RValues.contains(m_Tokens[index].TokenType))
 			{
-				types.push_back(AbstractType(m_Tokens[index].Data));
+				types.push_back(Ref<Type>::Create(m_Tokens[index]));
 			}
 
 			index++;
@@ -398,11 +397,11 @@ namespace clear {
 		return list;
 	}
 
-	AbstractType ExpressionBuilder::GetBaseTypeFromList(const std::list<std::string>& list)
+	Ref<Type> ExpressionBuilder::GetBaseTypeFromList(const std::list<std::string>& list)
 	{
 		CLEAR_VERIFY(!list.empty(), "");
 
-		AbstractType type = AbstractType::GetVariableTypeFromName(list.front());
+		Ref<Type> type = Type::GetVariableTypeFromName(list.front());
 		CLEAR_VERIFY(type, "");
 
 		auto it = list.begin();
@@ -410,8 +409,8 @@ namespace clear {
 
 		for(; it != list.end(); it++)
 		{
-			StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
-			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+			StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
+			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
 
 			size_t indexToNextType = structMetaData.Indices[*it];
 			type = structMetaData.Types[indexToNextType];

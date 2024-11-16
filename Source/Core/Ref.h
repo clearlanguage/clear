@@ -78,8 +78,8 @@ namespace clear {
 
         inline void Incref()
         {
-            CLEAR_ASSERT(m_RefCount, "ref count was null");
-            (*m_RefCount)++;
+            if(m_RefCount)
+                (*m_RefCount)++;
         }
         inline void Decref()
         {
