@@ -17,7 +17,7 @@ namespace clear {
 		std::vector<Paramater> parameters;
 
 		//TODO: make mandatory for user to define
-		m_Root = Ref<ASTFunctionDefinition>::Create("main", VariableType::None, parameters);
+		m_Root = Ref<ASTFunctionDefinition>::Create("main", Ref<Type>::Create(TypeID::None), parameters);
 		m_Stack.push({ m_Root, {} });
 
 		// variableReference, variableReference = someExpression, someExpression
@@ -25,7 +25,7 @@ namespace clear {
 		struct ReferenceToAssign
 		{
 			Ref<ASTNodeBase> Expression;
-			AbstractType Type;
+			Ref<Type> Type;
 		};
 
 		std::queue<ReferenceToAssign> variableReferencesToAssign;
@@ -44,7 +44,7 @@ namespace clear {
 
 					std::string& name = tokens[i].Data;
 					i += 3;
-					AbstractType type = VariableType::None;
+					Ref<Type> type = Ref<Type>::Create(TypeID::None);
 
 					parameters.clear();
 
@@ -52,7 +52,12 @@ namespace clear {
 					{
 						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
-						parameters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
+
+						if(!isVariadic)
+							parameters.push_back({ "", _GetTypeFromToken(tokens[i], isPointer), isVariadic });
+						else 
+							parameters.push_back({ "", Ref<Type>::Create(TypeID::None), isVariadic });
+
 
 						if (isPointer)
 							i++;
@@ -65,7 +70,7 @@ namespace clear {
 							i++;
 					}
 
-					AbstractType returnType;
+					Ref<Type> returnType;
 					i++;
 
 					if (tokens[i].TokenType == TokenType::RightArrow)
@@ -82,7 +87,7 @@ namespace clear {
 				}
 				case TokenType::Function:
 				{
-					AbstractType returnType = VariableType::None;
+					Ref<Type> returnType = Ref<Type>::Create(TypeID::None);
 					parameters.clear();
 
 					i++;
@@ -101,7 +106,7 @@ namespace clear {
 						while (tokens[i].TokenType == TokenType::Comma || tokens[i].TokenType == TokenType::EndLine)
 							i++;
 
-						AbstractType type;
+						Ref<Type> type;
 						if ((type = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)) && tokens[i].TokenType != TokenType::EndFunctionParameters)
 						{
 							currentParamater.Type = type;
@@ -114,7 +119,7 @@ namespace clear {
 							currentParamater.Name = tokens[i].Data;
 							parameters.push_back(currentParamater);
 
-							AbstractType::RegisterVariableType(name + "::" + currentParamater.Name, currentParamater.Type);
+							Type::RegisterVariableType(name + "::" + currentParamater.Name, currentParamater.Type);
 						}
 
 						if (tokens[i].TokenType != TokenType::EndFunctionParameters)
@@ -143,16 +148,16 @@ namespace clear {
 				{
 					auto& previous = tokens[i - 1];
 
-					AbstractType type;
+					Ref<Type> type;
 
 					if (previous.TokenType == TokenType::VariableReference)
 					{
-						type = AbstractType(VariableType::None, TypeKind::Variable, previous.Data);
+						type = Ref<Type>::Create(previous);
 					}
 					else if (previous.TokenType == TokenType::PointerDef)
 					{
 						auto& before = tokens[i - 2];
-						type = AbstractType(before, TypeKind::Variable, true);
+						type = Ref<Type>::Create(before, true);
 					}
 					else if (previous.TokenType == TokenType::StaticArrayDef)
 					{
@@ -160,7 +165,7 @@ namespace clear {
 							i--;
 
 						i++;
-						AbstractType typeToGet;
+						Ref<Type> typeToGet;
 						while ((typeToGet = _GetTypeFromToken(tokens[i], tokens[i + 1].TokenType == TokenType::PointerDef)))
 						{
 							i++;
@@ -172,18 +177,18 @@ namespace clear {
 
 						while (tokens[i].TokenType == TokenType::StaticArrayDef)
 						{
-							type = AbstractType(type, std::stoll(tokens[i].Data));
+							type = Ref<Type>::Create(type, std::stoll(tokens[i].Data));
 							i++;
 						}
 					}
 					else
 					{
-						type = AbstractType(previous, TypeKind::Variable);
+						type = Ref<Type>::Create(previous);
 					}
 
 					currentRoot.Node->PushChild(Ref<ASTVariableDeclaration>::Create(currentRoot.Node->GetName() + "::" + currentToken.Data, type));
 		
-					AbstractType::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
+					Type::RegisterVariableType(currentRoot.Node->GetName() + "::" + currentToken.Data, type);
 
 					break;
 				}
@@ -196,7 +201,7 @@ namespace clear {
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
-					whileNode->PushChild(builder.Create(VariableType::Bool));
+					whileNode->PushChild(builder.Create(Ref<Type>::Create(TypeID::Bool)));
 
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -223,7 +228,7 @@ namespace clear {
 
 					i++;
 
-					std::vector<AbstractType::MemberType> memberVars;
+					std::vector<MemberType> memberVars;
 
 					while (tokens[i].TokenType != TokenType::EndIndentation &&
 						   i < tokens.size())
@@ -234,17 +239,11 @@ namespace clear {
 							continue;
 						}
 
-						AbstractType::MemberType member;
-						auto& [name, type] = member;
+						MemberType member;
+						auto& [type, name] = member;
 
-						if (tokens[i].TokenType == TokenType::VariableReference)
-						{
-							type = AbstractType(VariableType::UserDefinedType, TypeKind::Variable, tokens[i].Data);
-						}
-						else
-						{
-							type = GetVariableTypeFromTokenType(tokens[i].TokenType);
-						}
+
+						type = Ref<Type>::Create(tokens[i]);
 
 						i++;
 
@@ -254,7 +253,7 @@ namespace clear {
 						i++;
 					}
 
-					AbstractType::CreateStructType(structName, memberVars);
+					Ref<Type> dummy = Ref<Type>::Create(structName, memberVars);
 
 					break;
 				}
@@ -266,7 +265,7 @@ namespace clear {
 					//evaluate first condition
 					i++;
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-					ifExpr->PushChild(builder.Create(VariableType::Bool));
+					ifExpr->PushChild(builder.Create(Ref<Type>::Create(TypeID::Bool)));
 					
 					Ref<ASTNodeBase> base = Ref<ASTNodeBase>::Create();
 					base->SetName(currentRoot.Node->GetName());
@@ -316,7 +315,7 @@ namespace clear {
 						chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 						i -= 2;
-						AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+						Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 						i += 3;
 
 						Ref<ASTArrayInitializer> initializer = Ref<ASTArrayInitializer>::Create();
@@ -335,7 +334,7 @@ namespace clear {
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					i -= 2;
-					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+					Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 					i += 3;
 
 					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
@@ -361,9 +360,9 @@ namespace clear {
 					chain.push_back(previous.Data);
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
-					AbstractType type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
+					Ref<Type> type = _RetrieveAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
-					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(GetBinaryExpressionTypeFromTokenType(tokens[i].TokenType), type);
+					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(Type::GetBinaryExpressionTypeFromToken(tokens[i].TokenType), type);
 					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
@@ -413,7 +412,7 @@ namespace clear {
 						{
 							CLEAR_VERIFY(newTop.Node->GetType() == ASTNodeType::IfExpression,"");
 							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-							newTop.Node->PushChild(builder.Create(VariableType::Bool));
+							newTop.Node->PushChild(builder.Create(Ref<Type>::Create(TypeID::Bool)));
 						}
 
 						astNode->SetName(currentRoot.Node->GetName());
@@ -460,7 +459,7 @@ namespace clear {
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-					AbstractType type;
+					Ref<Type> type;
 					Ref<ASTExpression> expression = builder.Create({}, type);
 
 					if(i < tokens.size() && (tokens[i].TokenType == TokenType::Assignment || tokens[i].TokenType == TokenType::Comma))
@@ -513,7 +512,7 @@ namespace clear {
 		module.print(stream, nullptr);
 	}
 
-	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const AbstractType& expected)
+	void AST::_CreateArrayInitializer(Ref<ASTArrayInitializer>& initializer, std::vector<Token>& tokens, const std::string& root, size_t& i, const Ref<Type>& expected)
 	{
 		std::vector<size_t> currentIndex = { 0, 0 };
 
@@ -595,7 +594,7 @@ namespace clear {
 		return list;
 	}
 
-	AbstractType AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
+	Ref<Type> AST::_RetrieveAssignmentType(const std::vector<Token>& tokens, const std::string& currentFunctionName, size_t current)
 	{
 		bool isPointer = tokens[current].TokenType == TokenType::PointerDef;
 
@@ -604,7 +603,7 @@ namespace clear {
 			   tokens[current].TokenType != TokenType::EndIndentation &&
 			   tokens[current].TokenType != TokenType::Comma && 
 			   tokens[current].TokenType != TokenType::StaticArrayDef &&
-			   (GetVariableTypeFromTokenType(tokens[current].TokenType) == VariableType::None || 
+			   (!g_DataTypes.contains(tokens[current].Data) || 
 			   tokens[current].TokenType == TokenType::VariableReference || 
 			   tokens[current].TokenType == TokenType::DotOp))
 		{
@@ -612,11 +611,18 @@ namespace clear {
 		}
 
 		if (isPointer)
-			current += 1;
-
-
-		if (tokens[current].TokenType == TokenType::DereferenceOp || tokens[current].TokenType == TokenType::StaticArrayDef)
 			current++;
+
+
+		if (tokens[current].TokenType == TokenType::DereferenceOp)
+			current++;
+
+
+		if(tokens[current].TokenType == TokenType::StaticArrayDef)
+		{
+			current++;
+			return Type::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);	
+		}
 
 		if (tokens[current].TokenType == TokenType::EndLine || tokens[current].TokenType == TokenType::Comma)
 		{
@@ -635,63 +641,46 @@ namespace clear {
 			std::list<std::string> ls = _RetrieveForwardChain(tokens, currentCopy);
 
 			std::string name = currentFunctionName + "::" + tokens[current].Data;
-			AbstractType type = AbstractType::GetVariableTypeFromName(name);
+			Ref<Type> type = Type::GetVariableTypeFromName(name);
 
 			for (auto& str : ls)
 			{
-				StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
-				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+				StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
+				CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
 
 				size_t indexToNextType = structMetaData.Indices[str];
 				type = structMetaData.Types[indexToNextType];
 			}
 			
 			if (shouldDerference)
-				return AbstractType(type.GetUnderlying(), TypeKind::None, type.GetUserDefinedType());
+				return type->GetUnderlying();
 
 			return type;
 		}
 
-
 		current++;
-		return AbstractType::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
+		return Type::GetVariableTypeFromName(currentFunctionName + "::" + tokens[current].Data);
 	}
 
-	AbstractType AST::_GetTypeFromToken(const Token& token, bool isPointer)
+	Ref<Type> AST::_GetTypeFromToken(const Token& token, bool isPointer)
 	{
-		VariableType variableType = GetVariableTypeFromTokenType(token.TokenType);
-		auto& structMetaData = AbstractType::GetStructInfo(token.Data);
+		Ref<Type> type = Ref<Type>::Create(token, isPointer);
 
-		std::string userDefinedType;
-		VariableType currentType{};
+		if(type->Get())
+			return type;
 
-		if (variableType != VariableType::None)
-		{
-			currentType = variableType;
-		}
-		else if (structMetaData.Struct)
-		{
-			userDefinedType = token.Data;
-		}
-
-		if (isPointer)
-			return AbstractType(VariableType::Pointer, TypeKind::Variable, currentType, userDefinedType);
-		
-		if (variableType != VariableType::None)
-			return AbstractType(currentType, TypeKind::Variable, userDefinedType);
-		
-		return AbstractType();
+		return {};
 	}
 
-	AbstractType AST::_GetTypeFromList(std::list<std::string>& list)
+	Ref<Type> AST::_GetTypeFromList(std::list<std::string>& list)
 	{
-		AbstractType type = AbstractType::GetVariableTypeFromName(list.front());
+		Ref<Type> type = Type::GetVariableTypeFromName(list.front());
 		list.pop_front();
 
 		while (!list.empty())
 		{
-			StructMetaData& structMetaData = AbstractType::GetStructInfo(type.GetUserDefinedType());
-			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type.GetUserDefinedType());
+			StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
+			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
 
 			size_t indexToNextType = structMetaData.Indices[list.front()];
 			type = structMetaData.Types[indexToNextType];

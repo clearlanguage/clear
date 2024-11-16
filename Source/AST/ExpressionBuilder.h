@@ -10,17 +10,17 @@ namespace clear {
 		ExpressionBuilder(const std::vector<Token>& tokens, const std::string& rootName, size_t& i);
 		~ExpressionBuilder() = default;
 
-		Ref<ASTExpression>	 Create(const AbstractType& expectedType, AbstractType& rootType);
-		Ref<ASTExpression>   Create(const AbstractType& expectedType);
+		Ref<ASTExpression>	 Create(const Ref<Type>& expectedType, Ref<Type>& rootType);
+		Ref<ASTExpression>   Create(const Ref<Type>& expectedType);
 		Ref<ASTNodeBase>	 CreateVariableReferenceExpression();
 		Ref<ASTFunctionCall> CreateFunctionCall();
 		
-		std::vector<AbstractType> TypeAnalysis(size_t index);
+		std::vector<Ref<Type>> TypeAnalysis(size_t index);
 
 		std::list<std::string> GetVariableChain();
 		std::list<std::string> GetVariableChain(size_t index);
 
-		static AbstractType GetBaseTypeFromList(const std::list<std::string>& list);
+		static Ref<Type> GetBaseTypeFromList(const std::list<std::string>& list);
 
 		static bool IsTokenUnary(const Token& token);
 

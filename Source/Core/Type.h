@@ -19,16 +19,12 @@ namespace clear {
 		Array, Pointer
 	};
 
-    // Variable meaning it is currently a variable
-    // loaded meaning it has just been loaded from the variable
-    // constant meaning its just an llvm constant (RValues)
-
     enum class TypeKindID : uint8_t
     {
-        None = 0, Variable, Loaded, Constant
+        None = 0, Variable, Loaded, Constant, Reference
     };
 
-    enum class BinaryExpressionType 
+    enum class BinaryExpressionType : uint8_t
 	{
 		None = 0, Add, Sub, Mul, Div, Pow, Mod, Less, LessEq,
 		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
@@ -37,7 +33,7 @@ namespace clear {
 		BitwiseXor, Index
 	};
 
-	enum class UnaryExpressionType 
+	enum class UnaryExpressionType : uint8_t
 	{
 		None = 0, BitwiseNot,	Increment, 
 		Decrement, Negation, PostIncrement, 
@@ -67,17 +63,17 @@ namespace clear {
         Type() = default;
         ~Type() = default;
 
+        Type(TypeID type, TypeKindID typeKind = TypeKindID::Variable, TypeID underlying = TypeID::None);
         Type(const Token& token, bool isPointer = false);
-
         Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members); //leave members empty if referencing an existing struct
-        Type(const std::string& rvalue); 
-
         Type(const Ref<Type>& elementType, size_t count); //arrays
         Type(const Ref<Type>& pointTo); //pointers
         
         inline TypeID      GetID() const {return m_ID;}
         inline TypeKindID  GetTypeKindID() const {return m_TypeKindID;}
-        
+
+        inline const std::string& GetUserDefinedTypeIdentifer() const {return m_UserDefinedTypeIdentifier;}
+
         inline llvm::Type* Get() const { return m_LLVMType; }
         inline Ref<Type>   GetUnderlying() const {return m_Underlying; }
 

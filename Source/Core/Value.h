@@ -1,6 +1,6 @@
 #pragma once 
 
-#include "Types.h"
+#include "Type.h"
 #include "Ref.h"
 
 #include <list>
@@ -10,7 +10,7 @@ namespace clear {
 	struct VariableMetaData
 	{
 		llvm::AllocaInst* Alloca = nullptr;
-		AbstractType Type;
+		Ref<Type> Type;
 		std::string Name;
 	};
 
@@ -21,22 +21,22 @@ namespace clear {
 
 	public:
 		Value() = default;
-		Value(const std::string& rValue);
-		Value(const AbstractType& type, const std::string& data);
-		Value(const AbstractType& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value);
+		Value(const Token& rValue);
+		Value(const Ref<Type>& type, const std::string& data);
+		Value(const Ref<Type>& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value);
 
 		~Value();
 
-		static llvm::Value*		 CastValue(llvm::Value* value, const AbstractType& to, const AbstractType& from = VariableType::None);
-		static llvm::Value*		 CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const AbstractType& fromType);
+		static llvm::Value*		 CastValue(llvm::Value* value, const Ref<Type>& to, const Ref<Type>& from);
+		static llvm::Value*		 CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const Ref<Type>& fromType);
 		static llvm::Value*		 CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, bool isSigned);
 		static ConstantPair		 GetConstantString(const std::string& data);
-		static ConstantPair		 GetConstant(const AbstractType& type, const std::string& data);
+		static ConstantPair		 GetConstant(const Ref<Type>& type, const std::string& data);
 		static VariableMetaData& GetVariableMetaData(const std::string& name);
 
-		static Ref<Value> Cast(const Ref<Value>& casting, AbstractType to);
+		static Ref<Value> Cast(const Ref<Value>& casting, Ref<Type> to);
 
-		static void RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const AbstractType& type);
+		static void RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const Ref<Type>& type);
 		static void RemoveVariable(const std::string& name);
 
 		inline const llvm::Value*	   Get()	   const { return m_Value; }
@@ -44,10 +44,10 @@ namespace clear {
 		inline const std::string&      GetData()   const { return m_Data; }
 
 		inline llvm::Value* Get() { return m_Value; }
-		inline AbstractType& GetType() { return m_Type; }
+		inline Ref<Type>& GetType() { return m_Type; }
 
 	private:
-		AbstractType m_Type;
+		Ref<Type> m_Type;
 		std::string  m_Data;
 		std::list<Value> m_Chain; 
 		llvm::Value* m_Value = nullptr;

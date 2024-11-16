@@ -110,7 +110,17 @@ namespace clear {
         return id;
     }
 
-    Type::Type(const Token& token, bool isPointer)
+    Type::Type(TypeID type, TypeKindID typeKind, TypeID underlying)
+    {
+        m_ID = type;
+        m_LLVMType = GetType(type);
+        m_TypeKindID = typeKind;
+
+        if(underlying != TypeID::None)
+            m_Underlying = Ref<Type>::Create(underlying, typeKind);
+    }
+
+    Type::Type(const Token &token, bool isPointer)
     {
         if(isPointer)
         {
@@ -130,6 +140,7 @@ namespace clear {
             m_ID = TypeID::String;
             m_TypeKindID = TypeKindID::Constant;
             m_LLVMType = GetType(m_ID);
+            m_Underlying = Ref<Type>::Create(TypeID::Int8, TypeKindID::Constant);
 
             return;
         }
@@ -161,15 +172,51 @@ namespace clear {
             return;
         }
 
+        if(token.TokenType == TokenType::TypeIdentifier)
+        {
+            m_ID = TypeID::UserDefinedType;
+            m_TypeKindID = TypeKindID::Variable;
+
+            auto it = s_UserDefinedTypesRegistry.find(token.Data);
+            if(it != s_UserDefinedTypesRegistry.end())
+                m_LLVMType = it->second.Struct;
+            else 
+                CLEAR_UNREACHABLE("invalid type identifer");
+
+            return;
+        }
+
+        if(token.TokenType == TokenType::VariableReference)
+        {
+            auto it = s_VariableTypeRegistry.find(token.Data);
+            
+            if(it == s_VariableTypeRegistry.end())
+                return;
+
+            auto& type = it->second;
+
+            m_ID = type->GetID();
+            m_LLVMType = type->Get();
+            m_Underlying = type->GetUnderlying();
+            m_TypeKindID = TypeKindID::Reference;
+            return;
+        }
+
         m_ID = GetTypeIDFromToken(token.TokenType);
-        
-        CLEAR_VERIFY(m_ID != TypeID::None, "failed to find type");
+
+        if(m_ID == TypeID::String)
+        {
+            m_Underlying = Ref<Type>::Create(TypeID::Int8);
+        }
+
+        if(m_ID == TypeID::None)
+            return;
 
         m_TypeKindID = TypeKindID::Variable;
         m_LLVMType = GetType(m_ID);
     }
 
-    Type::Type(const std::string &userDefinedTypeName, const std::vector<MemberType> &members)
+    Type::Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members)
         : m_UserDefinedTypeIdentifier(userDefinedTypeName), m_ID(TypeID::UserDefinedType), m_TypeKindID(TypeKindID::Variable)
     {
         if(members.empty())
@@ -199,61 +246,6 @@ namespace clear {
 		s_UserDefinedTypesRegistry[userDefinedTypeName] = info;
 
         m_LLVMType = info.Struct;
-    }
-
-    Type::Type(const std::string& rvalue)
-        : m_TypeKindID(TypeKindID::Constant)
-    {
-        NumberInfo info = GetNumberInfoFromLiteral(rvalue);
-
-        if (info.Valid) 
-		{
-			if (info.IsSigned && !info.IsFloatingPoint)
-			{
-				switch (info.BitsNeeded)
-				{
-					case 8:  m_ID = TypeID::Int8;  break;
-					case 16: m_ID = TypeID::Int16; break;
-					case 32: m_ID = TypeID::Int32; break;
-					case 64: m_ID = TypeID::Int64; break;
-					default:
-						break;
-				}
-			}
-			else if (!info.IsFloatingPoint)
-			{
-				switch (info.BitsNeeded)
-				{
-					case 8:  m_ID = TypeID::Uint8;  break;
-					case 16: m_ID = TypeID::Uint16; break;
-					case 32: m_ID = TypeID::Uint32; break;
-					case 64: m_ID = TypeID::Uint64; break;
-					default:
-						break;
-				}
-			}
-			else 
-			{
-				switch (info.BitsNeeded)
-				{
-					case 32: m_ID = TypeID::Float32; break;
-					case 64: m_ID = TypeID::Float64; break;
-					default:
-						break;
-				}
-			}
-		}
-		else if (rvalue == "null")
-		{
-			m_ID = TypeID::Pointer;
-		}
-		else 
-		{
-			m_ID = TypeID::String;
-		}
-
-
-        m_LLVMType = GetType(m_ID);
     }
 
     Type::Type(const Ref<Type>& elementType, size_t count)
