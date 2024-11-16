@@ -3,6 +3,7 @@
 #include "Ref.h"
 
 #include "API/LLVM/LLVMInclude.h"
+#include "Parsing/Tokens.h"
 
 #include <map>
 #include <vector>
@@ -27,6 +28,23 @@ namespace clear {
         None = 0, Variable, Loaded, Constant
     };
 
+    enum class BinaryExpressionType 
+	{
+		None = 0, Add, Sub, Mul, Div, Pow, Mod, Less, LessEq,
+		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
+		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
+		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
+		BitwiseXor, Index
+	};
+
+	enum class UnaryExpressionType 
+	{
+		None = 0, BitwiseNot,	Increment, 
+		Decrement, Negation, PostIncrement, 
+		PostDecrement, Reference, Dereference, 
+		Cast
+	};
+
 
     class Type;
 
@@ -49,12 +67,14 @@ namespace clear {
         Type() = default;
         ~Type() = default;
 
-        Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members); //leave members empty if referencing an existing struct
-        //Type(const Ref<Type>& elementType, size_t count);
-        Type(const std::string& rvalue); 
-        
-        Ref<Type> CreatePointerToThis();
+        Type(const Token& token, bool isPointer = false);
 
+        Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members); //leave members empty if referencing an existing struct
+        Type(const std::string& rvalue); 
+
+        Type(const Ref<Type>& elementType, size_t count); //arrays
+        Type(const Ref<Type>& pointTo); //pointers
+        
         inline TypeID      GetID() const {return m_ID;}
         inline TypeKindID  GetTypeKindID() const {return m_TypeKindID;}
         
@@ -66,6 +86,17 @@ namespace clear {
 		bool IsSigned()		   const;
 		bool IsPointer()	   const;
 
+        static StructMetaData& GetStructMetaData(const std::string& name);
+
+        static void RegisterVariableType(const std::string& name, const Ref<Type>& type);
+		static void RemoveVariableType(const std::string& name);
+
+		static Ref<Type> GetVariableTypeFromName(const std::string& name);
+
+        static BinaryExpressionType GetBinaryExpressionTypeFromToken(TokenType type);
+        static UnaryExpressionType  GetUnaryExpressionTypeFromToken(TokenType type);
+        static UnaryExpressionType  GetPostUnaryExpressionTypeFromToken(TokenType type);
+
     private:
         TypeID       m_ID = TypeID::None;
         TypeKindID   m_TypeKindID = TypeKindID::None;
@@ -74,33 +105,4 @@ namespace clear {
         Ref<Type> m_Underlying;
         std::string m_UserDefinedTypeIdentifier;
     };
-
-    template<typename T>
-    concept IsTypeRef = requires(T t)
-    {
-        { *t } -> std::same_as<Type&>;
-    };
-
-    bool operator==(const Type& first, const Type& second) 
-    {
-        return first.Get() == second.Get();
-    }
-
-    bool operator!=(const Type& first, const Type& second) 
-    {
-        return !(first == second);
-    }
-
-    template <typename T1, typename T2>
-    bool operator==(const T1& first, const T2& second) requires IsTypeRef<T1> && IsTypeRef<T2>
-    {
-        return (*first).Get() == (*second).Get();
-    }
-
-    template <typename T1, typename T2>
-    bool operator!=(const T1& first, const T2& second) requires IsTypeRef<T1> && IsTypeRef<T2>
-    {
-        return !(first == second);
-    }
-
 }

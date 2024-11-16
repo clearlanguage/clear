@@ -8,7 +8,9 @@
 
 namespace clear {
 
+    //may need to move this to a module class when we want to compile concurrently
     static std::map<std::string, StructMetaData> s_UserDefinedTypesRegistry;
+    static std::map<std::string, Ref<Type>>      s_VariableTypeRegistry;
 
     static TypeID GetTypeIDFromToken(TokenType tokenType)
 	{
@@ -27,6 +29,7 @@ namespace clear {
 			case TokenType::Float64Type:	return TypeID::Float64;
 			case TokenType::Bool:			return TypeID::Bool;
 			case TokenType::StringType:		return TypeID::String;
+            case TokenType::RValueNumber:   
 			case TokenType::None:
 			default:
 				break;
@@ -60,8 +63,114 @@ namespace clear {
 		}
 	}
 
-    Type::Type(const std::string& userDefinedTypeName, const std::vector<MemberType>& members)
-       : m_UserDefinedTypeIdentifier(userDefinedTypeName), m_ID(TypeID::UserDefinedType), m_TypeKindID(TypeKindID::Variable)
+    static TypeID GetIntegerTypeFromString(const std::string& str)
+    {
+        TypeID id = TypeID::None;
+
+        NumberInfo info = GetNumberInfoFromLiteral(str);
+
+        if (info.Valid) 
+		{
+			if (info.IsSigned && !info.IsFloatingPoint)
+			{
+				switch (info.BitsNeeded)
+				{
+					case 8:  id = TypeID::Int8;  break;
+					case 16: id = TypeID::Int16; break;
+					case 32: id = TypeID::Int32; break;
+					case 64: id = TypeID::Int64; break;
+					default:
+						break;
+				}
+			}
+			else if (!info.IsFloatingPoint)
+			{
+				switch (info.BitsNeeded)
+				{
+					case 8:  id = TypeID::Uint8;  break;
+					case 16: id = TypeID::Uint16; break;
+					case 32: id = TypeID::Uint32; break;
+					case 64: id = TypeID::Uint64; break;
+					default:
+						break;
+				}
+			}
+			else 
+			{
+				switch (info.BitsNeeded)
+				{
+					case 32: id = TypeID::Float32; break;
+					case 64: id = TypeID::Float64; break;
+					default:
+						break;
+				}
+			}
+		}
+
+        return id;
+    }
+
+    Type::Type(const Token& token, bool isPointer)
+    {
+        if(isPointer)
+        {
+            CLEAR_VERIFY(token.TokenType != TokenType::RValueChar && token.TokenType != TokenType::RValueNumber && token.TokenType != TokenType::RValueString, "");
+
+            m_ID = TypeID::Pointer;
+            m_TypeKindID = TypeKindID::Variable;
+            m_LLVMType = GetType(m_ID);
+            m_Underlying = Ref<Type>::Create(token, false);
+
+            return;
+        }
+
+
+        if(token.TokenType == TokenType::RValueString)
+        {
+            m_ID = TypeID::String;
+            m_TypeKindID = TypeKindID::Constant;
+            m_LLVMType = GetType(m_ID);
+
+            return;
+        }
+
+        if(token.TokenType == TokenType::BooleanData)
+        {
+            m_ID = TypeID::Bool;
+            m_TypeKindID = TypeKindID::Constant;
+            m_LLVMType = GetType(m_ID);
+
+            return;
+        }
+
+        if(token.TokenType == TokenType::RValueNumber)
+        {
+            m_ID = GetIntegerTypeFromString(token.Data);
+            m_TypeKindID = TypeKindID::Constant;
+            m_LLVMType = GetType(m_ID);
+
+            return;
+        }
+
+        if(token.TokenType == TokenType::Null)
+        {
+            m_ID = TypeID::Pointer;
+            m_TypeKindID = TypeKindID::Constant;
+            m_LLVMType = GetType(m_ID);
+
+            return;
+        }
+
+        m_ID = GetTypeIDFromToken(token.TokenType);
+        
+        CLEAR_VERIFY(m_ID != TypeID::None, "failed to find type");
+
+        m_TypeKindID = TypeKindID::Variable;
+        m_LLVMType = GetType(m_ID);
+    }
+
+    Type::Type(const std::string &userDefinedTypeName, const std::vector<MemberType> &members)
+        : m_UserDefinedTypeIdentifier(userDefinedTypeName), m_ID(TypeID::UserDefinedType), m_TypeKindID(TypeKindID::Variable)
     {
         if(members.empty())
         {
@@ -92,7 +201,7 @@ namespace clear {
         m_LLVMType = info.Struct;
     }
 
-    Type::Type(const std::string &rvalue)
+    Type::Type(const std::string& rvalue)
         : m_TypeKindID(TypeKindID::Constant)
     {
         NumberInfo info = GetNumberInfoFromLiteral(rvalue);
@@ -145,6 +254,18 @@ namespace clear {
 
 
         m_LLVMType = GetType(m_ID);
+    }
+
+    Type::Type(const Ref<Type>& elementType, size_t count)
+        : m_ID(TypeID::Array), m_LLVMType(llvm::ArrayType::get(elementType->Get(), count)), m_TypeKindID(TypeKindID::Variable), m_Underlying(elementType)
+    {
+        CLEAR_VERIFY(elementType, "type cannot be null");
+    }
+
+    Type::Type(const Ref<Type>& pointTo)
+        : m_ID(TypeID::Pointer), m_LLVMType(GetType(TypeID::Pointer)), m_TypeKindID(TypeKindID::Variable), m_Underlying(pointTo)
+    {
+        CLEAR_VERIFY(pointTo, "type cannot be null");
     }
 
     bool Type::IsFloatingPoint() const
@@ -213,5 +334,106 @@ namespace clear {
 		return false;
     }
 
-    
+    StructMetaData& Type::GetStructMetaData(const std::string& name)
+    {
+        static StructMetaData s_NullStructMetaData;
+        auto it = s_UserDefinedTypesRegistry.find(name);
+
+        if(it == s_UserDefinedTypesRegistry.end())
+            return s_NullStructMetaData;
+
+        return it->second;
+    }
+
+    void Type::RegisterVariableType(const std::string& name, const Ref<Type>& type)
+    {
+        CLEAR_PARSER_VERIFY(!s_VariableTypeRegistry.contains(name), "already registered");
+        s_VariableTypeRegistry[name] = type;
+    }
+
+    void Type::RemoveVariableType(const std::string &name)
+    {
+        auto it = s_UserDefinedTypesRegistry.find(name);
+
+        if(it == s_UserDefinedTypesRegistry.end())
+            return;
+
+        s_UserDefinedTypesRegistry.erase(it);
+    }
+
+    Ref<Type> Type::GetVariableTypeFromName(const std::string &name)
+    {
+        auto it = s_VariableTypeRegistry.find(name);
+
+        CLEAR_VERIFY(it != s_VariableTypeRegistry.end(), "could not find type");
+
+        return it->second;
+    }
+
+    BinaryExpressionType Type::GetBinaryExpressionTypeFromToken(TokenType type)
+    {
+        switch (type)
+	    {
+			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
+			case TokenType::MultiplyAssign:
+			case TokenType::MulOp:				return BinaryExpressionType::Mul;
+			case TokenType::PlusAssign:
+			case TokenType::AddOp:				return BinaryExpressionType::Add;
+			case TokenType::DivideAssign:
+			case TokenType::DivOp:				return BinaryExpressionType::Div;
+			case TokenType::MinusAssign:
+			case TokenType::SubOp:				return BinaryExpressionType::Sub;
+			case TokenType::ModuloAssign:
+			case TokenType::ModOp:				return BinaryExpressionType::Mod;
+			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
+			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
+			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
+			case TokenType::LessThan:			return BinaryExpressionType::Less;
+			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
+			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
+			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
+			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
+			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
+			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
+			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
+			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
+			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
+
+			default:
+				break;
+		}
+
+		return BinaryExpressionType::None;
+    }
+
+    UnaryExpressionType Type::GetUnaryExpressionTypeFromToken(TokenType type)
+    {
+        switch (type)
+        {
+			case TokenType::Increment:      return UnaryExpressionType::Increment;
+			case TokenType::Decrement:      return UnaryExpressionType::Decrement;
+			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
+			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
+			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
+			case TokenType::Negation:       return UnaryExpressionType::Negation; 
+
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
+    }
+
+    UnaryExpressionType Type::GetPostUnaryExpressionTypeFromToken(TokenType type)
+    {
+        switch (type)
+		{
+			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
+			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
+    }
 }
