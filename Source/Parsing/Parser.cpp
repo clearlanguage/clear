@@ -870,7 +870,7 @@ namespace clear
 	void Parser::_VariableNameState()
 	{
 		char current = _GetNextChar();
-
+		bool isDeclaration = _GetLastToken(1).TokenType == TokenType::EndLine && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
 		current = _SkipSpaces();
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
@@ -919,13 +919,17 @@ namespace clear
 			// if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
 			// 	_VerifyCondition(!IsType, 9);
 			// }
-			_VerifyCondition(_GetLastToken(2).TokenType != TokenType::EndLine,8);
+			_VerifyCondition(!isDeclaration,8);
 
 			m_CurrentState = ParserState::Default;
 			_Backtrack();
 			return;
 		}
-
+		if (!isDeclaration) {
+			_Backtrack();
+			m_CurrentState = ParserState::Default;
+			return;
+		}
 
 
 		int commas = 0;
