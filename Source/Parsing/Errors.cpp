@@ -71,6 +71,10 @@ namespace clear {
         {"The identifier {} is a reserved keyword and cannot be used as a variable name","Please choose a different name for your variable. Avoid using reserved keywords as identifiers.","Variable name is keyword"}, //39
         {"Expected return type after arrow ","if you do not want to specify a type remove the arrow or add a type after","missing function type"}, //40
         {"Invalid character encountered: {}","Please review your input for any typos or special characters that may be causing the issue.","syntax error"}, //41
-            {"Error 42","",""} // 42
+            {"Error 42","",""}, // 42
+            {"Error 43 empty generic","",""},
+            {"error 44 invalid char in generic"},
+        {"Error 45 did not expect comma"}, //45
+            {"Error 46 generic must include type"} //46
         };
 }

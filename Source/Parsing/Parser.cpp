@@ -710,8 +710,9 @@ namespace clear
 			m_CurrentState = ParserState::Default;
 	}
 
-	void Parser::_ParseArrayDeclaration(ArrayDeclarationReturn& output)
+	void Parser::_ParseArrayDeclaration()
 	{
+		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentErrorState = "Array declaration";
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
@@ -720,18 +721,16 @@ namespace clear
 		}
 
 		if (m_CurrentString.empty()) {
-			output.Tokens.push_back(_CreateToken(TokenType::DynamicArrayDef,""));
+			_PushToken(TokenType::DynamicArrayDef,"");
 		}else {
 			if (m_CurrentString.find_first_not_of("0123456789") == std::string::npos) {
-				output.Tokens.push_back(_CreateToken(TokenType::StaticArrayDef,m_CurrentString));
+				_PushToken(TokenType::StaticArrayDef,m_CurrentString);
 			}
 			else if (m_CurrentString == "...") {
-				output.Tokens.push_back(_CreateToken(TokenType::StaticArrayDef,"..."));
+				_PushToken(TokenType::StaticArrayDef,"...");
 			}else {
-				output.error = true;
-				output.errormsg = "Array declaration syntax error only expected numbers or ...";
-				output.advice = "Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty";
-				output.lastIndex = m_CurrentTokenIndex;
+				_VerifyCondition(false,"Array declaration syntax error only expected numbers or ...","Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty","Array declaration error",m_TokenIndexStart,m_CurrentTokenIndex-1);
+
 			}
 		}
 		m_CurrentString.clear();
@@ -741,7 +740,7 @@ namespace clear
 		}
 		_VerifyCondition(current != ']',25,"Array declaration");
 		if (current == '[') {
-			_ParseArrayDeclaration(output);
+			_ParseArrayDeclaration();
 		}else  {
 			if (current != '\0')
 				_Backtrack();
@@ -750,12 +749,11 @@ namespace clear
 
 	}
 
-	int Parser::_ParsePointerDeclaration() {
+	void Parser::_ParsePointerDeclaration() {
 		char current = _GetNextChar();
-		int pointers = 0;
 		while (current == '*') {
+			_PushToken(TokenType::PointerDef,"*");
 			current = _GetNextChar();
-			pointers++;
 		}
 		_VerifyCondition(std::isspace(current) || current == '[' ,6);
 		current = _SkipSpaces();
@@ -764,8 +762,51 @@ namespace clear
 		if (!IsSpace(current) && current != '\0') {
 			_Backtrack();
 		}
-		return pointers;
 
+	}
+
+	void Parser::_ParseGenericDeclaration() {
+		char current = _GetNextChar();
+		int currentLevel = 1;
+		std::vector<std::string> tokens;
+		std::vector<int> indexes;
+		indexes.push_back(m_CurrentTokenIndex);
+		while (currentLevel!= 0&& current != '\0') {
+			current = _GetNextChar();
+			if (current == '<') {
+				currentLevel++;
+			}
+			else if (current == '>') {
+				currentLevel--;
+			}
+
+			if (current == ',' && currentLevel == 1 || currentLevel == 0) {
+				_VerifyCondition(!m_CurrentString.empty(),45);
+				tokens.push_back(m_CurrentString);
+				m_CurrentString.clear();
+				indexes.push_back(m_CurrentTokenIndex);
+				continue;
+			}
+			_VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
+			if (!(IsSpace(current) && m_CurrentString.empty())) {
+				m_CurrentString+=current;
+			}
+		}
+
+		_VerifyCondition(!tokens.empty(),43);
+		_PushToken(TokenType::GenericDeclarationStart,"");
+		for (auto &i : tokens) {
+			auto program = _SubParse(i,false);
+			_VerifyCondition(program.Tokens.at(0).TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(program.Tokens.at(0).Data),46);
+			for (const Token& tok :program.Tokens) {
+				_PushToken(tok);
+			}
+			_PushToken(TokenType::Comma,",");
+		}
+		if (_GetLastToken().TokenType == TokenType::Comma) {
+			m_ProgramInfo.Tokens.pop_back();
+		}
+		_PushToken(TokenType::GenericDeclarationEnd,"");
 	}
 
 	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
@@ -824,9 +865,6 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		// bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);
-		int pointers = 0;
-		int prevTokenIndex = 0;
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
 		// 	_VerifyCondition(!IsType,7);
@@ -839,21 +877,22 @@ namespace clear
 
 			return;
 		}
-
-		if (current == '*') {
-			prevTokenIndex = m_CurrentTokenIndex;
+		if (current == '<') {
 			_Backtrack();
-			pointers = _ParsePointerDeclaration();
+			_ParseGenericDeclaration();
+			current = _GetNextChar();
+
+		}
+		if (current == '*') {
+			_Backtrack();
+			_ParsePointerDeclaration();
 			current = _GetNextChar();
 		}
 
 
 		m_CurrentString.clear();
-		ArrayDeclarationReturn ArrayDeclarations;
 		if (current == '[') {
-			prevTokenIndex = m_CurrentTokenIndex;
-
-			_ParseArrayDeclaration(ArrayDeclarations);
+			_ParseArrayDeclaration();
 			current = _GetNextChar();
 		}
 		m_CurrentString.clear();
@@ -862,13 +901,7 @@ namespace clear
 		if (m_NoVariableNames) {
 			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
 			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
-			_VerifyCondition(!ArrayDeclarations.error,ArrayDeclarations.errormsg,ArrayDeclarations.advice,"Array declaration error",prevTokenIndex-1,ArrayDeclarations.lastIndex-1);
-			for (int i = 0; i < pointers; i++) {
-				_PushToken(TokenType::PointerDef,"*");
-			}
-			for (auto tok :ArrayDeclarations.Tokens) {
-				_PushToken(tok);
-			}
+
 			m_CurrentState = ParserState::Default;
 			return;
 
@@ -880,12 +913,7 @@ namespace clear
 			// 	_VerifyCondition(!IsType, 9);
 			// }
 			_VerifyCondition(_GetLastToken(2).TokenType != TokenType::EndLine,8);
-			for (int i = 0; i < pointers; i++) {
-				_PushToken(TokenType::PointerDef,"*");
-			}
-			for (auto tok :ArrayDeclarations.Tokens) {
-				_PushToken(tok);
-			}
+
 			m_CurrentState = ParserState::Default;
 			_Backtrack();
 			return;
@@ -895,13 +923,7 @@ namespace clear
 
 		int commas = 0;
 		int vars = 0;
-		_VerifyCondition(!ArrayDeclarations.error,ArrayDeclarations.errormsg,ArrayDeclarations.advice,"Array declaration error",prevTokenIndex-1,ArrayDeclarations.lastIndex-1);
-		for (int i = 0; i < pointers; i++) {
-			_PushToken(TokenType::PointerDef,"*");
-		}
-		for (auto tok :ArrayDeclarations.Tokens) {
-			_PushToken(tok);
-		}
+
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
 		while ((current != '\0' && current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {

@@ -1,0 +1,52 @@
+declare printf(string,...)
+
+
+int size = 10
+int[10] correct = {1, 2, 2, 3, 3 ,4, 4, 5 ,6, 10 }
+
+
+function print(int* he):
+    printf("%i ",*he)
+
+
+function printarr(int* arr, int size):
+    int i = 0
+    while i< size:
+        print(arr+i)
+        i = i +1
+
+     printf("\n")
+
+
+
+
+function bubble_sort_1(int* arr, int size):
+    int i = 0
+    while i < size - 1:
+        int j = 0
+
+        while j < size - i - 1:
+            if *(arr+j) > *(arr+j + 1):
+                int swap = *(arr+j + 1)
+                *(arr+j+1) = *(arr+j)
+                *(arr+j) =  swap
+            j = j+ 1
+        i = i + 1
+
+function verify_sort_method_1(int* arr,int size) -> bool:
+    int i = 0
+    while i < size - 1:
+        if correct[i] != *(arr+i):
+            return false
+    return true
+
+
+function tests():
+    int[10] hello = {10,2,3,4,2,6,3,1,4,5}
+    printf("Testing bubble sort method 1\n")
+    printarr(hello,size)
+    bubble_sort_1(hello,size)
+    printarr(hello,size)
+    if verify_sort_method_1(hello,10) == false:
+        printf("Failed bubble sort method 1\n")
+        return

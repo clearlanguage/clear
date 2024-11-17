@@ -145,8 +145,9 @@ namespace clear
 		void _ParseList();
 		BracketParsingReturn _ParseBrackets(char end,bool commas);
 
-		void _ParseArrayDeclaration(ArrayDeclarationReturn& output);
-		int _ParsePointerDeclaration();
+		void _ParseArrayDeclaration();
+		void _ParsePointerDeclaration();
+		void _ParseGenericDeclaration();
 
 		void _PushToken(const TokenType tok, const std::string& data);
 		void _PushToken(Token tok);
