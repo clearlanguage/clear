@@ -735,6 +735,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		char current = _GetNextChar();
+		_VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
@@ -807,6 +808,12 @@ namespace clear
 			m_ProgramInfo.Tokens.pop_back();
 		}
 		_PushToken(TokenType::GenericDeclarationEnd,"");
+		current = _GetNextChar();
+		_VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
+		current = _SkipSpaces();
+		if (!IsSpace(current) && current != '\0') {
+			_Backtrack();
+		}
 	}
 
 	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {

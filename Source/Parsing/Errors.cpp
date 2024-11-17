@@ -75,6 +75,7 @@ namespace clear {
             {"Error 43 empty generic","",""},
             {"error 44 invalid char in generic"},
         {"Error 45 did not expect comma"}, //45
-            {"Error 46 generic must include type"} //46
+            {"Error 46 generic must include type"},
+                {"eRror 47 space between var names"}      //46
         };
 }
