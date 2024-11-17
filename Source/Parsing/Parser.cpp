@@ -343,10 +343,6 @@ namespace clear
 				if (current ==',') {
 					ExpectingValue = true;
 				}
-				if (current == end) {
-					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
-					detectedEnd = true;
-				}
 
 				if (!m_CurrentString.empty()) {
 					ret.tokens.push_back(m_CurrentString);
@@ -354,6 +350,13 @@ namespace clear
 				}
 				else {
 					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
+				}
+
+				if (current == end) {
+					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
+					m_CurrentString.clear();
+					detectedEnd = true;
+					break;
 				}
 
 				m_CurrentString.clear();
@@ -735,7 +738,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		char current = _GetNextChar();
-		_VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
+		_VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
