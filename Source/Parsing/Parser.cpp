@@ -57,6 +57,13 @@ namespace clear
 		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1);
 	}
 
+	Token Parser::_GetLastToken(size_t x) {
+		if (m_ProgramInfo.Tokens.empty() || x >= m_ProgramInfo.Tokens.size())
+			return Token{.TokenType = TokenType::EndLine, .Data = ""};
+
+		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size() - 1 - x);
+	}
+
 
 	char Parser::_GetNextChar()
 	{
@@ -469,7 +476,7 @@ namespace clear
 				return;
 
 			}
-			if ((((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&'))) && _IsTypeDeclared(m_CurrentString))) {
+			if ((((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&' || current == '<'))) && _IsTypeDeclared(m_CurrentString))) {
 				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -699,8 +706,8 @@ namespace clear
 		}else {
 			_VerifyCondition(false,41,Str(current));
 		}
-
-		m_CurrentState = ParserState::Default;
+		if (m_CurrentState == ParserState::RValue)
+			m_CurrentState = ParserState::Default;
 	}
 
 	void Parser::_ParseArrayDeclaration(ArrayDeclarationReturn& output)
@@ -817,17 +824,15 @@ namespace clear
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
-		bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);
-		bool variableState = false;
-		bool bracketState = false;
+		// bool IsType = g_DataTypes.contains(_GetLastToken().Data) || _IsTypeDeclared(_GetLastToken().Data);
 		int pointers = 0;
 		int prevTokenIndex = 0;
-		if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*') {
-			_Backtrack();
-			_VerifyCondition(!IsType,7);
-			m_CurrentState = ParserState::Default;
-			return;
-		}
+		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
+		// 	_Backtrack();
+		// 	_VerifyCondition(!IsType,7);
+		// 	m_CurrentState = ParserState::Default;
+		// 	return;
+		// }
 		if (current == '(') {
 			_Backtrack();
 			m_CurrentState = ParserState::Default;
@@ -837,7 +842,6 @@ namespace clear
 
 		if (current == '*') {
 			prevTokenIndex = m_CurrentTokenIndex;
-			variableState = true;
 			_Backtrack();
 			pointers = _ParsePointerDeclaration();
 			current = _GetNextChar();
@@ -851,7 +855,6 @@ namespace clear
 
 			_ParseArrayDeclaration(ArrayDeclarations);
 			current = _GetNextChar();
-			bracketState = true;
 		}
 		m_CurrentString.clear();
 		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
@@ -871,15 +874,17 @@ namespace clear
 
 		}
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			_VerifyCondition(!(variableState && bracketState) , 8);
-
-			if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
-				_VerifyCondition(!(IsType && g_OperatorMap.contains(Str(current))), 10);
-				_VerifyCondition(!IsType, 9);
+			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10);
+			//
+			// if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
+			// 	_VerifyCondition(!IsType, 9);
+			// }
+			_VerifyCondition(_GetLastToken(2).TokenType != TokenType::EndLine,8);
+			for (int i = 0; i < pointers; i++) {
+				_PushToken(TokenType::PointerDef,"*");
 			}
-			if (bracketState || variableState) {
-				_VerifyCondition(!IsType,8);
-				m_CurrentTokenIndex = prevTokenIndex;
+			for (auto tok :ArrayDeclarations.Tokens) {
+				_PushToken(tok);
 			}
 			m_CurrentState = ParserState::Default;
 			_Backtrack();
@@ -1321,7 +1326,7 @@ namespace clear
 
  		for (const std::string& arg : bracketInfo.tokens) {
 
-			ProgramInfo info = _SubParse(arg,true);
+			ProgramInfo info = _SubParse(arg,false);
 			for (const Token& tok :info.Tokens) {
 				_PushToken(tok);
 			}
@@ -1455,10 +1460,26 @@ namespace clear
 				return;
 		}
 
+		if (_IsTypeDeclared(m_CurrentString)) {
+			_PushToken(TokenType::TypeIdentifier, m_CurrentString);
+			m_CurrentString.clear();
+			m_CurrentState= ParserState::VariableName;
+			_Backtrack();
+			return;
+
+		}
+
 		if (g_KeyWordMap.contains(m_CurrentString))
 		{
 			auto& value = g_KeyWordMap.at(m_CurrentString);
 			_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+			if (g_DataTypes.contains(m_CurrentString)) {
+				m_CurrentString.clear();
+				m_CurrentState= ParserState::VariableName;
+				_Backtrack();
+				return;
+
+			}
 		}else {
 			_PushToken(TokenType::VariableReference, m_CurrentString);
 		}

@@ -87,7 +87,7 @@ namespace clear {
     const std::set<char> g_Openers = {'(','{','['};
 
     const std::set<std::string> g_DataTypes = {
-        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char"
+        "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char","float"
     };
 
     bool IsTokenOfType(Token tok,std::string type) {

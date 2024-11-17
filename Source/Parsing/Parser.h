@@ -78,6 +78,7 @@ namespace clear
 
 
 		Token _GetLastToken();
+		Token _GetLastToken(size_t x);
 		Token _CreateToken(const TokenType tok, const std::string& data);
 
 
