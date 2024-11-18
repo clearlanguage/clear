@@ -314,7 +314,7 @@ namespace clear
 						stack.push_back(current);
 					}
 					if (g_CloserToOpeners.contains(current)) {
-						_VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(g_CloserToOpeners.at(current)) ,Str(stack.back()));
+						_VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(stack.back()),Str(g_CloserToOpeners.at(current)));
 						stack.pop_back();
 					}
 				}else {
