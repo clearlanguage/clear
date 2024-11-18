@@ -34,6 +34,7 @@ namespace clear {
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
+		
 
 			switch (currentToken.TokenType)
 			{
@@ -427,7 +428,7 @@ namespace clear {
 					if (i + 1 < tokens.size() && tokens[i].TokenType != TokenType::EndLine)
 					{
 						ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-						currentRoot.Node->PushChild(builder.Create(currentRoot.ExpectedReturnType));
+						returnStatement->PushChild(builder.Create(currentRoot.ExpectedReturnType));
 					}
 
 					currentRoot.Node->PushChild(returnStatement);

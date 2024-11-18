@@ -604,17 +604,22 @@ namespace clear {
 
 	llvm::Value* ASTReturnStatement::Codegen()
 	{
+		auto& children = GetChildren();
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		if (GetChildren().size() > 0)
+		if (children.size() > 0)
 		{
-			llvm::Value* returnValue = GetChildren()[0]->Codegen();
-
-			llvm::AllocaInst* tmp = nullptr;
-
-			if ((tmp = llvm::dyn_cast<llvm::AllocaInst>(returnValue)))
+			llvm::Value* returnValue = children[0]->Codegen();
+			
+			if(!returnValue)
 			{
-				returnValue = builder.CreateLoad(tmp->getAllocatedType(), tmp, "loaded_value");
+				builder.CreateBr(s_ReturnValues.top().Return);
+				return nullptr;
+			}
+
+			if (children[0]->GetMetaData().NeedLoading)
+			{
+				returnValue = builder.CreateLoad(children[0]->GetMetaData().Type->Get(), returnValue, "loaded_value");
 			}
 
 			if (returnValue->getType() != p_MetaData.Type->Get())
@@ -678,13 +683,18 @@ namespace clear {
 			stack.push(binExp);
 		}
 
-		llvm::Value* value = stack.top()->Codegen();
 
+		if(stack.size() > 0)
+		{
+			llvm::Value* value = stack.top()->Codegen();
 
-		p_MetaData.NeedLoading = stack.top()->GetMetaData().NeedLoading;
-		p_MetaData.Type = stack.top()->GetMetaData().Type;
+			p_MetaData.NeedLoading = stack.top()->GetMetaData().NeedLoading;
+			p_MetaData.Type = stack.top()->GetMetaData().Type;
 
-		return value;
+			return value;
+		}
+
+		return nullptr;
 	}
 
 	ASTStruct::ASTStruct(const std::string& name, const std::vector<MemberType>& fields)
@@ -803,7 +813,7 @@ namespace clear {
 
 			llvm::Value* condition = children[branch.ExpressionIdx]->Codegen();
 
-			if (condition->getType()->isIntegerTy())
+			if (condition->getType()->isIntegerTy() && !condition->getType()->isIntegerTy(1))
 			{
 				condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
 			}

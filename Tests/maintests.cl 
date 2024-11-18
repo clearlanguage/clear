@@ -14,17 +14,13 @@ function printarr(int* arr, int size):
     while i< size:
         print(arr+i)
         i = i +1
-
      printf("\n")
-
-
 
 
 function bubble_sort_1(int* arr, int size):
     int i = 0
     while i < size - 1:
         int j = 0
-
         while j < size - i - 1:
             if *(arr+j) > *(arr+j + 1):
                 int swap = *(arr+j + 1)

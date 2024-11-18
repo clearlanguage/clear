@@ -77,14 +77,15 @@ namespace clear {
 		return Create(expectedType, dummy);
 	}
 
-
 	Ref<ASTExpression> ExpressionBuilder::Create(const Ref<Type>& expectedType, Ref<Type>& rootType)
 	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		std::stack<Operator> operators;
 
 		std::vector<Ref<Type>> types = TypeAnalysis(m_Index);
-		rootType = types[0];
+
+		if(types.size() > 0)
+			rootType = types[0];
 
 		Ref<Type> currentExpectedType = expectedType;
 

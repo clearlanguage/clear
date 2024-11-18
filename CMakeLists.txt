@@ -45,6 +45,6 @@ FetchContent_Declare(
   GIT_SHALLOW TRUE)
 
 FetchContent_MakeAvailable(fast_float)
-target_link_libraries(clear PUBLIC ${llvm_libs} fast_float)
+target_link_libraries(clear PUBLIC ${llvm_libs} fast_float) 
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
