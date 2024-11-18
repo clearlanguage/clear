@@ -537,7 +537,7 @@ namespace clear
 	void Parser::_ArrowState()
 	{
 		if ((m_ProgramInfo.Tokens.size() > 1 &&
-			m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-2).TokenType == TokenType::EndFunctionParameters) || m_SecondState == ParserSecondaryState::Declaration)
+			_GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == ParserSecondaryState::Declaration)
 		{
 			m_CurrentState = ParserState::FunctionTypeState;
 			return;
@@ -873,7 +873,7 @@ namespace clear
 	void Parser::_VariableNameState()
 	{
 		char current = _GetNextChar();
-		bool isDeclaration = _GetLastToken(1).TokenType == TokenType::EndLine && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
+		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"isDeclaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
 		current = _SkipSpaces();
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
