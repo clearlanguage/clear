@@ -81,7 +81,7 @@ namespace clear {
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
     extern const std::map<std::string,std::set<TokenType>> g_TokenTypes = {
         {"allow_op",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference,TokenType::EndFunctionArguments,TokenType::Increment,TokenType::Decrement}},
-            {"isDeclaration",{TokenType::EndLine,TokenType::StartIndentation}}
+            {"isDeclaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}}
 
 
     };
