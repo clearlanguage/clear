@@ -873,7 +873,7 @@ namespace clear
 	void Parser::_VariableNameState()
 	{
 		char current = _GetNextChar();
-		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"isDeclaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
+		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
 		current = _SkipSpaces();
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
