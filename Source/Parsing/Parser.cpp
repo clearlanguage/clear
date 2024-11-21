@@ -479,7 +479,7 @@ namespace clear
 				return;
 
 			}
-			if ((((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || (( current == '*' || current == '&' || current == '<'))) && _IsTypeDeclared(m_CurrentString))) {
+			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || ( current == '*' || current == '&' || current == '<')) && _IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType!= TokenType::DotOp) {
 				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
 				m_CurrentState = ParserState::VariableName;
 				m_CurrentString.clear();
@@ -1496,7 +1496,7 @@ namespace clear
 				return;
 		}
 
-		if (_IsTypeDeclared(m_CurrentString)) {
+		if (_IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType != TokenType::DotOp) {
 			_PushToken(TokenType::TypeIdentifier, m_CurrentString);
 			m_CurrentString.clear();
 			m_CurrentState= ParserState::VariableName;
