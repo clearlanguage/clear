@@ -123,6 +123,11 @@ namespace clear {
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(m_Tokens[m_Index]));
 				currentExpectedType = types[typeIndex++];
+
+				while(m_Tokens[m_Index].TokenType == TokenType::DotOp || m_Tokens[m_Index].TokenType == TokenType::VariableReference)
+				{
+					m_Index++;
+				}
 			}
 			else if (m_Tokens[m_Index].TokenType == TokenType::OpenBracket)
 			{
@@ -291,6 +296,7 @@ namespace clear {
 		std::vector<Ref<Type>> types;
 
 		bool pointer = false;
+		size_t dereferenceCount = 0;
 
 		while (index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[index].TokenType))
 		{
@@ -300,6 +306,12 @@ namespace clear {
 			{
 				pointer = true;
 			}
+
+			if(unaryType == UnaryExpressionType::Dereference)
+			{
+				dereferenceCount++;
+			}
+
 
 			if (m_Tokens[index].TokenType == TokenType::VariableReference)
 			{
@@ -323,7 +335,8 @@ namespace clear {
 				}
 
 				std::list<std::string> variableChain = GetVariableChain(index);
-				Ref<Type> type = GetBaseTypeFromList(variableChain);
+				Ref<Type> type = GetBaseTypeFromList(variableChain, dereferenceCount);
+				dereferenceCount = 0;
 
 
 				//TODO: need to sort this trash out lmao
@@ -344,15 +357,26 @@ namespace clear {
 				{
 					types.push_back(type);
 				}
+				
+				index++;
 
+				while(m_Tokens[index].TokenType == TokenType::DotOp || m_Tokens[index].TokenType == TokenType::VariableReference)
+				{
+					index++;
+				}
+				
 				pointer = false;
+
 			}
 			else if (s_RValues.contains(m_Tokens[index].TokenType))
 			{
 				types.push_back(Ref<Type>::Create(m_Tokens[index]));
+				index++;
 			}
-
-			index++;
+			else
+			{
+				index++;
+			}
 		}
 
 		return types;
@@ -382,7 +406,26 @@ namespace clear {
 	{
 		CLEAR_VERIFY(index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::VariableReference, "");
 
-		std::list<std::string> list = { m_RootName + "::" + m_Tokens[index].Data };
+		size_t copy = index - 1;
+
+		std::list<std::string> list;
+
+		while(m_Tokens[copy].TokenType == TokenType::DotOp)
+		{
+			copy--;
+			list.push_front(m_Tokens[copy].Data);
+			copy--;
+		}
+
+
+		if(list.empty())
+		{
+			list = { m_RootName + "::" + m_Tokens[index].Data };
+		}
+		else
+		{
+			list.front() = {m_RootName + "::" + list.front()};
+		}
 
 		index++;
 
@@ -393,23 +436,32 @@ namespace clear {
 			index++;
 		}
 
-		index--;
-
 		return list;
 	}
 
-	Ref<Type> ExpressionBuilder::GetBaseTypeFromList(const std::list<std::string>& list)
+	Ref<Type> ExpressionBuilder::GetBaseTypeFromList(const std::list<std::string>& list, size_t dereferenceCount)
 	{
 		CLEAR_VERIFY(!list.empty(), "");
 
 		Ref<Type> type = Type::GetVariableTypeFromName(list.front());
 		CLEAR_VERIFY(type, "");
 
+
+		while(dereferenceCount > 0 && type->IsPointer())
+		{
+			type = type->GetUnderlying();
+			dereferenceCount--;
+		}
+		
+		CLEAR_VERIFY(dereferenceCount == 0, "cannot dereference a non pointer type");
+
 		auto it = list.begin();
 		it++;
 
 		for(; it != list.end(); it++)
 		{
+			
+
 			StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
 			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
 

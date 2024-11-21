@@ -179,9 +179,14 @@ namespace clear {
 
             auto it = s_UserDefinedTypesRegistry.find(token.Data);
             if(it != s_UserDefinedTypesRegistry.end())
+			{
                 m_LLVMType = it->second.Struct;
+				m_UserDefinedTypeIdentifier = token.Data;	
+			}
             else 
+			{
                 CLEAR_UNREACHABLE("invalid type identifer");
+			}
 
             return;
         }
@@ -353,12 +358,11 @@ namespace clear {
         s_UserDefinedTypesRegistry.erase(it);
     }
 
-    Ref<Type> Type::GetVariableTypeFromName(const std::string &name)
+    Ref<Type> Type::GetVariableTypeFromName(const std::string& name)
     {
         auto it = s_VariableTypeRegistry.find(name);
 
         CLEAR_VERIFY(it != s_VariableTypeRegistry.end(), "could not find type");
-
         return it->second;
     }
 

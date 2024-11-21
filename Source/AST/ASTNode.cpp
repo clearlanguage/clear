@@ -397,7 +397,15 @@ namespace clear {
 			return value; 
 		}
 
-		StructMetaData* currentRef = &Type::GetStructMetaData(metaData.Type->GetUserDefinedTypeIdentifer());
+		Ref<Type> typeMetaData = metaData.Type;
+
+		if(typeMetaData->IsPointer())
+		{
+			p_MetaData.Type = typeMetaData;
+			return value;
+		}
+
+		StructMetaData* currentRef = &Type::GetStructMetaData(typeMetaData->GetUserDefinedTypeIdentifer());
 
 		std::vector<llvm::Value*> indices =
 		{
