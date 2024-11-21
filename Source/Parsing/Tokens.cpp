@@ -2,6 +2,7 @@
 
 #include <string_view>
 #include <set>
+#include <Core/Log.h>
 
 namespace clear {
     const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','!','.',',','&','^','|','~',';'};
@@ -81,7 +82,7 @@ namespace clear {
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
     extern const std::map<std::string,std::set<TokenType>> g_TokenTypes = {
         {"allow_op",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference,TokenType::EndFunctionArguments,TokenType::Increment,TokenType::Decrement}},
-            {"isDeclaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}}
+            {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}}
 
 
     };
@@ -92,6 +93,7 @@ namespace clear {
     };
 
     bool IsTokenOfType(Token tok,std::string type) {
+        CLEAR_PARSER_VERIFY(g_TokenTypes.count(type),"96");
         return g_TokenTypes.at(type).contains(tok.TokenType);
     }
 
