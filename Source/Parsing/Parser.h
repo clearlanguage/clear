@@ -162,6 +162,8 @@ namespace clear
 		void _Backtrack();
 		void _EndLine();
 
+		void _PushVariableReference(std::string& x);
+
 
 	private:
 		size_t m_CurrentTokenIndex = 0;

@@ -386,6 +386,16 @@ namespace clear
 	}
 
 
+	void Parser::_PushVariableReference(std::string& x) {
+		if (_GetLastToken().TokenType == TokenType::DotOp) {
+			_PushToken(TokenType::MemberName,x);
+		}else {
+			_PushToken(TokenType::VariableReference, x);
+
+		}
+	}
+
+
 	void Parser::_IndexOperatorState() {
 		char current = _GetNextChar();
 		CLEAR_PARSER_VERIFY(current == '[', "318.IOS");
@@ -419,7 +429,7 @@ namespace clear
 			{
 				if (!m_CurrentString.empty())
 				{
-					_PushToken(TokenType::VariableReference, m_CurrentString);
+					_PushVariableReference(m_CurrentString);
 				}
 
 				_PushToken(TokenType::FunctionCall, m_CurrentString);
@@ -493,7 +503,7 @@ namespace clear
 			else
 			{
 				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),34);
-				_PushToken(TokenType::VariableReference, m_CurrentString);
+				_PushVariableReference( m_CurrentString);
 				m_CurrentString.clear();
 
 			}
@@ -1517,7 +1527,7 @@ namespace clear
 
 			}
 		}else {
-			_PushToken(TokenType::VariableReference, m_CurrentString);
+			_PushVariableReference( m_CurrentString);
 		}
 
 		m_CurrentString.clear();

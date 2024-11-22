@@ -194,6 +194,7 @@ namespace clear {
             case TokenType::TypeIdentifier: return "TypeIdentifier";
             case TokenType::GenericDeclarationStart: return "GenericDeclarationStart";
             case TokenType::GenericDeclarationEnd: return "GenericDeclarationEnd";
+            case TokenType::MemberName: return "MemberName";
 
             default:
                 break;
