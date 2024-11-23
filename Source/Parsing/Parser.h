@@ -151,7 +151,6 @@ namespace clear
 
 		void _PushToken(const TokenType tok, const std::string& data);
 		void _PushToken(Token tok);
-		bool _IsLineClosed();
 		bool _IsEndOfLine();
 		char _SkipSpaces();
 		void _ResetSecondState();

@@ -271,13 +271,6 @@ namespace clear
 		return (tok == TokenType::EndLine);
 	}
 
-	bool Parser::_IsLineClosed() {
-
-		if (m_ProgramInfo.Tokens.empty())
-			return true;
-		TokenType tok = _GetLastToken().TokenType;
-		return !(tok == TokenType::CloseBracket);
-	}
 
 	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
 		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
@@ -425,11 +418,14 @@ namespace clear
 
 		if (current == '(')
 		{
-			if (!m_CurrentString.empty() || !_IsLineClosed())
+			if (!m_CurrentString.empty() || IsTokenOfType(_GetLastToken(),"callable"))
 			{
 				if (!m_CurrentString.empty())
 				{
 					_PushVariableReference(m_CurrentString);
+				}
+				if (IsTokenOfType(_GetLastToken(),"named_callable")) {
+					m_CurrentString = _GetLastToken().Data;
 				}
 
 				_PushToken(TokenType::FunctionCall, m_CurrentString);
