@@ -303,6 +303,8 @@ namespace clear {
 		bool pointer = false;
 		size_t dereferenceCount = 0;
 
+		std::stack<size_t> variableIndices;
+
 		while (index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[index].TokenType))
 		{
 			UnaryExpressionType unaryType = Type::GetUnaryExpressionTypeFromToken(m_Tokens[index].TokenType);
@@ -319,6 +321,8 @@ namespace clear {
 
 			if (m_Tokens[index].TokenType == TokenType::VariableReference)
 			{
+				variableIndices.push(types.size());
+
 				if (m_Tokens[index + 1].TokenType == TokenType::FunctionCall)
 				{
 					CLEAR_VERIFY(g_FunctionMetaData.contains(m_Tokens[index + 1].Data), "");
@@ -332,6 +336,7 @@ namespace clear {
 					{
 						types.push_back(metaData.ReturnType);
 					}
+
 
 					index += 2;
 					pointer = false;
@@ -362,6 +367,7 @@ namespace clear {
 					types.push_back(type);
 				}
 				
+
 				index++;
 				pointer = false;
 			}
@@ -372,9 +378,9 @@ namespace clear {
 			}
 			else if(m_Tokens[index].TokenType == TokenType::MemberName)
 			{
-				CLEAR_VERIFY(!types.empty(), "types is not meant to be empty");
+				CLEAR_VERIFY(!types.empty() && !variableIndices.emplace(), "types is not meant to be empty");
 
-				auto& backType = types.back();
+				auto& backType = types[variableIndices.top()];
 				auto& identifier = backType->GetUserDefinedTypeIdentifer();
 
 				CLEAR_VERIFY(!identifier.empty(), "invalid user defined type");
@@ -384,7 +390,7 @@ namespace clear {
 				CLEAR_VERIFY(structMetaData.Indices.contains(m_Tokens[index].Data), "invalid member");		
 
 				size_t i = structMetaData.Indices.at(m_Tokens[index].Data);
-				types.back() = structMetaData.Types[i];
+				types[variableIndices.top()] = structMetaData.Types[i];
 
 				index++;
 			}
@@ -459,7 +465,6 @@ namespace clear {
 
 		Ref<Type> type = Type::GetVariableTypeFromName(list.front());
 		CLEAR_VERIFY(type, "");
-
 
 		while(dereferenceCount > 0 && type->IsPointer())
 		{
