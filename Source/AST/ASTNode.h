@@ -36,7 +36,7 @@ namespace clear {
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer
+		ArrayInitializer, MemberAccess
 	};
 
 
@@ -196,6 +196,15 @@ namespace clear {
 
 	private:
 		std::list<std::string> m_Chain;
+	};
+
+	class ASTMemberAccess : public ASTNodeBase
+	{
+	public:
+		ASTMemberAccess(const std::string& member);
+		virtual ~ASTMemberAccess() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
+		virtual llvm::Value* Codegen() override;
 	};
 
 	class ASTReturnStatement : public ASTNodeBase

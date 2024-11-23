@@ -30,7 +30,7 @@ namespace clear {
 		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
 		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
 		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
-		BitwiseXor, Index
+		BitwiseXor, Index, AccessOp
 	};
 
 	enum class UnaryExpressionType : uint8_t

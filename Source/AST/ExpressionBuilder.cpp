@@ -7,6 +7,7 @@ namespace clear {
 
 	static std::map<TokenType, int32_t> s_Precedence = 
 	{
+		{TokenType::DotOp,			    5},
 	    {TokenType::IndexOperator,      5}, 
 	    {TokenType::Power,              4}, 
 	    {TokenType::Negation,           4},
@@ -118,6 +119,10 @@ namespace clear {
 			{
 				expression->PushChild(CreateVariableReferenceExpression());
 				currentExpectedType = types[typeIndex++];
+			}
+			else if (m_Tokens[m_Index].TokenType == TokenType::MemberName)
+			{
+				expression->PushChild(Ref<ASTMemberAccess>::Create(m_Tokens[m_Index].Data));
 			}
 			else if (s_RValues.contains(m_Tokens[m_Index].TokenType))
 			{
@@ -312,7 +317,6 @@ namespace clear {
 				dereferenceCount++;
 			}
 
-
 			if (m_Tokens[index].TokenType == TokenType::VariableReference)
 			{
 				if (m_Tokens[index + 1].TokenType == TokenType::FunctionCall)
@@ -359,18 +363,29 @@ namespace clear {
 				}
 				
 				index++;
-
-				while(m_Tokens[index].TokenType == TokenType::DotOp || m_Tokens[index].TokenType == TokenType::VariableReference)
-				{
-					index++;
-				}
-				
 				pointer = false;
-
 			}
 			else if (s_RValues.contains(m_Tokens[index].TokenType))
 			{
 				types.push_back(Ref<Type>::Create(m_Tokens[index]));
+				index++;
+			}
+			else if(m_Tokens[index].TokenType == TokenType::MemberName)
+			{
+				CLEAR_VERIFY(!types.empty(), "types is not meant to be empty");
+
+				auto& backType = types.back();
+				auto& identifier = backType->GetUserDefinedTypeIdentifer();
+
+				CLEAR_VERIFY(!identifier.empty(), "invalid user defined type");
+
+				auto& structMetaData = Type::GetStructMetaData(identifier);
+				CLEAR_VERIFY(structMetaData.Struct, "struct was nullptr");
+				CLEAR_VERIFY(structMetaData.Indices.contains(m_Tokens[index].Data), "invalid member");		
+
+				size_t i = structMetaData.Indices.at(m_Tokens[index].Data);
+				types.back() = structMetaData.Types[i];
+
 				index++;
 			}
 			else
@@ -388,16 +403,15 @@ namespace clear {
 
 		std::list<std::string> list = {m_RootName + "::" + m_Tokens[m_Index].Data};
 
-		m_Index++;
+		//m_Index++;
 
-		while (m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::DotOp)
-		{
-			m_Index++;
-			list.push_back(m_Tokens[m_Index].Data);
-			m_Index++;
-		}
-
-		m_Index--;
+		//while (m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::DotOp)
+		//{
+		//	m_Index++;
+		//	list.push_back(m_Tokens[m_Index].Data);
+		//	m_Index++;
+		//}
+		//m_Index--;
 
 		return list;
 	}
@@ -410,12 +424,12 @@ namespace clear {
 
 		std::list<std::string> list;
 
-		while(m_Tokens[copy].TokenType == TokenType::DotOp)
-		{
-			copy--;
-			list.push_front(m_Tokens[copy].Data);
-			copy--;
-		}
+		//while(m_Tokens[copy].TokenType == TokenType::DotOp)
+		//{
+		//	copy--;
+		//	list.push_front(m_Tokens[copy].Data);
+		//	copy--;
+		//}
 
 
 		if(list.empty())
@@ -427,14 +441,14 @@ namespace clear {
 			list.front() = {m_RootName + "::" + list.front()};
 		}
 
-		index++;
-
-		while (index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::DotOp)
-		{
-			index++;
-			list.push_back(m_Tokens[index].Data);
-			index++;
-		}
+		//index++;
+//
+		//while (index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::DotOp)
+		//{
+		//	index++;
+		//	list.push_back(m_Tokens[index].Data);
+		//	index++;
+		//}
 
 		return list;
 	}
@@ -460,8 +474,6 @@ namespace clear {
 
 		for(; it != list.end(); it++)
 		{
-			
-
 			StructMetaData& structMetaData = Type::GetStructMetaData(type->GetUserDefinedTypeIdentifer());
 			CLEAR_VERIFY(structMetaData.Struct, "not a valid type ", type->GetUserDefinedTypeIdentifer());
 

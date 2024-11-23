@@ -394,7 +394,7 @@ namespace clear {
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
 			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
-
+			case TokenType::DotOp:				return BinaryExpressionType::AccessOp;
 			default:
 				break;
 		}

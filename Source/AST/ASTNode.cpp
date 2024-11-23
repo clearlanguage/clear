@@ -95,13 +95,30 @@ namespace clear {
 		llvm::Value* LHS = leftChild->Codegen();
 		llvm::Value* RHS = rightChild->Codegen();
 
-
-		CLEAR_VERIFY(LHS && RHS, "lhs or rhs failed to generate");
-
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
 
 		llvm::Type* expectedLLVMType = p_MetaData.Type->Get();
+
+		CLEAR_VERIFY(LHS, "lhs failed to generate");
+
+		if(m_Expression == BinaryExpressionType::AccessOp)
+		{
+			std::string& memberName = rightChild->GetMetaData().Name;
+
+			auto& typeIdentifer = leftChild->GetMetaData().Type->GetUserDefinedTypeIdentifer();
+			CLEAR_VERIFY(!typeIdentifer.empty(), "invalid type");
+			
+			auto& structMetaData = Type::GetStructMetaData(typeIdentifer);
+			auto& index = structMetaData.Indices.at(memberName);
+			
+			p_MetaData.Type = structMetaData.Types[index];
+			p_MetaData.NeedLoading = true;
+
+			return builder.CreateStructGEP(leftChild->GetMetaData().Type->Get(), LHSRawValue, index, "struct_get_element_ptr");
+		}
+
+		CLEAR_VERIFY(RHS, "rhs failed to generate");
 
 		if (m_Expression == BinaryExpressionType::Assignment)
 		{
@@ -661,7 +678,8 @@ namespace clear {
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
 				child->GetType() == ASTNodeType::VariableExpression || 
-				child->GetType() == ASTNodeType::FunctionCall)
+				child->GetType() == ASTNodeType::FunctionCall || 
+				child->GetType() == ASTNodeType::MemberAccess)
 			{
 				stack.push(child);
 				continue;
@@ -1070,7 +1088,7 @@ namespace clear {
 			case UnaryExpressionType::None:
 			default:
 			{
-				CLEAR_UNREACHABLE("how");
+				return operand;
 				break;
 			}
 		}
@@ -1168,5 +1186,15 @@ namespace clear {
 
 		return elementType;
 	}
+
+    ASTMemberAccess::ASTMemberAccess(const std::string& member)
+    {
+		p_MetaData.Name = member;
+    }
+
+    llvm::Value *ASTMemberAccess::Codegen()
+    {
+        return nullptr;
+    }
 
 }
