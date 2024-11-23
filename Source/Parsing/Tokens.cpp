@@ -76,6 +76,16 @@ namespace clear {
         {"break",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Break }},
         {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }},
         {"float",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
+            {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
+{"when",  {.NextState = ParserState::Default, .TokenToPush = TokenType::When }},
+{"case",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Case }},
+{"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
+{"default",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Default }},
+
+
+
+
+
 
     };
 
@@ -195,6 +205,10 @@ namespace clear {
             case TokenType::GenericDeclarationStart: return "GenericDeclarationStart";
             case TokenType::GenericDeclarationEnd: return "GenericDeclarationEnd";
             case TokenType::MemberName: return "MemberName";
+            case TokenType::Case: return "Case";
+            case TokenType::Default: return "Default";
+            case TokenType::Switch: return "Switch";
+            case TokenType::When: return "When";
 
             default:
                 break;
