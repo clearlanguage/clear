@@ -338,7 +338,7 @@ namespace clear
 				}
 
 				if (!m_CurrentString.empty()) {
-					ret.tokens.push_back(m_CurrentString);
+					ret.tokens.push_back('('+ m_CurrentString + ')');
 					ExpectingValue = false;
 				}
 				else {
@@ -363,7 +363,7 @@ namespace clear
 			else
 			{
 				if(!(std::isspace(current) && m_CurrentString.empty()))
-					if (current == '\n') current = ' ';
+					// if (current == '\n') current = ' ';
 					m_CurrentString += current;
 			}
 
