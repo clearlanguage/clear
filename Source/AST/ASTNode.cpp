@@ -137,6 +137,7 @@ namespace clear {
 		if (leftChild->GetMetaData().Type && leftChild->GetMetaData().Type->GetID() == TypeID::Array)
 		{
 			LHSRawValue = builder.CreateInBoundsGEP(leftChildType->Get(), LHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+			leftChildType = Ref<Type>::Create(leftChildType->GetUnderlying());
 		}
 		else if (leftChild->GetMetaData().Type && leftChild->GetMetaData().NeedLoading)
 		{
@@ -147,6 +148,7 @@ namespace clear {
 		if (rightChild->GetMetaData().Type && rightChild->GetMetaData().Type->GetID() == TypeID::Array)
 		{
 			RHSRawValue = builder.CreateInBoundsGEP(rightChildType->Get(), RHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+			rightChildType = Ref<Type>::Create(rightChildType->GetUnderlying());
 		}
 		else if (rightChild->GetMetaData().Type && rightChild->GetMetaData().NeedLoading)
 		{
@@ -154,31 +156,14 @@ namespace clear {
 			RHSRawValue = builder.CreateLoad(rightChildType->Get(), RHSRawValue, "loaded_value");
 		}
 
-		if((m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub) && (leftChild->GetMetaData().Type->IsPointer() || rightChild->GetMetaData().Type->IsPointer()))
-		{
-			llvm::Value* pointer = leftChild->GetMetaData().Type->IsPointer() ? LHSRawValue : RHSRawValue;
-			llvm::Value* index   = leftChild->GetMetaData().Type->IsPointer() ? RHSRawValue : LHSRawValue;
-
-			auto elementType = leftChild->GetMetaData().Type->IsPointer() ? leftChild->GetMetaData().Type->GetUnderlying() : rightChild->GetMetaData().Type->GetUnderlying();
-
-			if(m_Expression == BinaryExpressionType::Sub)
-			{
-				index = builder.CreateNeg(index);
-			}
-			
-			CLEAR_VERIFY(elementType, "null element type");
-			return builder.CreateInBoundsGEP(elementType->Get(), pointer, index);
-		}
-
 		if(m_Expression == BinaryExpressionType::Index)
 		{
 			CLEAR_VERIFY(RHSRawValue->getType()->isIntegerTy(), "");
 			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
 
-			auto& leftType = leftChild->GetMetaData().Type;
-			p_MetaData.Type = leftType->GetUnderlying();
+			p_MetaData.Type = leftChildType->GetUnderlying();
 			p_MetaData.NeedLoading = true;
-			return builder.CreateInBoundsGEP(leftChildType->Get(), LHSRawValue, RHSRawValue, "array_index");
+			return builder.CreateInBoundsGEP(leftChildType->GetUnderlying()->Get(), LHSRawValue, RHSRawValue, "array_index");
 		}
 
 		if (RHSRawValue->getType() != LHSRawValue->getType())
@@ -399,7 +384,7 @@ namespace clear {
 		llvm::AllocaInst* value = metaData.Alloca;
 
 		CLEAR_VERIFY(value, "value was nullptr");
-		
+
 		p_MetaData.Type = metaData.Type;
 		p_MetaData.NeedLoading = true;
 
@@ -739,7 +724,8 @@ namespace clear {
 		
 		llvm::Function* callee = module.getFunction(p_MetaData.Name);
 		CLEAR_VERIFY(callee, "not a valid function");
-		
+
+		p_MetaData.Type = expected.ReturnType;
 		return builder.CreateCall(callee, args);
 	}
 
@@ -885,6 +871,7 @@ namespace clear {
 		: m_Type(type)
 	{
 		p_MetaData.Type = typeToCast;
+		p_MetaData.Debug = (int)type;
 	}
 
 	llvm::Value* ASTUnaryExpression::Codegen()
@@ -1007,13 +994,10 @@ namespace clear {
 			}
 			case UnaryExpressionType::Reference:
 			{
-				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
- 				CLEAR_VERIFY(inst, "must be an alloca");
-
 				p_MetaData.NeedLoading = false;
 				p_MetaData.Type = metaData.Type;
 
-				return inst;
+				return operand;
 			}
 			case UnaryExpressionType::Cast:
 			{

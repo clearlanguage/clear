@@ -45,6 +45,7 @@ namespace clear {
 		std::string Name;
 		Ref<Type> Type;
 		bool NeedLoading = false;
+		int Debug;
 	};
 
 	class ASTNodeBase

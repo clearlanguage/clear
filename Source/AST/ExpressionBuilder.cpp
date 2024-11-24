@@ -184,7 +184,7 @@ namespace clear {
 			tempIndex = (int64_t)m_Index + 1;
 			bool change = false;
 
-			while (postType != UnaryExpressionType::None && VerifyUnaryTypeWithToken(m_Tokens[m_Index], postType))
+			while (postType != UnaryExpressionType::None && VerifyPostUnaryTypeWithToken(m_Tokens[m_Index], postType))
 			{
 				operators.push({ BinaryExpressionType::None, postType, currentExpectedType, false, 4 });
 				change = true;
@@ -331,10 +331,35 @@ namespace clear {
 			}
 		}
 
-		if (token.TokenType == TokenType::OpenBracket || token.TokenType == TokenType::CloseBracket)
+		if (token.TokenType == TokenType::OpenBracket)
 			return true;
 
 		return false;
 	}
-	
+
+    bool ExpressionBuilder::VerifyPostUnaryTypeWithToken(const Token &token, UnaryExpressionType type)
+    {
+        if (token.TokenType == TokenType::VariableReference)
+		{
+			return true; //good with all types
+		}
+
+		if (s_RValues.contains(token.TokenType))
+		{
+			switch (type)
+			{
+				case clear::UnaryExpressionType::BitwiseNot:
+				case clear::UnaryExpressionType::Negation:
+				case clear::UnaryExpressionType::Cast:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		if (token.TokenType == TokenType::CloseBracket)
+			return true;
+
+		return false;
+    }
 }

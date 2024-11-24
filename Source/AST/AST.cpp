@@ -330,7 +330,6 @@ namespace clear {
 					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(currentRoot.Node->GetName() + "::" + previous.Data));
 
 					currentRoot.Node->PushChild(binaryExpression);
-
 					break;
 				}
 				case TokenType::PlusAssign:
@@ -434,6 +433,16 @@ namespace clear {
 				{
 					if (tokens[i + 1].TokenType == TokenType::FunctionCall)
 						continue;
+			
+					while(tokens[i].TokenType != TokenType::EndLine)
+					{
+						i--;
+					}
+
+					while(tokens[i].TokenType == TokenType::EndLine || tokens[i].TokenType == TokenType::EndIndentation)
+					{
+						i++;
+					}
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 					Ref<ASTExpression> expression = builder.Create({});
@@ -442,7 +451,7 @@ namespace clear {
 						variableReferencesToAssign.push({ expression });
 					else
 						currentRoot.Node->PushChild(expression);
-
+					
 					i--;
 
 					break;

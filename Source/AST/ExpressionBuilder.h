@@ -20,6 +20,7 @@ namespace clear {
 
 	private:
 		bool VerifyUnaryTypeWithToken(const Token& token, UnaryExpressionType type);
+		bool VerifyPostUnaryTypeWithToken(const Token& token, UnaryExpressionType type);
 
 	private:
 		const std::vector<Token>& m_Tokens;
