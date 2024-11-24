@@ -143,6 +143,7 @@ namespace clear
 		void _ParseHexLiteral();
 		void _ParseExponentNumber(std::string x);
 		void _ParseList();
+		std::string _CleanBrackets(std::string x);
 		BracketParsingReturn _ParseBrackets(char end,bool commas);
 
 		void _ParseArrayDeclaration();

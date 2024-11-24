@@ -255,6 +255,13 @@ namespace clear
 		_VerifyCondition(false,17,m_TokenIndexStart,j);
 	}
 
+	std::string Parser::_CleanBrackets(std::string x) {
+		if (x.front() == '(' && x.back() == ')' ) {
+			return x.substr(1, x.size() - 2);
+		}
+		return x;
+	}
+
 	void Parser::_CommentState() {
 		char current = _GetNextChar();
 		while (current != '\n' && current != '\0') {
@@ -726,7 +733,7 @@ namespace clear
 		auto parsed = _ParseBrackets(']',false);
 		m_CurrentString.clear();
 		if (!parsed.tokens.empty()) {
-			m_CurrentString = parsed.tokens.at(0);
+			m_CurrentString = _CleanBrackets(parsed.tokens.at(0));
 		}
 
 		if (m_CurrentString.empty()) {
