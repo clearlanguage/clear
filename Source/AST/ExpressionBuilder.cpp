@@ -74,19 +74,8 @@ namespace clear {
 
 	Ref<ASTExpression> ExpressionBuilder::Create(const Ref<Type>& expectedType)
 	{
-		Ref<Type> dummy;
-		return Create(expectedType, dummy);
-	}
-
-	Ref<ASTExpression> ExpressionBuilder::Create(const Ref<Type>& expectedType, Ref<Type>& rootType)
-	{
 		Ref<ASTExpression> expression = Ref<ASTExpression>::Create();
 		std::stack<Operator> operators;
-
-		std::vector<Ref<Type>> types = TypeAnalysis(m_Index);
-
-		if(types.size() > 0)
-			rootType = types[0];
 
 		Ref<Type> currentExpectedType = expectedType;
 
@@ -118,7 +107,6 @@ namespace clear {
 			if (m_Tokens[m_Index].TokenType == TokenType::VariableReference)
 			{
 				expression->PushChild(CreateVariableReferenceExpression());
-				currentExpectedType = types[typeIndex++];
 			}
 			else if (m_Tokens[m_Index].TokenType == TokenType::MemberName)
 			{
@@ -127,7 +115,6 @@ namespace clear {
 			else if (s_RValues.contains(m_Tokens[m_Index].TokenType))
 			{
 				expression->PushChild(Ref<ASTNodeLiteral>::Create(m_Tokens[m_Index]));
-				currentExpectedType = types[typeIndex++];
 
 				while(m_Tokens[m_Index].TokenType == TokenType::DotOp || m_Tokens[m_Index].TokenType == TokenType::VariableReference)
 				{
@@ -151,7 +138,7 @@ namespace clear {
 
 					operators.pop();
 				}
-
+				
 				if (!operators.empty())
 					operators.pop();
 			}
@@ -167,25 +154,6 @@ namespace clear {
 						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression, top.ExpectedType));
 
 					operators.pop();
-				}
-
-				if (currentExpectedType->IsPointer())
-				{
-					if (m_Tokens[m_Index].TokenType == TokenType::AddOp)
-					{
-						operators.push({ BinaryExpressionType::PositivePointerArithmetic, UnaryExpressionType::None, currentExpectedType, false, 1 });
-					}
-					else if (m_Tokens[m_Index].TokenType == TokenType::SubOp)
-					{
-						operators.push({ BinaryExpressionType::NegatedPointerArithmetic, UnaryExpressionType::None, currentExpectedType, false, 1 });
-					}
-					else if (m_Tokens[m_Index].TokenType == TokenType::IndexOperator)
-					{
-						operators.push({ BinaryExpressionType::Index, UnaryExpressionType::None, currentExpectedType, false, 5 });
-					}
-
-					m_Index++;
-					continue;
 				}
 
 				if (m_Tokens[m_Index].TokenType == TokenType::DivOp)
@@ -294,113 +262,6 @@ namespace clear {
 
 
 		return functionCall;
-	}
-
-	std::vector<Ref<Type>> ExpressionBuilder::TypeAnalysis(size_t index)
-	{
-		std::vector<Ref<Type>> types;
-
-		bool pointer = false;
-		size_t dereferenceCount = 0;
-
-		std::stack<size_t> variableIndices;
-
-		while (index < m_Tokens.size() && !s_Terminators.contains(m_Tokens[index].TokenType))
-		{
-			UnaryExpressionType unaryType = Type::GetUnaryExpressionTypeFromToken(m_Tokens[index].TokenType);
-			
-			if(unaryType == UnaryExpressionType::Reference)
-			{
-				pointer = true;
-			}
-
-			if(unaryType == UnaryExpressionType::Dereference)
-			{
-				dereferenceCount++;
-			}
-
-			if (m_Tokens[index].TokenType == TokenType::VariableReference)
-			{
-				variableIndices.push(types.size());
-
-				if (m_Tokens[index + 1].TokenType == TokenType::FunctionCall)
-				{
-					CLEAR_VERIFY(g_FunctionMetaData.contains(m_Tokens[index + 1].Data), "");
-					auto& metaData = g_FunctionMetaData.at(m_Tokens[index + 1].Data);
-
-					if (pointer)
-					{
-						types.push_back(Ref<Type>::Create(metaData.ReturnType));
-					}
-					else
-					{
-						types.push_back(metaData.ReturnType);
-					}
-
-
-					index += 2;
-					pointer = false;
-					continue;
-				}
-
-				std::list<std::string> variableChain = GetVariableChain(index);
-				Ref<Type> type = GetBaseTypeFromList(variableChain, dereferenceCount);
-				dereferenceCount = 0;
-
-
-				//TODO: need to sort this trash out lmao
-				if (pointer)
-				{
-					types.push_back(Ref<Type>::Create(type));
-				}
-				else if (type->GetID() == TypeID::Array && m_Tokens[index + 1].TokenType != TokenType::IndexOperator)
-				{
-					types.push_back(Ref<Type>::Create(type));
-				}
-				else if (type->GetID() == TypeID::Array && m_Tokens[index + 1].TokenType == TokenType::IndexOperator)
-				{
-					types.push_back(type->GetUnderlying());
-					
-				}
-				else
-				{
-					types.push_back(type);
-				}
-				
-
-				index++;
-				pointer = false;
-			}
-			else if (s_RValues.contains(m_Tokens[index].TokenType))
-			{
-				types.push_back(Ref<Type>::Create(m_Tokens[index]));
-				index++;
-			}
-			else if(m_Tokens[index].TokenType == TokenType::MemberName)
-			{
-				CLEAR_VERIFY(!types.empty() && !variableIndices.emplace(), "types is not meant to be empty");
-
-				auto& backType = types[variableIndices.top()];
-				auto& identifier = backType->GetUserDefinedTypeIdentifer();
-
-				CLEAR_VERIFY(!identifier.empty(), "invalid user defined type");
-
-				auto& structMetaData = Type::GetStructMetaData(identifier);
-				CLEAR_VERIFY(structMetaData.Struct, "struct was nullptr");
-				CLEAR_VERIFY(structMetaData.Indices.contains(m_Tokens[index].Data), "invalid member");		
-
-				size_t i = structMetaData.Indices.at(m_Tokens[index].Data);
-				types[variableIndices.top()] = structMetaData.Types[i];
-
-				index++;
-			}
-			else
-			{
-				index++;
-			}
-		}
-
-		return types;
 	}
 
 	std::list<std::string> ExpressionBuilder::GetVariableChain()

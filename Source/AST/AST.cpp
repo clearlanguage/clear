@@ -445,11 +445,10 @@ namespace clear {
 					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
-					Ref<Type> type;
-					Ref<ASTExpression> expression = builder.Create({}, type);
+					Ref<ASTExpression> expression = builder.Create({});
 
 					if(i < tokens.size() && (tokens[i].TokenType == TokenType::Assignment || tokens[i].TokenType == TokenType::Comma))
-						variableReferencesToAssign.push({ expression, type });
+						variableReferencesToAssign.push({ expression });
 					else
 						currentRoot.Node->PushChild(expression);
 

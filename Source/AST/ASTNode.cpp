@@ -95,10 +95,11 @@ namespace clear {
 		llvm::Value* LHS = leftChild->Codegen();
 		llvm::Value* RHS = rightChild->Codegen();
 
+		auto& leftChildType = leftChild->GetMetaData().Type;
+		auto& rightChildType = rightChild->GetMetaData().Type;
+
 		llvm::Value* LHSRawValue = LHS;
 		llvm::Value* RHSRawValue = RHS;
-
-		llvm::Type* expectedLLVMType = p_MetaData.Type->Get();
 
 		CLEAR_VERIFY(LHS, "lhs failed to generate");
 
@@ -115,7 +116,7 @@ namespace clear {
 			p_MetaData.Type = structMetaData.Types[index];
 			p_MetaData.NeedLoading = true;
 
-			return builder.CreateStructGEP(leftChild->GetMetaData().Type->Get(), LHSRawValue, index, "struct_get_element_ptr");
+			return builder.CreateStructGEP(leftChildType->Get(), LHSRawValue, index, "struct_get_element_ptr");
 		}
 
 		CLEAR_VERIFY(RHS, "rhs failed to generate");
@@ -125,45 +126,49 @@ namespace clear {
 			if (rightChild->GetMetaData().NeedLoading)
 			{
 				CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "not a valid load type");
-				RHSRawValue = builder.CreateLoad(rightChild->GetMetaData().Type->Get(), RHSRawValue, "loaded_value");
+				RHSRawValue = builder.CreateLoad(rightChildType->Get(), RHSRawValue, "loaded_value");
 			}
 
-			if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type->GetID() != TypeID::None && !p_MetaData.Type->IsPointer())
-				RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type, {});
+			if (RHSRawValue->getType() != LHSRawValue->getType())
+				RHSRawValue = Value::CastValue(RHSRawValue, leftChildType, rightChildType);
 
-			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type->IsSigned());
+			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, leftChildType->IsSigned());
 		}
 
-
-		//TODO: come back to me
 		if (leftChild->GetMetaData().Type && leftChild->GetMetaData().Type->GetID() == TypeID::Array)
 		{
-			LHSRawValue = builder.CreateInBoundsGEP(leftChild->GetMetaData().Type->Get(), LHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+			LHSRawValue = builder.CreateInBoundsGEP(leftChildType->Get(), LHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
 		}
 		else if (leftChild->GetMetaData().Type && leftChild->GetMetaData().NeedLoading)
 		{
 			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
-			LHSRawValue = builder.CreateLoad(leftChild->GetMetaData().Type->Get(), LHSRawValue, "loaded_value");
+			LHSRawValue = builder.CreateLoad(leftChildType->Get(), LHSRawValue, "loaded_value");
 		}
 
 		if (rightChild->GetMetaData().Type && rightChild->GetMetaData().Type->GetID() == TypeID::Array)
 		{
-			RHSRawValue = builder.CreateInBoundsGEP(rightChild->GetMetaData().Type->Get(), RHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
+			RHSRawValue = builder.CreateInBoundsGEP(rightChildType->Get(), RHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
 		}
 		else if (rightChild->GetMetaData().Type && rightChild->GetMetaData().NeedLoading)
 		{
 			CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "");
-			RHSRawValue = builder.CreateLoad(rightChild->GetMetaData().Type->Get(), RHSRawValue, "loaded_value");
+			RHSRawValue = builder.CreateLoad(rightChildType->Get(), RHSRawValue, "loaded_value");
 		}
 
-		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
+		if((m_Expression == BinaryExpressionType::Add || m_Expression == BinaryExpressionType::Sub) && (leftChild->GetMetaData().Type->IsPointer() || rightChild->GetMetaData().Type->IsPointer()))
 		{
-			Ref<Type> intType = Ref<Type>::Create(TypeID::Int64);
+			llvm::Value* pointer = leftChild->GetMetaData().Type->IsPointer() ? LHSRawValue : RHSRawValue;
+			llvm::Value* index   = leftChild->GetMetaData().Type->IsPointer() ? RHSRawValue : LHSRawValue;
 
-			if (RHSRawValue->getType() != intType->Get())
-				RHSRawValue = Value::CastValue(RHSRawValue, intType, rightChild->GetMetaData().Type);
+			auto elementType = leftChild->GetMetaData().Type->IsPointer() ? leftChild->GetMetaData().Type->GetUnderlying() : rightChild->GetMetaData().Type->GetUnderlying();
 
-			return _CreatePointerArithmeticExpression(LHSRawValue, RHSRawValue, leftChild->GetMetaData().Type);
+			if(m_Expression == BinaryExpressionType::Sub)
+			{
+				index = builder.CreateNeg(index);
+			}
+			
+			CLEAR_VERIFY(elementType, "null element type");
+			return builder.CreateInBoundsGEP(elementType->Get(), pointer, index);
 		}
 
 		if(m_Expression == BinaryExpressionType::Index)
@@ -174,23 +179,15 @@ namespace clear {
 			auto& leftType = leftChild->GetMetaData().Type;
 			p_MetaData.Type = leftType->GetUnderlying();
 			p_MetaData.NeedLoading = true;
-			return builder.CreateInBoundsGEP(p_MetaData.Type->Get(), LHSRawValue, RHSRawValue, "array_index");
+			return builder.CreateInBoundsGEP(leftChildType->Get(), LHSRawValue, RHSRawValue, "array_index");
 		}
 
-		Ref<Type> fromType = leftChild->GetMetaData().Type;
+		if (RHSRawValue->getType() != LHSRawValue->getType())
+			RHSRawValue = Value::CastValue(RHSRawValue, leftChildType, rightChildType);
 
-		if (LHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type->GetID() != TypeID::Bool)
- 			LHSRawValue = Value::CastValue(LHSRawValue, p_MetaData.Type, fromType);
+		p_MetaData.Type = leftChildType;
 
-		fromType = rightChild->GetMetaData().Type;
-
-		if (RHSRawValue->getType() != expectedLLVMType && p_MetaData.Type && p_MetaData.Type->GetID() != TypeID::Bool)
-			RHSRawValue = Value::CastValue(RHSRawValue, p_MetaData.Type, fromType);
-
-		if (m_Expression == BinaryExpressionType::PositivePointerArithmetic || m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
-			p_MetaData.Type = leftChild->GetMetaData().Type;
-		
-		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, p_MetaData.Type->IsSigned());
+		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, leftChildType->IsSigned());
 	}
 
 	bool ASTBinaryExpression::_IsMathExpression() const
@@ -1147,6 +1144,11 @@ namespace clear {
 
 			llvm::Value* childValue = children[i]->Codegen();
 			CLEAR_VERIFY(childValue, "value must be proper");
+
+			if(children[i]->GetMetaData().NeedLoading)
+			{
+				childValue = builder.CreateLoad(children[i]->GetMetaData().Type->Get(), childValue, "loaded_value");
+			}
 
 			if (childValue->getType() != elementType)
 			{
