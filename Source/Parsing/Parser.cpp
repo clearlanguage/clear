@@ -1346,6 +1346,10 @@ namespace clear
 			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
 			// _RaiseError();
 		}
+		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
+			info.Tokens.pop_back();
+			info.Tokens.erase(info.Tokens.begin());
+		}
 		return info;
 	}
 
@@ -1363,6 +1367,10 @@ namespace clear
 			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
 			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
 			// _RaiseError();
+		}
+		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
+			info.Tokens.pop_back();
+			info.Tokens.erase(info.Tokens.begin());
 		}
 		return info;
 	}
