@@ -13,10 +13,6 @@ namespace clear {
 		Ref<ASTExpression>   Create(const Ref<Type>& expectedType);
 		Ref<ASTNodeBase>	 CreateVariableReferenceExpression();
 		Ref<ASTFunctionCall> CreateFunctionCall();
-		
-
-		std::list<std::string> GetVariableChain();
-		std::list<std::string> GetVariableChain(size_t index);
 
 		static Ref<Type> GetBaseTypeFromList(const std::list<std::string>& list, size_t dereferenceCount = 0);
 

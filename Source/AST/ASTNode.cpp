@@ -76,13 +76,12 @@ namespace clear {
 		return m_Constant.Get();
 	}
 
-	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, const Ref<Type>& expectedType)
+	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
 		: m_Expression(type)
 	{
-		p_MetaData.Type = expectedType;
 	}
-	llvm::Value* ASTBinaryExpression::Codegen() {
-		// Assumes the two values in its children are to be added in order
+	llvm::Value* ASTBinaryExpression::Codegen() 
+	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
@@ -386,10 +385,9 @@ namespace clear {
 		return builder.CreateInBoundsGEP(p_MetaData.Type->Get(), LHS, RHS);
 	}
 
-	ASTVariableExpression::ASTVariableExpression(const std::list<std::string>& chain)
-		: m_Chain(chain)
+	ASTVariableExpression::ASTVariableExpression(const std::string& variable)
+		: m_VariableName(variable)
 	{
-		p_MetaData.NeedLoading = true;
 	}
 
 	llvm::Value* ASTVariableExpression::Codegen()
@@ -397,58 +395,15 @@ namespace clear {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
 
-		auto& metaData = Value::GetVariableMetaData(*m_Chain.begin());
+		auto& metaData = Value::GetVariableMetaData(m_VariableName);
 		llvm::AllocaInst* value = metaData.Alloca;
 
 		CLEAR_VERIFY(value, "value was nullptr");
-
-		m_Chain.pop_front();
-
-		if (m_Chain.empty())
-		{
-			p_MetaData.Type = metaData.Type;
-
-			return value; 
-		}
-
-		Ref<Type> typeMetaData = metaData.Type;
-
-		if(typeMetaData->IsPointer())
-		{
-			p_MetaData.Type = typeMetaData;
-			return value;
-		}
-
-		StructMetaData* currentRef = &Type::GetStructMetaData(typeMetaData->GetUserDefinedTypeIdentifer());
-
-		std::vector<llvm::Value*> indices =
-		{
-			llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), 0) 
-		};
 		
-		Ref<Type> typeToGet;
+		p_MetaData.Type = metaData.Type;
+		p_MetaData.NeedLoading = true;
 
-		for (;;)
-		{
-			size_t currentIndex = currentRef->Indices[m_Chain.front()];
-			indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), currentIndex));
-			m_Chain.pop_front();
-
-			typeToGet = currentRef->Types[currentIndex];
-
-			if (m_Chain.empty())
-				break;
-
-			currentRef = &Type::GetStructMetaData(currentRef->Types[currentIndex]->GetUserDefinedTypeIdentifer());
-
-			if (!currentRef)
-				break;
-		}
-
-		llvm::Value* gepPtr = builder.CreateInBoundsGEP(value->getAllocatedType(), value, indices, "struct_element_ptr");
-		p_MetaData.Type = typeToGet;
-
-		return gepPtr; 
+		return value; 
 	}
 
 	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, Ref<Type> type)

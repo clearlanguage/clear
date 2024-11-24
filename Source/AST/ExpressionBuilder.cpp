@@ -132,7 +132,7 @@ namespace clear {
 					auto& top = operators.top();
 
 					if (top.BinaryExpression != BinaryExpressionType::None)
-						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression));
 					else
 						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression, top.ExpectedType));
 
@@ -149,7 +149,7 @@ namespace clear {
 					auto& top = operators.top();
 
 					if (top.BinaryExpression != BinaryExpressionType::None)
-						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+						expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression));
 					else
 						expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression, top.ExpectedType));
 
@@ -207,7 +207,7 @@ namespace clear {
 			auto& top = operators.top();
 
 			if (top.BinaryExpression != BinaryExpressionType::None)
-				expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression, top.ExpectedType));
+				expression->PushChild(Ref<ASTBinaryExpression>::Create(top.BinaryExpression));
 			else
 				expression->PushChild(Ref<ASTUnaryExpression>::Create(top.UnaryExpression, top.ExpectedType));
 
@@ -225,8 +225,7 @@ namespace clear {
 			return CreateFunctionCall();
 		}
 
-		auto l = GetVariableChain();
-		return Ref<ASTVariableExpression>::Create(l); 
+		return Ref<ASTVariableExpression>::Create(m_RootName + "::" + m_Tokens[m_Index].Data); 
 	}
 
 	Ref<ASTFunctionCall> ExpressionBuilder::CreateFunctionCall()
@@ -262,62 +261,6 @@ namespace clear {
 
 
 		return functionCall;
-	}
-
-	std::list<std::string> ExpressionBuilder::GetVariableChain()
-	{
-		CLEAR_VERIFY(m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::VariableReference, "");
-
-		std::list<std::string> list = {m_RootName + "::" + m_Tokens[m_Index].Data};
-
-		//m_Index++;
-
-		//while (m_Index < m_Tokens.size() && m_Tokens[m_Index].TokenType == TokenType::DotOp)
-		//{
-		//	m_Index++;
-		//	list.push_back(m_Tokens[m_Index].Data);
-		//	m_Index++;
-		//}
-		//m_Index--;
-
-		return list;
-	}
-
-	std::list<std::string> ExpressionBuilder::GetVariableChain(size_t index)
-	{
-		CLEAR_VERIFY(index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::VariableReference, "");
-
-		size_t copy = index - 1;
-
-		std::list<std::string> list;
-
-		//while(m_Tokens[copy].TokenType == TokenType::DotOp)
-		//{
-		//	copy--;
-		//	list.push_front(m_Tokens[copy].Data);
-		//	copy--;
-		//}
-
-
-		if(list.empty())
-		{
-			list = { m_RootName + "::" + m_Tokens[index].Data };
-		}
-		else
-		{
-			list.front() = {m_RootName + "::" + list.front()};
-		}
-
-		//index++;
-//
-		//while (index < m_Tokens.size() && m_Tokens[index].TokenType == TokenType::DotOp)
-		//{
-		//	index++;
-		//	list.push_back(m_Tokens[index].Data);
-		//	index++;
-		//}
-
-		return list;
 	}
 
 	Ref<Type> ExpressionBuilder::GetBaseTypeFromList(const std::list<std::string>& list, size_t dereferenceCount)

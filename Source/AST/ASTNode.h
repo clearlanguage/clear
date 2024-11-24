@@ -97,7 +97,7 @@ namespace clear {
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type, const Ref<Type>& expectedType = {});
+		ASTBinaryExpression(BinaryExpressionType type);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual llvm::Value* Codegen() override;
@@ -189,13 +189,13 @@ namespace clear {
 	class ASTVariableExpression : public ASTNodeBase
 	{
 	public:
-		ASTVariableExpression(const std::list<std::string>& chain);
+		ASTVariableExpression(const std::string& variable);
 		virtual ~ASTVariableExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
 		virtual llvm::Value* Codegen() override;
 
 	private:
-		std::list<std::string> m_Chain;
+		std::string m_VariableName;
 	};
 
 	class ASTMemberAccess : public ASTNodeBase

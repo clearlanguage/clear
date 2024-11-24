@@ -51,6 +51,14 @@ namespace clear {
 
 					while (i < tokens.size() && tokens[i].TokenType != TokenType::EndFunctionArguments)
 					{
+						while(tokens[i].TokenType == TokenType::OpenBracket || tokens[i].TokenType == TokenType::CloseBracket || tokens[i].TokenType == TokenType::Comma)
+						{
+							i++;
+						}
+
+						if(tokens[i].TokenType == TokenType::EndFunctionArguments)
+							break;
+
 						bool isPointer = tokens[i + 1].TokenType == TokenType::PointerDef || tokens[i + 1].TokenType == TokenType::MulOp;
 						bool isVariadic = tokens[i].TokenType == TokenType::Ellipsis;
 
@@ -276,7 +284,7 @@ namespace clear {
 						{
 							auto& ref = variableReferencesToAssign.front();
 
-							Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, ref.Type);
+							Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment);
 							
 							ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
@@ -299,14 +307,10 @@ namespace clear {
 
 					if (tokens[i + 1].TokenType == TokenType::StartArray)
 					{
-						std::list<std::string> chain = _RetrieveChain(tokens, i);
-						chain.push_back(previous.Data);
-						chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
-
 						i++;
 
 						Ref<ASTArrayInitializer> initializer = Ref<ASTArrayInitializer>::Create();
-						initializer->PushChild(Ref<ASTVariableExpression>::Create(chain));
+						initializer->PushChild(Ref<ASTVariableExpression>::Create(currentRoot.Node->GetName() + "::" + previous.Data));
 
 						_CreateArrayInitializer(initializer, tokens, currentRoot.Node->GetName(), i, {});
 
@@ -315,20 +319,15 @@ namespace clear {
 						continue;
 					}
 
-
-					std::list<std::string> chain = _RetrieveChain(tokens, i);
-					chain.push_back(previous.Data);
-					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
-
 					Ref<Type> type = _GetAssignmentType(tokens, currentRoot.Node->GetName(), i);
 					i++;
 
-					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
+					Ref<ASTBinaryExpression> binaryExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment);
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
 					binaryExpression->PushChild(builder.Create(type));
-					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
+					binaryExpression->PushChild(Ref<ASTVariableExpression>::Create(currentRoot.Node->GetName() + "::" + previous.Data));
 
 					currentRoot.Node->PushChild(binaryExpression);
 
@@ -342,22 +341,18 @@ namespace clear {
 				{
 					auto& previous = tokens[i - 1];
 
-					std::list<std::string> chain = _RetrieveChain(tokens, i);
-					chain.push_back(previous.Data);
-					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
-
 					Ref<Type> type = _GetAssignmentType(tokens, currentRoot.Node->GetName(), i);
 
-					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(Type::GetBinaryExpressionTypeFromToken(tokens[i].TokenType), type);
-					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment, type);
+					Ref<ASTBinaryExpression> operationExpression = Ref<ASTBinaryExpression>::Create(Type::GetBinaryExpressionTypeFromToken(tokens[i].TokenType));
+					Ref<ASTBinaryExpression> assignmentExpression = Ref<ASTBinaryExpression>::Create(BinaryExpressionType::Assignment);
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 
 					operationExpression->PushChild(builder.Create(type));
-					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
+					operationExpression->PushChild(Ref<ASTVariableExpression>::Create(currentRoot.Node->GetName() + "::" + previous.Data));
 
 					assignmentExpression->PushChild(operationExpression);
-					assignmentExpression->PushChild(Ref<ASTVariableExpression>::Create(chain));
+					assignmentExpression->PushChild(Ref<ASTVariableExpression>::Create(currentRoot.Node->GetName() + "::" + previous.Data));
 
 					currentRoot.Node->PushChild(assignmentExpression);
 
@@ -439,10 +434,6 @@ namespace clear {
 				{
 					if (tokens[i + 1].TokenType == TokenType::FunctionCall)
 						continue;
-
-					std::list<std::string> chain = _RetrieveChain(tokens, i);
-					chain.push_back(currentToken.Data);
-					chain.front() = currentRoot.Node->GetName() + "::" + chain.front();
 
 					ExpressionBuilder builder(tokens, currentRoot.Node->GetName(), i);
 					Ref<ASTExpression> expression = builder.Create({});
@@ -545,40 +536,6 @@ namespace clear {
 			}
 		}
 	}
-	std::list<std::string> AST::_RetrieveChain(const std::vector<Token>& tokens, size_t current)
-	{
-		std::list<std::string> list;
-		current -= 2;
-
-		while (current > 0 && tokens[current].TokenType == TokenType::DotOp)
-		{
-			current--;
-			list.push_back(tokens[current].Data);
-			current--; //should be a dotop if expression is continuing
-		}
-
-		list.reverse();
-		return list;
-	}
-
-	std::list<std::string> AST::_RetrieveForwardChain(const std::vector<Token>& tokens, size_t& current)
-	{
-		std::list<std::string> list;
-
-		//(assuming token is currently a variable reference)
-
-		current++;
-
-		while (current < tokens.size() && tokens[current].TokenType == TokenType::DotOp)
-		{
-			current++;
-			list.push_back(tokens[current].Data);
-			current++;
-		}
-
-		return list;
-	}
-
 
     Ref<Type> AST::_GetAssignmentType(const std::vector<Token> &tokens, const std::string &currentFunctionName, size_t current)
     {
