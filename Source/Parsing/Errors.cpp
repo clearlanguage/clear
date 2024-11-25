@@ -64,9 +64,9 @@ namespace clear {
             {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"},
         {"Function parameter can only begin with a type not a {}","Change the parameter so that it begins with a valid type","Function parameter begins with none type declaration"},
         {"Did not expect new line after type declaration  ","Add a variable name after type declaration","Expected variable name after type declaration"},
-        {"Struct name cannot start with a number","Change the name of the struct to not begin with a number maybe prefix it with '_'","struct name invalid"},
-        {"Unexpected character \"{}\" in struct name","change struct name to only include valid charecters","struct name invalid"},
-        {"Did not expect a space in the middle of struct name","Separate words using underscores not spaces","Invalid struct name"},
+        {"{} name cannot start with a number","Change the name of the {} to not begin with a number maybe prefix it with '_'","{} name invalid"},
+        {"Unexpected character \"{}\" in {} name","change struct name to only include valid characters","{} name invalid"},
+        {"Did not expect a space in the middle of {} name","Separate words using underscores not spaces","Invalid {} name"},
         {"Expected a value not another comma","Remove the extra comma","Unexpected commas"},//38
         {"The identifier {} is a reserved keyword and cannot be used as a variable name","Please choose a different name for your variable. Avoid using reserved keywords as identifiers.","Variable name is keyword"}, //39
         {"Expected return type after arrow ","if you do not want to specify a type remove the arrow or add a type after","missing function type"}, //40
@@ -76,6 +76,9 @@ namespace clear {
             {"error 44 invalid char in generic"},
         {"Error 45 did not expect comma"}, //45
             {"Error 46 generic must include type"},
-                {"eRror 47 space between var names"}      //46
+                {"eRror 47 space between var names"},      //46
+{"Restriction with name {} already exists","Change the name of the restriction","restriction already defined"}, //47
+                {"error 48","",""}
+
         };
 }

@@ -32,6 +32,7 @@ namespace clear
 		m_StateMap[ParserState::Declaration] = [this](){_DeclarationState();};
 		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
 		m_StateMap[ParserState::Increment] = [this]() {_IncrementOperator();};
+		m_StateMap[ParserState::Restriction] = [this]() {_RestrictionState();};
 
 
 	}
@@ -279,6 +280,66 @@ namespace clear
 	}
 
 
+	void Parser::_RestrictionState() {
+		char current = _GetNextChar();
+
+		current = _SkipSpaces();
+		m_TokenIndexStart = m_CurrentTokenIndex-1;
+		m_CurrentString.clear();
+
+		bool expectingEnd = false;
+		while (current!= '\n' && current != '\0' && current != ':' && current != '<')
+		{
+			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
+			if (IsSpace(current)) {
+				expectingEnd = true;
+			}else {
+
+				_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
+			}
+			m_CurrentString += current;
+			current = _GetNextChar();
+		}
+		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"restriction");
+		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 47,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
+		_PushToken(TokenType::RestrictionName, m_CurrentString);
+		m_CurrentString.clear();
+
+		if (current == '<') {
+			bool end = false;
+			bool expectingEnd = false;
+			current = _GetNextChar();
+			while (current != '\0') {
+				if (current == '>') {
+					end = true;
+					break;
+				}
+				_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
+				if (IsSpace(current)) {
+					expectingEnd = true;
+				}else {
+
+					_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
+				}
+				m_CurrentString += current;
+				current = _GetNextChar();
+			}
+			_VerifyCondition(end,48);
+			_PushToken(TokenType::RestrictionTypeName, m_CurrentString);
+		}else {
+			_PushToken(TokenType::RestrictionTypeName, "type");
+
+		}
+
+
+
+
+		m_CurrentString.clear();
+		m_CurrentState = ParserState::Default;
+	}
+
+
 	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
 		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
 		if (IsSubParser) {
@@ -386,7 +447,7 @@ namespace clear
 	}
 
 
-	void Parser::_PushVariableReference(std::string& x) {
+	void Parser::_PushVariableReference(const std::string& x) {
 		if (_GetLastToken().TokenType == TokenType::DotOp) {
 			_PushToken(TokenType::MemberName,x);
 		}else {
@@ -615,17 +676,17 @@ namespace clear
 		bool expectingEnd = false;
 		while (current!= '\n' && current != '\0' && current != ':')
 		{
-			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2);
+			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"struct");
 			if (IsSpace(current)) {
 				expectingEnd = true;
 			}else {
 
-			_VerifyCondition(IsVarNameChar(current),36,Str(current));
+			_VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
 			}
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35);
+		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
 		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 

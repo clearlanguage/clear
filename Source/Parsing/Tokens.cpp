@@ -76,11 +76,13 @@ namespace clear {
         {"break",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Break }},
         {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }},
         {"float",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
-            {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
-{"when",  {.NextState = ParserState::Default, .TokenToPush = TokenType::When }},
-{"case",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Case }},
-{"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
-{"default",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Default }},
+        {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
+        {"when",  {.NextState = ParserState::Default, .TokenToPush = TokenType::When }},
+        {"case",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Case }},
+        {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
+        {"default",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Default }},
+        {"restriction",  {.NextState = ParserState::Restriction, .TokenToPush = TokenType::Restriction }},
+
 
 
 
@@ -211,6 +213,9 @@ namespace clear {
             case TokenType::Default: return "Default";
             case TokenType::Switch: return "Switch";
             case TokenType::When: return "When";
+            case TokenType::Restriction: return "Restriction";
+            case TokenType::RestrictionName: return "RestrictionName";
+            case TokenType::RestrictionTypeName: return "RestrictionTypeName";
 
             default:
                 break;

@@ -75,6 +75,7 @@ namespace clear
 		void _MinusOperator();
 		void _DeclarationState();
 		void _IncrementOperator();
+		void _RestrictionState();
 
 
 		Token _GetLastToken();
@@ -162,7 +163,7 @@ namespace clear
 		void _Backtrack();
 		void _EndLine();
 
-		void _PushVariableReference(std::string& x);
+		void _PushVariableReference(const std::string& x);
 
 
 	private:
