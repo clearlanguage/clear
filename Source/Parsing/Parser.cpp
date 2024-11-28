@@ -302,7 +302,7 @@ namespace clear
 		}
 		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"restriction");
 		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 47,-1,m_CurrentTokenIndex-1,m_CurrentString);
-		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
+		m_ScopeStack.back().RestrictionDeclarations.insert(m_CurrentString);
 		_PushToken(TokenType::RestrictionName, m_CurrentString);
 		m_CurrentString.clear();
 
@@ -319,7 +319,6 @@ namespace clear
 				if (IsSpace(current)) {
 					expectingEnd = true;
 				}else {
-
 					_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
 				}
 				m_CurrentString += current;
@@ -658,12 +657,23 @@ namespace clear
 
 	bool Parser::_IsTypeDeclared(const std::string& type) {
 		for (TypeScope& arg : m_ScopeStack) {
-			if (arg.TypeDeclarations.contains(type)) {
+			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type)) {
 				return true;
 			}
 		}
 		return false;
 	}
+
+	bool Parser::_IsRestrictionDeclared(const std::string &type) {
+		for (TypeScope& arg : m_ScopeStack) {
+			if (arg.RestrictionDeclarations.contains(type)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
 
 
 	void Parser::_StructNameState() {
@@ -949,6 +959,8 @@ namespace clear
 		char current = _GetNextChar();
 		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
 		current = _SkipSpaces();
+
+		auto TypeName= _GetLastToken().Data;
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
 		// 	_VerifyCondition(!IsType,7);
@@ -980,7 +992,7 @@ namespace clear
 			current = _GetNextChar();
 		}
 		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current), 7,m_CurrentTokenIndex-1);
+		_VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
 		_VerifyCondition(current != '*',26);
 		if (m_NoVariableNames) {
 			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
@@ -1002,7 +1014,10 @@ namespace clear
 			_Backtrack();
 			return;
 		}
-		if (!isDeclaration) {
+		if (isDeclaration) {
+			_VerifyCondition(!_IsRestrictionDeclared(TypeName),50);
+		}
+		else {
 			_Backtrack();
 			m_CurrentState = ParserState::Default;
 			return;

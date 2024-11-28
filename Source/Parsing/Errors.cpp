@@ -75,10 +75,11 @@ namespace clear {
             {"Error 43 empty generic","",""},
             {"error 44 invalid char in generic"},
         {"Error 45 did not expect comma"}, //45
-            {"Error 46 generic must include type"},
-                {"eRror 47 space between var names"},      //46
-{"Restriction with name {} already exists","Change the name of the restriction","restriction already defined"}, //47
-                {"error 48","",""}
+            {"Error 46 generic must include type"},//46
+                {"error 47 space between var names"},      //47
+{"Restriction with name {} already exists","Change the name of the restriction","restriction already defined"}, //48
+                {"error 49","",""}, //49
+                {"Cannot declare a variable with a restriction as type"} // 50
 
         };
 }

@@ -40,6 +40,7 @@ namespace clear
 	struct TypeScope
 	{
 		std::set<std::string> TypeDeclarations;
+		std::set<std::string> RestrictionDeclarations;
 	};
 
 	class Parser
@@ -133,6 +134,7 @@ namespace clear
 
 
 		bool _IsTypeDeclared(const std::string& type);
+		bool _IsRestrictionDeclared(const std::string& type);
 
 		void _ParsingRValueState();
 		void _ParseNumber();
