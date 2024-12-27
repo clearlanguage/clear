@@ -77,6 +77,7 @@ namespace clear
 		void _DeclarationState();
 		void _IncrementOperator();
 		void _RestrictionState();
+		void _DotOpState();
 
 
 		Token _GetLastToken();

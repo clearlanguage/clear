@@ -79,7 +79,9 @@ namespace clear {
                 {"error 47 space between var names"},      //47
 {"Restriction with name {} already exists","Change the name of the restriction","restriction already defined"}, //48
                 {"error 49","",""}, //49
-                {"Cannot declare a variable with a restriction as type"} // 50
+                {"Cannot declare a variable with a restriction as type"}, // 50
+                {"Error 51 cannot use dot op on this"}, // 51
+            {"Error 52 did not expect trailing space in generic start"} // 51
 
         };
 }

@@ -46,7 +46,8 @@ namespace clear {
         MinusOperator,
         Declaration,
         Increment,
-        Restriction
+        Restriction,
+        DotOp
     };
 
 

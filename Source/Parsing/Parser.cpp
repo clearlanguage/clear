@@ -33,6 +33,7 @@ namespace clear
 		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
 		m_StateMap[ParserState::Increment] = [this]() {_IncrementOperator();};
 		m_StateMap[ParserState::Restriction] = [this]() {_RestrictionState();};
+		m_StateMap[ParserState::DotOp] = [this]() {_DotOpState();};
 
 
 	}
@@ -277,6 +278,11 @@ namespace clear
 			return true;
 		TokenType tok = _GetLastToken().TokenType;
 		return (tok == TokenType::EndLine);
+	}
+
+	void Parser::_DotOpState() {
+		_VerifyCondition(IsTokenOfType(_GetLastToken(1),"has_members"),51);
+		m_CurrentState = ParserState::RValue;
 	}
 
 
@@ -875,6 +881,7 @@ namespace clear
 				indexes.push_back(m_CurrentTokenIndex);
 				continue;
 			}
+			_VerifyCondition(!IsSpace(current),52,-1,m_CurrentTokenIndex+1);
 			_VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
 			if (!(IsSpace(current) && m_CurrentString.empty())) {
 				m_CurrentString+=current;
@@ -960,7 +967,6 @@ namespace clear
 		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
 		current = _SkipSpaces();
 
-		auto TypeName= _GetLastToken().Data;
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
 		// 	_VerifyCondition(!IsType,7);
@@ -1014,10 +1020,7 @@ namespace clear
 			_Backtrack();
 			return;
 		}
-		if (isDeclaration) {
-			_VerifyCondition(!_IsRestrictionDeclared(TypeName),50);
-		}
-		else {
+		if (!isDeclaration) {
 			_Backtrack();
 			m_CurrentState = ParserState::Default;
 			return;

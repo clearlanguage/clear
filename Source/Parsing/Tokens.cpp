@@ -22,7 +22,7 @@ namespace clear {
         {"...", {.NextState = ParserState::Default, .TokenToPush = TokenType::Ellipsis}},
          {"!",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::Not}},
         {"->",  {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::RightArrow}},
-        {".",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::DotOp}},
+        {".",   {.NextState = ParserState::DotOp, .TokenToPush = TokenType::DotOp}},
         {"//",  {.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
         {"/*",  {.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
         {",",   {.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
@@ -96,7 +96,9 @@ namespace clear {
         {"allow_op",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference,TokenType::EndFunctionArguments,TokenType::Increment,TokenType::Decrement}},
             {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}},
         {"callable",{TokenType::CloseBracket,TokenType::MemberName,TokenType::TypeIdentifier,TokenType::VariableReference}},
-            {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}}
+            {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}},
+        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName}}
+
 
 
     };
