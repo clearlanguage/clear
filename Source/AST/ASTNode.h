@@ -94,6 +94,7 @@ namespace clear {
 		Value m_Constant;
 	};
 
+	
 
 	class ASTBinaryExpression : public ASTNodeBase
 	{

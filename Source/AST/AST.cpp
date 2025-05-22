@@ -34,7 +34,6 @@ namespace clear {
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
-		
 
 			switch (currentToken.TokenType)
 			{
@@ -469,6 +468,11 @@ namespace clear {
 				case TokenType::Break:
 				{
 					currentRoot.Node->PushChild(Ref<ASTBreak>::Create());
+					break;
+				}
+				case TokenType::When:
+				{
+					
 					break;
 				}
 				default:

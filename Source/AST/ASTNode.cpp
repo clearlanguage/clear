@@ -609,7 +609,7 @@ namespace clear {
 		auto& builder  = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();
 
-		std::stack<Ref<ASTNodeBase>> stack;
+		std::stack<Ref<ASTNodeBase>> stack; //ok
 
 		for (const auto& child : children)
 		{
@@ -802,7 +802,6 @@ namespace clear {
 			if (!builder.GetInsertBlock()->getTerminator())
 				builder.CreateBr(mergeBlock);
 		}
-
 
 		function->insert(function->end(), elseBlock);
 		builder.SetInsertPoint(elseBlock);
@@ -1137,5 +1136,6 @@ namespace clear {
     {
         return nullptr;
     }
+	
 
 }
