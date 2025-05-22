@@ -3,7 +3,7 @@
 #include "Ref.h"
 
 #include "API/LLVM/LLVMInclude.h"
-#include "Parsing/Tokens.h"
+#include "Lexing/Lexer.h"
 
 #include <map>
 #include <vector>

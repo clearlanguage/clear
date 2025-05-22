@@ -1,6 +1,6 @@
 #include "Type.h"
 
-#include "Parsing/Tokens.h"
+#include "Lexing/Lexer.h"
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Utils.h"

@@ -1,4 +1,4 @@
-﻿#include "Parsing/Parser.h"
+﻿#include "Lexing/Lexer.h"
 #include "AST/AST.h"
 
 #include "API/LLVM/LLVMBackend.h"
@@ -16,7 +16,7 @@ int main()
     LLVM::Backend::Init();
 
     std::cout << "------PARSER TESTS--------" << std::endl;
-    Parser parser;
+    Lexer parser;
     ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");
 
     for (size_t i = 0; i < info.Tokens.size(); i++)

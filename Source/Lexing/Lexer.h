@@ -43,20 +43,20 @@ namespace clear
 		std::set<std::string> RestrictionDeclarations;
 	};
 
-	class Parser
+	class Lexer
 	{
 	public:
-		using StateMapType    = std::map<ParserState, std::function<void()>>;
+		using StateMapType    = std::map<LexerState, std::function<void()>>;
 
 	public:
-		Parser();
-		~Parser() = default;
+		Lexer();
+		~Lexer() = default;
 
 		ProgramInfo CreateTokensFromFile(const std::filesystem::path& path);
-		void InitParser();
+		void InitLexer();
 		ProgramInfo ParseProgram();
 		std::string m_CurrentErrorState;
-		bool IsSubParser = false;
+		bool IsSubLexer = false;
 
 	private:
 		void _DefaultState();
@@ -182,14 +182,14 @@ namespace clear
 
 		StateMapType m_StateMap;
 
-		ParserState m_CurrentState = ParserState::Default;
-		ParserSecondaryState m_SecondState = ParserSecondaryState::None;
+		LexerState m_CurrentState = LexerState::Default;
+		LexerSecondaryState m_SecondState = LexerSecondaryState::None;
 
 		std::string m_Buffer;
 		std::string m_CurrentString;
 		std::vector<char> m_BracketStack;
 		std::vector<TypeScope> m_ScopeStack;
-		bool m_subParserError = false;
+		bool m_subLexerError = false;
 		bool m_NoVariableNames = false;
 
 	};

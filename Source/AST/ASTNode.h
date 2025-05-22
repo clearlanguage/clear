@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Parsing/Tokens.h"
+#include "Lexing/Lexer.h"
 #include "Core/Type.h"
 #include "Core/Ref.h"
 #include "Core/Value.h"

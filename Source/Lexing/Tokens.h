@@ -20,12 +20,12 @@ namespace clear {
         ElseIf,StartArray, EndArray, While, Increment, Decrement,Negation,Power, Break, Continue,EndFunctionArguments,TypeIdentifier,GenericDeclarationStart,GenericDeclarationEnd,MemberName,When,Switch,Case,Default,Restriction,RestrictionName,RestrictionTypeName
     };
 
-    enum class ParserSecondaryState {
+    enum class LexerSecondaryState {
         None = 0,
         Declaration
     };
 
-    enum class ParserState
+    enum class LexerState
     {
         Default = 0,
         RValue,
@@ -51,9 +51,9 @@ namespace clear {
     };
 
 
-    struct ParserMapValue
+    struct LexerMapValue
     {
-        ParserState NextState = ParserState::Default;
+        LexerState NextState = LexerState::Default;
         TokenType TokenToPush = TokenType::None;
     };
 
@@ -73,8 +73,8 @@ namespace clear {
     std::string_view TokenToString(TokenType token);
     bool IsTokenOfType(Token tok,std::string type);
 
-    using OperatorMapType = std::map<std::string, ParserMapValue>;
-    using KeyWordMapType  = std::map<std::string, ParserMapValue>;
+    using OperatorMapType = std::map<std::string, LexerMapValue>;
+    using KeyWordMapType  = std::map<std::string, LexerMapValue>;
 
     extern const OperatorMapType g_OperatorMap;
     extern const KeyWordMapType  g_KeyWordMap;

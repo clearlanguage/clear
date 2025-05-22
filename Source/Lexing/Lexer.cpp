@@ -1,4 +1,4 @@
-#include "Parser.h"
+#include "Lexer.h"
 #include "Errors.h"
 #include <sstream>
 #include <map>
@@ -11,39 +11,39 @@
 
 namespace clear
 {
-	Parser::Parser()
+	Lexer::Lexer()
 	{
-		m_StateMap[ParserState::Default]      = [this]() { _DefaultState(); };
-		m_StateMap[ParserState::VariableName] = [this]() { _VariableNameState(); };
-		m_StateMap[ParserState::RValue]       = [this]() { _ParsingRValueState(); };
-		m_StateMap[ParserState::Operator]     = [this]() { _OperatorState(); };
-		m_StateMap[ParserState::Indentation]  = [this]() { _IndentationState(); };
-		m_StateMap[ParserState::FunctionName] = [this]() {_FunctionNameState();};
-		m_StateMap[ParserState::FunctionParameters] = [this]() { _FunctionParameterState(); };
-		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
-		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
-		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[ParserState::FunctionParamaters] = [this]()  {_FunctionArgumentState(); };
-		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
-		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
-		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
-		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
-		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
-		m_StateMap[ParserState::Declaration] = [this](){_DeclarationState();};
-		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
-		m_StateMap[ParserState::Increment] = [this]() {_IncrementOperator();};
-		m_StateMap[ParserState::Restriction] = [this]() {_RestrictionState();};
-		m_StateMap[ParserState::DotOp] = [this]() {_DotOpState();};
+		m_StateMap[LexerState::Default]      = [this]() { _DefaultState(); };
+		m_StateMap[LexerState::VariableName] = [this]() { _VariableNameState(); };
+		m_StateMap[LexerState::RValue]       = [this]() { _ParsingRValueState(); };
+		m_StateMap[LexerState::Operator]     = [this]() { _OperatorState(); };
+		m_StateMap[LexerState::Indentation]  = [this]() { _IndentationState(); };
+		m_StateMap[LexerState::FunctionName] = [this]() {_FunctionNameState();};
+		m_StateMap[LexerState::FunctionParameters] = [this]() { _FunctionParameterState(); };
+		m_StateMap[LexerState::ArrowState] = [this](){_ArrowState();};
+		m_StateMap[LexerState::FunctionTypeState] = [this]() {_FunctionTypeState();};
+		m_StateMap[LexerState::StructName] = [this]() { _StructNameState(); };
+		m_StateMap[LexerState::FunctionParamaters] = [this]()  {_FunctionArgumentState(); };
+		m_StateMap[LexerState::Comment] = [this]() { _CommentState(); };
+		m_StateMap[LexerState::MultilineComment] = [this]() { _MultiLineCommentState(); };
+		m_StateMap[LexerState::IndexOperator] = [this]() { _IndexOperatorState(); };
+		m_StateMap[LexerState::AsterisksOperator] = [this]() {_AsterisksState();};
+		m_StateMap[LexerState::AmpersandOperator] = [this]() {_AmpersandState();};
+		m_StateMap[LexerState::Declaration] = [this](){_DeclarationState();};
+		m_StateMap[LexerState::MinusOperator] = [this]() {_MinusOperator();};
+		m_StateMap[LexerState::Increment] = [this]() {_IncrementOperator();};
+		m_StateMap[LexerState::Restriction] = [this]() {_RestrictionState();};
+		m_StateMap[LexerState::DotOp] = [this]() {_DotOpState();};
 
 
 	}
 
-	void Parser::_PushToken(Token tok) {
+	void Lexer::_PushToken(Token tok) {
 		_PushToken(tok.TokenType,tok.Data);
 	}
 
 
-	void Parser::_PushToken(const TokenType tok, const std::string &data)
+	void Lexer::_PushToken(const TokenType tok, const std::string &data)
 	{
 		TokenLocation location;
 		location.from = m_TokenIndexStart;
@@ -52,14 +52,14 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data ,.Location = location});
 	}
 
-	Token Parser::_GetLastToken() {
+	Token Lexer::_GetLastToken() {
 		if (m_ProgramInfo.Tokens.empty())
 			return Token{.TokenType = TokenType::EndLine,.Data = ""};
 
 		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1);
 	}
 
-	Token Parser::_GetLastToken(size_t x) {
+	Token Lexer::_GetLastToken(size_t x) {
 		if (m_ProgramInfo.Tokens.empty() || x >= m_ProgramInfo.Tokens.size())
 			return Token{.TokenType = TokenType::EndLine, .Data = ""};
 
@@ -67,7 +67,7 @@ namespace clear
 	}
 
 
-	char Parser::_GetNextChar()
+	char Lexer::_GetNextChar()
 	{
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
@@ -78,31 +78,31 @@ namespace clear
 		return 0;
 	}
 
-	void Parser::_Backtrack()
+	void Lexer::_Backtrack()
 	{
 		m_CurrentTokenIndex--;
 	}
 
-	// const bool Parser::_IsEndOfFile()
+	// const bool Lexer::_IsEndOfFile()
 	// {
 	// 	return m_CurrentTokenIndex == m_Buffer.length();
 	// }
 
-	void Parser::_ResetSecondState() {
-		if (m_SecondState == ParserSecondaryState::None) {
+	void Lexer::_ResetSecondState() {
+		if (m_SecondState == LexerSecondaryState::None) {
 			return;
 		}
 
-		if (m_SecondState == ParserSecondaryState::Declaration) {
+		if (m_SecondState == LexerSecondaryState::Declaration) {
 			// auto tok = _GetLastToken().TokenType;
 			// _VerifyCondition(tok== TokenType::EndFunctionArguments,40);
 
 		}
-		m_SecondState = ParserSecondaryState::None;
+		m_SecondState = LexerSecondaryState::None;
 	}
 
 
-	void Parser::_EndLine()
+	void Lexer::_EndLine()
 	{
 		if ( _GetLastToken().TokenType != TokenType::EndLine) {
 			_PushToken({ .TokenType = TokenType::EndLine });
@@ -111,16 +111,16 @@ namespace clear
 		m_CurrentLine++;
 	}
 
-	ProgramInfo Parser::ParseProgram()
+	ProgramInfo Lexer::ParseProgram()
 	{
-		if (!IsSubParser)
+		if (!IsSubLexer)
 			m_ScopeStack.emplace_back();
-		while (m_CurrentTokenIndex < m_Buffer.length() && !m_subParserError)
+		while (m_CurrentTokenIndex < m_Buffer.length() && !m_subLexerError)
 		{
 			m_TokenIndexStart = m_CurrentTokenIndex;
 			m_StateMap.at(m_CurrentState)();
 		}
-		if (m_subParserError) {
+		if (m_subLexerError) {
 			return m_ProgramInfo;
 		}
 		CLEAR_PARSER_VERIFY(m_ProgramInfo.Errors.empty(),"99");
@@ -134,7 +134,7 @@ namespace clear
 		return m_ProgramInfo;
 	}
 
-	void Parser::InitParser()
+	void Lexer::InitLexer()
 	{
 		m_ProgramInfo.Tokens.clear();
 		m_ScopeStack.clear();
@@ -144,15 +144,15 @@ namespace clear
 		m_CurrentIndentLevel = 0;
 		m_CurrentIndentationLevel = 0;
 		m_LineStarted = false;
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		m_Buffer.clear();
 		m_CurrentString.clear();
 	}
 
 
-	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
+	ProgramInfo Lexer::CreateTokensFromFile(const std::filesystem::path& path)
 	{
-		InitParser();
+		InitLexer();
 		m_File.open(path);
 
 		if (!m_File.is_open())
@@ -170,7 +170,7 @@ namespace clear
 
 	}
 
-	 char Parser::_SkipSpaces() {
+	 char Lexer::_SkipSpaces() {
 		_Backtrack();
 		char current = _GetNextChar();
 		while (IsSpace(current))
@@ -179,7 +179,7 @@ namespace clear
 		return current;
 	 }
 
-	void Parser::_MinusOperator() {
+	void Lexer::_MinusOperator() {
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
@@ -188,17 +188,17 @@ namespace clear
 		}else {
 			_PushToken(TokenType::Negation,"-");
 		}
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = LexerState::RValue;
 	}
 
-	void Parser::_DeclarationState() {
-		m_SecondState = ParserSecondaryState::Declaration;
-		m_CurrentState = ParserState::Default;
+	void Lexer::_DeclarationState() {
+		m_SecondState = LexerSecondaryState::Declaration;
+		m_CurrentState = LexerState::Default;
 	}
 
 
 
-	void Parser::_FunctionArgumentState() {
+	void Lexer::_FunctionArgumentState() {
 		_GetNextChar();
 
 		char current = _SkipSpaces();
@@ -207,7 +207,7 @@ namespace clear
 
 		m_CurrentErrorState = "function arguments";
 		auto bracketsInfo = _ParseBrackets(')',true);
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		int i = 0;
 		for (const std::string& arg : bracketsInfo.tokens) {
 			m_TokenIndexStart = bracketsInfo.indexes.at(i);
@@ -230,7 +230,7 @@ namespace clear
 	}
 
 
-	void Parser::_MultiLineCommentState() {
+	void Lexer::_MultiLineCommentState() {
 		char current = _GetNextChar();
 		if (current =='\n')
 			m_CurrentLine++;
@@ -242,7 +242,7 @@ namespace clear
 			if (current == '*') {
 				current = _GetNextChar();
 				if (current == '\\') {
-					m_CurrentState = ParserState::Default;
+					m_CurrentState = LexerState::Default;
 					return;
 				}else {
 					_Backtrack();
@@ -257,36 +257,36 @@ namespace clear
 		_VerifyCondition(false,17,m_TokenIndexStart,j);
 	}
 
-	std::string Parser::_CleanBrackets(std::string x) {
+	std::string Lexer::_CleanBrackets(std::string x) {
 		if (x.front() == '(' && x.back() == ')' ) {
 			return x.substr(1, x.size() - 2);
 		}
 		return x;
 	}
 
-	void Parser::_CommentState() {
+	void Lexer::_CommentState() {
 		char current = _GetNextChar();
 		while (current != '\n' && current != '\0') {
 			current = _GetNextChar();
 		}
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		if (current == '\n')
 			_Backtrack();
 	}
-	bool Parser::_IsEndOfLine() {
+	bool Lexer::_IsEndOfLine() {
 		if (m_ProgramInfo.Tokens.empty())
 			return true;
 		TokenType tok = _GetLastToken().TokenType;
 		return (tok == TokenType::EndLine);
 	}
 
-	void Parser::_DotOpState() {
+	void Lexer::_DotOpState() {
 		_VerifyCondition(IsTokenOfType(_GetLastToken(1),"has_members"),51);
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = LexerState::RValue;
 	}
 
 
-	void Parser::_RestrictionState() {
+	void Lexer::_RestrictionState() {
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
@@ -341,13 +341,13 @@ namespace clear
 
 
 		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 	}
 
 
-	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
+	std::string Lexer::_GetCurrentErrorContext(std::string ErrorRef) {
 		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
-		if (IsSubParser) {
+		if (IsSubLexer) {
 			return m_CurrentErrorState;
 		}
 		std::string ret = m_CurrentErrorState;
@@ -357,7 +357,7 @@ namespace clear
 
 
 
-	BracketParsingReturn Parser::_ParseBrackets(char end, bool commas) {
+	BracketParsingReturn Lexer::_ParseBrackets(char end, bool commas) {
 		char start = g_CloserToOpeners.at(end);
 		char current = start;
 		std::vector<char> stack;
@@ -452,7 +452,7 @@ namespace clear
 	}
 
 
-	void Parser::_PushVariableReference(const std::string& x) {
+	void Lexer::_PushVariableReference(const std::string& x) {
 		if (_GetLastToken().TokenType == TokenType::DotOp) {
 			_PushToken(TokenType::MemberName,x);
 		}else {
@@ -462,7 +462,7 @@ namespace clear
 	}
 
 
-	void Parser::_IndexOperatorState() {
+	void Lexer::_IndexOperatorState() {
 		char current = _GetNextChar();
 		CLEAR_PARSER_VERIFY(current == '[', "318.IOS");
 
@@ -478,14 +478,14 @@ namespace clear
 		}
 
 		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 
 		_PushToken(TokenType::CloseBracket,"]");
 		// m_CurrentString+= "INDEX_OP";
 
 	}
 
-	void Parser::_DefaultState()
+	void Lexer::_DefaultState()
 	{
 		char current = _GetNextChar();
 
@@ -502,7 +502,7 @@ namespace clear
 				}
 
 				_PushToken(TokenType::FunctionCall, m_CurrentString);
-				m_CurrentState = ParserState::FunctionParamaters;
+				m_CurrentState = LexerState::FunctionParamaters;
 				_Backtrack();
 
 			}else {
@@ -560,7 +560,7 @@ namespace clear
 			}
 			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || ( current == '*' || current == '&' || current == '<')) && _IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType!= TokenType::DotOp) {
 				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
-				m_CurrentState = ParserState::VariableName;
+				m_CurrentState = LexerState::VariableName;
 				m_CurrentString.clear();
 
 
@@ -580,7 +580,7 @@ namespace clear
 
 		if (current == ':' || current == '\n')
 		{
-			m_CurrentState = ParserState::Indentation;
+			m_CurrentState = LexerState::Indentation;
 			m_CurrentString.clear();
 			if (current == '\n' && m_BracketStack.empty())
 				_EndLine();
@@ -590,12 +590,12 @@ namespace clear
 
 		if (g_OperatorMap.contains(Str(current)))
 		{
-			m_CurrentState = ParserState::Operator;
+			m_CurrentState = LexerState::Operator;
 			m_CurrentString.clear();
 		}
 
 		if (current == '[') {
-			m_CurrentState = ParserState::IndexOperator;
+			m_CurrentState = LexerState::IndexOperator;
 			_PushToken(TokenType::IndexOperator,"");
 			_PushToken(TokenType::OpenBracket,"[");
 			_Backtrack();
@@ -613,19 +613,19 @@ namespace clear
 
 		_VerifyCondition(IsVarNameChar(current)||g_OperatorMap.contains(Str(current)) ||g_Openers.contains(current) || g_CloserToOpeners.contains(current) || std::isspace(current) ,41,Str(current));
 	}
-	void Parser::_ArrowState()
+	void Lexer::_ArrowState()
 	{
 		if ((m_ProgramInfo.Tokens.size() > 1 &&
-			_GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == ParserSecondaryState::Declaration)
+			_GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == LexerSecondaryState::Declaration)
 		{
-			m_CurrentState = ParserState::FunctionTypeState;
+			m_CurrentState = LexerState::FunctionTypeState;
 			return;
 		}
 
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 
 	}
-	void Parser::_FunctionTypeState()
+	void Lexer::_FunctionTypeState()
 	{
 		char current = _GetNextChar();
 
@@ -657,11 +657,11 @@ namespace clear
 
 		_Backtrack();
 		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 
 	}
 
-	bool Parser::_IsTypeDeclared(const std::string& type) {
+	bool Lexer::_IsTypeDeclared(const std::string& type) {
 		for (TypeScope& arg : m_ScopeStack) {
 			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type)) {
 				return true;
@@ -670,7 +670,7 @@ namespace clear
 		return false;
 	}
 
-	bool Parser::_IsRestrictionDeclared(const std::string &type) {
+	bool Lexer::_IsRestrictionDeclared(const std::string &type) {
 		for (TypeScope& arg : m_ScopeStack) {
 			if (arg.RestrictionDeclarations.contains(type)) {
 				return true;
@@ -682,7 +682,7 @@ namespace clear
 
 
 
-	void Parser::_StructNameState() {
+	void Lexer::_StructNameState() {
 		char current = _GetNextChar();
 
 		current = _SkipSpaces();
@@ -710,15 +710,15 @@ namespace clear
 		_PushToken(TokenType::StructName, m_CurrentString);
 		m_CurrentString.clear();
 		_Backtrack();
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 	}
 
-	Token Parser::_CreateToken(const TokenType tok, const std::string &data) {
+	Token Lexer::_CreateToken(const TokenType tok, const std::string &data) {
 		return Token{ .TokenType = tok, .Data = data };
 	}
 
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
-		if ((!condition) && !IsSubParser) {
+	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
+		if ((!condition) && !IsSubLexer) {
 
 		if (startIndex!= -1) {
 			m_TokenIndexStart = startIndex;
@@ -730,8 +730,8 @@ namespace clear
 		_VerifyCondition(condition, Error, Advice, ErrorType);
 	}
 
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
-		if (!condition && !IsSubParser) {
+	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
+		if (!condition && !IsSubLexer) {
 			if (startIndex!= -1) {
 				m_TokenIndexStart = startIndex;
 				}
@@ -743,7 +743,7 @@ namespace clear
 
 
 
-	void Parser::_ParsingRValueState()
+	void Lexer::_ParsingRValueState()
 	{
 		char current = _GetNextChar();
 
@@ -757,20 +757,20 @@ namespace clear
 		}
 		//brackets
 		if (g_OperatorMap.contains(Str(current))) {
-			m_CurrentState = ParserState::Operator;
+			m_CurrentState = LexerState::Operator;
 			return;
 		}
 		if (current == '(')
 		{
 			m_BracketStack.push_back('(');
 			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
-			m_CurrentState = ParserState::RValue;
+			m_CurrentState = LexerState::RValue;
 			return;
 		}
 		if (current == ')')
 		{
 			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
-			m_CurrentState = ParserState::RValue;
+			m_CurrentState = LexerState::RValue;
 
 			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
 			m_BracketStack.pop_back();
@@ -799,11 +799,11 @@ namespace clear
 		}else {
 			_VerifyCondition(false,41,Str(current));
 		}
-		if (m_CurrentState == ParserState::RValue)
-			m_CurrentState = ParserState::Default;
+		if (m_CurrentState == LexerState::RValue)
+			m_CurrentState = LexerState::Default;
 	}
 
-	void Parser::_ParseArrayDeclaration()
+	void Lexer::_ParseArrayDeclaration()
 	{
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentErrorState = "Array declaration";
@@ -843,7 +843,7 @@ namespace clear
 
 	}
 
-	void Parser::_ParsePointerDeclaration() {
+	void Lexer::_ParsePointerDeclaration() {
 		char current = _GetNextChar();
 		while (current == '*') {
 			_PushToken(TokenType::PointerDef,"*");
@@ -859,7 +859,7 @@ namespace clear
 
 	}
 
-	void Parser::_ParseGenericDeclaration() {
+	void Lexer::_ParseGenericDeclaration() {
 		char current = _GetNextChar();
 		int currentLevel = 1;
 		std::vector<std::string> tokens;
@@ -910,7 +910,7 @@ namespace clear
 		}
 	}
 
-	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
+	Error Lexer::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
 		Error err;
 		err.ErrorMessage = ErrorMsg;
 		err.Advice = Advice;
@@ -941,19 +941,19 @@ namespace clear
 		return err;
 
 	}
-	void Parser::_RaiseError(Error& err) 
+	void Lexer::_RaiseError(Error& err) 
 	{
 		PrintError(err);
 		CLEAR_HALT();
 	}
 
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
+	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
 		if (!condition) {
 			auto err = _CreateError(Error,Advice,ErrorType);
-			if (!IsSubParser) {
+			if (!IsSubLexer) {
 				_RaiseError(err);
 			}else {
-				m_subParserError = true;
+				m_subLexerError = true;
 				m_ProgramInfo.Errors.push_back(err);
 			}
 		}
@@ -961,7 +961,7 @@ namespace clear
 
 
 
-	void Parser::_VariableNameState()
+	void Lexer::_VariableNameState()
 	{
 		char current = _GetNextChar();
 		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
@@ -970,12 +970,12 @@ namespace clear
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	_Backtrack();
 		// 	_VerifyCondition(!IsType,7);
-		// 	m_CurrentState = ParserState::Default;
+		// 	m_CurrentState = LexerState::Default;
 		// 	return;
 		// }
 		if (current == '(') {
 			_Backtrack();
-			m_CurrentState = ParserState::Default;
+			m_CurrentState = LexerState::Default;
 
 			return;
 		}
@@ -1004,7 +1004,7 @@ namespace clear
 			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
 			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 
-			m_CurrentState = ParserState::Default;
+			m_CurrentState = LexerState::Default;
 			return;
 
 		}
@@ -1016,13 +1016,13 @@ namespace clear
 			// }
 			_VerifyCondition(!isDeclaration,8);
 
-			m_CurrentState = ParserState::Default;
+			m_CurrentState = LexerState::Default;
 			_Backtrack();
 			return;
 		}
 		if (!isDeclaration) {
 			_Backtrack();
-			m_CurrentState = ParserState::Default;
+			m_CurrentState = LexerState::Default;
 			return;
 		}
 
@@ -1077,10 +1077,10 @@ namespace clear
 		}
 		m_CurrentString.clear();
 
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 	}
 
-	void Parser::_FunctionParameterState()
+	void Lexer::_FunctionParameterState()
 	{
 		char current = _GetNextChar();
 		int curtok = m_CurrentTokenIndex;
@@ -1111,13 +1111,13 @@ namespace clear
 			m_ProgramInfo.Tokens.pop_back();
 		}
 		_PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		current = _SkipSpaces();
 		if (current != ')')
 			_Backtrack();
 	}
 
-	void Parser::_FunctionNameState()
+	void Lexer::_FunctionNameState()
 	{
 		char current = _GetNextChar();
 
@@ -1126,7 +1126,7 @@ namespace clear
 		if (current == '(')
 		{
 			_Backtrack();
-			m_CurrentState = ParserState::FunctionParameters;
+			m_CurrentState = LexerState::FunctionParameters;
 			_PushToken({ .TokenType = TokenType::Lambda, .Data = ""});
 			return;
 		}
@@ -1144,19 +1144,19 @@ namespace clear
 		m_CurrentString.clear();
 
 		_VerifyCondition(current != '\n',29);
-		m_CurrentState = ParserState::FunctionParameters;
+		m_CurrentState = LexerState::FunctionParameters;
 	}
 
-	void Parser::_IncrementOperator() {
+	void Lexer::_IncrementOperator() {
 		char current = _GetNextChar();
 		char incrementType = _GetLastToken().Data.at(0);
 		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
 		if (current != incrementType) {
 			_Backtrack();
 			if (_GetLastToken().TokenType!= TokenType::Increment && _GetLastToken().TokenType!= TokenType::Decrement) {
-				m_CurrentState = ParserState::RValue;
+				m_CurrentState = LexerState::RValue;
 			}else {
-				m_CurrentState = ParserState::Default;
+				m_CurrentState = LexerState::Default;
 			}
 			return;
 		}
@@ -1173,11 +1173,11 @@ namespace clear
 			current = _GetNextChar();
 		}
 		_Backtrack();
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = LexerState::RValue;
 	}
 
 
-	void Parser::_OperatorState()
+	void Lexer::_OperatorState()
 	{
 		_Backtrack();
 		std::string before = Str(_GetNextChar());
@@ -1189,7 +1189,7 @@ namespace clear
 			current = _GetNextChar();
 		}
 
-		ParserMapValue value;
+		LexerMapValue value;
 		std::string data;
 		_Backtrack();
 
@@ -1212,17 +1212,17 @@ namespace clear
 		m_CurrentState = value.NextState;
 	}
 
-	void Parser::_AsterisksState() {
+	void Lexer::_AsterisksState() {
 		if (IsTokenOfType(_GetLastToken(),"allow_op")) {
 			_PushToken(TokenType::MulOp,"*");
 		}else {
 			_PushToken(TokenType::DereferenceOp,"*");
 		}
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = LexerState::RValue;
 
 	}
 
-	void Parser::_AmpersandState() {
+	void Lexer::_AmpersandState() {
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
@@ -1231,12 +1231,12 @@ namespace clear
 		}else {
 			_PushToken(TokenType::AddressOp,"&");
 		}
-		m_CurrentState = ParserState::RValue;
+		m_CurrentState = LexerState::RValue;
 
 	}
 
 
-	void Parser::_IndentationState()
+	void Lexer::_IndentationState()
 	{
 		size_t tabWidth = 4;
 		char next = _GetNextChar();
@@ -1284,11 +1284,11 @@ namespace clear
 			m_ScopeStack.pop_back();
 		}
 
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		_Backtrack();
 	}
 
-	void Parser::_ParseHexLiteral() {
+	void Lexer::_ParseHexLiteral() {
 		m_CurrentString.clear();
 		char current = _GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
@@ -1304,7 +1304,7 @@ namespace clear
 		_PushToken(TokenType::RValueNumber,std::to_string(HexStringToInteger(m_CurrentString)));
 		m_CurrentString.clear();
 	}
-	void Parser::_ParseBinaryLiteral() {
+	void Lexer::_ParseBinaryLiteral() {
 		m_CurrentString.clear();
 		char current = _GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
@@ -1322,7 +1322,7 @@ namespace clear
 
 	}
 
-	void Parser::_ParseExponentNumber(std::string x) {
+	void Lexer::_ParseExponentNumber(std::string x) {
 		m_TokenIndexStart = m_CurrentTokenIndex;
 		char current = _GetNextChar();
 		bool usedDecimal = false;
@@ -1352,7 +1352,7 @@ namespace clear
 
 
 
-	void Parser::_ParseNumber()
+	void Lexer::_ParseNumber()
 	{
 		char current = _GetNextChar();
 
@@ -1409,15 +1409,15 @@ namespace clear
 			_Backtrack();
 	}
 
-	ProgramInfo Parser::_SubParse(std::string arg, bool allowvarname) {
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = arg;
-		subParser.m_Buffer+=" ";
-		subParser.m_ScopeStack = m_ScopeStack;
-		subParser.IsSubParser = true;
-		subParser.m_NoVariableNames = !allowvarname;
-		ProgramInfo info = subParser.ParseProgram();
+	ProgramInfo Lexer::_SubParse(std::string arg, bool allowvarname) {
+		Lexer subLexer;
+		subLexer.InitLexer();
+		subLexer.m_Buffer = arg;
+		subLexer.m_Buffer+=" ";
+		subLexer.m_ScopeStack = m_ScopeStack;
+		subLexer.IsSubLexer = true;
+		subLexer.m_NoVariableNames = !allowvarname;
+		ProgramInfo info = subLexer.ParseProgram();
 
 		if (!info.Errors.empty()) {
 			auto cause = info.Errors.front();
@@ -1432,14 +1432,14 @@ namespace clear
 		return info;
 	}
 
-	ProgramInfo Parser::_SubParse(std::string arg) {
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = arg;
-		subParser.m_Buffer+=" ";
-		subParser.m_ScopeStack = m_ScopeStack;
-		subParser.IsSubParser = true;
-		ProgramInfo info = subParser.ParseProgram();
+	ProgramInfo Lexer::_SubParse(std::string arg) {
+		Lexer subLexer;
+		subLexer.InitLexer();
+		subLexer.m_Buffer = arg;
+		subLexer.m_Buffer+=" ";
+		subLexer.m_ScopeStack = m_ScopeStack;
+		subLexer.IsSubLexer = true;
+		ProgramInfo info = subLexer.ParseProgram();
 
 		if (!info.Errors.empty()) {
 			auto cause = info.Errors.front();
@@ -1455,7 +1455,7 @@ namespace clear
 	}
 
 
-	void Parser::_ParseList() {
+	void Lexer::_ParseList() {
 		m_CurrentErrorState = "List literal";
 		auto  bracketInfo = _ParseBrackets('}',true);
 		_PushToken(TokenType::StartArray,"{");
@@ -1474,11 +1474,11 @@ namespace clear
 
 
 		_PushToken(TokenType::EndArray,"}");
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 	}
 
 
-	void Parser::_ParseChar() {
+	void Lexer::_ParseChar() {
 		char current = _GetNextChar();
 		char data = current;
 		if (current == '\\') {
@@ -1527,7 +1527,7 @@ namespace clear
 	}
 
 
-	void Parser::_ParseString()
+	void Lexer::_ParseString()
 	{
 		char current = _GetNextChar();
 		while (current != '"')
@@ -1577,7 +1577,7 @@ namespace clear
 		m_CurrentString.clear();
 	}
 
-	void Parser::_ParseOther()
+	void Lexer::_ParseOther()
 	{
 		char current = _GetNextChar();
 		m_CurrentString.clear();
@@ -1599,7 +1599,7 @@ namespace clear
 		if (_IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType != TokenType::DotOp) {
 			_PushToken(TokenType::TypeIdentifier, m_CurrentString);
 			m_CurrentString.clear();
-			m_CurrentState= ParserState::VariableName;
+			m_CurrentState= LexerState::VariableName;
 			_Backtrack();
 			return;
 
@@ -1611,7 +1611,7 @@ namespace clear
 			_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 			if (g_DataTypes.contains(m_CurrentString)) {
 				m_CurrentString.clear();
-				m_CurrentState= ParserState::VariableName;
+				m_CurrentState= LexerState::VariableName;
 				_Backtrack();
 				return;
 
@@ -1621,7 +1621,7 @@ namespace clear
 		}
 
 		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
+		m_CurrentState = LexerState::Default;
 		_Backtrack();
 	}
 }
