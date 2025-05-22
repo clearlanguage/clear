@@ -4,7 +4,8 @@
 #include <set>
 #include <Core/Log.h>
 
-namespace clear {
+namespace clear 
+{
     const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','!','.',',','&','^','|','~',';'};
     const OperatorMapType g_OperatorMap = {
         {"=",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::Assignment}},
@@ -108,7 +109,8 @@ namespace clear {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char","float"
     };
 
-    bool IsTokenOfType(Token tok,std::string type) {
+    bool IsTokenOfType(Token tok,std::string type) 
+    {
         CLEAR_PARSER_VERIFY(g_TokenTypes.count(type),"96");
         return g_TokenTypes.at(type).contains(tok.TokenType);
     }
@@ -116,7 +118,6 @@ namespace clear {
 
     std::string_view TokenToString(TokenType token) 
     {
-
         switch (token)
         {
             case TokenType::None: return "None";

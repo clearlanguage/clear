@@ -145,6 +145,7 @@ namespace clear {
                     }
 
                     info.BitsNeeded = sizeof(T) * 8;
+                    
                     return true;
                 }
                 return false;

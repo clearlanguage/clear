@@ -35,7 +35,6 @@ namespace clear {
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
 		
-
 			switch (currentToken.TokenType)
 			{
 				case TokenType::Declaration:

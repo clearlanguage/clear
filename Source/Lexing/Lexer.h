@@ -32,7 +32,8 @@ namespace clear
 		int lastIndex = -1;
 	};
 
-	struct BracketParsingReturn {
+	struct BracketParsingReturn 
+	{
 		std::vector<std::string> tokens;
 		std::vector<int> indexes;
 	};
