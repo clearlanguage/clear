@@ -35,7 +35,18 @@ namespace clear
             TokenType::ModuloAssign
         });
 
-        while(Peak().TokenType != TokenType::Eof)
+        m_Terminators = CreateTokenSet({
+            TokenType::EndLine, 
+		    TokenType::EndIndentation, 
+		    TokenType::Comma,  
+		    TokenType::EndFunctionArguments, 
+		    TokenType::EndArray,
+		    TokenType::Assignment, 
+		    TokenType::StartIndentation, 
+            TokenType::Eof
+        });
+
+        while(!Match(TokenType::Eof))
         {
             ParseStatement();
         }
@@ -110,7 +121,7 @@ namespace clear
 
         //if(match(TokenType::Comma)) deal with this later
 
-        m_Root->PushChild(Ref<ASTVariableDeclaration>::Create(variableType, variableName));
+        m_Root->PushChild(Ref<ASTVariableDeclaration>::Create(variableName, variableType));
 
         if(Match(TokenType::EndLine))
         {
@@ -119,7 +130,8 @@ namespace clear
         }
 
         ExpectAny(m_AssignmentOperators);
-        
+
+        Ref<ASTExpression> expression = ParseExpression();
     }
 
     void Parser::ParseFunctionDefinition()
@@ -134,8 +146,18 @@ namespace clear
     {
     }
     
-    void Parser::ParseExpression()
+    Ref<ASTExpression> Parser::ParseExpression()
     {
+        struct Operator
+	    {
+	    	BinaryExpressionType BinaryExpression;
+	    	UnaryExpressionType  UnaryExpression;
+	    	Ref<Type> ExpectedType;
+	    	bool IsOpenBracket = false;
+	    	int32_t Precedence = 0;
+	    };
+
+        return Ref<ASTExpression>();
     }
 
     Ref<Type> Parser::ParseVariableType()

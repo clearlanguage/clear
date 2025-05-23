@@ -23,7 +23,7 @@ namespace clear
         void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
-        void ParseExpression();
+        Ref<ASTExpression> ParseExpression();
 
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();
@@ -40,5 +40,6 @@ namespace clear
 
         TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
+        TokenSet m_Terminators;
     };
 }
