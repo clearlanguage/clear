@@ -1,4 +1,4 @@
-#pragma once
+/* #pragma once
 
 #include "ASTNode.h"
 #include "Lexing/Lexer.h"
@@ -39,4 +39,4 @@ namespace clear {
         std::stack<StackNode> m_Stack;
     };
 
-}
+} */

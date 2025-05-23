@@ -1,4 +1,4 @@
-#pragma once
+/* #pragma once
 
 #include "Lexing/Lexer.h"
 #include "Core/Type.h"
@@ -294,4 +294,4 @@ namespace clear {
 	private:
 		std::vector<std::vector<llvm::Value*>> m_Indices;
 	};
-}
+} */

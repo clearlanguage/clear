@@ -9,7 +9,7 @@ namespace clear {
 
 	static size_t s_StringCount = 0;
 
-	Value::ConstantPair Value::GetConstant(const Ref<Type>& type, const std::string& data)
+	Value::ConstantPair Value::GetConstant(const std::shared_ptr<Type>& type, const std::string& data)
 	{
 		auto& context = *LLVM::Backend::GetContext();
 
@@ -41,7 +41,7 @@ namespace clear {
 		return s_VariableMetaData.contains(name) ? s_VariableMetaData.at(name) : s_NullVariableMetaData;
 	}
 
-	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const Ref<Type>& type)
+	void Value::RegisterVariable(llvm::AllocaInst* alloc, const std::string& name, const std::shared_ptr<Type>& type)
 	{
 		s_VariableMetaData[name] = { .Alloca = alloc, .Type = type, .Name = name };
 	}
@@ -51,7 +51,7 @@ namespace clear {
 		s_VariableMetaData.erase(name);
 	}
 
-	Value::Value(const Ref<Type>& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value)
+	Value::Value(const std::shared_ptr<Type>& type, const std::string& data, const std::list<Value>& chain, llvm::Value* value)
 		: m_Type(type), m_Data(data), m_Chain(chain), m_Value(value)
 	{
 	}
@@ -86,13 +86,13 @@ namespace clear {
 	}
 
 	Value::Value(const Token& rValue)
-		: m_Type(Ref<Type>::Create(rValue)), m_Data(rValue.Data)
+		: m_Type(std::make_shared<Type>(rValue)), m_Data(rValue.Data)
 	{
 		auto [value, type] = Value::GetConstant(m_Type, m_Data);
 		m_Value = value;
 	}
 
-	Value::Value(const Ref<Type>& type, const std::string& data)
+	Value::Value(const std::shared_ptr<Type>& type, const std::string& data)
 		: m_Type(type), m_Data(data)
 	{
 		if (m_Type->GetTypeKindID() == TypeKindID::Constant)
@@ -127,13 +127,13 @@ namespace clear {
 	{
 	}
 
-	llvm::Value* Value::CastValue(llvm::Value* value, const Ref<Type>& to, const Ref<Type>& from)
+	llvm::Value* Value::CastValue(llvm::Value* value, const std::shared_ptr<Type>& to, const std::shared_ptr<Type>& from)
 	{
 		llvm::Type* fromType = value->getType();
 		return Value::CastValue(value, to->Get(), fromType, from);
 	}
 
-	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const Ref<Type>& fromType)
+	llvm::Value* Value::CastValue(llvm::Value* value, llvm::Type* to, llvm::Type* from, const std::shared_ptr<Type>& fromType)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 
@@ -229,11 +229,11 @@ namespace clear {
 		return nullptr;
 	}
 
-	Ref<Value> Value::Cast(const Ref<Value>& casting, Ref<Type> to)
+	std::shared_ptr<Value> Value::Cast(const std::shared_ptr<Value>& casting, std::shared_ptr<Type> to)
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 
 		llvm::Value* newValue = Value::CastValue(casting->Get(), to, {});
-		return Ref<Value>::Create(to, casting->GetData(), casting->GetChain(), newValue);
+		return std::make_shared<Value>(to, casting->GetData(), casting->GetChain(), newValue);
 	}
 }

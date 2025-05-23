@@ -1,9 +1,39 @@
-#include "Parser.h"
+/* #include "Parser.h"
 
 #include "Core/Log.h"
 
+#include <stack>
+
 namespace clear 
 {
+    static std::map<TokenType, int32_t> s_Precedence = {
+	    	{TokenType::DotOp,			    5},
+	        {TokenType::IndexOperator,      5}, 
+	        {TokenType::Power,              4}, 
+	        {TokenType::Negation,           4},
+	        {TokenType::Increment,          4},
+	        {TokenType::Decrement,          4},
+	        {TokenType::BitwiseNot,         4},
+	        {TokenType::DereferenceOp,      4},
+	        {TokenType::AddressOp,          4},
+	        {TokenType::DivOp,              3},
+	        {TokenType::MulOp,              3},
+	        {TokenType::LeftShift,          3},
+	        {TokenType::RightShift,         3},
+	        {TokenType::AddOp,              2},
+	        {TokenType::SubOp,              2},
+	        {TokenType::BitwiseAnd,         1}, 
+	        {TokenType::BitwiseXor,         1},
+	        {TokenType::BitwiseOr,          1},
+	        {TokenType::IsEqual,            0}, 
+	        {TokenType::NotEqual,           0},
+	        {TokenType::LessThan,           0},
+	        {TokenType::GreaterThan,        0},
+	        {TokenType::LessThanEqual,      0},
+	        {TokenType::GreaterThanEqual,   0},
+	        {TokenType::OpenBracket,       -1}  
+	    };
+
     Parser::Parser(const ProgramInfo& info)
         : m_Tokens(info.Tokens), m_Root(Ref<ASTNodeBase>::Create())
     {
@@ -46,10 +76,24 @@ namespace clear
             TokenType::Eof
         });
 
+        m_UnaryExpression = CreateTokenSet({
+            TokenType::Increment,    
+            TokenType::Decrement,    
+            TokenType::BitwiseNot,   
+            TokenType::AddressOp,	  
+            TokenType::DereferenceOp,
+            TokenType::Negation     
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
         }
+    }
+
+    Ref<ASTNodeBase> Parser::GetResult()
+    {
+        return m_Root;
     }
 
     Token Parser::Consume()
@@ -106,7 +150,7 @@ namespace clear
         {
             ParseFunctionCall();
         }
-        else // ??
+        else 
         {
             ParseExpression();
         }
@@ -130,12 +174,17 @@ namespace clear
         }
 
         ExpectAny(m_AssignmentOperators);
+        Ref<ASTNodeBase> expression = ParseExpression();
+    }
 
-        Ref<ASTExpression> expression = ParseExpression();
+    Ref<ASTNodeBase> Parser::ParseVariableReference()
+    {
+        return Ref<ASTVariableExpression>::Create(Consume().Data); 
     }
 
     void Parser::ParseFunctionDefinition()
     {
+
     }
 
     void Parser::ParseFunctionDecleration()
@@ -146,20 +195,28 @@ namespace clear
     {
     }
     
-    Ref<ASTExpression> Parser::ParseExpression()
+    Ref<ASTNodeBase> Parser::ParseExpression()
     {
         struct Operator
 	    {
 	    	BinaryExpressionType BinaryExpression;
 	    	UnaryExpressionType  UnaryExpression;
-	    	Ref<Type> ExpectedType;
 	    	bool IsOpenBracket = false;
 	    	int32_t Precedence = 0;
 	    };
 
-        //Look in ExpressionBuilder.cpp for what needs to go here
+        std::stack<Operator> operators;
 
-        return Ref<ASTExpression>();
+        while(!MatchAny(m_Terminators))
+        {
+            while(MatchAny(m_UnaryExpression))
+            {
+
+            }
+        }
+
+
+        return Ref<ASTNodeBase>();
     }
 
     Ref<Type> Parser::ParseVariableType()
@@ -175,3 +232,4 @@ namespace clear
         return type;
     }
 }
+ */

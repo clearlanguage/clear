@@ -1,16 +1,17 @@
-#include "Lexing/Lexer.h"
+/* #include "Lexing/Lexer.h"
 #include "AST/ASTNode.h"
 #include "Core/Type.h"
 
 namespace clear  
 {
     class Parser 
-    {
+    {        
     public:
         Parser() = delete;
         Parser(const ProgramInfo& info);
-
         ~Parser() = default;
+
+        Ref<ASTNodeBase> GetResult();
 
     private:
         Token Consume();
@@ -23,13 +24,14 @@ namespace clear
         void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
-        Ref<ASTExpression> ParseExpression();
+        Ref<ASTNodeBase> ParseExpression();
 
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();
         void ParseFunctionCall();
 
         void ParseVariableDecleration();
+        Ref<ASTNodeBase> ParseVariableReference();
         Ref<Type> ParseVariableType();
 
     private:    
@@ -41,5 +43,6 @@ namespace clear
         TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
         TokenSet m_Terminators;
+        TokenSet m_UnaryExpression;
     };
-}
+} */

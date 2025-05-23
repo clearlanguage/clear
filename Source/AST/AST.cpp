@@ -1,4 +1,4 @@
-#include "AST.h"
+/* #include "AST.h"
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
@@ -618,4 +618,4 @@ namespace clear {
 
 		return false;
 	}
-}
+} */

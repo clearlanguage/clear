@@ -1,5 +1,5 @@
 ﻿#include "Lexing/Lexer.h"
-#include "AST/AST.h"
+#include "AST/ASTNodeN.h"
 
 #include "API/LLVM/LLVMBackend.h"
 
@@ -27,12 +27,46 @@ int main()
     }
 
     std::cout << "------AST TESTS--------" << std::endl;
-    {
+    /* {
         AST ast(info);
         ast.BuildIR("Tests/test.ir");
-    }
+    } */
 
-    LLVM::Backend::BuildModule();
+    {      
+        auto& builder = *LLVM::Backend::GetBuilder();
+        auto& context = *LLVM::Backend::GetContext();
+        auto& module = *LLVM::Backend::GetModule();
+
+
+        llvm::FunctionType* funcType = llvm::FunctionType::get(builder.getInt32Ty(), false);
+        llvm::Function* mainFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, "main", module);
+
+        llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", mainFunc);
+        builder.SetInsertPoint(entry);
+
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+
+        std::shared_ptr<ASTNodeLiteral> left  = std::make_shared<ASTNodeLiteral>(Token{TokenType::RValueNumber, "50"});
+        std::shared_ptr<ASTNodeLiteral> right = std::make_shared<ASTNodeLiteral>(Token{TokenType::RValueNumber, "60.5"});
+
+        std::shared_ptr<ASTBinaryExpression> add = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Add);
+        add->Push(right);
+        add->Push(left);
+
+        root->Push(add);
+
+        std::filesystem::path path = "Tests/test.ir";
+           
+
+		std::error_code EC;
+		llvm::raw_fd_stream stream(path.string(), EC);
+
+		root->Codegen();
+
+		module.print(stream, nullptr);
+    }   
+
+    //LLVM::Backend::BuildModule();
 
     LLVM::Backend::Shutdown();
 

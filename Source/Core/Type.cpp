@@ -10,7 +10,7 @@ namespace clear {
 
     //may need to move this to a module class when we want to compile concurrently
     static std::map<std::string, StructMetaData> s_UserDefinedTypesRegistry;
-    static std::map<std::string, Ref<Type>>      s_VariableTypeRegistry;
+    static std::map<std::string, std::shared_ptr<Type>>      s_VariableTypeRegistry;
 
     static TypeID GetTypeIDFromToken(TokenType tokenType)
 	{
@@ -117,10 +117,10 @@ namespace clear {
         m_TypeKindID = typeKind;
 
         if(underlying != TypeID::None)
-            m_Underlying = Ref<Type>::Create(underlying, typeKind);
+            m_Underlying = std::make_shared<Type>(underlying, typeKind);
     }
 
-    Type::Type(const Token &token, bool isPointer)
+    Type::Type(const Token& token, bool isPointer)
     {
         if(isPointer)
         {
@@ -129,7 +129,7 @@ namespace clear {
             m_ID = TypeID::Pointer;
             m_TypeKindID = TypeKindID::Variable;
             m_LLVMType = GetType(m_ID);
-            m_Underlying = Ref<Type>::Create(token, false);
+            m_Underlying = std::make_shared<Type>(token, false);
 
             return;
         }
@@ -140,7 +140,7 @@ namespace clear {
             m_ID = TypeID::String;
             m_TypeKindID = TypeKindID::Constant;
             m_LLVMType = GetType(m_ID);
-            m_Underlying = Ref<Type>::Create(TypeID::Int8, TypeKindID::Constant);
+            m_Underlying = std::make_shared<Type>(TypeID::Int8, TypeKindID::Constant);
 
             return;
         }
@@ -211,7 +211,7 @@ namespace clear {
 
         if(m_ID == TypeID::String)
         {
-            m_Underlying = Ref<Type>::Create(TypeID::Int8);
+            m_Underlying = std::make_shared<Type>(TypeID::Int8);
         }
 
         if(m_ID == TypeID::None)
@@ -253,13 +253,13 @@ namespace clear {
         m_LLVMType = info.Struct;
     }
 
-    Type::Type(const Ref<Type>& elementType, size_t count)
+    Type::Type(const std::shared_ptr<Type>& elementType, size_t count)
         : m_ID(TypeID::Array), m_LLVMType(llvm::ArrayType::get(elementType->Get(), count)), m_TypeKindID(TypeKindID::Variable), m_Underlying(elementType)
     {
         CLEAR_VERIFY(elementType, "type cannot be null");
     }
 
-    Type::Type(const Ref<Type>& pointTo)
+    Type::Type(const std::shared_ptr<Type>& pointTo)
         : m_ID(TypeID::Pointer), m_LLVMType(GetType(TypeID::Pointer)), m_TypeKindID(TypeKindID::Variable), m_Underlying(pointTo)
     {
         CLEAR_VERIFY(pointTo, "type cannot be null");
@@ -342,7 +342,7 @@ namespace clear {
         return it->second;
     }
 
-    void Type::RegisterVariableType(const std::string& name, const Ref<Type>& type)
+    void Type::RegisterVariableType(const std::string& name, const std::shared_ptr<Type>& type)
     {
         CLEAR_PARSER_VERIFY(!s_VariableTypeRegistry.contains(name), "already registered");
         s_VariableTypeRegistry[name] = type;
@@ -358,7 +358,7 @@ namespace clear {
         s_UserDefinedTypesRegistry.erase(it);
     }
 
-    Ref<Type> Type::GetVariableTypeFromName(const std::string& name)
+    std::shared_ptr<Type> Type::GetVariableTypeFromName(const std::string& name)
     {
         auto it = s_VariableTypeRegistry.find(name);
 
