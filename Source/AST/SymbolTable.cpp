@@ -29,6 +29,11 @@ namespace clear
         return allocation;
     }
 
+    StructData &SymbolTable::CreateStruct(const std::string &name, const std::vector<Member> &members)
+    {
+        // TODO: insert return statement here
+    }
+
     Allocation SymbolTable::GetAlloca(const std::string& name)
     {
         if(m_Variables.contains(name)) return m_Variables.at(name);
@@ -43,6 +48,11 @@ namespace clear
 
         CLEAR_UNREACHABLE("unable to find variable");
         return {};
+    }
+
+    StructData &SymbolTable::GetStruct(const std::string &name)
+    {
+        // TODO: insert return statement here
     }
 
     void SymbolTable::SetPrevious(const std::shared_ptr<SymbolTable>& previous)

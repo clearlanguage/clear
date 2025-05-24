@@ -93,7 +93,6 @@ namespace clear
 		CodegenResult HandleCmpExpressionSI(CodegenResult& lhs, CodegenResult& rhs);
 		CodegenResult HandleCmpExpressionUI(CodegenResult& lhs, CodegenResult& rhs);
 
-
 		CodegenResult HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs);
 		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs);
 
@@ -156,5 +155,14 @@ namespace clear
 
 	private:
 		AssignmentOperatorType m_Type;
+	};
+
+	class ASTStruct : public ASTNodeBase
+	{
+	public:
+		ASTStruct() = default;
+		virtual ~ASTStruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
+		virtual CodegenResult Codegen() override;
 	};
 }
