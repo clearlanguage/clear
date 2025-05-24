@@ -29,9 +29,11 @@ namespace clear
         return allocation;
     }
 
-    StructData &SymbolTable::CreateStruct(const std::string &name, const std::vector<Member> &members)
+    StructData& SymbolTable::CreateStruct(const std::string &name, const std::vector<Member> &members)
     {
         // TODO: insert return statement here
+        StructData data;
+        return data;
     }
 
     Allocation SymbolTable::GetAlloca(const std::string& name)
@@ -50,9 +52,10 @@ namespace clear
         return {};
     }
 
-    StructData &SymbolTable::GetStruct(const std::string &name)
+    StructData& SymbolTable::GetStruct(const std::string &name)
     {
-        // TODO: insert return statement here
+        StructData data; //TODO
+        return data;
     }
 
     void SymbolTable::SetPrevious(const std::shared_ptr<SymbolTable>& previous)
