@@ -29,11 +29,32 @@ namespace clear
         return allocation;
     }
 
-    StructData& SymbolTable::CreateStruct(const std::string &name, const std::vector<Member> &members)
+
+    FunctionData& SymbolTable::CreateFunction(const std::string& name, std::vector<Parameter>& parameters, const std::shared_ptr<Type>& returnType)
     {
-        // TODO: insert return statement here
-        StructData data;
-        return data;
+        auto& module   = *LLVM::Backend::GetModule();
+        auto& context  = *LLVM::Backend::GetContext();
+
+		std::vector<llvm::Type*> parameterTypes;
+        std::transform(parameters.begin(), parameters.end(), std::back_inserter(parameterTypes), [](Parameter& a) { return a.Type->Get(); });
+
+		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), parameterTypes, false);
+
+		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, name, module);
+
+		FunctionData functionData;
+        functionData.Function     = function;
+        functionData.FunctionType = functionType;
+        functionData.ReturnType   = returnType;
+        functionData.Parameters   = parameters;
+
+        m_Functions[name] = functionData;
+        return m_Functions[name];
+    }
+
+    void SymbolTable::RegisterAllocation(const std::string& name, Allocation allocation)
+    {
+        m_Variables[name] = allocation;
     }
 
     Allocation SymbolTable::GetAlloca(const std::string& name)
@@ -52,10 +73,22 @@ namespace clear
         return {};
     }
 
-    StructData& SymbolTable::GetStruct(const std::string &name)
+    FunctionData& SymbolTable::GetFunction(const std::string& name)
     {
-        StructData data; //TODO
-        return data;
+       if(m_Functions.contains(name)) return m_Functions.at(name);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_Functions.contains(name)) return ptr->m_Functions.at(name);
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("unable to find function");
+
+        static FunctionData s_NullFunction;
+        return s_NullFunction;
     }
 
     void SymbolTable::SetPrevious(const std::shared_ptr<SymbolTable>& previous)

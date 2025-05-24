@@ -1,3 +1,5 @@
+#pragma once
+
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Type.h"
 
@@ -11,9 +13,25 @@ namespace clear
         std::shared_ptr<Type> Type;
     };
 
+    struct Parameter
+	{
+		std::string Name;
+		std::shared_ptr<Type> Type;
+		bool IsVariadic = false;
+	};
+
+    struct Member
+    {
+        std::string Name;
+        std::shared_ptr<Type> Type;
+    };
+
     struct FunctionData
     {
-        //...
+        llvm::FunctionType* FunctionType;
+        llvm::Function* Function;
+        std::shared_ptr<Type> ReturnType;
+        std::vector<Parameter> Parameters;
     };
 
     struct StructData
@@ -21,11 +39,7 @@ namespace clear
 
     };
 
-    struct Member
-    {
-        std::string Name;
-        std::shared_ptr<Type> Type;
-    };
+    
 
     class SymbolTable
     {
@@ -35,12 +49,20 @@ namespace clear
         ~SymbolTable() = default;
 
         Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type);
-        StructData& CreateStruct(const std::string& name, const std::vector<Member>& members);
+        //StructData& CreateStruct(const std::string& name, const std::vector<Member>& members);
+        FunctionData& CreateFunction(const std::string& name,
+                                     std::vector<Parameter>& parameters, 
+                                     const std::shared_ptr<Type>& returnType
+                                    );
+
+
+        void RegisterAllocation(const std::string& name, Allocation allocation);
 
         //void CreateType(...)
 
         Allocation  GetAlloca(const std::string& name);
-        StructData& GetStruct(const std::string& name);
+        //StructData& GetStruct(const std::string& name);
+        FunctionData& GetFunction(const std::string& name);
 
         //void GetType(...)
 

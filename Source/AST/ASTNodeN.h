@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Core/Type.h"
 #include "Core/Value.h"
 
@@ -163,6 +165,29 @@ namespace clear
 		ASTStruct() = default;
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
+		virtual CodegenResult Codegen() override;
+	};
+
+	class ASTFunctionDefinition : public ASTNodeBase 
+	{
+	public:
+		ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& parameters);
+		virtual ~ASTFunctionDefinition() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::vector<Parameter> m_Parameters;
+		std::string m_Name;
+		std::shared_ptr<Type> m_ReturnType;
+	};
+
+	class ASTExpression : public ASTNodeBase
+	{
+	public:
+		ASTExpression() = default;
+		virtual ~ASTExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual CodegenResult Codegen() override;
 	};
 }

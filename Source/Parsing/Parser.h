@@ -1,6 +1,11 @@
-/* #include "Lexing/Lexer.h"
-#include "AST/ASTNode.h"
+#pragma once
+
+#include "Lexing/Lexer.h"
+#include "AST/ASTNodeN.h"
 #include "Core/Type.h"
+
+#include <memory>
+#include <vector>
 
 namespace clear  
 {
@@ -11,9 +16,11 @@ namespace clear
         Parser(const ProgramInfo& info);
         ~Parser() = default;
 
-        Ref<ASTNodeBase> GetResult();
+        std::shared_ptr<ASTNodeBase> GetResult();
 
     private:
+        std::shared_ptr<ASTNodeBase> Root();
+
         Token Consume();
         Token Peak();
 
@@ -24,25 +31,28 @@ namespace clear
         void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
-        Ref<ASTNodeBase> ParseExpression();
+        std::shared_ptr<ASTNodeBase> ParseExpression();
 
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();
         void ParseFunctionCall();
 
         void ParseVariableDecleration();
-        Ref<ASTNodeBase> ParseVariableReference();
-        Ref<Type> ParseVariableType();
+        std::shared_ptr<ASTNodeBase> ParseVariableReference();
+        std::shared_ptr<Type> ParseVariableType();
+
+        void ParseIndentation();
 
     private:    
         std::vector<Token> m_Tokens;
         size_t m_Position = 0;
 
-        Ref<ASTNodeBase> m_Root;
+        std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
 
         TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
         TokenSet m_Terminators;
         TokenSet m_UnaryExpression;
+        TokenSet m_Literals;
     };
-} */
+}

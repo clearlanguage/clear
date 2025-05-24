@@ -3,8 +3,13 @@
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
 
+#include <stack>
+
 namespace clear 
 {
+
+	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
+
     ASTNodeBase::ASTNodeBase()
     {
     }
@@ -102,7 +107,7 @@ namespace clear
     void ASTBinaryExpression::HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs)
     {
         auto& builder = *LLVM::Backend::GetBuilder();
-		
+
         llvm::Type* lhsType = lhs.CodegenType->Get();
         llvm::Type* rhsType = rhs.CodegenType->Get();
 
@@ -688,4 +693,140 @@ namespace clear
     	    CLEAR_UNREACHABLE("unsupported type conversion");
     	}
     }
-}	
+
+
+	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& Paramaters)
+		: m_Parameters(Paramaters), m_ReturnType(returnType), m_Name(name)
+	{
+		CreateSymbolTable();
+	}
+
+	CodegenResult ASTFunctionDefinition::Codegen()
+	{
+		auto& module  = *LLVM::Backend::GetModule();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& builder = *LLVM::Backend::GetBuilder();
+		
+		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
+		CLEAR_VERIFY(prev, "prev was null");
+
+		FunctionData& functionData = prev->CreateFunction(m_Name, m_Parameters, m_ReturnType);
+		
+		s_InsertPoints.push(builder.saveIP());
+
+		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionData.Function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "body");
+		
+		builder.SetInsertPoint(entry);
+
+		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
+		llvm::AllocaInst* returnAlloca = m_ReturnType ? builder.CreateAlloca(m_ReturnType->Get(), nullptr, "return_value") : nullptr;
+		
+		uint32_t k = 0;
+
+		for (const auto& param : m_Parameters)
+		{
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(param.Type->Get(), nullptr, param.Name);
+			builder.CreateStore(functionData.Function->getArg(k++), argAlloc);
+			
+			Allocation alloca;
+			alloca.Alloca = argAlloc;
+			alloca.Type   = param.Type;
+
+			GetSymbolTable()->RegisterAllocation(param.Name, alloca);
+		}
+
+		functionData.Function->insert(functionData.Function->end(), body);
+		builder.SetInsertPoint(body);
+
+		//CodegenResult returnValue; TODO
+
+		for (const auto& child : GetChildren())
+		{
+			child->Codegen();
+
+			// ADD THIS ONCE WE HAVE RETURN STATEMENTS if(std::dynamic_pointer_cast<ASTReturn>(child)) 
+		}
+
+		auto currip = builder.saveIP();
+
+		builder.SetInsertPoint(entry);
+		builder.CreateBr(body);
+
+		builder.restoreIP(currip);
+
+		if(!builder.GetInsertBlock()->getTerminator())
+			builder.CreateBr(returnBlock);
+
+		functionData.Function->insert(functionData.Function->end(), returnBlock);
+		builder.SetInsertPoint(returnBlock);
+
+		if (functionData.Function->getReturnType()->isVoidTy())
+		{
+			builder.CreateRetVoid();
+		}
+		else
+		{   //for now will do nothing but will do something once we have return statements.
+			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
+			builder.CreateRet(load);
+		}
+
+		auto& ip = s_InsertPoints.top();
+		builder.restoreIP(ip);
+		s_InsertPoints.pop();
+
+		return {functionData.Function, functionData.ReturnType};
+	}
+
+
+	CodegenResult ASTExpression::Codegen()
+	{
+		auto& builder  = *LLVM::Backend::GetBuilder();
+		auto& children = GetChildren();
+
+		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+
+		for (const auto& child : children)
+		{
+			if (child->GetType() == ASTNodeType::Literal ||
+				child->GetType() == ASTNodeType::VariableExpression ||
+				child->GetType() == ASTNodeType::VariableReference || 
+				child->GetType() == ASTNodeType::FunctionCall)
+			{
+				stack.push(child);
+				continue;
+			}
+
+			/* if (child->GetType() == ASTNodeType::UnaryExpression)
+			{
+				Ref<ASTUnaryExpression> unaryExpression = DynamicCast<ASTUnaryExpression>(child);
+				CLEAR_VERIFY(unaryExpression->GetChildren().size() == 0, "");
+
+				unaryExpression->PushChild(stack.top());
+				stack.pop();
+
+				stack.push(unaryExpression);
+
+				continue;
+			} */
+
+			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
+
+			binExp->Push(stack.top());
+			stack.pop();
+
+			binExp->Push(stack.top());
+			stack.pop();
+
+			stack.push(binExp);
+		}
+
+		if(stack.size() > 0)
+		{
+			return stack.top()->Codegen();
+		}
+
+
+		return {};
+	}
+}	   

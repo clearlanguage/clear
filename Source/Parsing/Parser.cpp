@@ -1,5 +1,5 @@
-/* #include "Parser.h"
-
+#include "Parser.h"
+#include "AST/ASTNodeN.h"
 #include "Core/Log.h"
 
 #include <stack>
@@ -35,8 +35,12 @@ namespace clear
 	    };
 
     Parser::Parser(const ProgramInfo& info)
-        : m_Tokens(info.Tokens), m_Root(Ref<ASTNodeBase>::Create())
+        : m_Tokens(info.Tokens)
     {
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+        root->CreateSymbolTable();
+        m_RootStack.push_back(root);
+
         m_Tokens.push_back({TokenType::Eof});
 
         m_VariableType = CreateTokenSet({
@@ -85,15 +89,27 @@ namespace clear
             TokenType::Negation     
         });
 
+        m_Literals = CreateTokenSet({
+            TokenType::RValueNumber,
+		    TokenType::RValueString,
+		    TokenType::BooleanData,
+		    TokenType::Null
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
         }
     }
 
-    Ref<ASTNodeBase> Parser::GetResult()
+    std::shared_ptr<ASTNodeBase> Parser::GetResult()
     {
-        return m_Root;
+        return m_RootStack[0];
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::Root()
+    {
+        return m_RootStack.back();
     }
 
     Token Parser::Consume()
@@ -150,22 +166,26 @@ namespace clear
         {
             ParseFunctionCall();
         }
+        else if (Match(TokenType::EndIndentation))
+        {
+            ParseIndentation();
+        }
         else 
         {
-            ParseExpression();
+            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
         }
     }
 
     void Parser::ParseVariableDecleration()
     {
-        Ref<Type> variableType = ParseVariableType();
+        std::shared_ptr<Type> variableType = ParseVariableType();
 
         Expect(TokenType::VariableName);
         std::string variableName = Consume().Data;
 
         //if(match(TokenType::Comma)) deal with this later
 
-        m_Root->PushChild(Ref<ASTVariableDeclaration>::Create(variableName, variableType));
+        Root()->Push(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
 
         if(Match(TokenType::EndLine))
         {
@@ -174,17 +194,98 @@ namespace clear
         }
 
         ExpectAny(m_AssignmentOperators);
-        Ref<ASTNodeBase> expression = ParseExpression();
+
+        Token assignmentToken = Consume();
+
+        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+        assign->Push(std::make_shared<ASTVariableReference>(variableName));
+        assign->Push(ParseExpression()); 
+
+        Root()->Push(assign);
     }
 
-    Ref<ASTNodeBase> Parser::ParseVariableReference()
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
     {
-        return Ref<ASTVariableExpression>::Create(Consume().Data); 
+        return std::make_shared<ASTVariableExpression>(Consume().Data); 
     }
 
     void Parser::ParseFunctionDefinition()
     {
+        Expect(TokenType::Function);
 
+        Consume();
+
+        Expect(TokenType::FunctionName);
+
+        std::string name = Consume().Data;
+        std::shared_ptr<Type> returnType;
+        std::vector<Parameter> params;
+
+        Expect(TokenType::StartFunctionParameters);
+
+        Consume();
+
+        while(!Match(TokenType::EndFunctionParameters)) //TODO
+        {
+            Parameter param;
+
+            if(Match(TokenType::Ellipsis))
+            {
+                param.IsVariadic = true;
+                params.push_back(param);
+
+                Consume();
+
+                Expect(TokenType::EndFunctionParameters);
+                break;
+            }
+
+            param.Type = ParseVariableType();
+            
+            Expect(TokenType::VariableReference);
+
+            param.Name = Consume().Data;
+            params.push_back(param);
+
+            if(!Match(TokenType::EndFunctionParameters)) 
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Consume();
+
+        if(Match(TokenType::EndLine))
+        {
+            std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+            Root()->Push(func);
+            m_RootStack.push_back(func);
+
+            Consume();
+
+            return;
+        }
+
+        Expect(TokenType::RightArrow);
+
+        Consume();
+
+        Expect(TokenType::FunctionType);
+
+        Consume();
+
+        ExpectAny(m_VariableType);
+
+        returnType = ParseVariableType();
+
+        std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+        Root()->Push(func);
+        m_RootStack.push_back(func);
+
+        Expect(TokenType::EndLine);
+
+        Consume();
     }
 
     void Parser::ParseFunctionDecleration()
@@ -195,41 +296,131 @@ namespace clear
     {
     }
     
-    Ref<ASTNodeBase> Parser::ParseExpression()
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
     {
         struct Operator
-	    {
-	    	BinaryExpressionType BinaryExpression;
-	    	UnaryExpressionType  UnaryExpression;
-	    	bool IsOpenBracket = false;
-	    	int32_t Precedence = 0;
-	    };
+        {
+            BinaryExpressionType BinaryExpression;
+            UnaryExpressionType UnaryExpression;
+            bool IsOpenBracket = false;
+            int32_t Precedence = 0;
+        };
 
+        std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
         std::stack<Operator> operators;
 
-        while(!MatchAny(m_Terminators))
+        auto PopOperatorsUntil = [&](auto condition) 
         {
-            while(MatchAny(m_UnaryExpression))
+            while (!operators.empty() && !condition(operators.top())) 
             {
+                const auto& currentOperator = operators.top();
 
+                if (currentOperator.BinaryExpression != BinaryExpressionType::None)
+                    expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.BinaryExpression));
+
+                //TODO: unary expressions go here
+                
+                operators.pop();
+            }
+        };
+
+        auto HandleOperand = [&]() 
+        {
+            if (Match(TokenType::VariableReference)) 
+            {
+                expression->Push(std::make_shared<ASTVariableExpression>(Consume().Data));
+            }
+            else if (MatchAny(m_Literals)) 
+            {
+                expression->Push(std::make_shared<ASTNodeLiteral>(Consume()));
+            }
+        };
+
+        auto HandleOpenBracket = [&]() 
+        {
+            operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, true, 0 });
+            Consume();
+        };
+
+        auto HandleCloseBracket = [&]() 
+        {
+            PopOperatorsUntil([](const Operator& op) { return op.IsOpenBracket; });
+            
+            if (!operators.empty()) 
+                operators.pop(); // remove the open bracket
+
+            Consume();
+        };
+
+        auto HandleOperator = [&]() 
+        {
+            TokenType tokenType = Peak().TokenType;
+            int precedence = s_Precedence.at(tokenType);
+
+            PopOperatorsUntil([&](const Operator& op) 
+            {
+                return op.IsOpenBracket || precedence > op.Precedence;
+            });
+
+            operators.push({
+                Type::GetBinaryExpressionTypeFromToken(tokenType),
+                UnaryExpressionType::None,
+                false,
+                precedence
+            });
+
+            Consume();
+        };
+
+        while (!MatchAny(m_Terminators)) 
+        {
+            if (Match(TokenType::VariableReference) || MatchAny(m_Literals)) 
+            {
+                HandleOperand();
+            }
+            else if (Match(TokenType::OpenBracket)) 
+            {
+                HandleOpenBracket();
+            }
+            else if (Match(TokenType::CloseBracket)) 
+            {
+                HandleCloseBracket();
+            }
+            else if (s_Precedence.contains(Peak().TokenType)) 
+            {
+                HandleOperator();
+            }
+            else 
+            {
+                CLEAR_UNREACHABLE("unimplemented token");
+                break;
             }
         }
 
+        PopOperatorsUntil([](const Operator&) { return false; });
 
-        return Ref<ASTNodeBase>();
+        return expression;
     }
 
-    Ref<Type> Parser::ParseVariableType()
+    std::shared_ptr<Type> Parser::ParseVariableType()
     {
-        Ref<Type> type = Ref<Type>::Create(Consume());
+        std::shared_ptr<Type> type = std::make_shared<Type>(Consume());
 
         while(Match(TokenType::PointerDef))
         {
-            type = Ref<Type>::Create(type); 
+            type = std::make_shared<Type>(type); 
             Consume();
         }
 
         return type;
     }
+
+    void Parser::ParseIndentation()
+    {
+        while(Match(TokenType::EndIndentation))
+        {
+            m_RootStack.pop_back();
+            Consume();
+        }
+    }
 }
- */
