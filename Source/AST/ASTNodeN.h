@@ -2,6 +2,7 @@
 #include "Core/Value.h"
 
 #include "Lexing/Tokens.h"
+#include "SymbolTable.h"
 
 #include <memory>
 
@@ -15,7 +16,8 @@ namespace clear
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer, MemberAccess
+		ArrayInitializer, MemberAccess, AssignmentOperator, 
+		VariableReference
 	};
 
 	struct CodegenResult
@@ -27,7 +29,7 @@ namespace clear
     class ASTNodeBase
 	{
 	public:
-		ASTNodeBase() = default;
+		ASTNodeBase();
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual CodegenResult Codegen();
@@ -35,15 +37,21 @@ namespace clear
 		void Push(const std::shared_ptr<ASTNodeBase>& child);
 		void Remove(const std::shared_ptr<ASTNodeBase>& child);
 
-		void SetParent(const std::shared_ptr<ASTNodeBase>& parent);
-		void RemoveParent();
+		void PropagateSymbolTableToChildren();
 
-		const auto  GetParent()   const { return m_Parent; }
+		void CreateSymbolTable();
+
+		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
+
 		const auto& GetChildren() const { return m_Children; }
+	
+	private:
+		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry);
 
 	private:
-		std::shared_ptr<ASTNodeBase> m_Parent;
 		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
+		std::shared_ptr<SymbolTable> m_SymbolTable;
+ 
 	};
 
 	class ASTNodeLiteral : public ASTNodeBase
@@ -91,5 +99,62 @@ namespace clear
 
 	private:
 		BinaryExpressionType m_Expression;
+	};
+
+	class ASTVariableDeclaration : public ASTNodeBase
+	{
+	public:
+		ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type);
+		virtual ~ASTVariableDeclaration() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::string m_Name;
+		std::shared_ptr<Type> m_Type;
+	};
+
+	class ASTVariableReference : public ASTNodeBase
+	{
+	public:
+		ASTVariableReference(const std::string& name);
+		virtual ~ASTVariableReference() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableReference; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::string m_Name;
+	};
+
+	class ASTVariableExpression : public ASTNodeBase
+	{
+	public:
+		ASTVariableExpression(const std::string& name);
+		virtual ~ASTVariableExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::string m_Name;
+	};
+
+	enum class AssignmentOperatorType 
+	{
+		Normal = 0, Mul, Div, Add, Sub, Mod
+	};
+
+	class ASTAssignmentOperator : public ASTNodeBase
+	{
+	public:
+		ASTAssignmentOperator(AssignmentOperatorType type);
+		virtual ~ASTAssignmentOperator() = default;
+		virtual inline const ASTNodeType GetType() const { return ASTNodeType::AssignmentOperator; }
+		virtual CodegenResult Codegen();
+
+	private:
+		void HandleDifferentTypes(CodegenResult& storage, CodegenResult& data);
+
+	private:
+		AssignmentOperatorType m_Type;
 	};
 }

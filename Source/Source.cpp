@@ -37,7 +37,6 @@ int main()
         auto& context = *LLVM::Backend::GetContext();
         auto& module = *LLVM::Backend::GetModule();
 
-
         llvm::FunctionType* funcType = llvm::FunctionType::get(builder.getInt32Ty(), false);
         llvm::Function* mainFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, "main", module);
 
@@ -45,22 +44,30 @@ int main()
         builder.SetInsertPoint(entry);
 
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+        root->CreateSymbolTable();
+
+        root->Push(std::make_shared<ASTVariableDeclaration>("my_var", std::make_shared<Type>(TypeID::Float32)));
 
         std::shared_ptr<ASTNodeLiteral> left  = std::make_shared<ASTNodeLiteral>(Token{TokenType::RValueNumber, "50"});
         std::shared_ptr<ASTNodeLiteral> right = std::make_shared<ASTNodeLiteral>(Token{TokenType::RValueNumber, "60.5"});
 
         std::shared_ptr<ASTBinaryExpression> add = std::make_shared<ASTBinaryExpression>(BinaryExpressionType::Add);
+        
+        std::shared_ptr<ASTAssignmentOperator> assignment = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+        root->Push(assignment);
+
+        assignment->Push(std::make_shared<ASTVariableReference>("my_var"));
+        assignment->Push(add);
+
         add->Push(right);
         add->Push(left);
 
-        root->Push(add);
-
         std::filesystem::path path = "Tests/test.ir";
-           
 
 		std::error_code EC;
 		llvm::raw_fd_stream stream(path.string(), EC);
 
+        root->PropagateSymbolTableToChildren();
 		root->Codegen();
 
 		module.print(stream, nullptr);

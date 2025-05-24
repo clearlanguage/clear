@@ -4,9 +4,14 @@
 #include "Core/Log.h"
 
 namespace clear 
-{   
+{
+    ASTNodeBase::ASTNodeBase()
+    {
+    }
+
     CodegenResult ASTNodeBase::Codegen()
     {
+
         CodegenResult value;
 
 		for (auto& child : GetChildren())
@@ -20,21 +25,39 @@ namespace clear
         m_Children.push_back(child);
     }
 
+
     void ASTNodeBase::Remove(const std::shared_ptr<ASTNodeBase>& child)
     {
         if(auto pos = std::find(m_Children.begin(), m_Children.end(), child) != m_Children.end())
             m_Children.erase(m_Children.begin() + pos);
     }
 
-    void ASTNodeBase::SetParent(const std::shared_ptr<ASTNodeBase>& parent)
-	{
-		m_Parent = parent;
-	}
+    void ASTNodeBase::PropagateSymbolTableToChildren()
+    {
+		for(auto& child : m_Children) child->PropagateSymbolTable(m_SymbolTable);
+    }
 
-	void ASTNodeBase::RemoveParent()
-	{
-		m_Parent = nullptr;
-	}
+    void ASTNodeBase::CreateSymbolTable()
+    {
+		m_SymbolTable = std::make_shared<SymbolTable>();
+    }
+
+    void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
+    {
+		if(m_SymbolTable) 
+		{
+			m_SymbolTable->SetPrevious(registry);
+		}
+		else 
+		{
+			m_SymbolTable = registry;
+		}
+
+		for(auto& child : m_Children)
+		{
+			child->PropagateSymbolTable(registry);
+		}
+    }
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
 		: m_Constant(data)
@@ -80,8 +103,8 @@ namespace clear
     {
         auto& builder = *LLVM::Backend::GetBuilder();
 
-        llvm::Type* lhsType = lhs.CodegenValue->getType();
-        llvm::Type* rhsType = rhs.CodegenValue->getType();
+        llvm::Type* lhsType = lhs.CodegenType->Get();
+        llvm::Type* rhsType = rhs.CodegenType->Get();
 
         //same type ignore rest
         if (lhsType == rhsType)
@@ -90,12 +113,20 @@ namespace clear
         // int -> float
         if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy()) 
         {
-            lhs.CodegenValue = builder.CreateSIToFP(lhs.CodegenValue, rhsType, "cast");
+			if(lhs.CodegenType->IsSigned())
+            	lhs.CodegenValue = builder.CreateSIToFP(lhs.CodegenValue, rhsType, "cast");
+			else 
+            	lhs.CodegenValue = builder.CreateUIToFP(lhs.CodegenValue, rhsType, "cast");
+
             lhs.CodegenType = rhs.CodegenType;
         } 
         else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy()) 
         {
-            rhs.CodegenValue = builder.CreateSIToFP(rhs.CodegenValue, lhsType, "cast");
+			if(rhs.CodegenType->IsSigned())
+            	rhs.CodegenValue = builder.CreateSIToFP(rhs.CodegenValue, lhsType, "cast");
+			else 
+            	rhs.CodegenValue = builder.CreateUIToFP(rhs.CodegenValue, lhsType, "cast");
+
             rhs.CodegenType = lhs.CodegenType;
         }
         // float -> double
@@ -470,4 +501,158 @@ namespace clear
     {
         return {};
     }
-}
+
+
+	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
+		: m_Name(name), m_Type(type)
+    {
+    }
+
+	CodegenResult ASTVariableDeclaration::Codegen()
+    {
+		CodegenResult codegenResult;
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		
+		Allocation alloca = registry->CreateAlloca(m_Name, m_Type);
+		codegenResult.CodegenValue = alloca.Alloca;
+		codegenResult.CodegenType  = alloca.Type;
+
+		return codegenResult;
+    }
+
+	ASTVariableReference::ASTVariableReference(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTVariableReference::Codegen()
+    {
+		CodegenResult result;
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+
+		Allocation alloca = registry->GetAlloca(m_Name);
+		result.CodegenValue = alloca.Alloca;
+		result.CodegenType  = alloca.Type;
+
+		return result;
+    }
+
+	ASTVariableExpression::ASTVariableExpression(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTVariableExpression::Codegen()
+    {
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+		CodegenResult result;
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		Allocation alloca = registry->GetAlloca(m_Name);
+
+		result.CodegenValue = builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name);
+		result.CodegenType  = alloca.Type;
+
+		return result;
+    }
+
+	ASTAssignmentOperator::ASTAssignmentOperator(AssignmentOperatorType type)
+		: m_Type(type)
+    {
+    }
+
+	CodegenResult ASTAssignmentOperator::Codegen()
+    {
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
+		
+		CodegenResult storage = children[0]->Codegen();
+		CodegenResult data    = children[1]->Codegen();
+
+		HandleDifferentTypes(storage, data);
+
+		CodegenResult result;
+
+		if(m_Type == AssignmentOperatorType::Normal)
+		{
+			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
+			result.CodegenType = storage.CodegenType;
+			return result;
+		}
+
+		CLEAR_UNREACHABLE("TODO rest")
+		return result;
+    }
+
+    void ASTAssignmentOperator::HandleDifferentTypes(CodegenResult& storage, CodegenResult& data)
+    {
+		auto& builder = *LLVM::Backend::GetBuilder();
+
+        llvm::Type* storageType = storage.CodegenType->Get();
+        llvm::Type* dataType = data.CodegenType->Get();
+
+        if (storageType == dataType)
+	        return;
+
+	    // float -> int
+		if (storageType->isIntegerTy() && dataType->isFloatingPointTy()) 
+		{
+		    if (storage.CodegenType->IsSigned())
+		        data.CodegenValue = builder.CreateFPToSI(data.CodegenValue, storageType, "cast");
+		    else
+		        data.CodegenValue = builder.CreateFPToUI(data.CodegenValue, storageType, "cast");
+		
+		    data.CodegenType = storage.CodegenType;
+		} 
+		// int -> float
+		else if (storageType->isFloatingPointTy() && dataType->isIntegerTy()) 
+		{
+		    if (data.CodegenType->IsSigned())
+		        data.CodegenValue = builder.CreateSIToFP(data.CodegenValue, storageType, "cast");
+		    else
+		        data.CodegenValue = builder.CreateUIToFP(data.CodegenValue, storageType, "cast");
+		
+		    data.CodegenType = storage.CodegenType;
+		} 
+		// float -> double
+		else if (storageType->isDoubleTy() && dataType->isFloatTy()) 
+		{
+		    data.CodegenValue = builder.CreateFPExt(data.CodegenValue, storageType, "cast");
+		    data.CodegenType = storage.CodegenType;
+		} 
+		// double -> float
+		else if (storageType->isFloatTy() && dataType->isDoubleTy()) 
+		{
+		    data.CodegenValue = builder.CreateFPTrunc(data.CodegenValue, storageType, "cast");
+		    data.CodegenType = storage.CodegenType;
+		} 
+		// smaller int -> bigger int
+		else if (storageType->isIntegerTy() && dataType->isIntegerTy() && 
+		         storageType->getIntegerBitWidth() > dataType->getIntegerBitWidth()) 
+		{
+		    if (data.CodegenType->IsSigned())
+		        data.CodegenValue = builder.CreateSExt(data.CodegenValue, storageType, "cast");
+		    else
+		        data.CodegenValue = builder.CreateZExt(data.CodegenValue, storageType, "cast");
+		
+		    data.CodegenType = storage.CodegenType;
+		} 
+		// bigger int -> smaller int
+		else if (storageType->isIntegerTy() && dataType->isIntegerTy() && 
+		         storageType->getIntegerBitWidth() < dataType->getIntegerBitWidth()) 
+		{
+		    data.CodegenValue = builder.CreateTrunc(data.CodegenValue, storageType, "cast");
+		    data.CodegenType = storage.CodegenType;
+		}
+    	else 
+    	{
+    	    CLEAR_UNREACHABLE("unsupported type conversion");
+    	}
+    }
+}	
