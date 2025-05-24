@@ -61,7 +61,7 @@ namespace clear {
         {"Expected ( after function declaration","Add brackets after function declaration and include the types inside","Missing brackets after function declaration"},
         {"Only expected hexadecimal characters in hexadecimal literal","Ensure there are only valid hexadecimal characters in the literal","Invalid char in hex literal"},
         {"Only expected 1 and 0 only in binary literal","Ensure there are only 1s and 0s in the literal","Invalid char in binary literal"},
-            {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"},
+        {"Expected value after comma","Remove extra comma or add an value or expression","Missing value after comma"},
         {"Function parameter can only begin with a type not a {}","Change the parameter so that it begins with a valid type","Function parameter begins with none type declaration"},
         {"Did not expect new line after type declaration  ","Add a variable name after type declaration","Expected variable name after type declaration"},
         {"{} name cannot start with a number","Change the name of the {} to not begin with a number maybe prefix it with '_'","{} name invalid"},

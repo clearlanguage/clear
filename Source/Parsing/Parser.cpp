@@ -185,7 +185,7 @@ namespace clear
 
 		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
 			_PushToken(TokenType::SubOp,"-");
-		}else {
+		}else{
 			_PushToken(TokenType::Negation,"-");
 		}
 		m_CurrentState = ParserState::RValue;
