@@ -74,7 +74,7 @@ namespace clear {
         inline const std::string& GetUserDefinedTypeIdentifer() const {return m_UserDefinedTypeIdentifier;}
 
         inline llvm::Type* Get() const { return m_LLVMType; }
-        inline std::shared_ptr<Type>   GetUnderlying() const {return m_Underlying; }
+        inline std::shared_ptr<Type> GetUnderlying() const {return m_Underlying; }
 
         bool IsFloatingPoint() const;
 		bool IsIntegral()	   const;

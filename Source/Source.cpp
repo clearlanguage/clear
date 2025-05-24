@@ -35,7 +35,7 @@ int main()
     {      
         auto& builder = *LLVM::Backend::GetBuilder();
         auto& context = *LLVM::Backend::GetContext();
-        auto& module = *LLVM::Backend::GetModule();
+        auto& module  = *LLVM::Backend::GetModule();
 
         llvm::FunctionType* funcType = llvm::FunctionType::get(builder.getInt32Ty(), false);
         llvm::Function* mainFunc = llvm::Function::Create(funcType, llvm::Function::ExternalLinkage, "main", module);

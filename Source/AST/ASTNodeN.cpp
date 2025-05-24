@@ -102,7 +102,7 @@ namespace clear
     void ASTBinaryExpression::HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs)
     {
         auto& builder = *LLVM::Backend::GetBuilder();
-
+		
         llvm::Type* lhsType = lhs.CodegenType->Get();
         llvm::Type* rhsType = rhs.CodegenType->Get();
 
