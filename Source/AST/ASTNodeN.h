@@ -76,17 +76,17 @@ namespace clear
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
 
+		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type);
+
 	private:
 		void HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs);
 
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
 		bool IsBitwiseExpression() const;
-
-		CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs);
-		CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs);
-		CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs);
-		CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs);
 
 		CodegenResult HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs);
 		CodegenResult HandleCmpExpressionF(CodegenResult& lhs, CodegenResult& rhs);

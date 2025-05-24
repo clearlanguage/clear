@@ -62,6 +62,12 @@ int main()
         add->Push(right);
         add->Push(left);
 
+        std::shared_ptr<ASTAssignmentOperator> addOp = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Add);
+        addOp->Push(std::make_shared<ASTVariableReference>("my_var"));
+        addOp->Push(std::make_shared<ASTNodeLiteral>(Token{TokenType::RValueNumber, "10"}));
+
+        root->Push(addOp);
+
         std::filesystem::path path = "Tests/test.ir";
 
 		std::error_code EC;

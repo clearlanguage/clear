@@ -91,7 +91,7 @@ namespace clear
         if(!lhs.CodegenValue->getType()->isPointerTy()) HandleTypePromotion(lhs, rhs);
 
 		if(IsMathExpression()) 
-			return HandleMathExpression(lhs, rhs);
+			return HandleMathExpression(lhs, rhs, m_Expression);
 
 		if(IsCmpExpression()) 
 			return HandleCmpExpression(lhs, rhs);
@@ -233,23 +233,23 @@ namespace clear
 		return false;
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs)
+    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type)
     {
         if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
-			return HandleMathExpressionF(lhs, rhs);
+			return HandleMathExpressionF(lhs, rhs, type);
 
 		if(lhs.CodegenType->IsSigned() || rhs.CodegenType->IsSigned()) 
-			return HandleMathExpressionSI(lhs, rhs);
+			return HandleMathExpressionSI(lhs, rhs, type);
 
-		return HandleMathExpressionUI(lhs, rhs);
+		return HandleMathExpressionUI(lhs, rhs, type);
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, BinaryExpressionType binExpressionType)
     {
         auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 
-		switch (m_Expression)
+		switch (binExpressionType)
 		{
 			case BinaryExpressionType::Add:
 			{
@@ -284,14 +284,14 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType binExpressionType)
     {
         auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 
 		std::shared_ptr<Type> type = lhs.CodegenType->IsSigned() ? lhs.CodegenType : rhs.CodegenType;
 
-		switch (m_Expression)
+		switch (binExpressionType)
 		{
 			case BinaryExpressionType::Add:
 			{
@@ -326,12 +326,12 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type)
     {
         auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 
-		switch (m_Expression)
+		switch (type)
 		{
 			case BinaryExpressionType::Add:
 			{
@@ -586,7 +586,40 @@ namespace clear
 			return result;
 		}
 
-		CLEAR_UNREACHABLE("TODO rest")
+		CodegenResult loadedValue;
+		loadedValue.CodegenValue = builder.CreateLoad(storage.CodegenType->Get(), storage.CodegenValue);
+		loadedValue.CodegenType = storage.CodegenType;
+
+		CodegenResult tmp;
+
+		if(m_Type == AssignmentOperatorType::Add)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Add);
+		}
+		else if (m_Type == AssignmentOperatorType::Sub)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Sub);
+		}
+		else if (m_Type == AssignmentOperatorType::Mul)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mul);
+		}
+		else if (m_Type == AssignmentOperatorType::Div)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Div);
+		}
+		else if (m_Type == AssignmentOperatorType::Mod)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mod);
+		}
+		else 
+		{
+			CLEAR_UNREACHABLE("invalid assignment type");
+		}
+
+		result.CodegenValue = builder.CreateStore(tmp.CodegenValue, storage.CodegenValue);
+		result.CodegenType  = storage.CodegenType;
+
 		return result;
     }
 
