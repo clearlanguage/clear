@@ -70,7 +70,6 @@ namespace clear
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
 
     private:
-        //Type registry goes here as well once done 
         std::unordered_map<std::string, Allocation>   m_Variables; 
         std::unordered_map<std::string, FunctionData> m_Functions; 
         std::unordered_map<std::string, StructData>   m_Structs; 

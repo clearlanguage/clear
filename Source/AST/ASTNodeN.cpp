@@ -521,7 +521,7 @@ namespace clear
 		
 		Allocation alloca = registry->CreateAlloca(m_Name, m_Type);
 		codegenResult.CodegenValue = alloca.Alloca;
-		codegenResult.CodegenType  = alloca.Type;
+		codegenResult.CodegenType  = std::make_shared<Type>(alloca.Type);
 
 		return codegenResult;
     }
@@ -539,7 +539,7 @@ namespace clear
 
 		Allocation alloca = registry->GetAlloca(m_Name);
 		result.CodegenValue = alloca.Alloca;
-		result.CodegenType  = alloca.Type;
+		result.CodegenType  = std::make_shared<Type>(alloca.Type);
 
 		return result;
     }
@@ -631,12 +631,15 @@ namespace clear
     void ASTAssignmentOperator::HandleDifferentTypes(CodegenResult& storage, CodegenResult& data)
     {
 		auto& builder = *LLVM::Backend::GetBuilder();
+		
+		std::shared_ptr<Type> underlyingStorageType = storage.CodegenType->GetUnderlying();
+		CLEAR_VERIFY(underlyingStorageType, "not valid storage");
 
-        llvm::Type* storageType = storage.CodegenType->Get();
+        llvm::Type* storageType = underlyingStorageType->Get();
         llvm::Type* dataType = data.CodegenType->Get();
 
-        if (storageType == dataType)
-	        return;
+		if(storageType == dataType)
+			return;
 
 	    // float -> int
 		if (storageType->isIntegerTy() && dataType->isFloatingPointTy()) 
@@ -785,7 +788,7 @@ namespace clear
 		auto& children = GetChildren();
 
 		std::stack<std::shared_ptr<ASTNodeBase>> stack;
-
+		
 		for (const auto& child : children)
 		{
 			if (child->GetType() == ASTNodeType::Literal ||

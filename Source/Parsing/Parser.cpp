@@ -204,11 +204,6 @@ namespace clear
         Root()->Push(assign);
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
-    {
-        return std::make_shared<ASTVariableExpression>(Consume().Data); 
-    }
-
     void Parser::ParseFunctionDefinition()
     {
         Expect(TokenType::Function);
@@ -225,7 +220,7 @@ namespace clear
 
         Consume();
 
-        while(!Match(TokenType::EndFunctionParameters)) //TODO
+        while(!Match(TokenType::EndFunctionParameters)) 
         {
             Parameter param;
 
@@ -324,11 +319,24 @@ namespace clear
             }
         };
 
+        auto IsOperand = [&]()
+        {
+            return Match(TokenType::VariableReference) || 
+                   Match(TokenType::AddressOp) || 
+                   MatchAny(m_Literals);
+        };
+
         auto HandleOperand = [&]() 
         {
             if (Match(TokenType::VariableReference)) 
             {
                 expression->Push(std::make_shared<ASTVariableExpression>(Consume().Data));
+            }
+            else if (Match(TokenType::AddressOp))
+            {
+                Consume();
+                Expect(TokenType::VariableReference);
+                expression->Push(std::make_shared<ASTVariableReference>(Consume().Data));
             }
             else if (MatchAny(m_Literals)) 
             {
@@ -374,7 +382,7 @@ namespace clear
 
         while (!MatchAny(m_Terminators)) 
         {
-            if (Match(TokenType::VariableReference) || MatchAny(m_Literals)) 
+            if (IsOperand()) 
             {
                 HandleOperand();
             }

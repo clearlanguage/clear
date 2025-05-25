@@ -38,7 +38,6 @@ namespace clear
         void ParseFunctionCall();
 
         void ParseVariableDecleration();
-        std::shared_ptr<ASTNodeBase> ParseVariableReference();
         std::shared_ptr<Type> ParseVariableType();
 
         void ParseIndentation();
