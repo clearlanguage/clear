@@ -354,6 +354,8 @@ namespace clear
                 Expect(TokenType::Comma);
                 Consume();
             }
+
+            params.push_back(param);
         }
 
         Expect(TokenType::EndFunctionArguments);
