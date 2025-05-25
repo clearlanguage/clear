@@ -48,7 +48,7 @@ namespace clear
 		const auto& GetChildren() const { return m_Children; }
 	
 	private:
-		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry);
+		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
 
 	private:
 		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
@@ -182,6 +182,32 @@ namespace clear
 		std::shared_ptr<Type> m_ReturnType;
 	};
 
+	class ASTFunctionCall : public ASTNodeBase
+	{
+	public:
+		ASTFunctionCall(const std::string& name);
+		virtual ~ASTFunctionCall() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
+		virtual CodegenResult Codegen() override;
+		
+	private:
+		std::string m_Name;
+	};
+
+	class ASTFunctionDecleration : public ASTNodeBase
+	{
+	public:
+		ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types);
+		virtual ~ASTFunctionDecleration() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::vector<Parameter> m_Parameters;
+		std::shared_ptr<Type> m_ReturnType;
+		std::string m_Name;
+	};
+
 	class ASTExpression : public ASTNodeBase
 	{
 	public:
@@ -190,4 +216,5 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual CodegenResult Codegen() override;
 	};
+
 }

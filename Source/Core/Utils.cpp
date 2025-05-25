@@ -102,6 +102,19 @@ namespace clear {
         return result;
     }
 
+    bool IsOnlyWhitespace(const std::string &str)
+    {
+        for (char c : str) 
+        {
+            if (!std::isspace(c)) 
+            {
+                return false;  
+            }
+        }
+        
+        return true;  
+    }
+
     bool IsVarNameChar(char c)
     {
         return std::isalnum(c) || c == '_';

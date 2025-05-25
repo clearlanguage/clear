@@ -2,12 +2,12 @@
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
+#include "TypeCasting.h"
 
 #include <stack>
 
 namespace clear 
 {
-
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 
     ASTNodeBase::ASTNodeBase()
@@ -39,7 +39,8 @@ namespace clear
 
     void ASTNodeBase::PropagateSymbolTableToChildren()
     {
-		for(auto& child : m_Children) child->PropagateSymbolTable(m_SymbolTable);
+		for(auto& child : m_Children) 
+			child->PropagateSymbolTable(m_SymbolTable);
     }
 
     void ASTNodeBase::CreateSymbolTable()
@@ -93,7 +94,8 @@ namespace clear
 		CodegenResult lhs = leftChild->Codegen();
 		CodegenResult rhs = rightChild->Codegen();
 
-        if(!lhs.CodegenValue->getType()->isPointerTy()) HandleTypePromotion(lhs, rhs);
+        if(!lhs.CodegenValue->getType()->isPointerTy()) 
+			HandleTypePromotion(lhs, rhs);
 
 		if(IsMathExpression()) 
 			return HandleMathExpression(lhs, rhs, m_Expression);
@@ -641,60 +643,8 @@ namespace clear
 		if(storageType == dataType)
 			return;
 
-	    // float -> int
-		if (storageType->isIntegerTy() && dataType->isFloatingPointTy()) 
-		{
-		    if (storage.CodegenType->IsSigned())
-		        data.CodegenValue = builder.CreateFPToSI(data.CodegenValue, storageType, "cast");
-		    else
-		        data.CodegenValue = builder.CreateFPToUI(data.CodegenValue, storageType, "cast");
-		
-		    data.CodegenType = storage.CodegenType;
-		} 
-		// int -> float
-		else if (storageType->isFloatingPointTy() && dataType->isIntegerTy()) 
-		{
-		    if (data.CodegenType->IsSigned())
-		        data.CodegenValue = builder.CreateSIToFP(data.CodegenValue, storageType, "cast");
-		    else
-		        data.CodegenValue = builder.CreateUIToFP(data.CodegenValue, storageType, "cast");
-		
-		    data.CodegenType = storage.CodegenType;
-		} 
-		// float -> double
-		else if (storageType->isDoubleTy() && dataType->isFloatTy()) 
-		{
-		    data.CodegenValue = builder.CreateFPExt(data.CodegenValue, storageType, "cast");
-		    data.CodegenType = storage.CodegenType;
-		} 
-		// double -> float
-		else if (storageType->isFloatTy() && dataType->isDoubleTy()) 
-		{
-		    data.CodegenValue = builder.CreateFPTrunc(data.CodegenValue, storageType, "cast");
-		    data.CodegenType = storage.CodegenType;
-		} 
-		// smaller int -> bigger int
-		else if (storageType->isIntegerTy() && dataType->isIntegerTy() && 
-		         storageType->getIntegerBitWidth() > dataType->getIntegerBitWidth()) 
-		{
-		    if (data.CodegenType->IsSigned())
-		        data.CodegenValue = builder.CreateSExt(data.CodegenValue, storageType, "cast");
-		    else
-		        data.CodegenValue = builder.CreateZExt(data.CodegenValue, storageType, "cast");
-		
-		    data.CodegenType = storage.CodegenType;
-		} 
-		// bigger int -> smaller int
-		else if (storageType->isIntegerTy() && dataType->isIntegerTy() && 
-		         storageType->getIntegerBitWidth() < dataType->getIntegerBitWidth()) 
-		{
-		    data.CodegenValue = builder.CreateTrunc(data.CodegenValue, storageType, "cast");
-		    data.CodegenType = storage.CodegenType;
-		}
-    	else 
-    	{
-    	    CLEAR_UNREACHABLE("unsupported type conversion");
-    	}
+		data.CodegenValue = TypeCasting::Cast(data.CodegenValue, data.CodegenType, underlyingStorageType);
+		data.CodegenType = underlyingStorageType; 
     }
 
 
@@ -781,8 +731,94 @@ namespace clear
 		return {functionData.Function, functionData.ReturnType};
 	}
 
+	ASTFunctionCall::ASTFunctionCall(const std::string &name)
+		: m_Name(name)
+    {
+    }
 
-	CodegenResult ASTExpression::Codegen()
+	CodegenResult ASTFunctionCall::Codegen()
+	{
+		auto& builder  = *LLVM::Backend::GetBuilder();
+		auto& module   = *LLVM::Backend::GetModule();
+		auto& context  = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
+		FunctionData& data = symbolTable->GetFunction(m_Name);
+
+		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
+
+		uint32_t k = 0;
+
+		std::vector<llvm::Value*> args;
+
+		for (auto& child : children)
+		{
+			CodegenResult gen = child->Codegen();
+
+			if(data.Parameters[k].IsVariadic)
+			{
+				args.push_back(gen.CodegenValue);
+				continue;
+			}
+
+			if (gen.CodegenType->Get() != data.Parameters[k].Type->Get())
+			{
+				gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
+												     gen.CodegenType, 
+													 data.Parameters[k].Type);
+			}
+
+			args.push_back(gen.CodegenValue);
+
+			k++;
+		}
+
+		return { builder.CreateCall(data.Function, args), data.ReturnType };
+	}
+
+    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types)
+		: m_Name(name), m_Parameters(types), m_ReturnType(expectedReturnType)
+    {
+    }
+
+	CodegenResult ASTFunctionDecleration::Codegen()
+	{
+		auto& module = *LLVM::Backend::GetModule();
+
+		std::vector<llvm::Type*> types;
+
+		bool isVariadic = false;
+
+		for (auto& param : m_Parameters)
+		{
+			if (param.IsVariadic)
+			{
+				isVariadic = true;
+				break;
+			}
+
+			types.push_back(param.Type->Get());
+		}
+
+		if (!m_ReturnType)
+			m_ReturnType = std::make_shared<Type>(TypeID::None);
+
+		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
+		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
+
+		FunctionData data;
+		data.FunctionType = functionType;
+		data.Function = llvm::cast<llvm::Function>(callee.getCallee());
+		data.Parameters = m_Parameters;
+		data.ReturnType = m_ReturnType;
+
+		GetSymbolTable()->RegisterFunction(m_Name, data);
+			
+		return { data.Function, m_ReturnType };	
+	}
+
+    CodegenResult ASTExpression::Codegen()
 	{
 		auto& builder  = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();

@@ -161,11 +161,14 @@ namespace clear
 			return m_ProgramInfo;
 		}
 
-		std::stringstream stream;
-		stream << m_File.rdbuf();
+		std::string line;
+		while(std::getline(m_File, line))
+		{
+			if(IsOnlyWhitespace(line)) continue;
 
-		m_Buffer = stream.str();
-		m_Buffer+='\n';
+			m_Buffer += line + '\n';
+		}
+		
 		return ParseProgram();
 
 	}

@@ -31,11 +31,14 @@ namespace clear
         void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
+        void ParseGeneric();
         std::shared_ptr<ASTNodeBase> ParseExpression();
 
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();
-        void ParseFunctionCall();
+
+        std::shared_ptr<ASTNodeBase> ParseFunctionCall();
+        std::shared_ptr<ASTNodeBase> ParseVariableReference();
 
         void ParseVariableDecleration();
         std::shared_ptr<Type> ParseVariableType();
@@ -53,5 +56,6 @@ namespace clear
         TokenSet m_Terminators;
         TokenSet m_UnaryExpression;
         TokenSet m_Literals;
+        TokenSet m_IgnoredTokens;
     };
 }

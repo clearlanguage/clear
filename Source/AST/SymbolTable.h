@@ -57,6 +57,7 @@ namespace clear
 
 
         void RegisterAllocation(const std::string& name, Allocation allocation);
+        void RegisterFunction(const std::string& name, const FunctionData& data);
 
         //void CreateType(...)
 

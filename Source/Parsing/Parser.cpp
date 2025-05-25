@@ -96,6 +96,11 @@ namespace clear
 		    TokenType::Null
         });
 
+        m_IgnoredTokens = CreateTokenSet({
+            TokenType::StartIndentation,
+            TokenType::EndLine
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
@@ -150,6 +155,12 @@ namespace clear
 
     void Parser::ParseStatement()
     {
+        if(MatchAny(m_IgnoredTokens))
+        {
+            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
+            return;
+        }
+
         if(MatchAny(m_VariableType))
         {
             ParseVariableDecleration();
@@ -162,18 +173,34 @@ namespace clear
         {
             ParseFunctionDefinition();
         }
-        else if (Match(TokenType::FunctionCall))
-        {
-            ParseFunctionCall();
-        }
         else if (Match(TokenType::EndIndentation))
         {
             ParseIndentation();
         }
         else 
         {
-            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
+            ParseGeneric();
         }
+    }
+
+    void Parser::ParseGeneric()
+    {
+        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
+
+        if(MatchAny(m_AssignmentOperators))
+        {
+            Consume();
+
+            std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+            assign->Push(expression);
+            assign->Push(ParseExpression()); 
+
+            Root()->Push(assign);
+
+            return;
+        }
+
+        Root()->Push(expression);
     }
 
     void Parser::ParseVariableDecleration()
@@ -285,12 +312,118 @@ namespace clear
 
     void Parser::ParseFunctionDecleration()
     {
+        Expect(TokenType::Declaration);
+
+        Consume();
+
+        Expect(TokenType::VariableReference);
+
+        Consume();
+
+        Expect(TokenType::FunctionCall);
+
+        std::string functionName = Consume().Data;
+
+        Expect(TokenType::OpenBracket);
+
+        Consume();
+
+        std::vector<Parameter> params;
+
+        while(!MatchAny(m_Terminators))
+        {
+            Parameter param;
+            
+            if(Match(TokenType::Ellipsis))
+            {
+                param.IsVariadic = true;
+                Consume();
+                Expect(TokenType::EndFunctionArguments);
+                params.push_back(param);
+
+                break;
+            }
+            
+            param.Type = ParseVariableType();
+
+            if(Match(TokenType::VariableReference)) 
+                Consume();
+            
+            if(!Match(TokenType::EndFunctionArguments))
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Expect(TokenType::EndFunctionArguments);
+
+        Consume();
+
+        std::shared_ptr<Type> returnType;
+
+        if(Match(TokenType::RightArrow))
+        {
+            Consume();
+
+            Expect(TokenType::FunctionType);
+
+            Consume();
+
+            returnType = ParseVariableType();
+        }
+
+        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
     }
 
-    void Parser::ParseFunctionCall()
+    std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
+        Expect(TokenType::FunctionCall);
+
+        std::string functionName = Consume().Data;
+
+        Expect(TokenType::OpenBracket);
+
+        Consume();
+
+        std::shared_ptr<ASTFunctionCall> call = std::make_shared<ASTFunctionCall>(functionName);
+
+        while(!MatchAny(m_Terminators))
+        {
+            call->Push(ParseExpression());
+
+            if(!Match(TokenType::EndFunctionArguments)) 
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Expect(TokenType::EndFunctionArguments);
+        Consume();
+
+        return call;
     }
-    
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
+    {
+        if(Match(TokenType::AddressOp))
+        {
+            Consume();
+            Expect(TokenType::VariableReference);
+            return std::make_shared<ASTVariableReference>(Consume().Data);
+        }
+
+        Expect(TokenType::VariableReference);
+        
+        std::string name = Consume().Data;
+
+        if(Match(TokenType::FunctionCall)) 
+            return ParseFunctionCall();
+
+        return std::make_shared<ASTVariableExpression>(name);
+    }
+
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
     {
         struct Operator
@@ -328,15 +461,9 @@ namespace clear
 
         auto HandleOperand = [&]() 
         {
-            if (Match(TokenType::VariableReference)) 
+            if (Match(TokenType::VariableReference) || Match(TokenType::AddressOp)) 
             {
-                expression->Push(std::make_shared<ASTVariableExpression>(Consume().Data));
-            }
-            else if (Match(TokenType::AddressOp))
-            {
-                Consume();
-                Expect(TokenType::VariableReference);
-                expression->Push(std::make_shared<ASTVariableReference>(Consume().Data));
+                expression->Push(ParseVariableReference());
             }
             else if (MatchAny(m_Literals)) 
             {

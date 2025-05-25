@@ -57,6 +57,11 @@ namespace clear
         m_Variables[name] = allocation;
     }
 
+    void SymbolTable::RegisterFunction(const std::string& name, const FunctionData& data)
+    {
+        m_Functions[name] = data;
+    }
+
     Allocation SymbolTable::GetAlloca(const std::string& name)
     {
         if(m_Variables.contains(name)) return m_Variables.at(name);
@@ -65,7 +70,9 @@ namespace clear
 
         while(ptr)
         {
-            if(ptr->m_Variables.contains(name)) return ptr->m_Variables.at(name);
+            if(ptr->m_Variables.contains(name)) 
+                return ptr->m_Variables.at(name);
+                
             ptr = ptr->m_Previous;
         }
 
