@@ -31,7 +31,6 @@ namespace clear
                 castedValue = builder.CreateFPToSI(value, dstType, "cast");
             else
                 castedValue = builder.CreateFPToUI(value, dstType, "cast");
-
         } 
         // float -> double
         else if (srcType->isFloatTy() && dstType->isDoubleTy()) 
