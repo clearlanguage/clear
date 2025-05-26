@@ -1,6 +1,8 @@
 #include "Parser.h"
 #include "AST/ASTNodeN.h"
 #include "Core/Log.h"
+#include "Core/TypeRegistry.h"
+
 
 #include <stack>
 
@@ -101,6 +103,11 @@ namespace clear
             TokenType::EndLine
         });
 
+        m_TypeIndirection = CreateTokenSet({
+            TokenType::PointerDef,
+            TokenType::StaticArrayDef
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
@@ -141,7 +148,7 @@ namespace clear
     {
         if(Match(tokenType)) return;
         
-        CLEAR_LOG_ERROR("missing expected token");
+        CLEAR_LOG_ERROR("missing expected token ", TokenToString(tokenType));
         CLEAR_UNREACHABLE("TODO");
     }
 
@@ -149,7 +156,7 @@ namespace clear
     {
         if(MatchAny(tokenSet)) return;
         
-        CLEAR_LOG_ERROR("missing expected token");    
+        CLEAR_LOG_ERROR("missing expected token from token set");    
         CLEAR_UNREACHABLE("TODO");
     }
 
@@ -500,7 +507,7 @@ namespace clear
             });
 
             operators.push({
-                Type::GetBinaryExpressionTypeFromToken(tokenType),
+                GetBinaryExpressionFromTokenType(tokenType),
                 UnaryExpressionType::None,
                 false,
                 precedence
@@ -541,12 +548,22 @@ namespace clear
 
     std::shared_ptr<Type> Parser::ParseVariableType()
     {
-        std::shared_ptr<Type> type = std::make_shared<Type>(Consume());
+        auto globalReg = TypeRegistry::GetGlobal();
 
-        while(Match(TokenType::PointerDef))
+        std::shared_ptr<Type> type = globalReg->GetTypeFromToken(Consume());
+
+        while(MatchAny(m_TypeIndirection))
         {
-            type = std::make_shared<Type>(type); 
-            Consume();
+            if(Match(TokenType::PointerDef))
+            {
+                type = globalReg->GetPointerTo(type); 
+                Consume();
+            }
+            else 
+            {
+                //TODO: type = std::make_shared<Type>(type, std::stoull(Consume().Data));
+                CLEAR_UNREACHABLE("unimplemented");
+            }
         }
 
         return type;
@@ -559,5 +576,41 @@ namespace clear
             m_RootStack.pop_back();
             Consume();
         }
+    }
+
+    BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
+    {
+        switch (type)
+	    {
+			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
+			case TokenType::MultiplyAssign:
+			case TokenType::MulOp:				return BinaryExpressionType::Mul;
+			case TokenType::PlusAssign:
+			case TokenType::AddOp:				return BinaryExpressionType::Add;
+			case TokenType::DivideAssign:
+			case TokenType::DivOp:				return BinaryExpressionType::Div;
+			case TokenType::MinusAssign:
+			case TokenType::SubOp:				return BinaryExpressionType::Sub;
+			case TokenType::ModuloAssign:
+			case TokenType::ModOp:				return BinaryExpressionType::Mod;
+			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
+			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
+			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
+			case TokenType::LessThan:			return BinaryExpressionType::Less;
+			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
+			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
+			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
+			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
+			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
+			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
+			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
+			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
+			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
+			case TokenType::DotOp:				return BinaryExpressionType::AccessOp;
+			default:
+				break;
+		}
+
+		return BinaryExpressionType::None;
     }
 }

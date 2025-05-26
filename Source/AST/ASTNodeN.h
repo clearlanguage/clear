@@ -53,7 +53,6 @@ namespace clear
 	private:
 		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
 		std::shared_ptr<SymbolTable> m_SymbolTable;
- 
 	};
 
 	class ASTNodeLiteral : public ASTNodeBase

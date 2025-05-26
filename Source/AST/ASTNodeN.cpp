@@ -4,6 +4,8 @@
 #include "Core/Log.h"
 #include "TypeCasting.h"
 
+#include "Core/TypeRegistry.h"
+
 #include <stack>
 
 namespace clear 
@@ -282,7 +284,8 @@ namespace clear
 			case BinaryExpressionType::Pow:
 			{
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), std::make_shared<Type>(TypeID::Float64) };
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+					     TypeRegistry::GetGlobal()->GetType("float64")  };
 			}
 			default:
 				break;
@@ -324,7 +327,8 @@ namespace clear
 			case BinaryExpressionType::Pow:
 			{
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), std::make_shared<Type>(TypeID::Float64) };
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+					     TypeRegistry::GetGlobal()->GetType("float64") };
 			}
 			default:
 				break;
@@ -364,7 +368,8 @@ namespace clear
 			case BinaryExpressionType::Pow:
 			{
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), std::make_shared<Type>(TypeID::Float64) };
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+						 TypeRegistry::GetGlobal()->GetType("float64") };
 			}
 			default:
 				break;
@@ -392,28 +397,28 @@ namespace clear
 		{
 			case BinaryExpressionType::Less:
             {
-                return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::LessEq:
             {
-                return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::Greater:
             {
-                return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::GreaterEq:
 			{
-                return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 
 			}
 			case BinaryExpressionType::Eq:
 			{
-                return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			case BinaryExpressionType::NotEq:
 			{
-                return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			default:
 				break;
@@ -430,28 +435,28 @@ namespace clear
 		{
 			case BinaryExpressionType::Less:
             {
-                return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::LessEq:
             {
-                return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::Greater:
             {
-                return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::GreaterEq:
 			{
-                return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 
 			}
 			case BinaryExpressionType::Eq:
 			{
-                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			case BinaryExpressionType::NotEq:
 			{
-                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			default:
 				break;
@@ -468,28 +473,28 @@ namespace clear
 		{
 			case BinaryExpressionType::Less:
             {
-                return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::LessEq:
             {
-                return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::Greater:
             {
-                return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
             }
 			case BinaryExpressionType::GreaterEq:
 			{
-                return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 
 			}
 			case BinaryExpressionType::Eq:
 			{
-                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			case BinaryExpressionType::NotEq:
 			{
-                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), std::make_shared<Type>(TypeID::Bool) };
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			default:
 				break;
@@ -523,7 +528,7 @@ namespace clear
 		
 		Allocation alloca = registry->CreateAlloca(m_Name, m_Type);
 		codegenResult.CodegenValue = alloca.Alloca;
-		codegenResult.CodegenType  = std::make_shared<Type>(alloca.Type);
+		codegenResult.CodegenType  = TypeRegistry::GetGlobal()->GetPointerTo(alloca.Type);
 
 		return codegenResult;
     }
@@ -541,7 +546,7 @@ namespace clear
 
 		Allocation alloca = registry->GetAlloca(m_Name);
 		result.CodegenValue = alloca.Alloca;
-		result.CodegenType  = std::make_shared<Type>(alloca.Type);
+		result.CodegenType  = TypeRegistry::GetGlobal()->GetPointerTo(alloca.Type);
 
 		return result;
     }
@@ -634,7 +639,10 @@ namespace clear
     {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		
-		std::shared_ptr<Type> underlyingStorageType = storage.CodegenType->GetUnderlying();
+		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		CLEAR_VERIFY(ptrType, "storage must have pointer type");
+
+		std::shared_ptr<Type> underlyingStorageType = ptrType->GetBaseType();
 		CLEAR_VERIFY(underlyingStorageType, "not valid storage");
 
         llvm::Type* storageType = underlyingStorageType->Get();
@@ -802,7 +810,7 @@ namespace clear
 		}
 
 		if (!m_ReturnType)
-			m_ReturnType = std::make_shared<Type>(TypeID::None);
+			m_ReturnType = TypeRegistry::GetGlobal()->GetType("null_type");
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
 		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);

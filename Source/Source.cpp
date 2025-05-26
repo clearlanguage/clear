@@ -3,6 +3,8 @@
 
 #include "Parsing/Parser.h"
 #include "API/LLVM/LLVMBackend.h"
+#include "Core/TypeRegistry.h"
+
 
 #include <iostream>
 #include <filesystem>
@@ -15,6 +17,7 @@ int main()
     std::filesystem::current_path(current.parent_path());
 
     LLVM::Backend::Init();
+    TypeRegistry::InitGlobal();
 
     std::cout << "------PARSER TESTS--------" << std::endl;
     Lexer parser;

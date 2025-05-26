@@ -45,6 +45,8 @@ namespace clear
 
         void ParseIndentation();
 
+        BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
+
     private:    
         std::vector<Token> m_Tokens;
         size_t m_Position = 0;
@@ -57,5 +59,6 @@ namespace clear
         TokenSet m_UnaryExpression;
         TokenSet m_Literals;
         TokenSet m_IgnoredTokens;
+        TokenSet m_TypeIndirection;
     };
 }
