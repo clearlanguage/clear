@@ -81,6 +81,8 @@ namespace clear
           m_Count(count)
     {
         m_Flags.set((size_t)TypeFlags::Array);
+
+        struct test {float va;};
     }
 
     std::string ArrayType::GetHash() const
