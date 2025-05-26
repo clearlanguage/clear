@@ -831,7 +831,7 @@ namespace clear
 		}
 		m_CurrentString.clear();
 		char current = _GetNextChar();
-		_VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
+		// _VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
 		while (IsSpace(current)) {
 			current = _GetNextChar();
 		}
