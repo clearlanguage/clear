@@ -35,12 +35,13 @@ namespace clear
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();        
         void ParseVariableDecleration();
-        void ParseValueReference();
 
-        std::shared_ptr<ASTNodeBase> ParseExpression();
+        std::shared_ptr<ASTNodeBase> ParseExpression(bool isValueReference = false);
+        std::shared_ptr<ASTNodeBase> ParseVariableReference(bool isValueReference = false);
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
-        std::shared_ptr<ASTNodeBase> ParseVariableReference();
         std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage);
+        std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName);
+        std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<Type> ParseVariableType();
 
         void ParseIndentation();

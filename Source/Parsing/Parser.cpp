@@ -177,10 +177,6 @@ namespace clear
         {
             ParseVariableDecleration();
         }
-        else if (MatchAny(m_ValueReferences))
-        {
-            ParseValueReference();
-        }
         else if (Match(TokenType::Declaration))
         {
             ParseFunctionDecleration();
@@ -201,18 +197,11 @@ namespace clear
 
     void Parser::ParseGeneric()
     {
-        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
+        std::shared_ptr<ASTNodeBase> expression = ParseExpression(true);
 
         if(MatchAny(m_AssignmentOperators))
         {
-            Consume();
-
-            std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
-            assign->Push(expression);
-            assign->Push(ParseExpression()); 
-
-            Root()->Push(assign);
-
+            Root()->Push(ParseAssignment(expression));
             return;
         }
 
@@ -237,28 +226,7 @@ namespace clear
 
         ExpectAny(m_AssignmentOperators);
 
-        Token assignmentToken = Consume();
-
-        if(Match(TokenType::StartArray))
-        {
-            CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
-
-            auto initializer = ParseArrayInitializer(std::make_shared<ASTVariableReference>(variableName));
-            Root()->Push(initializer);
-
-            return;
-        }
-
-        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
-        assign->Push(std::make_shared<ASTVariableReference>(variableName));            
-        assign->Push(ParseExpression()); 
-
-        Root()->Push(assign);
-    }
-
-    void Parser::ParseValueReference()
-    {
-
+        Root()->Push(ParseAssignment(variableName));
     }
 
     void Parser::ParseFunctionDefinition()
@@ -437,7 +405,7 @@ namespace clear
         return call;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference(bool isValueReference)
     {
         if(Match(TokenType::AddressOp))
         {
@@ -447,11 +415,17 @@ namespace clear
         }
 
         Expect(TokenType::VariableReference);
-        
+
+    
         std::string name = Consume().Data;
 
         if(Match(TokenType::FunctionCall)) 
             return ParseFunctionCall();
+
+        if(isValueReference)
+        {
+            return std::make_shared<ASTVariableReference>(name);
+        }
 
         return std::make_shared<ASTVariableExpression>(name);
     }
@@ -499,7 +473,33 @@ namespace clear
         return initializer;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
+    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName)
+    {
+        return ParseAssignment(std::make_shared<ASTVariableReference>(variableName));
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage)
+    {
+        ExpectAny(m_AssignmentOperators);
+
+        Token assignmentToken = Consume();
+
+        if(Match(TokenType::StartArray))
+        {
+            CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
+
+            auto initializer = ParseArrayInitializer(storage);
+            return initializer;
+        }
+
+        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+        assign->Push(storage);            
+        assign->Push(ParseExpression()); 
+
+        return assign;
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(bool isValueReference)
     {
         struct Operator
         {
@@ -536,9 +536,11 @@ namespace clear
 
         auto HandleOperand = [&]() 
         {
-            if (Match(TokenType::VariableReference) || Match(TokenType::AddressOp)) 
+            if (Match(TokenType::VariableReference) || 
+                Match(TokenType::AddressOp) || 
+                isValueReference) 
             {
-                expression->Push(ParseVariableReference());
+                expression->Push(ParseVariableReference(isValueReference));
             }
             else if (MatchAny(m_Literals)) 
             {
