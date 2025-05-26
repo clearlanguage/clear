@@ -561,8 +561,7 @@ namespace clear
             }
             else 
             {
-                //TODO: type = std::make_shared<Type>(type, std::stoull(Consume().Data));
-                CLEAR_UNREACHABLE("unimplemented");
+                type = globalReg->GetArrayFrom(type, std::stoull(Consume().Data));            
             }
         }
 

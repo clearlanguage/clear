@@ -75,4 +75,16 @@ namespace clear
 
         return (size_t)layout.getPointerSizeInBits(m_LLVMType->getPointerAddressSpace());
     }
+
+    ArrayType::ArrayType(std::shared_ptr<Type> baseType, size_t count)
+        : m_LLVMType(llvm::ArrayType::get(baseType->Get(), count)), m_BaseType(baseType), 
+          m_Count(count)
+    {
+        m_Flags.set((size_t)TypeFlags::Array);
+    }
+
+    std::string ArrayType::GetHash() const
+    {
+        return m_BaseType->GetHash() + "[" + std::to_string(m_Count) + "]";
+    }
 }

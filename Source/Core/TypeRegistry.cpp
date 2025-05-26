@@ -76,6 +76,22 @@ namespace clear
         return ptr;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetArrayFrom(std::shared_ptr<Type> base, size_t count)
+    {
+        CLEAR_VERIFY(base, "invalid base");
+
+        std::string hash = base->GetHash();
+        hash += "[" + std::to_string(count) + "]";
+
+        if(m_Types.contains(hash)) 
+            return m_Types.at(hash);
+
+        std::shared_ptr<ArrayType> ptr = std::make_shared<ArrayType>(base, count);
+        m_Types[hash] = ptr;
+
+        return ptr;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
         if(token.TokenType == TokenType::RValueString || token.TokenType == TokenType::StringType)

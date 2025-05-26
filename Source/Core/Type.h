@@ -46,7 +46,7 @@ namespace clear
 
         virtual llvm::Type* Get()      const = 0;
         virtual TypeFlagSet GetFlags() const = 0;
-        virtual size_t      GetSize()  const = 0;
+        virtual size_t      GetSize()  const { return 0; };
         virtual std::string GetHash()  const = 0;
             
         bool IsSigned();
@@ -74,7 +74,7 @@ namespace clear
         virtual llvm::Type* Get() const override { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual size_t GetSize() const override { return m_Size; }
-        virtual std::string GetHash() const override {return m_Name;}
+        virtual std::string GetHash() const override { return m_Name; }
 
     private:
         llvm::Type* m_LLVMType;
@@ -101,6 +101,25 @@ namespace clear
         std::shared_ptr<Type> m_BaseType;
         llvm::PointerType* m_LLVMType;
         TypeFlagSet m_Flags;
+    };
+
+    class ArrayType : public Type 
+    {
+    public:
+        ArrayType(std::shared_ptr<Type> baseType, size_t count);
+        
+        virtual ~ArrayType() = default;
+
+        virtual llvm::Type* Get() const override  { return m_LLVMType; }
+        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
+        virtual std::string GetHash() const override;
+
+
+    private:
+        std::shared_ptr<Type> m_BaseType;
+        llvm::ArrayType* m_LLVMType;
+        TypeFlagSet m_Flags;
+        size_t m_Count;
     };
 
     //class StructType : public Type 
