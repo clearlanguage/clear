@@ -19,8 +19,8 @@ namespace clear {
 
 		~Value() = default;
 
-		static ConstantPair		 GetConstantString(const std::string& data);
-		static ConstantPair		 GetConstant(const std::shared_ptr<Type>& type, const std::string& data);
+		static ConstantPair GetConstantString(const std::string& data);
+		static ConstantPair GetConstant(const std::shared_ptr<Type>& type, const std::string& data);
 
 		llvm::Value* Get() { return m_Value; }
 		std::shared_ptr<Type>& GetType() { return m_Type; }

@@ -1,88 +1,88 @@
-/* #include "ASTNode.h"
+#include "ASTNode.h"
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
-#include "Core/Type.h"
+#include "TypeCasting.h"
 
-#include <iostream>
-#include <map>
+#include "Core/TypeRegistry.h"
+
 #include <stack>
-#include "ASTNodeN.h"
 
-namespace clear {
-
-	struct ReturnValue
-	{
-		llvm::AllocaInst* Alloca;
-		llvm::BasicBlock* Return;
-	};
-
+namespace clear 
+{
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
-	static std::stack<ReturnValue> s_ReturnValues;
 
-	struct ForWhileBlock
-	{
-		llvm::BasicBlock* End;
-		llvm::BasicBlock* Condition;
-	};
+    ASTNodeBase::ASTNodeBase()
+    {
+    }
 
-	static std::stack<ForWhileBlock> s_ForWhileBlocks;
+    CodegenResult ASTNodeBase::Codegen()
+    {
 
-	llvm::Value* ASTNodeBase::Codegen()
-	{
-		llvm::Value* value = nullptr;
+        CodegenResult value;
 
 		for (auto& child : GetChildren())
 			value = child->Codegen();
 
 		return value;
-	}
+    }
 
-    void ASTNodeBase::SetName(const std::string &name)
+    void ASTNodeBase::Push(const std::shared_ptr<ASTNodeBase>& child)
     {
-		p_MetaData.Name = name;
-	}
+        m_Children.push_back(child);
+    }
 
-	void ASTNodeBase::SetType(const Ref<Type>& type)
-	{
-		p_MetaData.Type = type;
-	}
 
-	void ASTNodeBase::PushChild(const Ref<ASTNodeBase>& child)
-	{
-		m_Children.push_back(child);
-	}
-	void ASTNodeBase::RemoveChild(const Ref<ASTNodeBase>& child)
-	{
-		auto it = std::find(m_Children.begin(), m_Children.end(), child);
-		if (it != m_Children.end())
-			m_Children.erase(it);
-	}
-	void ASTNodeBase::SetParent(const Ref<ASTNodeBase>& parent)
-	{
-		m_Parent = parent;
-	}
-	void ASTNodeBase::RemoveParent()
-	{
-		m_Parent.Reset();
-	}
-	ASTNodeLiteral::ASTNodeLiteral(const Token& data)
+    void ASTNodeBase::Remove(const std::shared_ptr<ASTNodeBase>& child)
+    {
+        if(auto pos = std::find(m_Children.begin(), m_Children.end(), child) != m_Children.end())
+            m_Children.erase(m_Children.begin() + pos);
+    }
+
+    void ASTNodeBase::PropagateSymbolTableToChildren()
+    {
+		for(auto& child : m_Children) 
+			child->PropagateSymbolTable(m_SymbolTable);
+    }
+
+    void ASTNodeBase::CreateSymbolTable()
+    {
+		m_SymbolTable = std::make_shared<SymbolTable>();
+    }
+
+    void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
+    {
+		if(m_SymbolTable) 
+		{
+			m_SymbolTable->SetPrevious(registry);
+		}
+		else 
+		{
+			m_SymbolTable = registry;
+		}
+
+		for(auto& child : m_Children)
+		{
+			child->PropagateSymbolTable(registry);
+		}
+    }
+
+    ASTNodeLiteral::ASTNodeLiteral(const Token& data)
 		: m_Constant(data)
 	{
 	}
 
-	llvm::Value* ASTNodeLiteral::Codegen()
+	CodegenResult ASTNodeLiteral::Codegen()
 	{
-		p_MetaData.Type = m_Constant.GetType();
-		return m_Constant.Get();
+		return {m_Constant.Get(), m_Constant.GetType()};
 	}
 
-	ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
+    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
 		: m_Expression(type)
 	{
 	}
 	
-	llvm::Value* ASTBinaryExpression::Codegen() 
+	CodegenResult ASTBinaryExpression::Codegen() 
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
@@ -93,92 +93,104 @@ namespace clear {
 		auto& leftChild  = children[1];
 		auto& rightChild = children[0];
 
-		llvm::Value* LHS = leftChild->Codegen();
-		llvm::Value* RHS = rightChild->Codegen();
+		CodegenResult lhs = leftChild->Codegen();
+		CodegenResult rhs = rightChild->Codegen();
 
-		auto& leftChildType = leftChild->GetMetaData().Type;
-		auto& rightChildType = rightChild->GetMetaData().Type;
+        if(!lhs.CodegenValue->getType()->isPointerTy()) 
+			HandleTypePromotion(lhs, rhs);
 
-		llvm::Value* LHSRawValue = LHS;
-		llvm::Value* RHSRawValue = RHS;
+		if(IsMathExpression()) 
+			return HandleMathExpression(lhs, rhs, m_Expression);
 
-		CLEAR_VERIFY(LHS, "lhs failed to generate");
+		if(IsCmpExpression()) 
+			return HandleCmpExpression(lhs, rhs);
 
-		if(m_Expression == BinaryExpressionType::AccessOp)
-		{
-			std::string& memberName = rightChild->GetMetaData().Name;
+		return {}; //TODO
+    }
 
-			auto& typeIdentifer = leftChild->GetMetaData().Type->GetUserDefinedTypeIdentifer();
-			CLEAR_VERIFY(!typeIdentifer.empty(), "invalid type");
-			
-			auto& structMetaData = Type::GetStructMetaData(typeIdentifer);
-			auto& index = structMetaData.Indices.at(memberName);
-			
-			p_MetaData.Type = structMetaData.Types[index];
-			p_MetaData.NeedLoading = true;
+    void ASTBinaryExpression::HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
 
-			return builder.CreateStructGEP(leftChildType->Get(), LHSRawValue, index, "struct_get_element_ptr");
-		}
+        llvm::Type* lhsType = lhs.CodegenType->Get();
+        llvm::Type* rhsType = rhs.CodegenType->Get();
 
-		CLEAR_VERIFY(RHS, "rhs failed to generate");
+        //same type ignore rest
+        if (lhsType == rhsType)
+            return;
 
-		if (m_Expression == BinaryExpressionType::Assignment)
-		{
-			if (rightChild->GetMetaData().NeedLoading)
-			{
-				CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "not a valid load type");
-				RHSRawValue = builder.CreateLoad(rightChildType->Get(), RHSRawValue, "loaded_value");
-			}
+        // int -> float
+        if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy()) 
+        {
+			if(lhs.CodegenType->IsSigned())
+            	lhs.CodegenValue = builder.CreateSIToFP(lhs.CodegenValue, rhsType, "cast");
+			else 
+            	lhs.CodegenValue = builder.CreateUIToFP(lhs.CodegenValue, rhsType, "cast");
 
-			if (RHSRawValue->getType() != LHSRawValue->getType())
-				RHSRawValue = Value::CastValue(RHSRawValue, leftChildType, rightChildType);
+            lhs.CodegenType = rhs.CodegenType;
+        } 
+        else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy()) 
+        {
+			if(rhs.CodegenType->IsSigned())
+            	rhs.CodegenValue = builder.CreateSIToFP(rhs.CodegenValue, lhsType, "cast");
+			else 
+            	rhs.CodegenValue = builder.CreateUIToFP(rhs.CodegenValue, lhsType, "cast");
 
-			return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, leftChildType->IsSigned());
-		}
+            rhs.CodegenType = lhs.CodegenType;
+        }
+        // float -> double
+        else if (lhsType->isFloatTy() && rhsType->isDoubleTy()) 
+        {
+            lhs.CodegenValue = builder.CreateFPExt(lhs.CodegenValue, rhsType, "cast");
+            lhs.CodegenType = rhs.CodegenType;
+        } 
+        else if (lhsType->isDoubleTy() && rhsType->isFloatTy()) 
+        {
+            rhs.CodegenValue = builder.CreateFPExt(rhs.CodegenValue, lhsType, "cast");
+            rhs.CodegenType = lhs.CodegenType;
+        }
+        // small int -> big int 
+        else if (lhsType->isIntegerTy() && rhsType->isIntegerTy())
+        {
+            uint32_t lhsBits = lhsType->getIntegerBitWidth();
+            uint32_t rhsBits = rhsType->getIntegerBitWidth();
 
-		if (leftChild->GetMetaData().Type && leftChild->GetMetaData().Type->GetID() == TypeID::Array)
-		{
-			LHSRawValue = builder.CreateInBoundsGEP(leftChildType->Get(), LHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
-			leftChildType = Ref<Type>::Create(leftChildType->GetUnderlying());
-		}
-		else if (leftChild->GetMetaData().Type && leftChild->GetMetaData().NeedLoading)
-		{
-			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
-			LHSRawValue = builder.CreateLoad(leftChildType->Get(), LHSRawValue, "loaded_value");
-		}
+            if (lhsBits < rhsBits) 
+            {
+                if(lhs.CodegenType->IsSigned())
+                {
+                    lhs.CodegenValue = builder.CreateSExt(lhs.CodegenValue, rhsType, "cast");
+                }
+                else 
+                {
+                    lhs.CodegenValue =  builder.CreateZExt(lhs.CodegenValue, rhsType, "cast");
+                }
 
-		if (rightChild->GetMetaData().Type && rightChild->GetMetaData().Type->GetID() == TypeID::Array)
-		{
-			RHSRawValue = builder.CreateInBoundsGEP(rightChildType->Get(), RHSRawValue, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
-			rightChildType = Ref<Type>::Create(rightChildType->GetUnderlying());
-		}
-		else if (rightChild->GetMetaData().Type && rightChild->GetMetaData().NeedLoading)
-		{
-			CLEAR_VERIFY(RHSRawValue->getType()->isPointerTy(), "");
-			RHSRawValue = builder.CreateLoad(rightChildType->Get(), RHSRawValue, "loaded_value");
-		}
+                lhs.CodegenType = rhs.CodegenType;
+            } 
+            else 
+            {
+                if(rhs.CodegenType->IsSigned())
+                {
+                    rhs.CodegenValue = builder.CreateSExt(rhs.CodegenValue, lhsType, "cast");
+                }
+                else 
+                {
+                    rhs.CodegenValue =  builder.CreateZExt(rhs.CodegenValue, lhsType, "cast");
+                }
 
-		if(m_Expression == BinaryExpressionType::Index)
-		{
-			CLEAR_VERIFY(RHSRawValue->getType()->isIntegerTy(), "");
-			CLEAR_VERIFY(LHSRawValue->getType()->isPointerTy(), "");
+                rhs.CodegenType = lhs.CodegenType;
+            }
+        }
+        else 
+        {
+            CLEAR_UNREACHABLE("unsupported type promotion");
+        }
+    }
 
-			p_MetaData.Type = leftChildType->GetUnderlying();
-			p_MetaData.NeedLoading = true;
-			return builder.CreateInBoundsGEP(leftChildType->GetUnderlying()->Get(), LHSRawValue, RHSRawValue, "array_index");
-		}
-
-		if (RHSRawValue->getType() != LHSRawValue->getType())
-			RHSRawValue = Value::CastValue(RHSRawValue, leftChildType, rightChildType);
-
-		p_MetaData.Type = leftChildType;
-
-		return _CreateExpression(LHS, RHS, LHSRawValue, RHSRawValue, leftChildType->IsSigned());
-	}
-
-	bool ASTBinaryExpression::_IsMathExpression() const
-	{
-		switch (m_Expression)
+    bool ASTBinaryExpression::IsMathExpression() const
+    {
+        switch (m_Expression)
 		{
 			case BinaryExpressionType::Add:
             case BinaryExpressionType::Sub:
@@ -192,11 +204,11 @@ namespace clear {
 		}
 
 		return false;
-	}
+    }
 
-	bool ASTBinaryExpression::_IsCmpExpression() const
-	{
-		switch (m_Expression)
+    bool ASTBinaryExpression::IsCmpExpression() const
+    {
+        switch (m_Expression)
 		{
 			case BinaryExpressionType::Less:
 			case BinaryExpressionType::LessEq:
@@ -210,11 +222,11 @@ namespace clear {
 		}
 
 		return false;
-	}
+    }
 
-	bool ASTBinaryExpression::_IsBitwiseExpression() const
-	{
-		switch (m_Expression)
+    bool ASTBinaryExpression::IsBitwiseExpression() const
+    {
+        switch (m_Expression)
 		{
 			case BinaryExpressionType::BitwiseLeftShift:
 			case BinaryExpressionType::BitwiseRightShift:
@@ -228,268 +240,473 @@ namespace clear {
 		}
 
 		return false;
-	}
+    }
 
-	llvm::Value* ASTBinaryExpression::_CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger)
-	{
-		if (_IsMathExpression())
-			return _CreateMathExpression(LHSRawValue, RHSRawValue);
-		
-		if (_IsCmpExpression())
-			return _CreateCmpExpression(LHSRawValue, RHSRawValue);
-		
-		if (_IsBitwiseExpression())
-			return _CreateBitwiseExpression(LHSRawValue, RHSRawValue, signedInteger);
+    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type)
+    {
+        if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
+			return HandleMathExpressionF(lhs, rhs, type);
 
-		return _CreateLoadStoreExpression(LHS, RHSRawValue);
-	}
+		if(lhs.CodegenType->IsSigned() || rhs.CodegenType->IsSigned()) 
+			return HandleMathExpressionSI(lhs, rhs, type);
 
-	llvm::Value* ASTBinaryExpression::_CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS)
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
+		return HandleMathExpressionUI(lhs, rhs, type);
+    }
+
+    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, BinaryExpressionType binExpressionType)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
 		auto& module  = *LLVM::Backend::GetModule();
 
-		const bool isFloat = LHS->getType()->isFloatingPointTy();
-
-		switch (m_Expression)
+		switch (binExpressionType)
 		{
 			case BinaryExpressionType::Add:
 			{
-				return isFloat ? builder.CreateFAdd(LHS, RHS, "faddtmp") : builder.CreateAdd(LHS, RHS, "addtmp");
+                return { builder.CreateFAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), lhs.CodegenType };
 			}
 			case BinaryExpressionType::Sub:
 			{
-				return isFloat ? builder.CreateFSub(LHS, RHS, "fsubtmp") : builder.CreateSub(LHS, RHS, "subtmp");
+                return { builder.CreateFSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), lhs.CodegenType };
 			}
 			case BinaryExpressionType::Mul:
 			{
-				return isFloat ? builder.CreateFMul(LHS, RHS, "fmultmp") : builder.CreateMul(LHS, RHS, "multmp");
+                return { builder.CreateFMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), lhs.CodegenType };
 			}
 			case BinaryExpressionType::Div:
 			{
-				return isFloat ? builder.CreateFDiv(LHS, RHS, "fdivtmp") : builder.CreateSDiv(LHS, RHS, "divtmp");
+                return { builder.CreateFDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), lhs.CodegenType };
 			}
 			case BinaryExpressionType::Mod:
 			{
-				if (!isFloat)
-					return builder.CreateSRem(LHS, RHS, "modtmp");
-				
 				CLEAR_UNREACHABLE("cannot do mod on floating type");
-
 				break;
 			}
 			case BinaryExpressionType::Pow:
 			{
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-				return builder.CreateCall(powFunction, { LHS, RHS });
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+					     TypeRegistry::GetGlobal()->GetType("float64")  };
 			}
 			default:
 				break;
 		}
 
-		return nullptr;
-	}
-	llvm::Value* ASTBinaryExpression::_CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS)
-	{
-		auto& builder = LLVM::Backend::GetBuilder();
-		const bool isFloat = LHS->getType()->isFloatingPointTy();
+		return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType binExpressionType)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
+		auto& module  = *LLVM::Backend::GetModule();
+
+		std::shared_ptr<Type> type = lhs.CodegenType->IsSigned() ? lhs.CodegenType : rhs.CodegenType;
+
+		switch (binExpressionType)
+		{
+			case BinaryExpressionType::Add:
+			{
+                return { builder.CreateAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), type };
+			}
+			case BinaryExpressionType::Sub:
+			{
+                return { builder.CreateSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), type };
+			}
+			case BinaryExpressionType::Mul:
+			{
+                return { builder.CreateMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), type };
+			}
+			case BinaryExpressionType::Div:
+			{
+                return { builder.CreateSDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), type };
+			}
+			case BinaryExpressionType::Mod:
+			{
+                return { builder.CreateSRem(lhs.CodegenValue, rhs.CodegenValue, "modtmp"), type };
+				break;
+			}
+			case BinaryExpressionType::Pow:
+			{
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+					     TypeRegistry::GetGlobal()->GetType("float64") };
+			}
+			default:
+				break;
+		}
+
+		return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
+		auto& module  = *LLVM::Backend::GetModule();
+
+		switch (type)
+		{
+			case BinaryExpressionType::Add:
+			{
+                return { builder.CreateAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), lhs.CodegenType };
+			}
+			case BinaryExpressionType::Sub:
+			{
+                return { builder.CreateSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), lhs.CodegenType };
+			}
+			case BinaryExpressionType::Mul:
+			{
+                return { builder.CreateMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), lhs.CodegenType };
+			}
+			case BinaryExpressionType::Div:
+			{
+                return { builder.CreateUDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), lhs.CodegenType };
+			}
+			case BinaryExpressionType::Mod:
+			{
+                return { builder.CreateURem(lhs.CodegenValue, rhs.CodegenValue, "modtmp"), lhs.CodegenType };				
+				break;
+			}
+			case BinaryExpressionType::Pow:
+			{
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+						 TypeRegistry::GetGlobal()->GetType("float64") };
+			}
+			default:
+				break;
+		}
+
+		return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs)
+    {
+        if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
+			return HandleCmpExpressionF(lhs, rhs);
+
+		if(lhs.CodegenType->IsSigned() || rhs.CodegenType->IsSigned()) 
+			return HandleCmpExpressionSI(lhs, rhs);
+
+		return HandleCmpExpressionUI(lhs, rhs);
+    }
+
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionF(CodegenResult &lhs, CodegenResult &rhs)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
 
 		switch (m_Expression)
 		{
 			case BinaryExpressionType::Less:
-				return isFloat ? builder->CreateFCmpOLT(LHS, RHS)
-							   : builder->CreateICmpSLT(LHS, RHS);
+            {
+                return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
 			case BinaryExpressionType::LessEq:
-				return isFloat ? builder->CreateFCmpOLE(LHS, RHS)
-							   : builder->CreateICmpSLE(LHS, RHS);
+            {
+                return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
 			case BinaryExpressionType::Greater:
-				return isFloat ? builder->CreateFCmpOGT(LHS, RHS)
-							   : builder->CreateICmpSGT(LHS, RHS);
+            {
+                return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
 			case BinaryExpressionType::GreaterEq:
-				return isFloat ? builder->CreateFCmpOGE(LHS, RHS)
-							   : builder->CreateICmpSGE(LHS, RHS);
-			case BinaryExpressionType::Eq:
-				return isFloat ? builder->CreateFCmpOEQ(LHS, RHS)
-							   : builder->CreateICmpEQ(LHS, RHS);
-			case BinaryExpressionType::NotEq:
-				return isFloat ? builder->CreateFCmpONE(LHS, RHS)
-							   : builder->CreateICmpNE(LHS, RHS);
-			default:
-				break;
-		}
-
-		return nullptr;
-	}
-
-	llvm::Value* ASTBinaryExpression::_CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS)
-	{
-		auto& builder = LLVM::Backend::GetBuilder();
-
-		switch (m_Expression)
-		{
-			case BinaryExpressionType::Assignment:	return builder->CreateStore(RHS, LHS);
-				default:
-					break;
-		}
-
-		return nullptr;
-	}
-
-	llvm::Value* ASTBinaryExpression::_CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger)
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		switch (m_Expression)
-		{ 
-			case BinaryExpressionType::BitwiseLeftShift:  return builder.CreateShl(LHS, RHS, "bitwise_shift_left");
-			case BinaryExpressionType::BitwiseRightShift: return signedInteger ? builder.CreateAShr(LHS, RHS, "bitwise_a_shift_right") : builder.CreateLShr(LHS, RHS, "bitwise_l_shift_right");
-			case BinaryExpressionType::BitwiseXor:		  return builder.CreateXor(LHS, RHS, "bitwise_xor");
-			case BinaryExpressionType::BitwiseOr:		  return builder.CreateOr(LHS,  RHS, "bitwise_or");
-			case BinaryExpressionType::BitwiseAnd:		  return builder.CreateAnd(LHS, RHS, "bitwise_and");
-			case BinaryExpressionType::BitwiseNot:
 			{
-				CLEAR_UNREACHABLE("");
-				break; //TODO: new ast node (astSingleExpression) which only applies an operation onto one operand
+                return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+
+			}
+			case BinaryExpressionType::Eq:
+			{
+                return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+			}
+			case BinaryExpressionType::NotEq:
+			{
+                return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
 			}
 			default:
 				break;
 		}
 
-		CLEAR_UNREACHABLE("");
+		return {};
+    }
 
-		return nullptr;
-	}
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionSI(CodegenResult &lhs, CodegenResult &rhs)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
 
-	llvm::Value* ASTBinaryExpression::_CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const Ref<Type>& pointerMetaData)
-	{
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::Less:
+            {
+                return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::LessEq:
+            {
+                return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::Greater:
+            {
+                return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::GreaterEq:
+			{
+                return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+
+			}
+			case BinaryExpressionType::Eq:
+			{
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+			}
+			case BinaryExpressionType::NotEq:
+			{
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+			}
+			default:
+				break;
+		}
+
+		return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionUI(CodegenResult &lhs, CodegenResult &rhs)
+    {
+        auto& builder = *LLVM::Backend::GetBuilder();
+
+		switch (m_Expression)
+		{
+			case BinaryExpressionType::Less:
+            {
+                return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::LessEq:
+            {
+                return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::Greater:
+            {
+                return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+            }
+			case BinaryExpressionType::GreaterEq:
+			{
+                return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+
+			}
+			case BinaryExpressionType::Eq:
+			{
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+			}
+			case BinaryExpressionType::NotEq:
+			{
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), TypeRegistry::GetGlobal()->GetType("bool") };
+			}
+			default:
+				break;
+		}
+
+		return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleBitwiseExpression(CodegenResult &lhs, CodegenResult &rhs)
+    {
+		//TODO
+        return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult &lhs, CodegenResult &rhs)
+    {
+        return {};
+    }
+
+
+	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
+		: m_Name(name), m_Type(type)
+    {
+    }
+
+	CodegenResult ASTVariableDeclaration::Codegen()
+    {
+		CodegenResult codegenResult;
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		
+		Allocation alloca = registry->CreateAlloca(m_Name, m_Type);
+		codegenResult.CodegenValue = alloca.Alloca;
+		codegenResult.CodegenType  = TypeRegistry::GetGlobal()->GetPointerTo(alloca.Type);
+
+		return codegenResult;
+    }
+
+	ASTVariableReference::ASTVariableReference(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTVariableReference::Codegen()
+    {
+		CodegenResult result;
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+
+		Allocation alloca = registry->GetAlloca(m_Name);
+		result.CodegenValue = alloca.Alloca;
+		result.CodegenType  = TypeRegistry::GetGlobal()->GetPointerTo(alloca.Type);
+
+		return result;
+    }
+
+	ASTVariableExpression::ASTVariableExpression(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTVariableExpression::Codegen()
+    {
 		auto& builder = *LLVM::Backend::GetBuilder();
 
-		if (m_Expression == BinaryExpressionType::NegatedPointerArithmetic)
-			RHS = builder.CreateNeg(RHS);
+		CodegenResult result;
 
-		CLEAR_VERIFY(pointerMetaData->IsPointer(), "");
-		p_MetaData.Type = pointerMetaData->GetUnderlying();
-		return builder.CreateInBoundsGEP(p_MetaData.Type->Get(), LHS, RHS);
-	}
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		Allocation alloca = registry->GetAlloca(m_Name);
 
-	ASTVariableExpression::ASTVariableExpression(const std::string& variable)
-		: m_VariableName(variable)
-	{
-	}
+		result.CodegenValue = builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name);
+		result.CodegenType  = alloca.Type;
 
-	llvm::Value* ASTVariableExpression::Codegen()
-	{
+		return result;
+    }
+
+	ASTAssignmentOperator::ASTAssignmentOperator(AssignmentOperatorType type)
+		: m_Type(type)
+    {
+    }
+
+	CodegenResult ASTAssignmentOperator::Codegen()
+    {
 		auto& builder = *LLVM::Backend::GetBuilder();
 		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
 
-		auto& metaData = Value::GetVariableMetaData(m_VariableName);
-		llvm::AllocaInst* value = metaData.Alloca;
+		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
+		
+		CodegenResult storage = children[0]->Codegen();
+		CodegenResult data    = children[1]->Codegen();
 
-		CLEAR_VERIFY(value, "value was nullptr");
+		HandleDifferentTypes(storage, data);
 
-		p_MetaData.Type = metaData.Type;
-		p_MetaData.NeedLoading = true;
+		CodegenResult result;
 
-		return value; 
-	}
+		if(m_Type == AssignmentOperatorType::Normal)
+		{
+			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
+			result.CodegenType = storage.CodegenType;
+			return result;
+		}
 
-	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, Ref<Type> type)
-	{
-		p_MetaData.Name = name;
-		p_MetaData.Type = type;
-	}
+		CodegenResult loadedValue;
+		loadedValue.CodegenValue = builder.CreateLoad(storage.CodegenType->Get(), storage.CodegenValue);
+		loadedValue.CodegenType = storage.CodegenType;
 
-	llvm::Value* ASTVariableDeclaration::Codegen()
-	{		
+		CodegenResult tmp;
+
+		if(m_Type == AssignmentOperatorType::Add)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Add);
+		}
+		else if (m_Type == AssignmentOperatorType::Sub)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Sub);
+		}
+		else if (m_Type == AssignmentOperatorType::Mul)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mul);
+		}
+		else if (m_Type == AssignmentOperatorType::Div)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Div);
+		}
+		else if (m_Type == AssignmentOperatorType::Mod)
+		{
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mod);
+		}
+		else 
+		{
+			CLEAR_UNREACHABLE("invalid assignment type");
+		}
+
+		result.CodegenValue = builder.CreateStore(tmp.CodegenValue, storage.CodegenValue);
+		result.CodegenType  = storage.CodegenType;
+
+		return result;
+    }
+
+    void ASTAssignmentOperator::HandleDifferentTypes(CodegenResult& storage, CodegenResult& data)
+    {
 		auto& builder = *LLVM::Backend::GetBuilder();
+		
+		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		CLEAR_VERIFY(ptrType, "storage must have pointer type");
 
-		auto ip = builder.saveIP();
+		std::shared_ptr<Type> underlyingStorageType = ptrType->GetBaseType();
+		CLEAR_VERIFY(underlyingStorageType, "not valid storage");
 
-		llvm::Function* function = builder.GetInsertBlock()->getParent();
+        llvm::Type* storageType = underlyingStorageType->Get();
+        llvm::Type* dataType = data.CodegenType->Get();
 
-		builder.SetInsertPoint(&function->getEntryBlock());
-	
-		m_Value = Value(p_MetaData.Type, p_MetaData.Name);
+		if(storageType == dataType)
+			return;
 
-		builder.restoreIP(ip);
+		data.CodegenValue = TypeCasting::Cast(data.CodegenValue, data.CodegenType, underlyingStorageType);
+		data.CodegenType = underlyingStorageType; 
+    }
 
-		return m_Value.Get();
+
+	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& Paramaters)
+		: m_Parameters(Paramaters), m_ReturnType(returnType), m_Name(name)
+	{
+		CreateSymbolTable();
 	}
 
-	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const Ref<Type>& returnType, const std::vector<Paramater>& Paramaters)
-		: m_Paramaters(Paramaters)
+	CodegenResult ASTFunctionDefinition::Codegen()
 	{
-		g_FunctionMetaData[name] = { m_Paramaters, returnType };
-		p_MetaData.Name = name;
-		p_MetaData.Type = returnType;
-	}
-	llvm::Value* ASTFunctionDefinition::Codegen()
-	{
-		auto& module = *LLVM::Backend::GetModule();
+		auto& module  = *LLVM::Backend::GetModule();
 		auto& context = *LLVM::Backend::GetContext();
 		auto& builder = *LLVM::Backend::GetBuilder();
+		
+		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
+		CLEAR_VERIFY(prev, "prev was null");
 
+		FunctionData& functionData = prev->CreateFunction(m_Name, m_Parameters, m_ReturnType);
+		
 		s_InsertPoints.push(builder.saveIP());
 
-		llvm::Type* returnType = p_MetaData.Type->Get();
-
-		std::vector<llvm::Type*> ParamaterTypes;
-
-		for (const auto& Paramater : m_Paramaters)
-		{
-			ParamaterTypes.push_back(Paramater.Type->Get());
-		}
-
-		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType, ParamaterTypes, false);
-
-		llvm::Function* function = module.getFunction(GetName());
-		CLEAR_VERIFY(!function, "function already defined");
-
-		function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, GetName(), module);
-
-		llvm::Function::arg_iterator args = function->arg_begin();
-
-		for (const auto& Paramater : m_Paramaters)
-		{
-			args->setName(GetName() + "::" + Paramater.Name);
-			args++;
-		}
-
-		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", function);
+		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionData.Function);
 		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "body");
+		
 		builder.SetInsertPoint(entry);
 
-		llvm::BasicBlock* returnBlock = llvm::BasicBlock::Create(context, "return");
-
-		ReturnValue returnStatement{};
-		returnStatement.Alloca = !returnType->isVoidTy() ? builder.CreateAlloca(returnType, nullptr, "return_value") : nullptr;
-		returnStatement.Return = returnBlock;
-
-		s_ReturnValues.push(returnStatement);
-
+		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
+		llvm::AllocaInst* returnAlloca = m_ReturnType ? builder.CreateAlloca(m_ReturnType->Get(), nullptr, "return_value") : nullptr;
+		
 		uint32_t k = 0;
 
-		for (const auto& Paramater : m_Paramaters)
+		for (const auto& param : m_Parameters)
 		{
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(Paramater.Type->Get(), nullptr, GetName() + "::" + Paramater.Name);
-			builder.CreateStore(function->getArg(k), argAlloc);
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(param.Type->Get(), nullptr, param.Name);
+			builder.CreateStore(functionData.Function->getArg(k++), argAlloc);
 			
-			Value::RegisterVariable(argAlloc, GetName() + "::" + Paramater.Name, Paramater.Type);
+			Allocation alloca;
+			alloca.Alloca = argAlloc;
+			alloca.Type   = param.Type;
 
-			k++;
+			GetSymbolTable()->RegisterAllocation(param.Name, alloca);
 		}
 
-		function->insert(function->end(), body);
+		functionData.Function->insert(functionData.Function->end(), body);
 		builder.SetInsertPoint(body);
+
+		//CodegenResult returnValue; TODO
 
 		for (const auto& child : GetChildren())
 		{
 			child->Codegen();
-		}
 
-		for (const auto& Paramater : m_Paramaters)
-		{
-			Value::RemoveVariable(GetName() + "::" + Paramater.Name);
+			// ADD THIS ONCE WE HAVE RETURN STATEMENTS if(std::dynamic_pointer_cast<ASTReturn>(child)) 
 		}
 
 		auto currip = builder.saveIP();
@@ -499,22 +716,19 @@ namespace clear {
 
 		builder.restoreIP(currip);
 
-		ReturnValue value = s_ReturnValues.top();
-		s_ReturnValues.pop();
-
 		if(!builder.GetInsertBlock()->getTerminator())
 			builder.CreateBr(returnBlock);
 
-		function->insert(function->end(), returnBlock);
+		functionData.Function->insert(functionData.Function->end(), returnBlock);
 		builder.SetInsertPoint(returnBlock);
 
-		if (returnType->isVoidTy())
+		if (functionData.Function->getReturnType()->isVoidTy())
 		{
 			builder.CreateRetVoid();
 		}
 		else
-		{
-			llvm::Value* load = builder.CreateLoad(value.Alloca->getAllocatedType(), value.Alloca, "loaded_value");
+		{   //for now will do nothing but will do something once we have return statements.
+			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
 			builder.CreateRet(load);
 		}
 
@@ -522,18 +736,61 @@ namespace clear {
 		builder.restoreIP(ip);
 		s_InsertPoints.pop();
 
-		return function;
+		return {functionData.Function, functionData.ReturnType};
 	}
 
-	ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const Ref<Type>& expectedReturnType, const std::vector<Paramater>& types)
-		: m_ExpectedTypes(types)
+	ASTFunctionCall::ASTFunctionCall(const std::string &name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTFunctionCall::Codegen()
 	{
-		g_FunctionMetaData[name] = { types, expectedReturnType };
-		p_MetaData.Name = name;
-		p_MetaData.Type = expectedReturnType;
+		auto& builder  = *LLVM::Backend::GetBuilder();
+		auto& module   = *LLVM::Backend::GetModule();
+		auto& context  = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
+		FunctionData& data = symbolTable->GetFunction(m_Name);
+
+		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
+
+		uint32_t k = 0;
+
+		std::vector<llvm::Value*> args;
+
+		for (auto& child : children)
+		{
+			CodegenResult gen = child->Codegen();
+
+			if(data.Parameters[k].IsVariadic)
+			{
+				args.push_back(gen.CodegenValue);
+				continue;
+			}
+
+			if (gen.CodegenType->Get() != data.Parameters[k].Type->Get())
+			{
+				gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
+												     gen.CodegenType, 
+													 data.Parameters[k].Type);
+			}
+
+			args.push_back(gen.CodegenValue);
+
+			k++;
+		}
+
+		return { builder.CreateCall(data.Function, args), data.ReturnType };
 	}
 
-	llvm::Value* ASTFunctionDecleration::Codegen()
+    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types)
+		: m_Name(name), m_Parameters(types), m_ReturnType(expectedReturnType)
+    {
+    }
+
+	CodegenResult ASTFunctionDecleration::Codegen()
 	{
 		auto& module = *LLVM::Backend::GetModule();
 
@@ -541,90 +798,53 @@ namespace clear {
 
 		bool isVariadic = false;
 
-		for (auto& type : m_ExpectedTypes)
+		for (auto& param : m_Parameters)
 		{
-			if (type.IsVariadic)
+			if (param.IsVariadic)
 			{
 				isVariadic = true;
 				break;
 			}
 
-			types.push_back(type.Type->Get());
+			types.push_back(param.Type->Get());
 		}
 
-		if (!p_MetaData.Type)
-			p_MetaData.Type = Ref<Type>::Create(TypeID::None);
+		if (!m_ReturnType)
+			m_ReturnType = TypeRegistry::GetGlobal()->GetType("null_type");
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(p_MetaData.Type->Get(), types, isVariadic);
-		module.getOrInsertFunction(p_MetaData.Name, functionType);
-		return nullptr;
-	}
+		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
+		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 
-	ASTReturnStatement::ASTReturnStatement(const Ref<Type>& expectedReturnType, bool createReturn)
-		: m_CreateReturn(createReturn)
-	{
-		p_MetaData.Type = expectedReturnType;
-	}
+		FunctionData data;
+		data.FunctionType = functionType;
+		data.Function = llvm::cast<llvm::Function>(callee.getCallee());
+		data.Parameters = m_Parameters;
+		data.ReturnType = m_ReturnType;
 
-	llvm::Value* ASTReturnStatement::Codegen()
-	{
-		auto& children = GetChildren();
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		if (children.size() > 0)
-		{
-			llvm::Value* returnValue = children[0]->Codegen();
+		GetSymbolTable()->RegisterFunction(m_Name, data);
 			
-			if(!returnValue)
-			{
-				builder.CreateBr(s_ReturnValues.top().Return);
-				return nullptr;
-			}
-
-			if (children[0]->GetMetaData().NeedLoading)
-			{
-				returnValue = builder.CreateLoad(children[0]->GetMetaData().Type->Get(), returnValue, "loaded_value");
-			}
-
-			if (returnValue->getType() != p_MetaData.Type->Get())
-				returnValue = Value::CastValue(returnValue, p_MetaData.Type, {});
-			
-			CLEAR_VERIFY(returnValue->getType() == p_MetaData.Type->Get(), "unexpected return type");
-
-			llvm::AllocaInst* alloc = s_ReturnValues.top().Alloca;
-			
-			builder.CreateStore(returnValue, alloc);
-		}
-		
-		builder.CreateBr(s_ReturnValues.top().Return);
-
-		return nullptr;
-	}
-	
-	ASTExpression::ASTExpression(const Ref<Type>& expectedType)
-	{
-		p_MetaData.Type = expectedType;
+		return { data.Function, m_ReturnType };	
 	}
 
-	llvm::Value* ASTExpression::Codegen()
+    CodegenResult ASTExpression::Codegen()
 	{
 		auto& builder  = *LLVM::Backend::GetBuilder();
 		auto& children = GetChildren();
 
-		std::stack<Ref<ASTNodeBase>> stack; //ok
-
+		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+		
 		for (const auto& child : children)
 		{
 			if (child->GetType() == ASTNodeType::Literal ||
-				child->GetType() == ASTNodeType::VariableExpression || 
-				child->GetType() == ASTNodeType::FunctionCall || 
-				child->GetType() == ASTNodeType::MemberAccess)
+				child->GetType() == ASTNodeType::VariableExpression ||
+				child->GetType() == ASTNodeType::VariableReference || 
+				child->GetType() == ASTNodeType::FunctionCall)
 			{
 				stack.push(child);
 				continue;
 			}
 
-			if (child->GetType() == ASTNodeType::UnaryExpression)
+			/* if (child->GetType() == ASTNodeType::UnaryExpression)
 			{
 				Ref<ASTUnaryExpression> unaryExpression = DynamicCast<ASTUnaryExpression>(child);
 				CLEAR_VERIFY(unaryExpression->GetChildren().size() == 0, "");
@@ -635,509 +855,125 @@ namespace clear {
 				stack.push(unaryExpression);
 
 				continue;
-			}
+			} */
 
-			Ref<ASTBinaryExpression> binExp = DynamicCast<ASTBinaryExpression>(child);
+			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
 
-			binExp->PushChild(stack.top());
+			binExp->Push(stack.top());
 			stack.pop();
 
-			binExp->PushChild(stack.top());
+			binExp->Push(stack.top());
 			stack.pop();
 
 			stack.push(binExp);
 		}
 
-
 		if(stack.size() > 0)
 		{
-			llvm::Value* value = stack.top()->Codegen();
-
-			p_MetaData.NeedLoading = stack.top()->GetMetaData().NeedLoading;
-			p_MetaData.Type = stack.top()->GetMetaData().Type;
-
-			return value;
+			return stack.top()->Codegen();
 		}
 
-		return nullptr;
+
+		return {};
 	}
 
-	ASTStruct::ASTStruct(const std::string& name, const std::vector<MemberType>& fields)
-		:  m_Members(fields)
-	{
-		p_MetaData.Name = name;
-	}
 
-	llvm::Value* ASTStruct::Codegen()
+	CodegenResult ASTArrayInitializer::Codegen()
 	{
-		//immediatly freed but registers it which is what we want
-		Ref<Type> type = Ref<Type>::Create(p_MetaData.Name, m_Members);
-		return nullptr;
-	}
-
-	ASTFunctionCall::ASTFunctionCall(const std::string& name)
-	{
-		p_MetaData.Name = name;
-	}
-
-	llvm::Value* ASTFunctionCall::Codegen()
-	{
-		std::vector<llvm::Value*> args;
-
 		auto& builder = *LLVM::Backend::GetBuilder();
-		auto& module  = *LLVM::Backend::GetModule();
 		auto& context = *LLVM::Backend::GetContext();
 		auto& children = GetChildren();
 
-		auto& expected = g_FunctionMetaData.at(p_MetaData.Name);
+		CLEAR_VERIFY(children.size() > 0, "invalid array initializer");
 
-		uint32_t k = 0;
+		CodegenResult storage = children[0]->Codegen();
 
-		for (auto& child : children)
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		CLEAR_VERIFY(storageType, "invalid storage type");
+
+		CLEAR_VERIFY(children.size() - 1 == m_Indices.size(), "sizes don't match!");
+
+		llvm::Type* intTy = llvm::Type::getInt64Ty(context);
+
+		std::shared_ptr<ArrayType> baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType());
+		CLEAR_VERIFY(baseType, "base type is not an array type");
+
+		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
+		builder.CreateStore(zeroArray, storage.CodegenValue);
+
+		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
-			llvm::Value* gen = child->Codegen();
-
-			if (child->GetMetaData().NeedLoading)
-			{
-				if (gen->getType()->isArrayTy())
-				{
-					llvm::ArrayType* type = llvm::dyn_cast<llvm::ArrayType>(gen->getType());
-
-					CLEAR_VERIFY(type, "");
-					gen = builder.CreateInBoundsGEP(type, gen, { builder.getInt64(0), builder.getInt64(0) }, "array_decay");
-				}
-
-				CLEAR_VERIFY(gen->getType()->isPointerTy(), "");
-
-				gen = builder.CreateLoad(child->GetMetaData().Type->Get(), gen, "loaded_value");
-			}
-		
-			if (k < expected.Parameters.size() && !expected.Parameters[k].IsVariadic && gen->getType() != expected.Parameters[k].Type->Get())
-			{
-				gen = Value::CastValue(gen, expected.Parameters[k].Type, {});
-			}
-
-			k++;
-		
-			CLEAR_VERIFY(gen, "not a valid argument");
-			args.push_back(gen);
-		}
-		
-		
-		llvm::Function* callee = module.getFunction(p_MetaData.Name);
-		CLEAR_VERIFY(callee, "not a valid function");
-
-		p_MetaData.Type = expected.ReturnType;
-		return builder.CreateCall(callee, args);
-	}
-
-	llvm::Value* ASTIfExpression::Codegen()
-	{
-		auto& children = GetChildren();
-		auto& context = *LLVM::Backend::GetContext();
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		CLEAR_VERIFY(children.size() > 1, "size must be greater than 1");
-
-		llvm::Function* function = builder.GetInsertBlock()->getParent();
-
-		struct Branch
-		{
-			llvm::BasicBlock* ConditionBlock = nullptr;
-			llvm::BasicBlock* BodyBlock  = nullptr;
-			int64_t ExpressionIdx = 0;
-		};
-
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression,"");
-
-		std::vector<Branch> branches;
-
-		for (size_t i = 0; i + 1 < children.size(); i += 2)
-		{
-			Branch branch;
-			branch.ConditionBlock = llvm::BasicBlock::Create(context, "if_condition");
-			branch.BodyBlock      = llvm::BasicBlock::Create(context, "if_body");
-			branch.ExpressionIdx  = i;
-
-			branches.push_back(branch);
-		}
-
-		llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context, "else");
-		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context, "merge");
-
-		if(!builder.GetInsertBlock()->getTerminator())
-			builder.CreateBr(branches[0].ConditionBlock);
-
-		for (size_t i = 0; i < branches.size(); i++)
-		{
-			auto& branch = branches[i];
-
-			llvm::BasicBlock* nextBranch = (i + 1) < branches.size() ? branches[i + 1].ConditionBlock : elseBlock;
+			std::vector<llvm::Value*> indices(m_Indices[i].size());
 			
-			function->insert(function->end(), branch.ConditionBlock);
-			builder.SetInsertPoint(branch.ConditionBlock);
-
-			llvm::Value* condition = children[branch.ExpressionIdx]->Codegen();
-
-			if (condition->getType()->isIntegerTy() && !condition->getType()->isIntegerTy(1))
-			{
-				condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
-			}
-			else if (condition->getType()->isFloatingPointTy())
-			{
-				condition = builder.CreateFCmpONE(condition, llvm::ConstantFP::get(condition->getType(), 0.0));
-			}
-			else if (condition->getType()->isPointerTy())
-			{
-				condition = builder.CreatePtrToInt(condition, llvm::IntegerType::get(context, 64), "cast");
-				condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
-			}
-
-			builder.CreateCondBr(condition, branch.BodyBlock, nextBranch);
-
-			function->insert(function->end(), branch.BodyBlock);
-			builder.SetInsertPoint(branch.BodyBlock);
-
-			CLEAR_VERIFY(branch.ExpressionIdx + 1 < children.size(), "");
-			children[branch.ExpressionIdx + 1]->Codegen();
-
-			if (!builder.GetInsertBlock()->getTerminator())
-				builder.CreateBr(mergeBlock);
-		}
-
-		function->insert(function->end(), elseBlock);
-		builder.SetInsertPoint(elseBlock);
-
-		size_t last = children.size() - 1;
-
-		if (children.size() > 2 && children[last]->GetType() == children[last - 1]->GetType())
-			children[last]->Codegen();
-	
-		if (!builder.GetInsertBlock()->getTerminator())
-			builder.CreateBr(mergeBlock);
-
-		function->insert(function->end(), mergeBlock);
-		builder.SetInsertPoint(mergeBlock);
-
-		return nullptr;
-	}
-
-	llvm::Value* ASTWhileLoop::Codegen()
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-		auto& context = *LLVM::Backend::GetContext();
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "incorrect node type");
-
-		llvm::Function* function = builder.GetInsertBlock()->getParent();
-
-		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(context, "while_condition", function);
-		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "while_body");
-		llvm::BasicBlock* end   = llvm::BasicBlock::Create(context, "while_end");
-
-		if (!builder.GetInsertBlock()->getTerminator())
-			builder.CreateBr(conditionBlock);
-
-		builder.SetInsertPoint(conditionBlock);
-
-		llvm::Value* condition = children[0]->Codegen();
-		if (condition->getType()->isIntegerTy())
-			condition = builder.CreateICmpNE(condition, llvm::ConstantInt::get(condition->getType(), 0));
-		else if (condition->getType()->isFloatingPointTy())
-			condition = builder.CreateFCmpONE(condition, llvm::ConstantFP::get(condition->getType(), 0.0));
-
-		builder.CreateCondBr(condition, body, end);
-
-		function->insert(function->end(), body);
-		builder.SetInsertPoint(body);
-
-		s_ForWhileBlocks.push({ end, conditionBlock });
-
-		children[1]->Codegen();
-
-		if (!builder.GetInsertBlock()->getTerminator())
-			builder.CreateBr(conditionBlock);
-		
-		function->insert(function->end(), end);
-		builder.SetInsertPoint(end);
-
-		s_ForWhileBlocks.pop();
-
-		return nullptr;
-	}
-
-	ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type, const Ref<Type>& typeToCast)
-		: m_Type(type)
-	{
-		p_MetaData.Type = typeToCast;
-		p_MetaData.Debug = (int)type;
-	}
-
-	llvm::Value* ASTUnaryExpression::Codegen()
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-		auto& context = *LLVM::Backend::GetContext();
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
-
-		llvm::Value* operand = children[0]->Codegen();
-		auto& metaData = children[0]->GetMetaData();
-
-		switch (m_Type)
-		{
-			case UnaryExpressionType::BitwiseNot:
-			{
-				if (children[0]->GetMetaData().NeedLoading)
+			std::transform(m_Indices[i].begin(), m_Indices[i].end(), indices.begin(), 
+		 		[&](size_t index)
 				{
-					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
-					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
+					return llvm::ConstantInt::get(intTy, index);
 				}
+			);
 
-				return builder.CreateNot(operand, "bitwise_not");
-			}
-			case UnaryExpressionType::PostIncrement:
+			VerifyArray(baseType, m_Indices[i]);
+			
+			llvm::Value* elemPtr = builder.CreateInBoundsGEP(baseType->Get(), 
+													 		 storage.CodegenValue, indices, 
+													 		 "get_element_ptr");
+			
+			std::shared_ptr<Type> innerType = GetInnerType(baseType, m_Indices[i].size() - 1);
+			
+			CodegenResult valueToStore = children[i + 1]->Codegen();
+
+			if(valueToStore.CodegenType != innerType)
 			{
-				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst,"");
-
-				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
-				llvm::Value* newValue = nullptr;
-
-				if (currentValue->getType()->isFloatingPointTy())
-					newValue = builder.CreateFAdd(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
-				else
-					newValue = builder.CreateAdd(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
-
-				builder.CreateStore(newValue, inst);
-
-				return currentValue;
-			}
-			case UnaryExpressionType::PostDecrement:
-			{
-				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst,"");
-
-				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "saved_loaded_value");
-				llvm::Value* newValue = nullptr;
-
-				if (currentValue->getType()->isFloatingPointTy())
-					newValue = builder.CreateFSub(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
-				else
-					newValue = builder.CreateSub(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
-
-				builder.CreateStore(newValue, inst);
-
-				return currentValue;
-			}
-			case UnaryExpressionType::Increment:
-			{
-				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst,"");
-
-				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
-				llvm::Value* newValue = nullptr;
-
-				if (currentValue->getType()->isFloatingPointTy())
-					newValue = builder.CreateFAdd(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
-				else
-					newValue = builder.CreateAdd(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
-
-				builder.CreateStore(newValue, inst);
-
-				return newValue;
-			}
-			case UnaryExpressionType::Decrement:
-			{
-				llvm::AllocaInst* inst = llvm::dyn_cast<llvm::AllocaInst>(operand);
-				CLEAR_VERIFY(inst, "");
-
-				llvm::Value* currentValue = builder.CreateLoad(inst->getAllocatedType(), inst, "loaded_value");
-				llvm::Value* newValue = nullptr; 
-
-				if(currentValue->getType()->isFloatingPointTy())
-					newValue = builder.CreateFSub(currentValue, llvm::ConstantFP::get(currentValue->getType(), 1.0));
-				else 
-					newValue = builder.CreateSub(currentValue, llvm::ConstantInt::get(currentValue->getType(), 1));
-
-				builder.CreateStore(newValue, inst);
-
-				return newValue;
-			}
-			case UnaryExpressionType::Negation:
-			{	
-				if (children[0]->GetMetaData().NeedLoading)
-				{
-					llvm::AllocaInst* alloc = llvm::dyn_cast<llvm::AllocaInst>(operand);
-					operand = builder.CreateLoad(alloc->getAllocatedType(), alloc, "loaded_value");
-				}
-
-				if (operand->getType()->isFloatingPointTy())
-					return builder.CreateFNeg(operand);
-				
-				return builder.CreateNeg(operand);
-			}
-			case UnaryExpressionType::Dereference:
-			{
-				p_MetaData.Type = metaData.Type->GetUnderlying();
-				p_MetaData.NeedLoading = metaData.NeedLoading;
-
-				if (metaData.Type->GetID() == TypeID::Array)
-				{
-					CLEAR_VERIFY(metaData.Type->IsPointer(), "");
-					return builder.CreateInBoundsGEP(metaData.Type->Get(), operand, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
-				}
-
-				CLEAR_VERIFY(operand->getType()->isPointerTy(), "Dereference operand must be a pointer");
-				return builder.CreateLoad(metaData.Type->Get(), operand, "loaded_value");
-			}
-			case UnaryExpressionType::Reference:
-			{
-				p_MetaData.NeedLoading = false;
-				p_MetaData.Type = metaData.Type;
-
-				return operand;
-			}
-			case UnaryExpressionType::Cast:
-			{
-				if (children[0]->GetMetaData().NeedLoading)
-				{
-					if (children[0]->GetMetaData().Type->GetID() == TypeID::Array)
-					{
-						CLEAR_VERIFY(p_MetaData.Type->IsPointer(), "");
-						operand = builder.CreateInBoundsGEP(children[0]->GetMetaData().Type->Get(), operand, {builder.getInt64(0), builder.getInt64(0)}, "array_decay");
-					}
-					else
-					{
-						operand = builder.CreateLoad(children[0]->GetMetaData().Type->Get(), operand, "loaded_value");
-					}
-
-				}
-
-				Ref<Type> from = metaData.Type;
-				if(!p_MetaData.Type->IsPointer())
-					return Value::CastValue(operand, p_MetaData.Type, from);
-					
-				return operand;
-			}
-			case UnaryExpressionType::None:
-			default:
-			{
-				return operand;
-				break;
-			}
-		}
-
-		return nullptr;
-	}
-
-	llvm::Value* ASTBreak::Codegen()
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		CLEAR_VERIFY(!s_ForWhileBlocks.empty() && !builder.GetInsertBlock()->getTerminator(), "have to be in a for or a while loop");
-		builder.CreateBr(s_ForWhileBlocks.top().End);
-		
-		return nullptr;
-	}
-
-	llvm::Value* ASTContinue::Codegen()
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-
-		CLEAR_VERIFY(!s_ForWhileBlocks.empty() && !builder.GetInsertBlock()->getTerminator(), "have to be in a for or a while loop");
-		builder.CreateBr(s_ForWhileBlocks.top().Condition);
-
-		return nullptr;
-	}
-
-	llvm::Value* ASTArrayInitializer::Codegen()
-	{
-		auto& builder = *LLVM::Backend::GetBuilder();
-		auto& context = *LLVM::Backend::GetContext();
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() > 0, "size of children must be bigger than 1");
-
-		llvm::Value* value = children[0]->Codegen();
-		CLEAR_VERIFY(llvm::isa<llvm::AllocaInst>(value), "incorrect type");
-
-		Ref<ASTVariableExpression> expression = DynamicCast<ASTVariableExpression>(children[0]);
-
-		llvm::AllocaInst* allocaInstance = llvm::dyn_cast<llvm::AllocaInst>(value);
-
-		llvm::Type* type = allocaInstance->getAllocatedType();
-		CLEAR_VERIFY(llvm::isa<llvm::ArrayType>(type), "incorrect type");
-
-		llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(type);
-
-		llvm::Type* elementType = _GetElementType(arrayType);
-
-		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(arrayType);
-		builder.CreateStore(zeroArray, allocaInstance);
-
-		for (size_t i = 1; i < children.size(); i++)
-		{
-			CLEAR_VERIFY(i - 1 < m_Indices.size(), "child doesn't have an index");
-
-			llvm::Value* childValue = children[i]->Codegen();
-			CLEAR_VERIFY(childValue, "value must be proper");
-
-			if(children[i]->GetMetaData().NeedLoading)
-			{
-				childValue = builder.CreateLoad(children[i]->GetMetaData().Type->Get(), childValue, "loaded_value");
+				valueToStore.CodegenValue = TypeCasting::Cast(
+							valueToStore.CodegenValue,
+							valueToStore.CodegenType, 
+							innerType
+							);
 			}
 
-			if (childValue->getType() != elementType)
-			{
-				childValue = Value::CastValue(childValue, elementType, childValue->getType(), expression->GetMetaData().Type->IsSigned());
-			}
-
-			llvm::Value* gep = builder.CreateInBoundsGEP(arrayType, allocaInstance, m_Indices[i - 1], "array_indexing");
-			builder.CreateStore(childValue, gep);
+			builder.CreateStore(valueToStore.CodegenValue, elemPtr);
 		}
 		
-
-		return nullptr;
+		return {};
 	}
 
-	void ASTArrayInitializer::PushElementIndex(const std::vector<size_t>& elementIndex)
-	{
-		auto& context = *LLVM::Backend::GetContext();
-
-		std::vector<llvm::Value*> indices;
-
-		for (size_t i : elementIndex)
-		{
-			indices.push_back(llvm::ConstantInt::get(llvm::IntegerType::get(context, 64), i));
-		}
-
-		m_Indices.push_back(indices);
-	}
-
-	llvm::Type* ASTArrayInitializer::_GetElementType(llvm::ArrayType* type)
-	{
-		llvm::Type* elementType = type->getElementType();
-
-		while (llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(elementType)) 
-		{
-			elementType = arrayType->getElementType();
-		}
-
-		return elementType;
-	}
-
-    ASTMemberAccess::ASTMemberAccess(const std::string& member)
+    void ASTArrayInitializer::SetIndices(const std::vector<std::vector<size_t>>& indices)
     {
-		p_MetaData.Name = member;
+		m_Indices = indices;
     }
 
-    llvm::Value *ASTMemberAccess::Codegen()
+    void ASTArrayInitializer::VerifyArray(std::shared_ptr<ArrayType> type, const std::vector<size_t>& index)
     {
-        return nullptr;
-    }
-	
+		//first index always guaranteed to be 0.
 
-} */
+		for(size_t i = 1; i < index.size(); i++)
+		{
+			CLEAR_VERIFY(type, "invalid type"); //TODO: more formal error handling needed
+			CLEAR_VERIFY(index[i] < type->GetArraySize(), "index out of bounds error");
+
+			type = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType());
+		}
+    }
+    std::shared_ptr<Type> ASTArrayInitializer::GetElementType(std::shared_ptr<Type> type)
+    {
+		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
+		{
+			type = base->GetBaseType();
+		}
+
+        return type;
+    }
+    std::shared_ptr<Type> ASTArrayInitializer::GetInnerType(std::shared_ptr<Type> type, size_t index)
+    {
+		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
+		{
+			if(index == 0) break;
+
+			index--;
+			type = base->GetBaseType();
+		}
+
+		CLEAR_VERIFY(!index, "out of bounds");
+        return type;
+    }
+}

@@ -114,6 +114,9 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override;
 
+        std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
+        size_t GetArraySize() const { return m_Count; }
+
 
     private:
         std::shared_ptr<Type> m_BaseType;

@@ -13,7 +13,7 @@ namespace clear
 		auto &context = *LLVM::Backend::GetContext();
 
 		std::string hash = type->GetHash();
-
+		
 		if(hash == "int8")  return {llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)std::stoll(data), true), nullptr};
 		if(hash == "int16") return {llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (int16_t)std::stoll(data), true), nullptr};
 		if(hash == "int32") return {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)std::stoll(data), true), nullptr};
@@ -42,11 +42,11 @@ namespace clear
 		auto &module = *LLVM::Backend::GetModule();
 		auto &context = *LLVM::Backend::GetContext();
 
-		llvm::Constant *strConstant = llvm::ConstantDataArray::getString(context, data, true);
+		llvm::Constant* strConstant = llvm::ConstantDataArray::getString(context, data, true);
 
-		llvm::Type *type = strConstant->getType();
+		llvm::Type* type = strConstant->getType();
 
-		llvm::GlobalVariable *globalStr = new llvm::GlobalVariable(
+		llvm::GlobalVariable* globalStr = new llvm::GlobalVariable(
 			module,
 			type,
 			true,
@@ -54,9 +54,9 @@ namespace clear
 			strConstant,
 			"str" + std::to_string(s_StringCount++));
 
-		llvm::Constant *zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
-		llvm::Constant *indices[] = {zero, zero};
-		llvm::Constant *strPtr = llvm::ConstantExpr::getGetElementPtr(
+		llvm::Constant* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
+		llvm::Constant* indices[] = {zero, zero};
+		llvm::Constant* strPtr = llvm::ConstantExpr::getGetElementPtr(
 			globalStr->getValueType(),
 			globalStr,
 			indices);

@@ -1,5 +1,5 @@
 #include "Parser.h"
-#include "AST/ASTNodeN.h"
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Core/TypeRegistry.h"
 
@@ -108,6 +108,11 @@ namespace clear
             TokenType::StaticArrayDef
         });
 
+        m_ValueReferences = CreateTokenSet({
+            TokenType::VariableReference, 
+            TokenType::DereferenceOp,
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
@@ -172,6 +177,10 @@ namespace clear
         {
             ParseVariableDecleration();
         }
+        else if (MatchAny(m_ValueReferences))
+        {
+            ParseValueReference();
+        }
         else if (Match(TokenType::Declaration))
         {
             ParseFunctionDecleration();
@@ -215,9 +224,8 @@ namespace clear
         std::shared_ptr<Type> variableType = ParseVariableType();
 
         Expect(TokenType::VariableName);
-        std::string variableName = Consume().Data;
 
-        //if(match(TokenType::Comma)) deal with this later
+        std::string variableName = Consume().Data;
 
         Root()->Push(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
 
@@ -231,11 +239,26 @@ namespace clear
 
         Token assignmentToken = Consume();
 
+        if(Match(TokenType::StartArray))
+        {
+            CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
+
+            auto initializer = ParseArrayInitializer(std::make_shared<ASTVariableReference>(variableName));
+            Root()->Push(initializer);
+
+            return;
+        }
+
         std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
-        assign->Push(std::make_shared<ASTVariableReference>(variableName));
+        assign->Push(std::make_shared<ASTVariableReference>(variableName));            
         assign->Push(ParseExpression()); 
 
         Root()->Push(assign);
+    }
+
+    void Parser::ParseValueReference()
+    {
+
     }
 
     void Parser::ParseFunctionDefinition()
@@ -431,6 +454,49 @@ namespace clear
             return ParseFunctionCall();
 
         return std::make_shared<ASTVariableExpression>(name);
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage)
+    {
+        Expect(TokenType::StartArray);
+
+        std::vector<std::vector<size_t>> indices;
+        std::vector<size_t> currentIndex = { 0 };
+
+        std::shared_ptr<ASTArrayInitializer> initializer = std::make_shared<ASTArrayInitializer>();
+        initializer->Push(storage);
+
+        while(!Match(TokenType::EndLine))
+        {
+            if(Match(TokenType::StartArray))
+            {
+                currentIndex.push_back(0);
+                Consume();
+            }
+            else if (Match(TokenType::EndArray))
+            {
+                currentIndex.pop_back();
+                currentIndex.back()++;
+
+                Consume();
+            }
+            else if (Match(TokenType::Comma))
+            {
+                Consume();
+            }
+            else 
+            {
+                initializer->Push(ParseExpression());
+                indices.push_back(currentIndex);
+
+                currentIndex.back()++;
+            }
+        }
+
+        initializer->SetIndices(indices);
+        Consume();
+
+        return initializer;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression()

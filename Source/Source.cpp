@@ -1,5 +1,5 @@
 ﻿#include "Lexing/Lexer.h"
-#include "AST/ASTNodeN.h"
+#include "AST/ASTNode.h"
 
 #include "Parsing/Parser.h"
 #include "API/LLVM/LLVMBackend.h"

@@ -1,34 +1,16 @@
-/* #pragma once
+#pragma once
 
-#include "Lexing/Lexer.h"
 #include "Core/Type.h"
-#include "Core/Ref.h"
 #include "Core/Value.h"
 
-#include <vector>
-#include <string>
+#include "Lexing/Tokens.h"
+#include "SymbolTable.h"
 
+#include <memory>
 
-
-namespace clear {
-
-	struct Paramater
-	{
-		std::string Name;
-		Ref<Type> Type;
-		bool IsVariadic = false;
-	};
-
-	struct FunctionMetaData
-	{
-		std::vector<Paramater> Parameters;
-		Ref<Type> ReturnType;
-	};
-
-	inline std::map<std::string, FunctionMetaData> g_FunctionMetaData;
-
-
-	enum class ASTNodeType
+namespace clear 
+{
+    enum class ASTNodeType
 	{
 		Base = 0, Literal, BinaryExpression,
 		VariableExpression, VariableDecleration,
@@ -36,51 +18,42 @@ namespace clear {
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer, MemberAccess
+		ArrayInitializer, MemberAccess, AssignmentOperator, 
+		VariableReference
 	};
 
-
-	struct NodeMetaData
+	struct CodegenResult
 	{
-		std::string Name;
-		Ref<Type> Type;
-		bool NeedLoading = false;
-		int Debug;
+		llvm::Value* CodegenValue = nullptr;
+		std::shared_ptr<Type> CodegenType;
 	};
 
-	class ASTNodeBase
+    class ASTNodeBase
 	{
 	public:
-		ASTNodeBase() = default;
+		ASTNodeBase();
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
-		virtual llvm::Value* Codegen();
+		virtual CodegenResult Codegen();
 
-		void SetName(const std::string& name);
-		void SetType(const Ref<Type>& type);
+		void Push(const std::shared_ptr<ASTNodeBase>& child);
+		void Remove(const std::shared_ptr<ASTNodeBase>& child);
 
-		void PushChild(const Ref<ASTNodeBase>& child);
-		void RemoveChild(const Ref<ASTNodeBase>& child);
+		void PropagateSymbolTableToChildren();
 
-		void SetParent(const Ref<ASTNodeBase>& parent);
-		void RemoveParent();
+		void CreateSymbolTable();
 
-		Ref<ASTNodeBase>& GetTop() { return m_Children.back(); }
+		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
-		const auto  GetParent()   const { return m_Parent; }
 		const auto& GetChildren() const { return m_Children; }
-
-		inline const std::string& GetName() const { return p_MetaData.Name; }
-		inline NodeMetaData& GetMetaData() { return p_MetaData; }
+	
+	private:
+		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
 
 	private:
-		Ref<ASTNodeBase> m_Parent;
-		std::vector<Ref<ASTNodeBase>> m_Children;
-
-	protected:
-		NodeMetaData p_MetaData;
+		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
+		std::shared_ptr<SymbolTable> m_SymbolTable;
 	};
-
 
 	class ASTNodeLiteral : public ASTNodeBase
 	{
@@ -88,13 +61,11 @@ namespace clear {
 		ASTNodeLiteral(const Token& data);
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
 
 	private:
 		Value m_Constant;
 	};
-
-	
 
 	class ASTBinaryExpression : public ASTNodeBase
 	{
@@ -102,68 +73,112 @@ namespace clear {
 		ASTBinaryExpression(BinaryExpressionType type);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
 
-	private:
-		bool _IsMathExpression()    const;
-		bool _IsCmpExpression()     const;
-		bool _IsBitwiseExpression() const;
+		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type);
+		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type);
 
-		llvm::Value* _CreateExpression(llvm::Value* LHS, llvm::Value* RHS, llvm::Value* LHSRawValue, llvm::Value* RHSRawValue, bool signedInteger);
-		llvm::Value* _CreateMathExpression(llvm::Value* LHS, llvm::Value* RHS);
-		llvm::Value* _CreateCmpExpression(llvm::Value* LHS, llvm::Value* RHS);
-		llvm::Value* _CreateLoadStoreExpression(llvm::Value* LHS, llvm::Value* RHS);
-		llvm::Value* _CreateBitwiseExpression(llvm::Value* LHS, llvm::Value* RHS, bool signedInteger);
-		llvm::Value* _CreatePointerArithmeticExpression(llvm::Value* LHS, llvm::Value* RHS, const Ref<Type>& pointerMetaData);
+	private:
+		void HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs);
+
+		bool IsMathExpression()    const;
+		bool IsCmpExpression()     const;
+		bool IsBitwiseExpression() const;
+
+		CodegenResult HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs);
+		CodegenResult HandleCmpExpressionF(CodegenResult& lhs, CodegenResult& rhs);
+		CodegenResult HandleCmpExpressionSI(CodegenResult& lhs, CodegenResult& rhs);
+		CodegenResult HandleCmpExpressionUI(CodegenResult& lhs, CodegenResult& rhs);
+
+		CodegenResult HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs);
+		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs);
 
 	private:
 		BinaryExpressionType m_Expression;
 	};
 
-	class ASTUnaryExpression : public ASTNodeBase
+	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTUnaryExpression(UnaryExpressionType type, const Ref<Type>& cast = {});
-		virtual ~ASTUnaryExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
-		virtual llvm::Value* Codegen() override;
+		ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type);
+		virtual ~ASTVariableDeclaration() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
+		virtual CodegenResult Codegen() override;
 
 	private:
-		UnaryExpressionType m_Type;
+		std::string m_Name;
+		std::shared_ptr<Type> m_Type;
 	};
 
-	class ASTFunctionDefinition : public ASTNodeBase
+	class ASTVariableReference : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const Ref<Type>& returnType, const std::vector<Paramater>& arugments);
+		ASTVariableReference(const std::string& name);
+		virtual ~ASTVariableReference() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableReference; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::string m_Name;
+	};
+
+	class ASTVariableExpression : public ASTNodeBase
+	{
+	public:
+		ASTVariableExpression(const std::string& name);
+		virtual ~ASTVariableExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		std::string m_Name;
+	};
+
+	enum class AssignmentOperatorType 
+	{
+		Normal = 0, Mul, Div, Add, Sub, Mod
+	};
+
+	class ASTAssignmentOperator : public ASTNodeBase
+	{
+	public:
+		ASTAssignmentOperator(AssignmentOperatorType type);
+		virtual ~ASTAssignmentOperator() = default;
+		virtual inline const ASTNodeType GetType() const { return ASTNodeType::AssignmentOperator; }
+		virtual CodegenResult Codegen();
+
+	private:
+		void HandleDifferentTypes(CodegenResult& storage, CodegenResult& data);
+
+	private:
+		AssignmentOperatorType m_Type;
+	};
+
+	class ASTStruct : public ASTNodeBase
+	{
+	public:
+		ASTStruct() = default;
+		virtual ~ASTStruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
+		virtual CodegenResult Codegen() override;
+	};
+
+	class ASTFunctionDefinition : public ASTNodeBase 
+	{
+	public:
+		ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& parameters);
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
 
 	private:
-		std::vector<Paramater> m_Paramaters;
-	};
-
-
-	class ASTFunctionDecleration : public ASTNodeBase
-	{
-	public:
-		ASTFunctionDecleration(const std::string& name, const Ref<Type>& expectedReturnType, const std::vector<Paramater>& types);
-		virtual ~ASTFunctionDecleration() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
-		virtual llvm::Value* Codegen() override;
-
-	private:
-		std::vector<Paramater> m_ExpectedTypes;
-	};
-
-
-	struct Argument
-	{
-		Ref<Type> Field;
-		std::string Data;
+		std::vector<Parameter> m_Parameters;
+		std::string m_Name;
+		std::shared_ptr<Type> m_ReturnType;
 	};
 
 	class ASTFunctionCall : public ASTNodeBase
@@ -172,112 +187,35 @@ namespace clear {
 		ASTFunctionCall(const std::string& name);
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
+		
+	private:
+		std::string m_Name;
 	};
 
-	class ASTVariableDeclaration : public ASTNodeBase
+	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name, Ref<Type> type);
-		virtual ~ASTVariableDeclaration() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
-		virtual llvm::Value* Codegen() override;
+		ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types);
+		virtual ~ASTFunctionDecleration() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
+		virtual CodegenResult Codegen() override;
 
 	private:
-		Value m_Value;
-	};
-
-
-	class ASTVariableExpression : public ASTNodeBase
-	{
-	public:
-		ASTVariableExpression(const std::string& variable);
-		virtual ~ASTVariableExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
-		virtual llvm::Value* Codegen() override;
-
-	private:
-		std::string m_VariableName;
-	};
-
-	class ASTMemberAccess : public ASTNodeBase
-	{
-	public:
-		ASTMemberAccess(const std::string& member);
-		virtual ~ASTMemberAccess() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
-		virtual llvm::Value* Codegen() override;
-	};
-
-	class ASTReturnStatement : public ASTNodeBase
-	{
-	public:
-		ASTReturnStatement(const Ref<Type>& expectedReturnType, bool createReturn = true);
-		virtual ~ASTReturnStatement() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
-		virtual llvm::Value* Codegen() override;
-
-	private:
-		bool m_CreateReturn;
+		std::vector<Parameter> m_Parameters;
+		std::shared_ptr<Type> m_ReturnType;
+		std::string m_Name;
 	};
 
 	class ASTExpression : public ASTNodeBase
 	{
 	public:
-		ASTExpression(const Ref<Type>& expectedType = {});
+		ASTExpression() = default;
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
 	};
 
-	class ASTStruct : public ASTNodeBase
-	{
-	public:
-		ASTStruct(const std::string& name, const std::vector<MemberType>& fields);
-		virtual ~ASTStruct() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
-		virtual llvm::Value* Codegen() override;
-
-	private:
-		std::vector<MemberType> m_Members;
-	};
-
-	class ASTIfExpression : public ASTNodeBase
-	{
-	public:
-		ASTIfExpression() = default;
-		virtual ~ASTIfExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
-		virtual llvm::Value* Codegen() override;
-
-	};
-
-	class ASTWhileLoop : public ASTNodeBase
-	{
-	public:
-		ASTWhileLoop() = default;
-		virtual ~ASTWhileLoop() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
-		virtual llvm::Value* Codegen() override;
-	};
-
-	class ASTBreak : public ASTNodeBase
-	{
-	public:
-		ASTBreak() = default;
-		virtual ~ASTBreak() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Break; }
-		virtual llvm::Value* Codegen() override;
-	};
-
-	class ASTContinue : public ASTNodeBase
-	{
-	public:
-		ASTContinue() = default;
-		virtual ~ASTContinue() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Continue; }
-		virtual llvm::Value* Codegen() override;
-	};
 
 	class ASTArrayInitializer : public ASTNodeBase
 	{
@@ -285,14 +223,20 @@ namespace clear {
 		ASTArrayInitializer() = default;
 		virtual ~ASTArrayInitializer() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ArrayInitializer; }
-		virtual llvm::Value* Codegen() override;
+		virtual CodegenResult Codegen() override;
 
-		void PushElementIndex(const std::vector<size_t>& elementIndex);
-
-	private:
-		llvm::Type* _GetElementType(llvm::ArrayType* type);
+		void SetIndices(const std::vector<std::vector<size_t>>& indices);
 
 	private:
-		std::vector<std::vector<llvm::Value*>> m_Indices;
+		void VerifyArray(std::shared_ptr<ArrayType> type, 
+						 const std::vector<size_t>& index);
+
+		std::shared_ptr<Type> GetElementType(std::shared_ptr<Type> type);
+
+		std::shared_ptr<Type> GetInnerType(std::shared_ptr<Type> type, size_t index);
+
+	private:
+		std::vector<std::vector<size_t>> m_Indices;
 	};
-} */
+
+}

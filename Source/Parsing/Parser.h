@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Lexing/Lexer.h"
-#include "AST/ASTNodeN.h"
+#include "AST/ASTNode.h"
 #include "Core/Type.h"
 
 #include <memory>
@@ -32,15 +32,15 @@ namespace clear
 
         void ParseStatement();
         void ParseGeneric();
-        std::shared_ptr<ASTNodeBase> ParseExpression();
-
         void ParseFunctionDefinition();
-        void ParseFunctionDecleration();
+        void ParseFunctionDecleration();        
+        void ParseVariableDecleration();
+        void ParseValueReference();
 
+        std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();
-
-        void ParseVariableDecleration();
+        std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<Type> ParseVariableType();
 
         void ParseIndentation();
@@ -60,5 +60,6 @@ namespace clear
         TokenSet m_Literals;
         TokenSet m_IgnoredTokens;
         TokenSet m_TypeIndirection;
+        TokenSet m_ValueReferences;
     };
 }
