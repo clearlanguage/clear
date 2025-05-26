@@ -1,4 +1,4 @@
-#pragma once
+/* #pragma once
 
 #include "ASTNode.h"
 
@@ -29,4 +29,4 @@ namespace clear {
 	};
 
 
-}
+} */

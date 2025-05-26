@@ -1,1627 +1,615 @@
 #include "Parser.h"
-#include "Errors.h"
-#include <sstream>
-#include <map>
-#include <fstream>
-#include <iostream>
-#include <Core/Log.h>
-#include <cmath>
-#include <Core/Utils.h>
+#include "AST/ASTNodeN.h"
+#include "Core/Log.h"
+#include "Core/TypeRegistry.h"
 
 
-namespace clear
+#include <stack>
+
+namespace clear 
 {
-	Parser::Parser()
-	{
-		m_StateMap[ParserState::Default]      = [this]() { _DefaultState(); };
-		m_StateMap[ParserState::VariableName] = [this]() { _VariableNameState(); };
-		m_StateMap[ParserState::RValue]       = [this]() { _ParsingRValueState(); };
-		m_StateMap[ParserState::Operator]     = [this]() { _OperatorState(); };
-		m_StateMap[ParserState::Indentation]  = [this]() { _IndentationState(); };
-		m_StateMap[ParserState::FunctionName] = [this]() {_FunctionNameState();};
-		m_StateMap[ParserState::FunctionParameters] = [this]() { _FunctionParameterState(); };
-		m_StateMap[ParserState::ArrowState] = [this](){_ArrowState();};
-		m_StateMap[ParserState::FunctionTypeState] = [this]() {_FunctionTypeState();};
-		m_StateMap[ParserState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[ParserState::FunctionParamaters] = [this]()  {_FunctionArgumentState(); };
-		m_StateMap[ParserState::Comment] = [this]() { _CommentState(); };
-		m_StateMap[ParserState::MultilineComment] = [this]() { _MultiLineCommentState(); };
-		m_StateMap[ParserState::IndexOperator] = [this]() { _IndexOperatorState(); };
-		m_StateMap[ParserState::AsterisksOperator] = [this]() {_AsterisksState();};
-		m_StateMap[ParserState::AmpersandOperator] = [this]() {_AmpersandState();};
-		m_StateMap[ParserState::Declaration] = [this](){_DeclarationState();};
-		m_StateMap[ParserState::MinusOperator] = [this]() {_MinusOperator();};
-		m_StateMap[ParserState::Increment] = [this]() {_IncrementOperator();};
-		m_StateMap[ParserState::Restriction] = [this]() {_RestrictionState();};
-		m_StateMap[ParserState::DotOp] = [this]() {_DotOpState();};
-
-
-	}
-
-	void Parser::_PushToken(Token tok) {
-		_PushToken(tok.TokenType,tok.Data);
-	}
-
-
-	void Parser::_PushToken(const TokenType tok, const std::string &data)
-	{
-		TokenLocation location;
-		location.from = m_TokenIndexStart;
-		location.to = m_CurrentTokenIndex;
-		location.line = m_CurrentLine;
-		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data ,.Location = location});
-	}
-
-	Token Parser::_GetLastToken() {
-		if (m_ProgramInfo.Tokens.empty())
-			return Token{.TokenType = TokenType::EndLine,.Data = ""};
-
-		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1);
-	}
-
-	Token Parser::_GetLastToken(size_t x) {
-		if (m_ProgramInfo.Tokens.empty() || x >= m_ProgramInfo.Tokens.size())
-			return Token{.TokenType = TokenType::EndLine, .Data = ""};
-
-		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size() - 1 - x);
-	}
-
-
-	char Parser::_GetNextChar()
-	{
-		if(m_Buffer.length() > m_CurrentTokenIndex)
-		{
-			auto c = m_Buffer[m_CurrentTokenIndex++];
-			return c;
-		}
-
-		return 0;
-	}
-
-	void Parser::_Backtrack()
-	{
-		m_CurrentTokenIndex--;
-	}
-
-	// const bool Parser::_IsEndOfFile()
-	// {
-	// 	return m_CurrentTokenIndex == m_Buffer.length();
-	// }
-
-	void Parser::_ResetSecondState() {
-		if (m_SecondState == ParserSecondaryState::None) {
-			return;
-		}
-
-		if (m_SecondState == ParserSecondaryState::Declaration) {
-			// auto tok = _GetLastToken().TokenType;
-			// _VerifyCondition(tok== TokenType::EndFunctionArguments,40);
-
-		}
-		m_SecondState = ParserSecondaryState::None;
-	}
-
-
-	void Parser::_EndLine()
-	{
-		if ( _GetLastToken().TokenType != TokenType::EndLine) {
-			_PushToken({ .TokenType = TokenType::EndLine });
-		}
-		_ResetSecondState();
-		m_CurrentLine++;
-	}
-
-	ProgramInfo Parser::ParseProgram()
-	{
-		if (!IsSubParser)
-			m_ScopeStack.emplace_back();
-		while (m_CurrentTokenIndex < m_Buffer.length() && !m_subParserError)
-		{
-			m_TokenIndexStart = m_CurrentTokenIndex;
-			m_StateMap.at(m_CurrentState)();
-		}
-		if (m_subParserError) {
-			return m_ProgramInfo;
-		}
-		CLEAR_PARSER_VERIFY(m_ProgramInfo.Errors.empty(),"99");
-		while (m_Indents > 0)
-		{
-			_PushToken({ .TokenType = TokenType::EndIndentation });
-			m_Indents--;
-		}
-		_VerifyCondition(m_BracketStack.empty(),1);
-
-		return m_ProgramInfo;
-	}
-
-	void Parser::InitParser()
-	{
-		m_ProgramInfo.Tokens.clear();
-		m_ScopeStack.clear();
-		m_CurrentTokenIndex = 0;
-		m_CurrentErrorState.clear();
-		m_Indents = 0;
-		m_CurrentIndentLevel = 0;
-		m_CurrentIndentationLevel = 0;
-		m_LineStarted = false;
-		m_CurrentState = ParserState::Default;
-		m_Buffer.clear();
-		m_CurrentString.clear();
-	}
-
-
-	ProgramInfo Parser::CreateTokensFromFile(const std::filesystem::path& path)
-	{
-		InitParser();
-		m_File.open(path);
-
-		if (!m_File.is_open())
-		{
-			std::cout << "failed to open file " << path << std::endl;
-			return m_ProgramInfo;
-		}
-
-		std::stringstream stream;
-		stream << m_File.rdbuf();
-
-		m_Buffer = stream.str();
-		m_Buffer+='\n';
-		return ParseProgram();
-
-	}
-
-	 char Parser::_SkipSpaces() {
-		_Backtrack();
-		char current = _GetNextChar();
-		while (IsSpace(current))
-			current = _GetNextChar();
-
-		return current;
-	 }
-
-	void Parser::_MinusOperator() {
-		auto token = _GetLastToken();
-		auto tok =token.TokenType;
-
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
-			_PushToken(TokenType::SubOp,"-");
-		}else{
-			_PushToken(TokenType::Negation,"-");
-		}
-		m_CurrentState = ParserState::RValue;
-	}
-
-	void Parser::_DeclarationState() {
-		m_SecondState = ParserSecondaryState::Declaration;
-		m_CurrentState = ParserState::Default;
-	}
-
-
-
-	void Parser::_FunctionArgumentState() {
-		_GetNextChar();
-
-		char current = _SkipSpaces();
-		m_CurrentString.clear();
-		CLEAR_PARSER_VERIFY(current == '(', "149.FAS");
-
-		m_CurrentErrorState = "function arguments";
-		auto bracketsInfo = _ParseBrackets(')',true);
-		m_CurrentState = ParserState::Default;
-		int i = 0;
-		for (const std::string& arg : bracketsInfo.tokens) {
-			m_TokenIndexStart = bracketsInfo.indexes.at(i);
-			ProgramInfo info = _SubParse(arg,true);
-			for (const Token& tok :info.Tokens) {
-				_PushToken(tok);
-			}
-			_PushToken(TokenType::Comma, "");
-			i++;
-		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
-			m_ProgramInfo.Tokens.pop_back();
-		}
-
-		_PushToken(TokenType::EndFunctionArguments, ")"); //TODO: change me to end function args
-		current = _GetNextChar();
-		_SkipSpaces();
-		if (current != ')')
-			_Backtrack();
-	}
-
-
-	void Parser::_MultiLineCommentState() {
-		char current = _GetNextChar();
-		if (current =='\n')
-			m_CurrentLine++;
-		m_TokenIndexStart = m_CurrentTokenIndex-3;
-		while (current!= '\0') {
-			current = _GetNextChar();
-			if (current == '\n')
-				m_CurrentLine++;
-			if (current == '*') {
-				current = _GetNextChar();
-				if (current == '\\') {
-					m_CurrentState = ParserState::Default;
-					return;
-				}else {
-					_Backtrack();
-				}
-			}
-		}
-		int j = m_TokenIndexStart;
-		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
-			j++;
-		}
-
-		_VerifyCondition(false,17,m_TokenIndexStart,j);
-	}
-
-	std::string Parser::_CleanBrackets(std::string x) {
-		if (x.front() == '(' && x.back() == ')' ) {
-			return x.substr(1, x.size() - 2);
-		}
-		return x;
-	}
-
-	void Parser::_CommentState() {
-		char current = _GetNextChar();
-		while (current != '\n' && current != '\0') {
-			current = _GetNextChar();
-		}
-		m_CurrentState = ParserState::Default;
-		if (current == '\n')
-			_Backtrack();
-	}
-	bool Parser::_IsEndOfLine() {
-		if (m_ProgramInfo.Tokens.empty())
-			return true;
-		TokenType tok = _GetLastToken().TokenType;
-		return (tok == TokenType::EndLine);
-	}
-
-	void Parser::_DotOpState() {
-		_VerifyCondition(IsTokenOfType(_GetLastToken(1),"has_members"),51);
-		m_CurrentState = ParserState::RValue;
-	}
-
-
-	void Parser::_RestrictionState() {
-		char current = _GetNextChar();
-
-		current = _SkipSpaces();
-		m_TokenIndexStart = m_CurrentTokenIndex-1;
-		m_CurrentString.clear();
-
-		bool expectingEnd = false;
-		while (current!= '\n' && current != '\0' && current != ':' && current != '<')
-		{
-			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
-			if (IsSpace(current)) {
-				expectingEnd = true;
-			}else {
-
-				_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
-			}
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"restriction");
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 47,-1,m_CurrentTokenIndex-1,m_CurrentString);
-		m_ScopeStack.back().RestrictionDeclarations.insert(m_CurrentString);
-		_PushToken(TokenType::RestrictionName, m_CurrentString);
-		m_CurrentString.clear();
-
-		if (current == '<') {
-			bool end = false;
-			bool expectingEnd = false;
-			current = _GetNextChar();
-			while (current != '\0') {
-				if (current == '>') {
-					end = true;
-					break;
-				}
-				_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
-				if (IsSpace(current)) {
-					expectingEnd = true;
-				}else {
-					_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
-				}
-				m_CurrentString += current;
-				current = _GetNextChar();
-			}
-			_VerifyCondition(end,48);
-			_PushToken(TokenType::RestrictionTypeName, m_CurrentString);
-		}else {
-			_PushToken(TokenType::RestrictionTypeName, "type");
-
-		}
-
-
-
-
-		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
-	}
-
-
-	std::string Parser::_GetCurrentErrorContext(std::string ErrorRef) {
-		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
-		if (IsSubParser) {
-			return m_CurrentErrorState;
-		}
-		std::string ret = m_CurrentErrorState;
-		m_CurrentErrorState.clear();
-		return ret;
-	}
-
-
-
-	BracketParsingReturn Parser::_ParseBrackets(char end, bool commas) {
-		char start = g_CloserToOpeners.at(end);
-		char current = start;
-		std::vector<char> stack;
-		stack.push_back(start);
-		bool detectedEnd = false;
-		bool ExpectingValue = false;
-		BracketParsingReturn ret;
-
-		std::string ErrorReference = _GetCurrentErrorContext("25410");
-
-		ret.indexes.push_back(m_CurrentTokenIndex);
-		while (!stack.empty() && current != '\0') {
-			current = _GetNextChar();
-			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
-				stack.push_back(current);
-			}else {
-
-				if (!(stack.back() == '\'' || stack.back() == '"')) {
-					if (g_Openers.contains(current)) {
-						stack.push_back(current);
-					}
-					if (g_CloserToOpeners.contains(current)) {
-						_VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(stack.back()),Str(g_CloserToOpeners.at(current)));
-						stack.pop_back();
-					}
-				}else {
-					if ((current == '\'' || current == '"')) {
-						if (m_Buffer[m_CurrentTokenIndex-2] != '\\') {
-							// std::string type;
-							// if (current == '"') {
-							// 	type = "string";
-							// }else {
-							// 	type = "char";
-							// }
-							// _VerifyCondition(current == stack.back(),19,type,Str(stack.back()),Str(current));
-							if (current == stack.back())
-								stack.pop_back();
-						}
-					}
-				}
-
-			}
-			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
-			{
-				if (!((current == ',' && commas) || current!= ',')) {
-					_VerifyCondition(false,16,ErrorReference);
-				}
-				_VerifyCondition(!(current == ',' && ExpectingValue),38,ErrorReference);
-				if (current ==',') {
-					ExpectingValue = true;
-				}
-
-				if (!m_CurrentString.empty()) {
-					ret.tokens.push_back('('+ m_CurrentString + ')');
-					ExpectingValue = false;
-				}
-				else {
-					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
-				}
-
-				if (current == end) {
-					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
-					m_CurrentString.clear();
-					detectedEnd = true;
-					break;
-				}
-
-				m_CurrentString.clear();
-				m_CurrentTokenIndex++;
-				_SkipSpaces();
-				_Backtrack();
-				ret.indexes.push_back(m_CurrentTokenIndex);
-
-
-			}
-			else
-			{
-				if(!(std::isspace(current) && m_CurrentString.empty()))
-					// if (current == '\n') current = ' ';
-					m_CurrentString += current;
-			}
-
-
-		}
-
-
-
-		_VerifyCondition(detectedEnd, 27,ErrorReference, Str(end) );
-
-
-		return ret;
-	}
-
-
-	void Parser::_PushVariableReference(const std::string& x) {
-		if (_GetLastToken().TokenType == TokenType::DotOp) {
-			_PushToken(TokenType::MemberName,x);
-		}else {
-			_PushToken(TokenType::VariableReference, x);
-
-		}
-	}
-
-
-	void Parser::_IndexOperatorState() {
-		char current = _GetNextChar();
-		CLEAR_PARSER_VERIFY(current == '[', "318.IOS");
-
-		m_CurrentErrorState = "array index";
-		auto parsed= _ParseBrackets(']',false);
-		_VerifyCondition(!parsed.tokens.empty(),24);
-		if (parsed.tokens.empty())
-			return;
-
-		ProgramInfo info = _SubParse( parsed.tokens.at(0),false);
-		for (const Token& tok :info.Tokens) {
-			_PushToken(tok);
-		}
-
-		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
-
-		_PushToken(TokenType::CloseBracket,"]");
-		// m_CurrentString+= "INDEX_OP";
-
-	}
-
-	void Parser::_DefaultState()
-	{
-		char current = _GetNextChar();
-
-		if (current == '(')
-		{
-			if (!m_CurrentString.empty() || IsTokenOfType(_GetLastToken(),"callable"))
-			{
-				if (!m_CurrentString.empty())
-				{
-					_PushVariableReference(m_CurrentString);
-				}
-				if (IsTokenOfType(_GetLastToken(),"named_callable")) {
-					m_CurrentString = _GetLastToken().Data;
-				}
-
-				_PushToken(TokenType::FunctionCall, m_CurrentString);
-				m_CurrentState = ParserState::FunctionParamaters;
-				_Backtrack();
-
-			}else {
-				m_BracketStack.push_back('(');
-			}
-
-			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
-
-
-			return;
-		}
-		_VerifyCondition(current!=']',25,"index operator");
-		if (current == '"' ) {
-			_VerifyCondition(m_CurrentString.empty(), 25,"string");
-			_ParseString();
-			return;
-		}
-		if (current == '{') {
-			_VerifyCondition(m_CurrentString.empty(), 25,"list");
-			_ParseList();
-			return;
-		}
-		if (current == '\'') {
-			_VerifyCondition(m_CurrentString.empty(), 25,"char");
-			_ParseChar();
-			return;
-		}
-
-		if (std::isdigit(current) && m_CurrentString.empty())
-		{
-				m_CurrentString += current;
-				_ParseNumber();
-				return;
-		}
-
-		if (IsVarNameChar(current))
-			m_CurrentString += current;
-
-
-		if (!m_CurrentString.empty() && !IsVarNameChar(current))
-		{
-			if (g_KeyWordMap.contains(m_CurrentString) ) {
-				auto& value = g_KeyWordMap.at(m_CurrentString);
-
-				m_CurrentState = value.NextState;
-
-				if (value.TokenToPush != TokenType::None)
-					_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
-
-				m_CurrentString.clear();
-				if (!IsSpace(current))
-					_Backtrack();
-				return;
-
-			}
-			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || ( current == '*' || current == '&' || current == '<')) && _IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType!= TokenType::DotOp) {
-				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
-				m_CurrentState = ParserState::VariableName;
-				m_CurrentString.clear();
-
-
-				if (!IsSpace(current))
-					_Backtrack();
-
-				return;
-			}
-			else
-			{
-				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),34);
-				_PushVariableReference( m_CurrentString);
-				m_CurrentString.clear();
-
-			}
-		}
-
-		if (current == ':' || current == '\n')
-		{
-			m_CurrentState = ParserState::Indentation;
-			m_CurrentString.clear();
-			if (current == '\n' && m_BracketStack.empty())
-				_EndLine();
-
-			return;
-		}
-
-		if (g_OperatorMap.contains(Str(current)))
-		{
-			m_CurrentState = ParserState::Operator;
-			m_CurrentString.clear();
-		}
-
-		if (current == '[') {
-			m_CurrentState = ParserState::IndexOperator;
-			_PushToken(TokenType::IndexOperator,"");
-			_PushToken(TokenType::OpenBracket,"[");
-			_Backtrack();
-
-		}
-		if (current == ')')
-		{
-			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back(),25,"Brackets");
-
-			m_BracketStack.pop_back();
-			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")"});
-
-			return;
-		}
-
-		_VerifyCondition(IsVarNameChar(current)||g_OperatorMap.contains(Str(current)) ||g_Openers.contains(current) || g_CloserToOpeners.contains(current) || std::isspace(current) ,41,Str(current));
-	}
-	void Parser::_ArrowState()
-	{
-		if ((m_ProgramInfo.Tokens.size() > 1 &&
-			_GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == ParserSecondaryState::Declaration)
-		{
-			m_CurrentState = ParserState::FunctionTypeState;
-			return;
-		}
-
-		m_CurrentState = ParserState::Default;
-
-	}
-	void Parser::_FunctionTypeState()
-	{
-		char current = _GetNextChar();
-
-		//want to ignore all spaces in between type and variable
-		current = _SkipSpaces();
-		m_CurrentString.clear();
-
-		//allow _ and any character from alphabet
-		while (current != '\n' && current != '\0' && current != ':' && current!=';')
-		{
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-
-		_PushToken({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
-		bool containsdata = false;
-		for (auto i : m_CurrentString) {
-			if (!std::isspace(i)) {
-				containsdata = true;
-				break;
-			}
-		}
-		_VerifyCondition(containsdata,40);
-		ProgramInfo info = _SubParse(m_CurrentString,true);
-
-		for (const Token& tok :info.Tokens) {
-			_PushToken(tok);
-		}
-
-		_Backtrack();
-		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
-
-	}
-
-	bool Parser::_IsTypeDeclared(const std::string& type) {
-		for (TypeScope& arg : m_ScopeStack) {
-			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	bool Parser::_IsRestrictionDeclared(const std::string &type) {
-		for (TypeScope& arg : m_ScopeStack) {
-			if (arg.RestrictionDeclarations.contains(type)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-
-
-
-	void Parser::_StructNameState() {
-		char current = _GetNextChar();
-
-		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
-		m_TokenIndexStart = m_CurrentTokenIndex-1;
-		m_CurrentString.clear();
-		bool expectingEnd = false;
-		while (current!= '\n' && current != '\0' && current != ':')
-		{
-			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"struct");
-			if (IsSpace(current)) {
-				expectingEnd = true;
-			}else {
-
-			_VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
-			}
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
-		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
-
-
-		_PushToken(TokenType::StructName, m_CurrentString);
-		m_CurrentString.clear();
-		_Backtrack();
-		m_CurrentState = ParserState::Default;
-	}
-
-	Token Parser::_CreateToken(const TokenType tok, const std::string &data) {
-		return Token{ .TokenType = tok, .Data = data };
-	}
-
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
-		if ((!condition) && !IsSubParser) {
-
-		if (startIndex!= -1) {
-			m_TokenIndexStart = startIndex;
-		}
-		if (endIndex != -1) {
-			m_CurrentTokenIndex = endIndex;
-			}
-		}
-		_VerifyCondition(condition, Error, Advice, ErrorType);
-	}
-
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
-		if (!condition && !IsSubParser) {
-			if (startIndex!= -1) {
-				m_TokenIndexStart = startIndex;
-				}
-			}
-
-		_VerifyCondition(condition, Error, Advice, ErrorType);
-
-	}
-
-
-
-	void Parser::_ParsingRValueState()
-	{
-		char current = _GetNextChar();
-
-		//want to ignore all spaces in between = and actual variable
-		current = _SkipSpaces();
-		m_CurrentString.clear();
-		if (m_BracketStack.empty())
-			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
-		if (current == '\n') {
-			return;
-		}
-		//brackets
-		if (g_OperatorMap.contains(Str(current))) {
-			m_CurrentState = ParserState::Operator;
-			return;
-		}
-		if (current == '(')
-		{
-			m_BracketStack.push_back('(');
-			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
-			m_CurrentState = ParserState::RValue;
-			return;
-		}
-		if (current == ')')
-		{
-			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
-			m_CurrentState = ParserState::RValue;
-
-			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
-			m_BracketStack.pop_back();
-
-			return;
-		}
-		if (current == '"') //strings
-		{
-			_ParseString();
-		}else if(current == '{') {
-			_ParseList();
-		}
-		else if (std::isdigit(current) || current == '-') // positive/negative numbers
-		{
-			m_CurrentString.push_back(current);
-			_ParseNumber();
-		}else if (current == '\'') {
-			_ParseChar();
-		}
-		else if(std::isalnum(current))
-		{
-			//could be a variable reference, class/struct reference etc...
-			m_CurrentString.push_back(current);
-			_Backtrack();
-			_ParseOther();
-		}else {
-			_VerifyCondition(false,41,Str(current));
-		}
-		if (m_CurrentState == ParserState::RValue)
-			m_CurrentState = ParserState::Default;
-	}
-
-	void Parser::_ParseArrayDeclaration()
-	{
-		m_TokenIndexStart = m_CurrentTokenIndex-1;
-		m_CurrentErrorState = "Array declaration";
-		auto parsed = _ParseBrackets(']',false);
-		m_CurrentString.clear();
-		if (!parsed.tokens.empty()) {
-			m_CurrentString = _CleanBrackets(parsed.tokens.at(0));
-		}
-
-		if (m_CurrentString.empty()) {
-			_PushToken(TokenType::DynamicArrayDef,"");
-		}else {
-			if (m_CurrentString.find_first_not_of("0123456789") == std::string::npos) {
-				_PushToken(TokenType::StaticArrayDef,m_CurrentString);
-			}
-			else if (m_CurrentString == "...") {
-				_PushToken(TokenType::StaticArrayDef,"...");
-			}else {
-				_VerifyCondition(false,"Array declaration syntax error only expected numbers or ...","Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty","Array declaration error",m_TokenIndexStart,m_CurrentTokenIndex-1);
-
-			}
-		}
-		m_CurrentString.clear();
-		char current = _GetNextChar();
-		_VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
-		while (IsSpace(current)) {
-			current = _GetNextChar();
-		}
-		_VerifyCondition(current != ']',25,"Array declaration");
-		if (current == '[') {
-			_ParseArrayDeclaration();
-		}else  {
-			if (current != '\0')
-				_Backtrack();
-		}
-
-
-	}
-
-	void Parser::_ParsePointerDeclaration() {
-		char current = _GetNextChar();
-		while (current == '*') {
-			_PushToken(TokenType::PointerDef,"*");
-			current = _GetNextChar();
-		}
-		_VerifyCondition(std::isspace(current) || current == '[' ,6);
-		current = _SkipSpaces();
-		_VerifyCondition(current!= '*',26);
-
-		if (!IsSpace(current) && current != '\0') {
-			_Backtrack();
-		}
-
-	}
-
-	void Parser::_ParseGenericDeclaration() {
-		char current = _GetNextChar();
-		int currentLevel = 1;
-		std::vector<std::string> tokens;
-		std::vector<int> indexes;
-		indexes.push_back(m_CurrentTokenIndex);
-		while (currentLevel!= 0&& current != '\0') {
-			current = _GetNextChar();
-			if (current == '<') {
-				currentLevel++;
-			}
-			else if (current == '>') {
-				currentLevel--;
-			}
-
-			if (current == ',' && currentLevel == 1 || currentLevel == 0) {
-				_VerifyCondition(!m_CurrentString.empty(),45);
-				tokens.push_back(m_CurrentString);
-				m_CurrentString.clear();
-				indexes.push_back(m_CurrentTokenIndex);
-				continue;
-			}
-			_VerifyCondition(!IsSpace(current),52,-1,m_CurrentTokenIndex+1);
-			_VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
-			if (!(IsSpace(current) && m_CurrentString.empty())) {
-				m_CurrentString+=current;
-			}
-		}
-
-		_VerifyCondition(!tokens.empty(),43);
-		_PushToken(TokenType::GenericDeclarationStart,"");
-		for (auto &i : tokens) {
-			auto program = _SubParse(i,false);
-			_VerifyCondition(program.Tokens.at(0).TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(program.Tokens.at(0).Data),46);
-			for (const Token& tok :program.Tokens) {
-				_PushToken(tok);
-			}
-			_PushToken(TokenType::Comma,",");
-		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
-			m_ProgramInfo.Tokens.pop_back();
-		}
-		_PushToken(TokenType::GenericDeclarationEnd,"");
-		current = _GetNextChar();
-		_VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
-		current = _SkipSpaces();
-		if (!IsSpace(current) && current != '\0') {
-			_Backtrack();
-		}
-	}
-
-	Error Parser::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
-		Error err;
-		err.ErrorMessage = ErrorMsg;
-		err.Advice = Advice;
-		err.ErrorType = ErrorType;
-		int i = m_CurrentTokenIndex;
-		if (m_Buffer[i] == '\n')
-			i--;
-		if (m_Buffer[i] == '\n')
-			i--;
-		if ( m_Buffer[i] == '\0') {
-			i-=2;
-		}
-		int j = i;
-
-		while (j < m_Buffer.length() && m_Buffer[j] != '\n' && m_Buffer[j] != ';') {
-			j++;
-		}
-
-		while (i >= 0 && m_Buffer[i] != '\n' && m_Buffer[i] != ';') {
-			i--;
-		}
-		err.ErrorCause = m_Buffer.substr(i + 1, j - i - 1);
-		i++;
-		err.to = m_CurrentTokenIndex-i;
-		err.from = m_TokenIndexStart-i;
-
-		err.line = m_CurrentLine;
-		return err;
-
-	}
-	void Parser::_RaiseError(Error& err) 
-	{
-		PrintError(err);
-		CLEAR_HALT();
-	}
-
-	void Parser::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
-		if (!condition) {
-			auto err = _CreateError(Error,Advice,ErrorType);
-			if (!IsSubParser) {
-				_RaiseError(err);
-			}else {
-				m_subParserError = true;
-				m_ProgramInfo.Errors.push_back(err);
-			}
-		}
-	}
-
-
-
-	void Parser::_VariableNameState()
-	{
-		char current = _GetNextChar();
-		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
-		current = _SkipSpaces();
-
-		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
-		// 	_Backtrack();
-		// 	_VerifyCondition(!IsType,7);
-		// 	m_CurrentState = ParserState::Default;
-		// 	return;
-		// }
-		if (current == '(') {
-			_Backtrack();
-			m_CurrentState = ParserState::Default;
-
-			return;
-		}
-		if (current == '<') {
-			_Backtrack();
-			_ParseGenericDeclaration();
-			current = _GetNextChar();
-
-		}
-		if (current == '*') {
-			_Backtrack();
-			_ParsePointerDeclaration();
-			current = _GetNextChar();
-		}
-
-
-		m_CurrentString.clear();
-		if (current == '[') {
-			_ParseArrayDeclaration();
-			current = _GetNextChar();
-		}
-		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
-		_VerifyCondition(current != '*',26);
-		if (m_NoVariableNames) {
-			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
-			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
-
-			m_CurrentState = ParserState::Default;
-			return;
-
-		}
-		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10);
-			//
-			// if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
-			// 	_VerifyCondition(!IsType, 9);
-			// }
-			_VerifyCondition(!isDeclaration,8);
-
-			m_CurrentState = ParserState::Default;
-			_Backtrack();
-			return;
-		}
-		if (!isDeclaration) {
-			_Backtrack();
-			m_CurrentState = ParserState::Default;
-			return;
-		}
-
-
-		int commas = 0;
-		int vars = 0;
-
-		bool ExpectingComma = false;
-		int lastValidVar = m_CurrentTokenIndex-1;
-		while ((current != '\0' && current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
-			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),11, m_CurrentTokenIndex-1,-1);
-
-			if (!IsSpace(current)) {
-				m_CurrentString += current;
-			}
-			current = _GetNextChar();
-
-			if (IsSpace(current) && !m_CurrentString.empty()) {
-				ExpectingComma = true;
-			}
-
-
-			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),12,lastValidVar);
-
-
-			if (current == ',') {
-				ExpectingComma = false;
-				_VerifyCondition(!m_CurrentString.empty(),28);
-				_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,lastValidVar+1,m_CurrentTokenIndex-2,m_CurrentString);
-				lastValidVar = m_CurrentTokenIndex-1;
-				_PushToken(TokenType::VariableName, m_CurrentString);
-				_PushToken(TokenType::Comma,"");
-				m_CurrentString.clear();
-				current = _GetNextChar();
-				commas++;
-				if (current == ',') {
-					commas++;
-				}
-				vars ++;
-			}
-			_VerifyCondition(current != ',',28);
-		}
-		if (!m_CurrentString.empty()) {
-			_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,m_CurrentString);
-			_PushToken(TokenType::VariableName, m_CurrentString);
-			vars++;
-
-		}
-		_VerifyCondition(commas < vars,28);
-		if (!IsSpace(current)) {
-			_Backtrack();
-		}
-		m_CurrentString.clear();
-
-		m_CurrentState = ParserState::Default;
-	}
-
-	void Parser::_FunctionParameterState()
-	{
-		char current = _GetNextChar();
-		int curtok = m_CurrentTokenIndex;
-		current = _SkipSpaces();
-		int skipped = m_CurrentTokenIndex-curtok;
-		m_CurrentString.clear();
-		_VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
-
-		m_CurrentErrorState = "function parameters";
-		auto info = _ParseBrackets(')',true);
-
-		_PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
-		int ind = 0;
-
-		for (const auto& i: info.tokens)
-		{
-			// auto ParameterTokens = _ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
-			ProgramInfo ParameterTokens = _SubParse(i);
-			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
-			_VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || _IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
-			for (const Token& tok :ParameterTokens.Tokens) {
-				_PushToken(tok);
-			}
-			_PushToken(TokenType::Comma,",");
-			ind++;
-		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
-			m_ProgramInfo.Tokens.pop_back();
-		}
-		_PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
-		m_CurrentState = ParserState::Default;
-		current = _SkipSpaces();
-		if (current != ')')
-			_Backtrack();
-	}
-
-	void Parser::_FunctionNameState()
-	{
-		char current = _GetNextChar();
-
-		current = _SkipSpaces();
-		m_CurrentString.clear();
-		if (current == '(')
-		{
-			_Backtrack();
-			m_CurrentState = ParserState::FunctionParameters;
-			_PushToken({ .TokenType = TokenType::Lambda, .Data = ""});
-			return;
-		}
-
-		while (IsVarNameChar(current))
-		{
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-
-		if (current =='(')
-			_Backtrack();
-
-		_PushToken({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
-		m_CurrentString.clear();
-
-		_VerifyCondition(current != '\n',29);
-		m_CurrentState = ParserState::FunctionParameters;
-	}
-
-	void Parser::_IncrementOperator() {
-		char current = _GetNextChar();
-		char incrementType = _GetLastToken().Data.at(0);
-		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
-		if (current != incrementType) {
-			_Backtrack();
-			if (_GetLastToken().TokenType!= TokenType::Increment && _GetLastToken().TokenType!= TokenType::Decrement) {
-				m_CurrentState = ParserState::RValue;
-			}else {
-				m_CurrentState = ParserState::Default;
-			}
-			return;
-		}
-		m_ProgramInfo.Tokens.pop_back();
-		if (!IsTokenOfType(_GetLastToken(),"allow_op")) {
-			if (tok == TokenType::SubOp) {
-				tok = TokenType::Negation;
-			}
-		}
-		_PushToken(tok,Str(incrementType));
-		_PushToken(tok,Str(incrementType));
-		while (current == incrementType) {
-			_PushToken(tok,Str(incrementType));
-			current = _GetNextChar();
-		}
-		_Backtrack();
-		m_CurrentState = ParserState::RValue;
-	}
-
-
-	void Parser::_OperatorState()
-	{
-		_Backtrack();
-		std::string before = Str(_GetNextChar());
-		std::string h = "";
-		char current  = before.at(0);
-		while (g_OperatorMap.contains(Str(current)) && !(h.size()>1 &&g_OperatorMap.contains(h)))
-		{
-			h+=current;
-			current = _GetNextChar();
-		}
-
-		ParserMapValue value;
-		std::string data;
-		_Backtrack();
-
-		if (g_OperatorMap.contains(h))
-		{
-			value = g_OperatorMap.at(h);
-			data = h;
-		}
-		else
-		{
-
-			value = g_OperatorMap.at(before);
-			data = before;
-			m_CurrentTokenIndex -= (h.size()-1);
-
-		}
-		if (value.TokenToPush != TokenType::None)
-			_PushToken({ .TokenType = value.TokenToPush, .Data = data });
-
-		m_CurrentState = value.NextState;
-	}
-
-	void Parser::_AsterisksState() {
-		if (IsTokenOfType(_GetLastToken(),"allow_op")) {
-			_PushToken(TokenType::MulOp,"*");
-		}else {
-			_PushToken(TokenType::DereferenceOp,"*");
-		}
-		m_CurrentState = ParserState::RValue;
-
-	}
-
-	void Parser::_AmpersandState() {
-		auto token = _GetLastToken();
-		auto tok =token.TokenType;
-
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
-			_PushToken(TokenType::BitwiseAnd,"&");
-		}else {
-			_PushToken(TokenType::AddressOp,"&");
-		}
-		m_CurrentState = ParserState::RValue;
-
-	}
-
-
-	void Parser::_IndentationState()
-	{
-		size_t tabWidth = 4;
-		char next = _GetNextChar();
-
-		if (next == '\n')
-		{
-			_EndLine();
-			next = _GetNextChar();
-		}
-
-		bool indenting = true;
-		size_t totalSpaces = 0;
-
-		while (indenting)
-		{
-			if (next == '\t')
-			{
-				totalSpaces += tabWidth;
-				next = _GetNextChar();
-			}
-			else if (next == ' ')
-			{
-				totalSpaces++;
-				next = _GetNextChar();
-			}
-			else
-			{
-				indenting = false;
-			}
-		}
-
-		size_t localIndents = totalSpaces / 4;
-
-		if (localIndents > m_Indents)
-		{
-			_PushToken({ .TokenType = TokenType::StartIndentation });
-			m_Indents = localIndents;
-			m_ScopeStack.emplace_back();
-		}
-
-		while (m_Indents > localIndents)
-		{
-			_PushToken({ .TokenType = TokenType::EndIndentation });
-			m_Indents--;
-			m_ScopeStack.pop_back();
-		}
-
-		m_CurrentState = ParserState::Default;
-		_Backtrack();
-	}
-
-	void Parser::_ParseHexLiteral() {
-		m_CurrentString.clear();
-		char current = _GetNextChar();
-		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			_VerifyCondition(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-
-		if (!IsSpace(current)) {
-			_Backtrack();
-		}
-
-		_PushToken(TokenType::RValueNumber,std::to_string(HexStringToInteger(m_CurrentString)));
-		m_CurrentString.clear();
-	}
-	void Parser::_ParseBinaryLiteral() {
-		m_CurrentString.clear();
-		char current = _GetNextChar();
-		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			_VerifyCondition(current == '0' || current == '1',31);
-			m_CurrentString += current;
-			current = _GetNextChar();
-		}
-
-		if (!IsSpace(current)) {
-			_Backtrack();
-		}
-
-		_PushToken(TokenType::RValueNumber,std::to_string(BinaryStringToInteger(m_CurrentString)));
-		m_CurrentString.clear();
-
-	}
-
-	void Parser::_ParseExponentNumber(std::string x) {
-		m_TokenIndexStart = m_CurrentTokenIndex;
-		char current = _GetNextChar();
-		bool usedDecimal = false;
-		m_CurrentString.clear();
-		while (std::isalnum(current) || current == '.' || current == '_')
-		{
-			if (current != '_')
-			{
-				m_CurrentString.push_back(current);
-			}
-
-			_VerifyCondition(!(current == '.' && usedDecimal),21);
-
-			if (current == '.')
-			{
-				usedDecimal = true;
-			}
-
-
-			current = _GetNextChar();
-		}
-
-		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-		_PushToken(TokenType::RValueNumber,std::to_string(std::stod(x)*std::pow(10.0,std::stod(m_CurrentString))));
-		m_CurrentString.clear();
-	}
-
-
-
-	void Parser::_ParseNumber()
-	{
-		char current = _GetNextChar();
-
-		if (current == '\0')
-		{
-			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
-			m_CurrentString.clear();
-			return;
-		}
-
-		bool usedDecimal = false;
-		if (current == 'b') {
-			_VerifyCondition(m_CurrentString == "0", 22,"binary");
-			_ParseBinaryLiteral();
-			return;
-		}
-
-		if (current == 'x') {
-			_VerifyCondition(m_CurrentString == "0", 22,"hex");
-			_ParseHexLiteral();
-			return;
-		}
-
-		while (std::isalnum(current) || current == '.' || current == '_')
-		{
-			if (current == 'e') {
-				_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-				return _ParseExponentNumber(m_CurrentString);
-			}
-			if (current != '_')
-			{
-				m_CurrentString.push_back(current);
-			}
-
-			_VerifyCondition(!(current == '.' && usedDecimal),21);
-
-			if (current == '.')
-			{
-				usedDecimal = true;
-			}
-
-
-			current = _GetNextChar();
-		}
-		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-		if (m_CurrentString == "-") {
-			_PushToken(TokenType::SubOp,"-");
-		}else {
-
-			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
-		}
-		m_CurrentString.clear();
-		if (!IsSpace(current))
-			_Backtrack();
-	}
-
-	ProgramInfo Parser::_SubParse(std::string arg, bool allowvarname) {
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = arg;
-		subParser.m_Buffer+=" ";
-		subParser.m_ScopeStack = m_ScopeStack;
-		subParser.IsSubParser = true;
-		subParser.m_NoVariableNames = !allowvarname;
-		ProgramInfo info = subParser.ParseProgram();
-
-		if (!info.Errors.empty()) {
-			auto cause = info.Errors.front();
-			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
-			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
-			// _RaiseError();
-		}
-		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
-			info.Tokens.pop_back();
-			info.Tokens.erase(info.Tokens.begin());
-		}
-		return info;
-	}
-
-	ProgramInfo Parser::_SubParse(std::string arg) {
-		Parser subParser;
-		subParser.InitParser();
-		subParser.m_Buffer = arg;
-		subParser.m_Buffer+=" ";
-		subParser.m_ScopeStack = m_ScopeStack;
-		subParser.IsSubParser = true;
-		ProgramInfo info = subParser.ParseProgram();
-
-		if (!info.Errors.empty()) {
-			auto cause = info.Errors.front();
-			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
-			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
-			// _RaiseError();
-		}
-		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
-			info.Tokens.pop_back();
-			info.Tokens.erase(info.Tokens.begin());
-		}
-		return info;
-	}
-
-
-	void Parser::_ParseList() {
-		m_CurrentErrorState = "List literal";
-		auto  bracketInfo = _ParseBrackets('}',true);
-		_PushToken(TokenType::StartArray,"{");
-
- 		for (const std::string& arg : bracketInfo.tokens) {
-
-			ProgramInfo info = _SubParse(arg,false);
-			for (const Token& tok :info.Tokens) {
-				_PushToken(tok);
-			}
-			_PushToken(TokenType::Comma, "");
-		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
-			m_ProgramInfo.Tokens.pop_back();
-		}
-
-
-		_PushToken(TokenType::EndArray,"}");
-		m_CurrentState = ParserState::Default;
-	}
-
-
-	void Parser::_ParseChar() {
-		char current = _GetNextChar();
-		char data = current;
-		if (current == '\\') {
-			current = _GetNextChar();
-			if (current == '\'') {
-				data = '\'';
-				current = 0;
-			}
-			else if(current == 'n'){
-				data=  '\n';
-			}
-			else if(current == '\\') {
-				data= '\\';
-			}else if(current == 't') {
-				data = '\t';
-			}else if(current == 'r') {
-				data =  '\r';
-			}else if(current == 'b') {
-				data= '\b';
-			}else if(current == '0') {
-				data= '\0';
-			}else if(current == 'f') {
-				data = '\f';
-			}else if(current == 'v') {
-				data = '\v';
-			}else if(current == 'a') {
-				data = '\a';
-			}
-			else {
-				std::string message = "\"\\"+ Str(current)+"\"";
-				_VerifyCondition(false,13,m_TokenIndexStart+1,message);
-
-			}
-
-		}
-
-		// if (current == '\'') {
-		// 	current = '';
-		// }
-		_VerifyCondition(current!= '\'',14);
-
-
-		_PushToken(TokenType::RValueChar,Str(data));
-		current = _GetNextChar();
-		_VerifyCondition(current == '\'',15);
-	}
-
-
-	void Parser::_ParseString()
-	{
-		char current = _GetNextChar();
-		while (current != '"')
-		{
-			_VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
-			if (current == '\\') {
-				current = _GetNextChar();
-				if (current == '"') {
-					m_CurrentString += '"';
-				}
-				else if(current == 'n'){
-					m_CurrentString += '\n';
-				}
-				else if(current == '\\') {
-					m_CurrentString += '\\';
-				}else if(current == 't') {
-					m_CurrentString += '\t';
-				}else if(current == 'r') {
-					m_CurrentString += '\r';
-				}else if(current == 'b') {
-					m_CurrentString += '\b';
-				}else if(current == '0') {
-					m_CurrentString+= '\0';
-				}else if(current == 'f') {
-					m_CurrentString = '\f';
-				}else if(current == 'v') {
-					m_CurrentString = '\v';
-				}else if(current == 'a') {
-					m_CurrentString = '\a';
-				}
-
-				else {
-					m_CurrentString += '\\';
-					m_CurrentString += current;
-
-				}
-			}else {
-				m_CurrentString += current;
-
-			}
-			current = _GetNextChar();
-
-
-		}
-
-		_PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
-		m_CurrentString.clear();
-	}
-
-	void Parser::_ParseOther()
-	{
-		char current = _GetNextChar();
-		m_CurrentString.clear();
-
-		while (IsVarNameChar(current ) && current)
-		{
-			m_CurrentString += current;
-
-			current = _GetNextChar();
-			if (current == '\n' || current == '\0' || IsSpace(current))
+    static std::map<TokenType, int32_t> s_Precedence = {
+	    	{TokenType::DotOp,			    5},
+	        {TokenType::IndexOperator,      5}, 
+	        {TokenType::Power,              4}, 
+	        {TokenType::Negation,           4},
+	        {TokenType::Increment,          4},
+	        {TokenType::Decrement,          4},
+	        {TokenType::BitwiseNot,         4},
+	        {TokenType::DereferenceOp,      4},
+	        {TokenType::AddressOp,          4},
+	        {TokenType::DivOp,              3},
+	        {TokenType::MulOp,              3},
+	        {TokenType::LeftShift,          3},
+	        {TokenType::RightShift,         3},
+	        {TokenType::AddOp,              2},
+	        {TokenType::SubOp,              2},
+	        {TokenType::BitwiseAnd,         1}, 
+	        {TokenType::BitwiseXor,         1},
+	        {TokenType::BitwiseOr,          1},
+	        {TokenType::IsEqual,            0}, 
+	        {TokenType::NotEqual,           0},
+	        {TokenType::LessThan,           0},
+	        {TokenType::GreaterThan,        0},
+	        {TokenType::LessThanEqual,      0},
+	        {TokenType::GreaterThanEqual,   0},
+	        {TokenType::OpenBracket,       -1}  
+	    };
+
+    Parser::Parser(const ProgramInfo& info)
+        : m_Tokens(info.Tokens)
+    {
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+        root->CreateSymbolTable();
+        m_RootStack.push_back(root);
+
+        m_Tokens.push_back({TokenType::Eof});
+
+        m_VariableType = CreateTokenSet({
+            TokenType::Int8Type, 
+            TokenType::Int16Type, 
+            TokenType::Int32Type, 
+            TokenType::Int64Type, 
+            TokenType::UInt8Type,
+            TokenType::UInt16Type,
+            TokenType::UInt32Type,
+            TokenType::UInt64Type,
+            TokenType::Float32Type,
+            TokenType::Float64Type,
+            TokenType::Bool,
+            TokenType::StructName,
+            TokenType::StringType, 
+            TokenType::CharType
+        });
+
+        m_AssignmentOperators = CreateTokenSet({
+            TokenType::Assignment, 
+            TokenType::MultiplyAssign,
+            TokenType::DivideAssign, 
+            TokenType::PlusAssign,
+            TokenType::MinusAssign,
+            TokenType::ModuloAssign
+        });
+
+        m_Terminators = CreateTokenSet({
+            TokenType::EndLine, 
+		    TokenType::EndIndentation, 
+		    TokenType::Comma,  
+		    TokenType::EndFunctionArguments, 
+		    TokenType::EndArray,
+		    TokenType::Assignment, 
+		    TokenType::StartIndentation, 
+            TokenType::Eof
+        });
+
+        m_UnaryExpression = CreateTokenSet({
+            TokenType::Increment,    
+            TokenType::Decrement,    
+            TokenType::BitwiseNot,   
+            TokenType::AddressOp,	  
+            TokenType::DereferenceOp,
+            TokenType::Negation     
+        });
+
+        m_Literals = CreateTokenSet({
+            TokenType::RValueNumber,
+		    TokenType::RValueString,
+		    TokenType::BooleanData,
+		    TokenType::Null
+        });
+
+        m_IgnoredTokens = CreateTokenSet({
+            TokenType::StartIndentation,
+            TokenType::EndLine
+        });
+
+        m_TypeIndirection = CreateTokenSet({
+            TokenType::PointerDef,
+            TokenType::StaticArrayDef
+        });
+
+        while(!Match(TokenType::Eof))
+        {
+            ParseStatement();
+        }
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::GetResult()
+    {
+        return m_RootStack[0];
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::Root()
+    {
+        return m_RootStack.back();
+    }
+
+    Token Parser::Consume()
+    {
+        return m_Tokens[m_Position++];
+    }
+
+    Token Parser::Peak()
+    {
+        return m_Tokens[m_Position];
+    }
+
+    bool Parser::Match(TokenType token)
+    {
+        return Peak().TokenType == token;
+    }
+
+    bool Parser::MatchAny(TokenSet tokenSet)
+    {
+        return tokenSet.test((size_t)Peak().TokenType);
+    }
+
+    void Parser::Expect(TokenType tokenType)
+    {
+        if(Match(tokenType)) return;
+        
+        CLEAR_LOG_ERROR("missing expected token ", TokenToString(tokenType));
+        CLEAR_UNREACHABLE("TODO");
+    }
+
+    void Parser::ExpectAny(TokenSet tokenSet)
+    {
+        if(MatchAny(tokenSet)) return;
+        
+        CLEAR_LOG_ERROR("missing expected token from token set");    
+        CLEAR_UNREACHABLE("TODO");
+    }
+
+    void Parser::ParseStatement()
+    {
+        if(MatchAny(m_IgnoredTokens))
+        {
+            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
+            return;
+        }
+
+        if(MatchAny(m_VariableType))
+        {
+            ParseVariableDecleration();
+        }
+        else if (Match(TokenType::Declaration))
+        {
+            ParseFunctionDecleration();
+        }
+        else if (Match(TokenType::Function))
+        {
+            ParseFunctionDefinition();
+        }
+        else if (Match(TokenType::EndIndentation))
+        {
+            ParseIndentation();
+        }
+        else 
+        {
+            ParseGeneric();
+        }
+    }
+
+    void Parser::ParseGeneric()
+    {
+        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
+
+        if(MatchAny(m_AssignmentOperators))
+        {
+            Consume();
+
+            std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+            assign->Push(expression);
+            assign->Push(ParseExpression()); 
+
+            Root()->Push(assign);
+
+            return;
+        }
+
+        Root()->Push(expression);
+    }
+
+    void Parser::ParseVariableDecleration()
+    {
+        std::shared_ptr<Type> variableType = ParseVariableType();
+
+        Expect(TokenType::VariableName);
+        std::string variableName = Consume().Data;
+
+        //if(match(TokenType::Comma)) deal with this later
+
+        Root()->Push(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
+
+        if(Match(TokenType::EndLine))
+        {
+           Consume();
+           return; 
+        }
+
+        ExpectAny(m_AssignmentOperators);
+
+        Token assignmentToken = Consume();
+
+        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+        assign->Push(std::make_shared<ASTVariableReference>(variableName));
+        assign->Push(ParseExpression()); 
+
+        Root()->Push(assign);
+    }
+
+    void Parser::ParseFunctionDefinition()
+    {
+        Expect(TokenType::Function);
+
+        Consume();
+
+        Expect(TokenType::FunctionName);
+
+        std::string name = Consume().Data;
+        std::shared_ptr<Type> returnType;
+        std::vector<Parameter> params;
+
+        Expect(TokenType::StartFunctionParameters);
+
+        Consume();
+
+        while(!Match(TokenType::EndFunctionParameters)) 
+        {
+            Parameter param;
+
+            if(Match(TokenType::Ellipsis))
+            {
+                param.IsVariadic = true;
+                params.push_back(param);
+
+                Consume();
+
+                Expect(TokenType::EndFunctionParameters);
+                break;
+            }
+
+            param.Type = ParseVariableType();
+            
+            Expect(TokenType::VariableReference);
+
+            param.Name = Consume().Data;
+            params.push_back(param);
+
+            if(!Match(TokenType::EndFunctionParameters)) 
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Consume();
+
+        if(Match(TokenType::EndLine))
+        {
+            std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+            Root()->Push(func);
+            m_RootStack.push_back(func);
+
+            Consume();
+
+            return;
+        }
+
+        Expect(TokenType::RightArrow);
+
+        Consume();
+
+        Expect(TokenType::FunctionType);
+
+        Consume();
+
+        ExpectAny(m_VariableType);
+
+        returnType = ParseVariableType();
+
+        std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+        Root()->Push(func);
+        m_RootStack.push_back(func);
+
+        Expect(TokenType::EndLine);
+
+        Consume();
+    }
+
+    void Parser::ParseFunctionDecleration()
+    {
+        Expect(TokenType::Declaration);
+
+        Consume();
+
+        Expect(TokenType::VariableReference);
+
+        Consume();
+
+        Expect(TokenType::FunctionCall);
+
+        std::string functionName = Consume().Data;
+
+        Expect(TokenType::OpenBracket);
+
+        Consume();
+
+        std::vector<Parameter> params;
+
+        while(!MatchAny(m_Terminators))
+        {
+            Parameter param;
+            
+            if(Match(TokenType::Ellipsis))
+            {
+                param.IsVariadic = true;
+                Consume();
+                Expect(TokenType::EndFunctionArguments);
+                params.push_back(param);
+
+                break;
+            }
+            
+            param.Type = ParseVariableType();
+
+            if(Match(TokenType::VariableReference)) 
+                Consume();
+            
+            if(!Match(TokenType::EndFunctionArguments))
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+
+            params.push_back(param);
+        }
+
+        Expect(TokenType::EndFunctionArguments);
+
+        Consume();
+
+        std::shared_ptr<Type> returnType;
+
+        if(Match(TokenType::RightArrow))
+        {
+            Consume();
+
+            Expect(TokenType::FunctionType);
+
+            Consume();
+
+            returnType = ParseVariableType();
+        }
+
+        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
+    {
+        Expect(TokenType::FunctionCall);
+
+        std::string functionName = Consume().Data;
+
+        Expect(TokenType::OpenBracket);
+
+        Consume();
+
+        std::shared_ptr<ASTFunctionCall> call = std::make_shared<ASTFunctionCall>(functionName);
+
+        while(!MatchAny(m_Terminators))
+        {
+            call->Push(ParseExpression());
+
+            if(!Match(TokenType::EndFunctionArguments)) 
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Expect(TokenType::EndFunctionArguments);
+        Consume();
+
+        return call;
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
+    {
+        if(Match(TokenType::AddressOp))
+        {
+            Consume();
+            Expect(TokenType::VariableReference);
+            return std::make_shared<ASTVariableReference>(Consume().Data);
+        }
+
+        Expect(TokenType::VariableReference);
+        
+        std::string name = Consume().Data;
+
+        if(Match(TokenType::FunctionCall)) 
+            return ParseFunctionCall();
+
+        return std::make_shared<ASTVariableExpression>(name);
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
+    {
+        struct Operator
+        {
+            BinaryExpressionType BinaryExpression;
+            UnaryExpressionType UnaryExpression;
+            bool IsOpenBracket = false;
+            int32_t Precedence = 0;
+        };
+
+        std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
+        std::stack<Operator> operators;
+
+        auto PopOperatorsUntil = [&](auto condition) 
+        {
+            while (!operators.empty() && !condition(operators.top())) 
+            {
+                const auto& currentOperator = operators.top();
+
+                if (currentOperator.BinaryExpression != BinaryExpressionType::None)
+                    expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.BinaryExpression));
+
+                //TODO: unary expressions go here
+                
+                operators.pop();
+            }
+        };
+
+        auto IsOperand = [&]()
+        {
+            return Match(TokenType::VariableReference) || 
+                   Match(TokenType::AddressOp) || 
+                   MatchAny(m_Literals);
+        };
+
+        auto HandleOperand = [&]() 
+        {
+            if (Match(TokenType::VariableReference) || Match(TokenType::AddressOp)) 
+            {
+                expression->Push(ParseVariableReference());
+            }
+            else if (MatchAny(m_Literals)) 
+            {
+                expression->Push(std::make_shared<ASTNodeLiteral>(Consume()));
+            }
+        };
+
+        auto HandleOpenBracket = [&]() 
+        {
+            operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, true, 0 });
+            Consume();
+        };
+
+        auto HandleCloseBracket = [&]() 
+        {
+            PopOperatorsUntil([](const Operator& op) { return op.IsOpenBracket; });
+            
+            if (!operators.empty()) 
+                operators.pop(); // remove the open bracket
+
+            Consume();
+        };
+
+        auto HandleOperator = [&]() 
+        {
+            TokenType tokenType = Peak().TokenType;
+            int precedence = s_Precedence.at(tokenType);
+
+            PopOperatorsUntil([&](const Operator& op) 
+            {
+                return op.IsOpenBracket || precedence > op.Precedence;
+            });
+
+            operators.push({
+                GetBinaryExpressionFromTokenType(tokenType),
+                UnaryExpressionType::None,
+                false,
+                precedence
+            });
+
+            Consume();
+        };
+
+        while (!MatchAny(m_Terminators)) 
+        {
+            if (IsOperand()) 
+            {
+                HandleOperand();
+            }
+            else if (Match(TokenType::OpenBracket)) 
+            {
+                HandleOpenBracket();
+            }
+            else if (Match(TokenType::CloseBracket)) 
+            {
+                HandleCloseBracket();
+            }
+            else if (s_Precedence.contains(Peak().TokenType)) 
+            {
+                HandleOperator();
+            }
+            else 
+            {
+                CLEAR_UNREACHABLE("unimplemented token");
+                break;
+            }
+        }
+
+        PopOperatorsUntil([](const Operator&) { return false; });
+
+        return expression;
+    }
+
+    std::shared_ptr<Type> Parser::ParseVariableType()
+    {
+        auto globalReg = TypeRegistry::GetGlobal();
+
+        std::shared_ptr<Type> type = globalReg->GetTypeFromToken(Consume());
+
+        while(MatchAny(m_TypeIndirection))
+        {
+            if(Match(TokenType::PointerDef))
+            {
+                type = globalReg->GetPointerTo(type); 
+                Consume();
+            }
+            else 
+            {
+                type = globalReg->GetArrayFrom(type, std::stoull(Consume().Data));            
+            }
+        }
+
+        return type;
+    }
+
+    void Parser::ParseIndentation()
+    {
+        while(Match(TokenType::EndIndentation))
+        {
+            m_RootStack.pop_back();
+            Consume();
+        }
+    }
+
+    BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
+    {
+        switch (type)
+	    {
+			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
+			case TokenType::MultiplyAssign:
+			case TokenType::MulOp:				return BinaryExpressionType::Mul;
+			case TokenType::PlusAssign:
+			case TokenType::AddOp:				return BinaryExpressionType::Add;
+			case TokenType::DivideAssign:
+			case TokenType::DivOp:				return BinaryExpressionType::Div;
+			case TokenType::MinusAssign:
+			case TokenType::SubOp:				return BinaryExpressionType::Sub;
+			case TokenType::ModuloAssign:
+			case TokenType::ModOp:				return BinaryExpressionType::Mod;
+			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
+			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
+			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
+			case TokenType::LessThan:			return BinaryExpressionType::Less;
+			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
+			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
+			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
+			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
+			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
+			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
+			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
+			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
+			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
+			case TokenType::DotOp:				return BinaryExpressionType::AccessOp;
+			default:
 				break;
 		}
-		if (current == '(') {
-			if (!m_CurrentString.empty())
-				_Backtrack();
-				return;
-		}
 
-		if (_IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType != TokenType::DotOp) {
-			_PushToken(TokenType::TypeIdentifier, m_CurrentString);
-			m_CurrentString.clear();
-			m_CurrentState= ParserState::VariableName;
-			_Backtrack();
-			return;
-
-		}
-
-		if (g_KeyWordMap.contains(m_CurrentString))
-		{
-			auto& value = g_KeyWordMap.at(m_CurrentString);
-			_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
-			if (g_DataTypes.contains(m_CurrentString)) {
-				m_CurrentString.clear();
-				m_CurrentState= ParserState::VariableName;
-				_Backtrack();
-				return;
-
-			}
-		}else {
-			_PushVariableReference( m_CurrentString);
-		}
-
-		m_CurrentString.clear();
-		m_CurrentState = ParserState::Default;
-		_Backtrack();
-	}
+		return BinaryExpressionType::None;
+    }
 }

@@ -1,4 +1,4 @@
-#include "ASTNode.h"
+/* #include "ASTNode.h"
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
@@ -7,6 +7,7 @@
 #include <iostream>
 #include <map>
 #include <stack>
+#include "ASTNodeN.h"
 
 namespace clear {
 
@@ -37,8 +38,8 @@ namespace clear {
 		return value;
 	}
 
-	void ASTNodeBase::SetName(const std::string& name)
-	{
+    void ASTNodeBase::SetName(const std::string &name)
+    {
 		p_MetaData.Name = name;
 	}
 
@@ -80,6 +81,7 @@ namespace clear {
 		: m_Expression(type)
 	{
 	}
+	
 	llvm::Value* ASTBinaryExpression::Codegen() 
 	{
 		auto& builder = *LLVM::Backend::GetBuilder();
@@ -1138,4 +1140,4 @@ namespace clear {
     }
 	
 
-}
+} */

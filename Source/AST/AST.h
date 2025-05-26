@@ -1,7 +1,7 @@
-#pragma once
+/* #pragma once
 
 #include "ASTNode.h"
-#include "Parsing/Parser.h"
+#include "Lexing/Lexer.h"
 #include "API/LLVM/LLVMInclude.h"
 
 #include <filesystem>
@@ -39,4 +39,4 @@ namespace clear {
         std::stack<StackNode> m_Stack;
     };
 
-}
+} */

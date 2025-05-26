@@ -1,4 +1,4 @@
-#include "AST.h"
+/* #include "AST.h"
 
 #include "API/LLVM/LLVMBackend.h"
 #include "Core/Log.h"
@@ -34,7 +34,7 @@ namespace clear {
 		{
 			auto& currentRoot = m_Stack.top();
 			auto& currentToken = tokens[i];
-
+		
 			switch (currentToken.TokenType)
 			{
 				case TokenType::Declaration:
@@ -470,11 +470,6 @@ namespace clear {
 					currentRoot.Node->PushChild(Ref<ASTBreak>::Create());
 					break;
 				}
-				case TokenType::When:
-				{
-					
-					break;
-				}
 				default:
 					break;
 			}
@@ -623,4 +618,4 @@ namespace clear {
 
 		return false;
 	}
-}
+} */

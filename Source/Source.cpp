@@ -1,7 +1,10 @@
-﻿#include "Parsing/Parser.h"
-#include "AST/AST.h"
+﻿#include "Lexing/Lexer.h"
+#include "AST/ASTNodeN.h"
 
+#include "Parsing/Parser.h"
 #include "API/LLVM/LLVMBackend.h"
+#include "Core/TypeRegistry.h"
+
 
 #include <iostream>
 #include <filesystem>
@@ -14,10 +17,11 @@ int main()
     std::filesystem::current_path(current.parent_path());
 
     LLVM::Backend::Init();
+    TypeRegistry::InitGlobal();
 
     std::cout << "------PARSER TESTS--------" << std::endl;
-    Parser parser;
-    ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");
+    Lexer parser;
+    ProgramInfo info = parser.CreateTokensFromFile("Tests/new_test.cl");
 
     for (size_t i = 0; i < info.Tokens.size(); i++)
     {
@@ -27,9 +31,22 @@ int main()
     }
 
     std::cout << "------AST TESTS--------" << std::endl;
+
     {
-        AST ast(info);
-        ast.BuildIR("Tests/test.ir");
+        auto& module  = *LLVM::Backend::GetModule();
+
+        std::filesystem::path path = "Tests/test.ir";
+
+		std::error_code EC;
+		llvm::raw_fd_stream stream(path.string(), EC);
+
+        Parser parser(info);
+
+        auto parserResult = parser.GetResult();
+        parserResult->PropagateSymbolTableToChildren();
+        parserResult->Codegen();
+
+        module.print(stream, nullptr);
     }
 
     LLVM::Backend::BuildModule();
