@@ -55,7 +55,7 @@ namespace clear {
         module.print(stream, nullptr);
 
 
-        LLVM::Backend::BuildModule();
+        LLVM::Backend::BuildModule(path);
 
         LLVM::Backend::Shutdown();
 

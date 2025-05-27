@@ -14,8 +14,10 @@ using namespace clear;
 int main()
 {
     Linker linker;
-    std::filesystem::current_path("/Users/kareem/Documents/dev/projects/clear");
-    BuildConfig config = {"Source/Tests/new_test.cl"};
+    std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
+    std::cout << std::filesystem::current_path();
+
+    BuildConfig config = {"Tests/new_test.cl"};
     linker.Build(config);
     return 0;
 }
