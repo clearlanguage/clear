@@ -1,8 +1,10 @@
 #pragma once 
 
-#include <memory>
 
 #include "LLVMInclude.h"
+
+#include <memory>
+#include <filesystem>
 
 namespace clear {
 	namespace LLVM {
@@ -14,7 +16,7 @@ namespace clear {
 			static void Init();
 			static void Shutdown();
 
-			static void BuildModule();
+			static void BuildModule(const std::filesystem::path& path);
 			
 			static const auto& GetBuilder() { return s_Builder; }
 			static const auto& GetModule()  { return s_Module; }

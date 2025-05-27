@@ -21,7 +21,7 @@ namespace clear {
 			s_Context.reset();
 		}
 
-		void Backend::BuildModule() //TODO: be able to change output filepath
+		void Backend::BuildModule(const std::filesystem::path& path) //TODO: be able to change output filepath
 		{
 			std::string errorStr;
 			llvm::raw_string_ostream errorStream(errorStr);
@@ -52,8 +52,6 @@ namespace clear {
 
 			s_Module->setDataLayout(targetMachine->createDataLayout());
 			s_Module->setTargetTriple(TargetTriple);
-
-			std::filesystem::path path = std::filesystem::current_path() / "Tests" / "output.o";
 
 			std::error_code EC;
 			llvm::raw_fd_ostream dest(path.string(), EC, llvm::sys::fs::OF_None);
