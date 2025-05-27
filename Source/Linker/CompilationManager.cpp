@@ -67,6 +67,17 @@ namespace clear
             
             ast.Node->Codegen(context);
 
+            if(m_Config.EmitIntermiediateIR)
+            {
+                std::filesystem::path irPath = filepath;
+                irPath.replace_extension(".ll");
+
+                std::error_code EC;
+                llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
+
+                currentModule->print(file, nullptr);
+            }   
+
             if(linker.linkInModule(std::move(currentModule)))
             {
                 CLEAR_UNREACHABLE("linking error");
@@ -78,7 +89,67 @@ namespace clear
 
     void CompilationManager::Link()
     {
-        //TODO: 
+        std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
+        std::filesystem::path objectPath = filepath;
+        objectPath.replace_extension(".o");
+
+        auto clangPath = llvm::sys::findProgramByName("clang");
+
+        if (!clangPath) 
+        {
+            llvm::errs() << "clang not found on PATH!\n";
+            return;
+        }
+
+        std::vector<std::string> args = { "clang" };
+
+        if(m_Config.IncludeCStandard)
+            args.push_back("-std=c11");
+
+        auto WrapPath = [](std::filesystem::path& path)
+        {
+            return path.string();
+        };
+
+        args.push_back(WrapPath(objectPath));
+
+        for(auto& dir : m_Config.LibraryDirectories)
+        {
+            std::string p = "-L" + WrapPath(dir);
+            args.push_back(p);
+        }
+
+        for(auto& name : m_Config.LibraryNames)
+        {
+            std::string p = "-l:" + WrapPath(name);
+            args.push_back(p);
+        }
+
+        for(auto& libpath : m_Config.LibraryFilePaths)
+        {
+            args.push_back(WrapPath(libpath));
+        }
+
+        args.push_back("-o");
+        args.push_back(WrapPath(filepath));
+
+        std::vector<llvm::StringRef> refs(args.size());
+        std::copy(args.begin(), args.end(), refs.begin());
+    
+        int result = llvm::sys::ExecuteAndWait(clangPath.get(), refs);
+        
+        if (result != 0) 
+        {
+            llvm::outs() << "Executing clang command: ";
+            for (const auto& arg : args)
+                llvm::outs() << arg << " ";
+
+            llvm::outs() << "\n";
+
+            llvm::errs() << "Clang linking failed with exit code: " << result << "\n";
+        }
+
+        std::filesystem::remove(objectPath);
     }
 
     void CompilationManager::LoadDirectory(const std::filesystem::path& path)
@@ -131,7 +202,7 @@ namespace clear
 		module->setTargetTriple(targetTriple);
 
 		std::error_code EC;
-		llvm::raw_fd_ostream dest(path.string(), EC, llvm::sys::fs::OF_None);
+		llvm::raw_fd_ostream dest(path.string() + ".o", EC, llvm::sys::fs::OF_None);
 
 		CLEAR_VERIFY(!EC, "could not open file");
 

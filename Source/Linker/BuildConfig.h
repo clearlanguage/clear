@@ -26,6 +26,10 @@ namespace clear
 
         std::vector<std::filesystem::path> SourceDirectories;
         std::vector<std::filesystem::path> SourceFiles;
+        std::vector<std::filesystem::path> LibraryDirectories;
+        std::vector<std::filesystem::path> LibraryNames;
+        std::vector<std::filesystem::path> LibraryFilePaths;
+
         std::filesystem::path TargetExtension = ".cl";
         
         std::filesystem::path OutputPath;
@@ -54,6 +58,8 @@ namespace clear
             StaticLibrary, DynamicLibrary
         } OutputFormat = OutputFormatType::Executable;
 
+        bool EmitIntermiediateIR = true;
+
         enum class TargetArchitectureType
         {
             Default, X86, X86_64, ARM,
@@ -63,6 +69,8 @@ namespace clear
         } TargetArchitecture = TargetArchitectureType::Default;
 
         bool ParallelBuild = false;
+
+        bool IncludeCStandard = true;
 
         CPUFeatures EnabledCPUFeatures;
     };

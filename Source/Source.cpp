@@ -21,10 +21,17 @@ int main()
     config.OutputFilename = "test_application";
     config.ApplicationName = "clear app";
 
+    std::filesystem::path lib = std::filesystem::current_path() / "Tests" / "build" / "libs" / "libplayground.a";
+    config.LibraryFilePaths.push_back(lib);
+
+
     CompilationManager manager(config);
     manager.LoadSources();
     manager.PropagateSymbolTables();
     manager.GenerateIRAndObjectFiles();
+    manager.Link();
+
+   
 
     return 0;
 }
