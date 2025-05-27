@@ -10,6 +10,7 @@
 #include <Core/Log.h>
 #include <Core/TypeRegistry.h>
 
+
 #include "API/LLVM/LLVMBackend.h"
 
 
@@ -33,6 +34,7 @@ namespace clear {
         for (const auto& child : node->GetChildren()) {
             CollectImportPaths(child, importPaths);
         }
+
     }
 
     void Module::Build() {

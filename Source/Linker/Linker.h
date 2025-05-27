@@ -30,7 +30,6 @@ class Module {
     Module(const std::filesystem::path& path);
     ~Module() = default;
     void Build();
-
 };
 class Linker {
 

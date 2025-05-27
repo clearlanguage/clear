@@ -22,3 +22,5 @@
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/Linker/Linker.h>
+
