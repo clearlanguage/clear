@@ -177,6 +177,10 @@ namespace clear
         {
             ParseVariableDecleration();
         }
+        else if (Match(TokenType::Import))
+        {
+            ParseImport();
+        }
         else if (Match(TokenType::Declaration))
         {
             ParseFunctionDecleration();
@@ -231,7 +235,22 @@ namespace clear
 
     void Parser::ParseStruct()
     {
-        
+
+    }
+
+    void Parser::ParseImport()
+    {
+        Expect(TokenType::Import);
+
+        Consume();
+
+        Expect(TokenType::RValueString);
+
+        std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(Consume().Data);
+
+        Expect(TokenType::EndLine);
+
+        Root()->Push(import);
     }
 
     void Parser::ParseFunctionDefinition()

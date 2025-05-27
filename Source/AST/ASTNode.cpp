@@ -16,6 +16,7 @@ namespace clear
     {
     }
 
+
     CodegenResult ASTNodeBase::Codegen()
     {
 
@@ -976,4 +977,15 @@ namespace clear
 		CLEAR_VERIFY(!index, "out of bounds");
         return type;
     }
+
+
+    ASTImport::ASTImport(const std::string& filepath)
+		: m_Filepath(filepath)
+    {
+    }
+
+	CodegenResult ASTImport::Codegen()
+	{
+		return {};
+	}
 }

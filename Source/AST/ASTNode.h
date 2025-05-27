@@ -7,6 +7,7 @@
 #include "SymbolTable.h"
 
 #include <memory>
+#include <string>
 
 namespace clear 
 {
@@ -19,7 +20,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		ArrayInitializer, MemberAccess, AssignmentOperator, 
-		VariableReference
+		VariableReference, Import
 	};
 
 	struct CodegenResult
@@ -237,6 +238,20 @@ namespace clear
 
 	private:
 		std::vector<std::vector<size_t>> m_Indices;
+	};
+
+	class ASTImport : public ASTNodeBase
+	{
+	public:
+		ASTImport(const std::string& filepath);
+		virtual ~ASTImport() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Import; }
+		virtual CodegenResult Codegen() override;
+
+		const std::string& GetFilePath() const { return m_Filepath; }
+
+	private:
+		std::string m_Filepath;
 	};
 
 }
