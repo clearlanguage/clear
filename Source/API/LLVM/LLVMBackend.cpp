@@ -7,21 +7,7 @@
 namespace clear {
 	namespace LLVM {
 
-		void Backend::Init()
-		{
-			s_Context = std::make_shared<llvm::LLVMContext>();
-			s_Module  = std::make_shared<llvm::Module>("clear", *s_Context);
-			s_Builder = std::make_shared<llvm::IRBuilder<>>(*s_Context);
-		}
-
-		void Backend::Shutdown()
-		{
-			s_Builder.reset();
-			s_Module.reset();
-			s_Context.reset();
-		}
-
-		void Backend::BuildModule(const std::filesystem::path& path) //TODO: be able to change output filepath
+		void Backend::BuildModule(const std::filesystem::path& path) 
 		{
 			std::string errorStr;
 			llvm::raw_string_ostream errorStream(errorStr);
@@ -75,5 +61,19 @@ namespace clear {
 			}
 		}
 
-	}
+        void Backend::SetCurrentModule(llvm::Module* newModule)
+        {
+			s_Module = newModule;
+        }
+
+        void Backend::SetContext(std::shared_ptr<llvm::LLVMContext> newContext)
+        {
+			s_Context = newContext;
+        }
+
+        void Backend::SetBuilder(std::shared_ptr<llvm::IRBuilder<>> newBuilder)
+        {
+			s_Builder = newBuilder;
+        }
+    }
 }

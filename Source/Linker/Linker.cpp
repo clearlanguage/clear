@@ -15,34 +15,46 @@
 
 
 
-namespace clear {
+namespace clear 
+{
     std::filesystem::path TempDir = std::filesystem::temp_directory_path();
 
-    Module::Module(const std::filesystem::path& path) {
-        Path = path;
+    Module::Module(const std::filesystem::path& path) 
+        : m_Path(path)
+    {
     }
 
-    void Module::CollectImportPaths(const std::shared_ptr<ASTNodeBase> &node, std::vector<std::string> &importPaths) {
-        if (node->GetType() == ASTNodeType::Import) {
+    void Module::CollectImportPaths(const std::shared_ptr<ASTNodeBase>& node, std::vector<std::string>& importPaths) 
+    {
+        if (node->GetType() == ASTNodeType::Import) 
+        {
             auto importNode = std::dynamic_pointer_cast<ASTImport>(node);
-            if (importNode) {
+
+            if (importNode) 
+            {
                 importPaths.push_back(importNode->GetFilePath());
             }
         }
 
-        // Recurse into children
-        for (const auto& child : node->GetChildren()) {
+        for (const auto& child : node->GetChildren()) 
+        {
             CollectImportPaths(child, importPaths);
         }
 
     }
 
-    void Module::Build() {
-        LLVM::Backend::Init();
+    void Module::Build(llvm::Linker& linker) 
+    {
+        std::unique_ptr<llvm::Module> currentModule = std::make_unique<llvm::Module>("clear_application", *LLVM::Backend::GetContext());
+        
+        LLVM::Backend::SetCurrentModule(currentModule.get());
         TypeRegistry::InitGlobal();
+
         std::cout << "------PARSER TESTS--------" << std::endl;
+
         Lexer lexer;
-        ProgramInfo info = lexer.CreateTokensFromFile(Path.string());
+        ProgramInfo info = lexer.CreateTokensFromFile(m_Path.string());
+
         for (size_t i = 0; i < info.Tokens.size(); i++)
         {
             std::cout << "Token Type: " << TokenToString(info.Tokens[i].TokenType);
@@ -50,17 +62,12 @@ namespace clear {
             std::cout << std::endl;
         }
 
-
-
         std::cout << "------AST TESTS--------" << std::endl;
 
 
-        auto& module  = *LLVM::Backend::GetModule();
-
-
-        std::filesystem::path parentDir =   Path.parent_path() / "build/";
-        std::filesystem::path path      =   parentDir.string() + Path.filename().string() +".ir";
-        std::filesystem::path objFile   =   parentDir.string() + Path.filename().string() +".o";
+        std::filesystem::path parentDir =  m_Path.parent_path() / "build/";
+        std::filesystem::path path      =  parentDir.string() + m_Path.filename().string() +".ir";
+        std::filesystem::path objFile   =  parentDir.string() + m_Path.filename().string() +".o";
 
         std::error_code EC;
         llvm::raw_fd_stream stream(path.string(), EC);
@@ -69,62 +76,83 @@ namespace clear {
 
         auto parserResult = parser.GetResult();
 
-        CollectImportPaths(parserResult, importPaths);
+        CollectImportPaths(parserResult, m_ImportPaths);
 
         parserResult->PropagateSymbolTableToChildren();
         parserResult->Codegen();
-        // Print or use the collected file paths
-        module.print(stream, nullptr);
 
+        // Print or use the collected file paths
+        currentModule->print(stream, nullptr);
 
         LLVM::Backend::BuildModule(objFile);
 
-        LLVM::Backend::Shutdown();
+        linker.linkInModule(std::move(currentModule));
 
+        LLVM::Backend::SetCurrentModule(nullptr);
     }
 
 
-
-
-    void Linker::GenerateLibraries(Libraries& lib,const std::filesystem::path& file){
+    void Linker::GenerateLibraries(Libraries& lib, const std::filesystem::path& file, llvm::Linker& linker)
+    {
         Module module(file);
-        module.Build();
+        module.Build(linker);
+
         lib.LibImports.push_back(file.string());
 
-        for (std::filesystem::path  imp: module.importPaths) {
-            auto ext = imp.extension().string();
-            auto x = file.parent_path() / imp;
+        for (std::filesystem::path importPath : module.GetImportPaths()) 
+        {
+            auto ext = importPath.extension().string();
+            auto newImport = file.parent_path() / importPath;
 
-            CLEAR_VERIFY(std::filesystem::exists(x),"Import path does not exist " + imp.string());
-            if (ext == ".lib") {
-                lib.LibImports.push_back(x.string());
-            }else if(ext == ".cl") {
-                GenerateLibraries(lib,x);
+            CLEAR_VERIFY(std::filesystem::exists(newImport), "Import path does not exist " + importPath.string());
 
-            }else {
-
-                CLEAR_VERIFY(false,"bad import filetype");
+            if (ext == ".lib") 
+            {
+                lib.LibImports.push_back(newImport.string());
+            }
+            else if(ext == ".cl") 
+            {
+                GenerateLibraries(lib, newImport, linker);
+            }
+            else 
+            {
+                CLEAR_VERIFY(false, "bad import filetype");
             }
         }
     }
 
-    int Linker::Build(BuildConfig config) {
+    int Linker::Build(BuildConfig config) 
+    {
+        m_Context = std::make_shared<llvm::LLVMContext>();
+		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
+        m_MainModule = std::make_shared<llvm::Module>("clear_application", *m_Context);
+
+        llvm::Linker linker(*m_MainModule);
+
+        LLVM::Backend::SetContext(m_Context);
+        LLVM::Backend::SetBuilder(m_Builder);
+
         Libraries libraries;
         std::filesystem::path path = config.EntryPoint.parent_path().string() + "/build" ;
 
-        if (!std::filesystem::exists(path)) {
-            if (std::filesystem::create_directories(path)) {
-            } else {
+        if (!std::filesystem::exists(path)) 
+        {
+            if (std::filesystem::create_directories(path)) {} 
+            else 
+            {
                 std::cerr << "Failed to create directory: " << path << '\n';
             }
         }
 
-        GenerateLibraries(libraries,config.EntryPoint);
+        GenerateLibraries(libraries,config.EntryPoint, linker);
 
-        for (auto& lib : libraries.ClearImports) {
+        for (auto& lib : libraries.ClearImports) 
+        {
             std::cout << lib << '\n';
         }
-        for (auto& lib : libraries.LibImports) {
+
+        for (auto& lib : libraries.LibImports) 
+        {
             std::cout << lib << '\n';
         }
 

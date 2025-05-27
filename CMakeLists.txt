@@ -37,6 +37,7 @@ llvm_map_components_to_libnames(llvm_libs
     x86asmparser
     AArch64CodeGen 
     AArch64AsmParser
+    Linker
 )
 
 FetchContent_Declare(
