@@ -85,71 +85,36 @@ namespace clear
         }
 
         BuildModule(m_MainModule.get(), m_Config.OutputPath / m_Config.OutputFilename);
+        OptimizeModule();
     }
 
-    void CompilationManager::Link()
+    void CompilationManager::Emit()
     {
-        std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
-        std::filesystem::path objectPath = filepath;
-        objectPath.replace_extension(".o");
-
-        auto clangPath = llvm::sys::findProgramByName("clang");
-
-        if (!clangPath) 
+        if(m_Config.OutputFormat == BuildConfig::OutputFormatType::DynamicLibrary || 
+           m_Config.OutputFormat == BuildConfig::OutputFormatType::Executable)
         {
-            llvm::errs() << "clang not found on PATH!\n";
-            return;
+            LinkToExecutableOrDynamic();
         }
-
-        std::vector<std::string> args = { "clang" };
-
-        if(m_Config.IncludeCStandard)
-            args.push_back("-std=c11");
-
-        auto WrapPath = [](std::filesystem::path& path)
+        else if(m_Config.OutputFormat == BuildConfig::OutputFormatType::StaticLibrary)
         {
-            return path.string();
-        };
-
-        args.push_back(WrapPath(objectPath));
-
-        for(auto& dir : m_Config.LibraryDirectories)
-        {
-            std::string p = "-L" + WrapPath(dir);
-            args.push_back(p);
+            LinkToStaticLibrary();
         }
-
-        for(auto& name : m_Config.LibraryNames)
+        else if(m_Config.OutputFormat == BuildConfig::OutputFormatType::IR)
         {
-            std::string p = "-l:" + WrapPath(name);
-            args.push_back(p);
-        }
+            std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
+            std::filesystem::path objectPath = filepath;
+            objectPath.replace_extension(".o");
 
-        for(auto& libpath : m_Config.LibraryFilePaths)
+            std::error_code EC;
+            llvm::raw_fd_ostream file(filepath.string(), EC, llvm::sys::fs::OF_None);
+
+            m_MainModule->print(file, nullptr);
+            std::filesystem::remove(objectPath);
+        }
+        else if (m_Config.OutputFormat == BuildConfig::OutputFormatType::ObjectFile)
         {
-            args.push_back(WrapPath(libpath));
+            // dont delete object file
         }
-
-        args.push_back("-o");
-        args.push_back(WrapPath(filepath));
-
-        std::vector<llvm::StringRef> refs(args.size());
-        std::copy(args.begin(), args.end(), refs.begin());
-    
-        int result = llvm::sys::ExecuteAndWait(clangPath.get(), refs);
-        
-        if (result != 0) 
-        {
-            llvm::outs() << "Executing clang command: ";
-            for (const auto& arg : args)
-                llvm::outs() << arg << " ";
-
-            llvm::outs() << "\n";
-
-            llvm::errs() << "Clang linking failed with exit code: " << result << "\n";
-        }
-
-        std::filesystem::remove(objectPath);
     }
 
     void CompilationManager::LoadDirectory(const std::filesystem::path& path)
@@ -220,5 +185,126 @@ namespace clear
 		{
 			CLEAR_UNREACHABLE(e.what());
 		}
+    }
+
+    void CompilationManager::LinkToExecutableOrDynamic()
+    {
+        std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
+        std::filesystem::path objectPath = filepath;
+        objectPath.replace_extension(".o");
+
+        auto clangPath = llvm::sys::findProgramByName("clang");
+
+        if (!clangPath) 
+        {
+            llvm::errs() << "clang not found on PATH!\n";
+            return;
+        }
+
+        std::vector<std::string> args = { "clang" };
+
+        if(m_Config.IncludeCStandard)
+            args.push_back("-std=c11");
+
+        if(m_Config.OutputFormat == BuildConfig::OutputFormatType::DynamicLibrary)
+        {
+            args.push_back("-shared");
+        }
+
+        auto WrapPath = [](std::filesystem::path& path)
+        {
+            return path.string();
+        };
+
+        args.push_back(WrapPath(objectPath));
+
+        for(auto& dir : m_Config.LibraryDirectories)
+        {
+            std::string p = "-L" + WrapPath(dir);
+            args.push_back(p);
+        }
+
+        for(auto& name : m_Config.LibraryNames)
+        {
+            std::string p = "-l:" + WrapPath(name);
+            args.push_back(p);
+        }
+
+        for(auto& libpath : m_Config.LibraryFilePaths)
+        {
+            args.push_back(WrapPath(libpath));
+        }
+
+        args.push_back("-o");
+        args.push_back(WrapPath(filepath));
+
+        std::vector<llvm::StringRef> refs(args.size());
+        std::copy(args.begin(), args.end(), refs.begin());
+    
+        int result = llvm::sys::ExecuteAndWait(clangPath.get(), refs);
+        
+        if (result != 0) 
+        {
+            llvm::outs() << "Executing clang command: ";
+            for (const auto& arg : args)
+                llvm::outs() << arg << " ";
+
+            llvm::outs() << "\n";
+
+            llvm::errs() << "Clang linking failed with exit code: " << result << "\n";
+        }
+
+        std::filesystem::remove(objectPath);
+    }
+
+    void CompilationManager::LinkToStaticLibrary()
+    {
+        CLEAR_UNREACHABLE("unimplemented");
+    }
+
+    void CompilationManager::OptimizeModule()
+    {
+        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::None) 
+           return;
+
+        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::Debugging) 
+            return;
+
+        llvm::PassBuilder passBuilder;
+
+        llvm::LoopAnalysisManager loopAM;
+        llvm::FunctionAnalysisManager funcAM;
+        llvm::CGSCCAnalysisManager cgsccAM;
+        llvm::ModuleAnalysisManager moduleAM;
+
+        passBuilder.registerModuleAnalyses(moduleAM);
+        passBuilder.registerCGSCCAnalyses(cgsccAM);
+        passBuilder.registerFunctionAnalyses(funcAM);
+        passBuilder.registerLoopAnalyses(loopAM);
+
+        passBuilder.crossRegisterProxies(loopAM, funcAM, cgsccAM, moduleAM);
+
+        llvm::ModulePassManager modulePM;
+
+        switch(m_Config.OptimizationLevel)
+        {
+            case BuildConfig::OptimizationLevelType::Development:
+                modulePM = passBuilder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O1); 
+                break;
+
+            case BuildConfig::OptimizationLevelType::Distribution:
+                if(m_Config.FavourSize)
+                    modulePM = passBuilder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::Os); 
+                else 
+                    modulePM = passBuilder.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3); 
+
+                break;
+
+            default:
+                return;
+        }
+
+
+        modulePM.run(*m_MainModule, moduleAM);
     }
 }

@@ -1017,6 +1017,7 @@ namespace clear
 			registeredData.ReturnType = importedData.ReturnType;
 
 			GetSymbolTable()->RegisterFunction(fun->GetName(), registeredData);
+
 		}
 
 		return {};

@@ -17,11 +17,15 @@ namespace clear
         void LoadSourceFile(const std::filesystem::path& path);
         void PropagateSymbolTables();
         void GenerateIRAndObjectFiles();
-        void Link();
+        void Emit();
 
     private:
         void LoadDirectory(const std::filesystem::path& path);
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
+
+        void LinkToExecutableOrDynamic();
+        void LinkToStaticLibrary();
+        void OptimizeModule();
 
     private:
         LookupAstTable m_LookupTable;

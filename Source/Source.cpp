@@ -20,6 +20,8 @@ int main()
     config.OutputPath = std::filesystem::current_path() / "Tests" / "build";
     config.OutputFilename = "test_application";
     config.ApplicationName = "clear app";
+    config.OutputFormat = BuildConfig::OutputFormatType::IR;
+    config.OptimizationLevel = BuildConfig::OptimizationLevelType::Development;
 
     std::filesystem::path lib = std::filesystem::current_path() / "Tests" / "build" / "libs" / "libplayground.a";
     config.LibraryFilePaths.push_back(lib);
@@ -29,9 +31,8 @@ int main()
     manager.LoadSources();
     manager.PropagateSymbolTables();
     manager.GenerateIRAndObjectFiles();
-    manager.Link();
+    manager.Emit();
 
-   
 
     return 0;
 }

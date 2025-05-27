@@ -54,7 +54,7 @@ namespace clear
 
         enum class OutputFormatType
         {
-            Executable, Assembly, IR, ObjectFile, Binary, 
+            Executable, IR, ObjectFile, 
             StaticLibrary, DynamicLibrary
         } OutputFormat = OutputFormatType::Executable;
 
