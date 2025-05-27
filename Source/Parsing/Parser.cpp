@@ -140,6 +140,11 @@ namespace clear
         return m_Tokens[m_Position];
     }
 
+    Token Parser::Next()
+    {
+        return m_Tokens[m_Position + 1];
+    }
+
     bool Parser::Match(TokenType token)
     {
         return Peak().TokenType == token;
@@ -469,13 +474,6 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference(bool isValueReference)
     {
-        if(Match(TokenType::AddressOp))
-        {
-            Consume();
-            Expect(TokenType::VariableReference);
-            return std::make_shared<ASTVariableReference>(Consume().Data);
-        }
-
         Expect(TokenType::VariableReference);
 
         std::string name = Consume().Data;
@@ -496,11 +494,19 @@ namespace clear
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
+        if(Match(TokenType::AddressOp))
+        {
+            isValueReference = true;
+            Consume();
+        }
+
         std::shared_ptr<ASTNodeBase> variableReference;
 
-        if (Match(TokenType::VariableReference) || 
-            Match(TokenType::AddressOp) || 
-            isValueReference) 
+        if(Next().TokenType == TokenType::DotOp)
+        {
+            variableReference = ParseVariableReference(true);
+        }
+        else if (Match(TokenType::VariableReference)) 
         {
             variableReference = ParseVariableReference(isValueReference);
         }
@@ -512,13 +518,16 @@ namespace clear
         memberAccess->Push(variableReference);
 
         Consume();
-        
+
         while(Match(TokenType::MemberName))
         {
             memberAccess->Push(std::make_shared<ASTMember>(Consume().Data));
+
+            if(Match(TokenType::DotOp)) 
+                Consume();
         }
 
-        return nullptr;
+        return memberAccess;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage)
