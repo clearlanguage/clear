@@ -40,8 +40,9 @@ namespace clear {
         auto& module  = *LLVM::Backend::GetModule();
 
 
-        std::filesystem::path parent_dir = Path.parent_path() / "build/";
-        std::filesystem::path path =   parent_dir.string() + Path.filename().string() +".ir";
+        std::filesystem::path parentDir =   Path.parent_path() / "build/";
+        std::filesystem::path path      =   parentDir.string() + Path.filename().string() +".ir";
+        std::filesystem::path objFile   =   parentDir.string() + Path.filename().string() +".o";
 
         std::error_code EC;
         llvm::raw_fd_stream stream(path.string(), EC);
@@ -55,7 +56,7 @@ namespace clear {
         module.print(stream, nullptr);
 
 
-        LLVM::Backend::BuildModule();
+        LLVM::Backend::BuildModule(objFile);
 
         LLVM::Backend::Shutdown();
 
