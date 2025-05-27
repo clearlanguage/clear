@@ -87,6 +87,8 @@ namespace clear {
     void Linker::GenerateLibraries(Libraries& lib,const std::filesystem::path& file){
         Module module(file);
         module.Build();
+        lib.LibImports.push_back(file.string());
+
         for (std::filesystem::path  imp: module.importPaths) {
             auto ext = imp.extension().string();
             auto x = file.parent_path() / imp;
@@ -95,7 +97,6 @@ namespace clear {
             if (ext == ".lib") {
                 lib.LibImports.push_back(x.string());
             }else if(ext == ".cl") {
-                lib.LibImports.push_back(x.string());
                 GenerateLibraries(lib,x);
 
             }else {
@@ -118,6 +119,12 @@ namespace clear {
 
         GenerateLibraries(libraries,config.EntryPoint);
 
+        for (auto& lib : libraries.ClearImports) {
+            std::cout << lib << '\n';
+        }
+        for (auto& lib : libraries.LibImports) {
+            std::cout << lib << '\n';
+        }
 
         return 0;
     }
