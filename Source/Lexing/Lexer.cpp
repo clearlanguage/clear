@@ -793,7 +793,7 @@ namespace clear
 		}else if (current == '\'') {
 			_ParseChar();
 		}
-		else if(std::isalnum(current))
+		else if(std::isalnum(current) || current == '_')
 		{
 			//could be a variable reference, class/struct reference etc...
 			m_CurrentString.push_back(current);

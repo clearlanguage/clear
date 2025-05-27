@@ -7,6 +7,7 @@
 #include "Parsing/Parser.h"
 #include "Lexing/Lexer.h"
 #include <iostream>
+#include <Core/Log.h>
 #include <Core/TypeRegistry.h>
 
 #include "API/LLVM/LLVMBackend.h"
@@ -19,6 +20,21 @@ namespace clear {
     Module::Module(const std::filesystem::path& path) {
         Path = path;
     }
+
+    void Module::CollectImportPaths(const std::shared_ptr<ASTNodeBase> &node, std::vector<std::string> &importPaths) {
+        if (node->GetType() == ASTNodeType::Import) {
+            auto importNode = std::dynamic_pointer_cast<ASTImport>(node);
+            if (importNode) {
+                importPaths.push_back(importNode->GetFilePath());
+            }
+        }
+
+        // Recurse into children
+        for (const auto& child : node->GetChildren()) {
+            CollectImportPaths(child, importPaths);
+        }
+    }
+
     void Module::Build() {
         LLVM::Backend::Init();
         TypeRegistry::InitGlobal();
@@ -50,9 +66,12 @@ namespace clear {
         Parser parser(info);
 
         auto parserResult = parser.GetResult();
+
+        CollectImportPaths(parserResult, importPaths);
+
         parserResult->PropagateSymbolTableToChildren();
         parserResult->Codegen();
-
+        // Print or use the collected file paths
         module.print(stream, nullptr);
 
 
@@ -68,7 +87,20 @@ namespace clear {
     void Linker::GenerateLibraries(Libraries& lib,const std::filesystem::path& file){
         Module module(file);
         module.Build();
+        for (std::filesystem::path  imp: module.importPaths) {
+            auto ext = imp.extension().string();
+            CLEAR_VERIFY(std::filesystem::exists(imp),"Import path does not exist");
+            if (ext == ".lib") {
+                lib.LibImports.push_back(imp.string());
+            }else if(ext == ".cl") {
+                lib.LibImports.push_back(imp.string());
+                GenerateLibraries(lib,imp);
 
+            }else {
+
+                CLEAR_VERIFY(false,"bad import filetype");
+            }
+        }
     }
 
     int Linker::Build(BuildConfig config) {
