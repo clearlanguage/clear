@@ -93,7 +93,7 @@ namespace clear {
             auto ext = imp.extension().string();
             auto x = file.parent_path() / imp;
 
-            // CLEAR_VERIFY(std::filesystem::exists(file.parent_path() / imp),"Import path does not exist");
+            CLEAR_VERIFY(std::filesystem::exists(x),"Import path does not exist " + imp.string());
             if (ext == ".lib") {
                 lib.LibImports.push_back(x.string());
             }else if(ext == ".cl") {
