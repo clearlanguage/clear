@@ -49,8 +49,7 @@ int main()
         module.print(stream, nullptr);
     }
 
-    LLVM::Backend::BuildModule();
-
+    LLVM::Backend::BuildModule(std::filesystem::current_path() / "Tests" / "output.o");
     LLVM::Backend::Shutdown();
 
     return 0;

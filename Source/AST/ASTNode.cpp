@@ -988,4 +988,63 @@ namespace clear
 	{
 		return {};
 	}
+
+    ASTMemberAccess::ASTMemberAccess(bool isValueReference)
+		: m_ValueReference(isValueReference)
+    {
+    }
+
+    CodegenResult ASTMemberAccess::Codegen()
+    {
+		auto& builder = *LLVM::Backend::GetBuilder();
+		auto& context = *LLVM::Backend::GetContext();
+		auto& children = GetChildren();
+
+		auto typeReg = TypeRegistry::GetGlobal();
+
+		CLEAR_VERIFY(children.size() > 1, "invalid member access");
+
+		CodegenResult parent = children[0]->Codegen(); 
+
+		std::shared_ptr<StructType> parentType;
+
+		if(auto t = std::dynamic_pointer_cast<PointerType>(parent.CodegenType))
+		{
+			parentType = std::dynamic_pointer_cast<StructType>(t->GetBaseType());
+		}
+
+		CLEAR_VERIFY(parentType, "invalid type");
+		
+		llvm::Value* getElementPtr = parent.CodegenValue; 
+		std::shared_ptr<Type> prev;
+
+		for(size_t i = 1; i < children.size(); i++)
+		{
+			std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(children[i]);
+			CLEAR_VERIFY(member && parentType, "invalid child");
+
+			size_t index = parentType->GetMemberIndex(member->GetName());
+			getElementPtr = builder.CreateStructGEP(parentType->Get(), getElementPtr, index, "struct_get_element_ptr");
+
+			prev = parentType;
+			parentType = std::dynamic_pointer_cast<StructType>(parentType->GetMemberType(member->GetName()));
+		}
+
+		if(m_ValueReference)
+		{
+			return { getElementPtr, typeReg->GetPointerTo(prev) };
+		}
+
+		return { builder.CreateLoad(prev->Get(), getElementPtr), prev };
+	}
+
+	ASTMember::ASTMember(const std::string& name)
+		: m_MemberName(name)
+    {
+    }
+
+	CodegenResult ASTMember::Codegen()
+	{
+		return {};
+	}
 }

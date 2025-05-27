@@ -478,7 +478,6 @@ namespace clear
 
         Expect(TokenType::VariableReference);
 
-    
         std::string name = Consume().Data;
 
         if(Match(TokenType::FunctionCall)) 
@@ -490,6 +489,36 @@ namespace clear
         }
 
         return std::make_shared<ASTVariableExpression>(name);
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::ParseOperand(bool isValueReference)
+    {
+        if(MatchAny(m_Literals)) 
+            return std::make_shared<ASTNodeLiteral>(Consume());
+
+        std::shared_ptr<ASTNodeBase> variableReference;
+
+        if (Match(TokenType::VariableReference) || 
+            Match(TokenType::AddressOp) || 
+            isValueReference) 
+        {
+            variableReference = ParseVariableReference(isValueReference);
+        }
+
+        if(!Match(TokenType::DotOp)) 
+            return variableReference;
+
+        std::shared_ptr<ASTMemberAccess> memberAccess = std::make_shared<ASTMemberAccess>(isValueReference);
+        memberAccess->Push(variableReference);
+
+        Consume();
+        
+        while(Match(TokenType::MemberName))
+        {
+            memberAccess->Push(std::make_shared<ASTMember>(Consume().Data));
+        }
+
+        return nullptr;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage)
@@ -596,20 +625,6 @@ namespace clear
                    MatchAny(m_Literals);
         };
 
-        auto HandleOperand = [&]() 
-        {
-            if (Match(TokenType::VariableReference) || 
-                Match(TokenType::AddressOp) || 
-                isValueReference) 
-            {
-                expression->Push(ParseVariableReference(isValueReference));
-            }
-            else if (MatchAny(m_Literals)) 
-            {
-                expression->Push(std::make_shared<ASTNodeLiteral>(Consume()));
-            }
-        };
-
         auto HandleOpenBracket = [&]() 
         {
             operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, true, 0 });
@@ -650,7 +665,7 @@ namespace clear
         {
             if (IsOperand()) 
             {
-                HandleOperand();
+                expression->Push(ParseOperand(isValueReference));
             }
             else if (Match(TokenType::OpenBracket)) 
             {

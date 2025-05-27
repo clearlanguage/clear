@@ -20,7 +20,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		ArrayInitializer, MemberAccess, AssignmentOperator, 
-		VariableReference, Import
+		VariableReference, Import, Member
 	};
 
 	struct CodegenResult
@@ -217,7 +217,7 @@ namespace clear
 		virtual CodegenResult Codegen() override;
 	};
 
-
+	//TODO: change to InitializerList (can be used to initialize structs as well in future)
 	class ASTArrayInitializer : public ASTNodeBase
 	{
 	public:
@@ -252,6 +252,32 @@ namespace clear
 
 	private:
 		std::string m_Filepath;
+	};
+
+	class ASTMember : public ASTNodeBase
+	{
+	public:
+		ASTMember(const std::string& name);
+		virtual ~ASTMember() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Member; }
+		virtual CodegenResult Codegen() override;
+
+		const std::string& GetName() const {  return m_MemberName; }
+
+	private:
+		std::string m_MemberName;
+	};
+
+	class ASTMemberAccess : public ASTNodeBase
+	{
+	public:
+		ASTMemberAccess(bool isValueReference);
+		virtual ~ASTMemberAccess() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
+		virtual CodegenResult Codegen() override;
+
+	private:
+		bool m_ValueReference;
 	};
 
 }
