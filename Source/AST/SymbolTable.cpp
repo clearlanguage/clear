@@ -9,10 +9,8 @@ namespace clear
         m_Previous = other;
     }
 
-    Allocation SymbolTable::CreateAlloca(const std::string& name, std::shared_ptr<Type> type)
+    Allocation SymbolTable::CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder)
     {
-        auto& builder = *LLVM::Backend::GetBuilder();
-
 		auto ip = builder.saveIP();
 
 		llvm::Function* function = builder.GetInsertBlock()->getParent();
@@ -30,11 +28,12 @@ namespace clear
     }
 
 
-    FunctionData& SymbolTable::CreateFunction(const std::string& name, std::vector<Parameter>& parameters, const std::shared_ptr<Type>& returnType)
+    FunctionData& SymbolTable::CreateFunction(const std::string& name, 
+                                              std::vector<Parameter>& parameters, 
+                                              const std::shared_ptr<Type>& returnType, 
+                                              llvm::Module& module, 
+                                              llvm::LLVMContext& context)
     {
-        auto& module   = *LLVM::Backend::GetModule();
-        auto& context  = *LLVM::Backend::GetContext();
-
 		std::vector<llvm::Type*> parameterTypes;
         std::transform(parameters.begin(), parameters.end(), std::back_inserter(parameterTypes), [](Parameter& a) { return a.Type->Get(); });
 
@@ -59,7 +58,13 @@ namespace clear
 
     void SymbolTable::RegisterFunction(const std::string& name, const FunctionData& data)
     {
-        m_Functions[name] = data;
+        if(!m_Functions.contains(name))
+        {
+            m_Functions[name] = data;
+            return;
+        }
+        
+        CLEAR_LOG_WARNING("registered function with name ", name, " multiple times");
     }
 
     Allocation SymbolTable::GetAlloca(const std::string& name)

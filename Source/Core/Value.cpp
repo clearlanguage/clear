@@ -1,6 +1,6 @@
 #include "Value.h"
 
-#include "API/LLVM/LLVMBackend.h"
+#include "API/LLVM/LLVMInclude.h"
 #include "Log.h"
 #include "TypeRegistry.h"
 
@@ -8,18 +8,16 @@ namespace clear
 {
 	static size_t s_StringCount = 0;
 
-	Value::ConstantPair Value::GetConstant(const std::shared_ptr<Type>& type, const std::string& data)
+	Value::ConstantPair Value::GetConstant(const std::shared_ptr<Type>& type, const std::string& data, llvm::LLVMContext& context, llvm::Module& module)
 	{
-		auto &context = *LLVM::Backend::GetContext();
-
 		std::string hash = type->GetHash();
-		
+
 		if(hash == "int8")  return {llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)std::stoll(data), true), nullptr};
 		if(hash == "int16") return {llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (int16_t)std::stoll(data), true), nullptr};
 		if(hash == "int32") return {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)std::stoll(data), true), nullptr};
 		if(hash == "int64") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (int64_t)std::stoll(data), true), nullptr};
 
-		if(hash == "uint8")  return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context),  (uint8_t)std::stoull(data), true), nullptr};
+		if(hash == "uint8")  return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint8_t)std::stoull(data), true), nullptr};
 		if(hash == "uint16") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint16_t)std::stoull(data), true), nullptr};
 		if(hash == "uint32") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint32_t)std::stoull(data), true), nullptr};
 		if(hash == "uint64") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), true), nullptr};
@@ -29,7 +27,7 @@ namespace clear
 
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr};
 		
-		if(hash == "int8*") return GetConstantString(data);
+		if(hash == "int8*") return GetConstantString(data, context, module);
 		if(hash == "null_type*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
 
 
@@ -37,11 +35,8 @@ namespace clear
 	}
 
 
-	Value::ConstantPair Value::GetConstantString(const std::string& data)
+	Value::ConstantPair Value::GetConstantString(const std::string& data, llvm::LLVMContext& context, llvm::Module& module)
 	{
-		auto &module = *LLVM::Backend::GetModule();
-		auto &context = *LLVM::Backend::GetContext();
-
 		llvm::Constant* strConstant = llvm::ConstantDataArray::getString(context, data, true);
 
 		llvm::Type* type = strConstant->getType();
@@ -64,10 +59,10 @@ namespace clear
 		return {strPtr, globalStr->getValueType()};
 	}
 
-	Value::Value(const Token &rValue)
-		: m_Type(TypeRegistry::GetGlobal()->GetTypeFromToken(rValue)), m_Data(rValue.Data)
+	Value::Value(const Token &rValue, TypeRegistry& typeRegistry, llvm::LLVMContext& context, llvm::Module& module)
+		: m_Type(typeRegistry.GetTypeFromToken(rValue)), m_Data(rValue.Data)
 	{
-		auto [value, type] = Value::GetConstant(m_Type, m_Data);
+		auto [value, type] = Value::GetConstant(m_Type, m_Data, context, module);
 		m_Value = value;
 	}
 

@@ -66,7 +66,7 @@ namespace clear
     class PrimitiveType : public Type 
     {
     public:
-        PrimitiveType();
+        PrimitiveType(llvm::LLVMContext& context);
         PrimitiveType(llvm::Type* type, TypeFlagSet flags, const std::string& name);
         
         virtual ~PrimitiveType() = default;
@@ -86,13 +86,12 @@ namespace clear
     class PointerType : public Type 
     {
     public:
-        PointerType(std::shared_ptr<Type> baseType);
+        PointerType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context);
 
         virtual ~PointerType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
-        virtual size_t GetSize() const override;
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }

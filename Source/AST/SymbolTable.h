@@ -1,6 +1,6 @@
 #pragma once
 
-#include "API/LLVM/LLVMBackend.h"
+#include "API/LLVM/LLVMInclude.h"
 #include "Core/Type.h"
 
 #include <unordered_map>
@@ -34,13 +34,6 @@ namespace clear
         std::vector<Parameter> Parameters;
     };
 
-    struct StructData
-    {
-
-    };
-
-    
-
     class SymbolTable
     {
     public:
@@ -48,24 +41,21 @@ namespace clear
         SymbolTable(const std::shared_ptr<SymbolTable>& other);
         ~SymbolTable() = default;
 
-        Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type);
-        //StructData& CreateStruct(const std::string& name, const std::vector<Member>& members);
+        Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder);
         FunctionData& CreateFunction(const std::string& name,
                                      std::vector<Parameter>& parameters, 
-                                     const std::shared_ptr<Type>& returnType
+                                     const std::shared_ptr<Type>& returnType, 
+                                     llvm::Module& module, 
+                                     llvm::LLVMContext& context
                                     );
 
 
         void RegisterAllocation(const std::string& name, Allocation allocation);
         void RegisterFunction(const std::string& name, const FunctionData& data);
 
-        //void CreateType(...)
 
         Allocation  GetAlloca(const std::string& name);
-        //StructData& GetStruct(const std::string& name);
         FunctionData& GetFunction(const std::string& name);
-
-        //void GetType(...)
 
         void SetPrevious(const std::shared_ptr<SymbolTable>& previous);
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
@@ -73,7 +63,6 @@ namespace clear
     private:
         std::unordered_map<std::string, Allocation>   m_Variables; 
         std::unordered_map<std::string, FunctionData> m_Functions; 
-        std::unordered_map<std::string, StructData>   m_Structs; 
 
         std::shared_ptr<SymbolTable> m_Previous;
     };

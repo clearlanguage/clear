@@ -36,8 +36,8 @@ namespace clear
 	        {TokenType::OpenBracket,       -1}  
 	    };
 
-    Parser::Parser(const ProgramInfo& info)
-        : m_Tokens(info.Tokens)
+    Parser::Parser(const ProgramInfo& info, TypeRegistry& typeRegistry)
+        : m_Tokens(info.Tokens), m_TypeRegistry(typeRegistry)
     {
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
         root->CreateSymbolTable();
@@ -275,8 +275,7 @@ namespace clear
             types.push_back({name, type});
         }
 
-        auto typeReg = TypeRegistry::GetGlobal();
-        typeReg->CreateStruct(structName, types);
+        m_TypeRegistry.CreateStruct(structName, types);
 
         Consume();
     }
@@ -702,20 +701,18 @@ namespace clear
 
     std::shared_ptr<Type> Parser::ParseVariableType()
     {
-        auto globalReg = TypeRegistry::GetGlobal();
-
-        std::shared_ptr<Type> type = globalReg->GetTypeFromToken(Consume());
+        std::shared_ptr<Type> type = m_TypeRegistry.GetTypeFromToken(Consume());
 
         while(MatchAny(m_TypeIndirection))
         {
             if(Match(TokenType::PointerDef))
             {
-                type = globalReg->GetPointerTo(type); 
+                type = m_TypeRegistry.GetPointerTo(type); 
                 Consume();
             }
             else 
             {
-                type = globalReg->GetArrayFrom(type, std::stoull(Consume().Data));            
+                type = m_TypeRegistry.GetArrayFrom(type, std::stoull(Consume().Data));            
             }
         }
 

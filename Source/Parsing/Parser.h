@@ -13,7 +13,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const ProgramInfo& info);
+        Parser(const ProgramInfo& info, TypeRegistry& registry);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -55,6 +55,7 @@ namespace clear
     private:    
         std::vector<Token> m_Tokens;
         size_t m_Position = 0;
+        TypeRegistry& m_TypeRegistry;
 
         std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
 

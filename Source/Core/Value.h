@@ -1,6 +1,6 @@
 #pragma once 
 
-#include "Type.h"
+#include "TypeRegistry.h"
 #include "Lexing/Tokens.h"
 
 #include <list>
@@ -15,12 +15,12 @@ namespace clear {
 
 	public:
 		Value() = default;
-		Value(const Token& rValue);
+		Value(const Token& rValue, TypeRegistry& typeRegistry, llvm::LLVMContext& context, llvm::Module& module);
 
 		~Value() = default;
 
-		static ConstantPair GetConstantString(const std::string& data);
-		static ConstantPair GetConstant(const std::shared_ptr<Type>& type, const std::string& data);
+		static ConstantPair GetConstantString(const std::string& data, llvm::LLVMContext& context, llvm::Module& module);
+		static ConstantPair GetConstant(const std::shared_ptr<Type>& type, const std::string& data, llvm::LLVMContext& context, llvm::Module& module);
 
 		llvm::Value* Get() { return m_Value; }
 		std::shared_ptr<Type>& GetType() { return m_Type; }

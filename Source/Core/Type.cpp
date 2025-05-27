@@ -1,6 +1,6 @@
 #include "Type.h"
 
-#include "API/LLVM/LLVMBackend.h"
+#include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
 
 namespace clear
@@ -45,10 +45,8 @@ namespace clear
         return GetFlags() & mask;
     }
 
-    PrimitiveType::PrimitiveType()
+    PrimitiveType::PrimitiveType(llvm::LLVMContext& context)
     {
-        auto& context = *LLVM::Backend::GetContext();
-
         m_LLVMType = llvm::Type::getVoidTy(context);
         m_Flags.set((size_t)TypeFlags::Void);
         m_Size = 0;
@@ -60,20 +58,11 @@ namespace clear
         CLEAR_VERIFY(m_LLVMType, "null type not allowed");
     }
 
-    PointerType::PointerType(std::shared_ptr<Type> baseType)
+    PointerType::PointerType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context)
         : m_BaseType(baseType)
     {
-        auto& context = *LLVM::Backend::GetContext();
         m_LLVMType = llvm::PointerType::get(context , 0);
         m_Flags.set((size_t)TypeFlags::Pointer);
-    }
-
-    size_t PointerType::GetSize() const
-    {
-        auto& module = *LLVM::Backend::GetModule();
-        const llvm::DataLayout& layout = module.getDataLayout();
-
-        return (size_t)layout.getPointerSizeInBits(m_LLVMType->getPointerAddressSpace());
     }
 
     ArrayType::ArrayType(std::shared_ptr<Type> baseType, size_t count)

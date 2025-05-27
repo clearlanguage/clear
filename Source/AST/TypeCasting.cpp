@@ -4,10 +4,11 @@
 
 namespace clear 
 {
-    llvm::Value* TypeCasting::Cast(llvm::Value* value, std::shared_ptr<Type> src, std::shared_ptr<Type> dst)
+    llvm::Value* TypeCasting::Cast(llvm::Value* value, 
+                                   std::shared_ptr<Type> src, 
+                                   std::shared_ptr<Type> dst, 
+                                   llvm::IRBuilder<>& builder)
     {
-        auto& builder = *LLVM::Backend::GetBuilder();
-
         llvm::Type* srcType = src->Get();
         llvm::Type* dstType = dst->Get();
 

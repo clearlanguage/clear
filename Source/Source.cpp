@@ -1,9 +1,8 @@
 ﻿#include "Lexing/Lexer.h"
 #include "AST/ASTNode.h"
-#include <Linker/Linker.h>
 #include "Parsing/Parser.h"
-#include "API/LLVM/LLVMBackend.h"
 #include "Core/TypeRegistry.h"
+#include "Linker/CompilationManager.h"
 
 
 #include <iostream>
@@ -13,13 +12,19 @@ using namespace clear;
 
 int main()
 {
-    Linker linker;
     std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
     std::cout << std::filesystem::current_path();
 
-    BuildConfig config = {"Tests/new_test.cl"};
-    linker.Build(config);
+    BuildConfig config;
+    config.SourceDirectories.push_back(std::filesystem::current_path() / "Tests");
+    config.OutputPath = std::filesystem::current_path() / "Tests" / "build";
+    config.OutputFilename = "test_application";
+    config.ApplicationName = "clear app";
 
+    CompilationManager manager(config);
+    manager.LoadSources();
+    manager.PropagateSymbolTables();
+    manager.GenerateIRAndObjectFiles();
 
     return 0;
 }

@@ -1,4 +1,4 @@
-#include "API/LLVM/LLVMBackend.h"
+#include "API/LLVM/LLVMInclude.h"
 
 #include "Core/Type.h"
 
@@ -9,7 +9,8 @@ namespace clear
     public:
         static llvm::Value* Cast(llvm::Value* value, 
                                  std::shared_ptr<Type> src,
-                                 std::shared_ptr<Type> dst);
+                                 std::shared_ptr<Type> dst, 
+                                 llvm::IRBuilder<>& builder);
 
         static llvm::Value* Promote(llvm::Value* value1, 
                                     llvm::Value* value2, 

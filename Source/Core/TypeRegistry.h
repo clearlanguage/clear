@@ -1,13 +1,15 @@
+#pragma once 
+
 #include "Type.h"
 #include "Lexing/Tokens.h"
-
+#include "API/LLVM/LLVMInclude.h"
 
 namespace clear 
 {
     class TypeRegistry 
     {
     public:
-        TypeRegistry() = default;
+        TypeRegistry(std::shared_ptr<llvm::LLVMContext> context);
         ~TypeRegistry() = default;
 
         void RegisterBuiltinTypes();
@@ -18,18 +20,13 @@ namespace clear
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
 
-
-
         static std::string GetTypeNameFromTokenType(TokenType type);
-
-        static void InitGlobal();
-        static std::shared_ptr<TypeRegistry> GetGlobal();
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;
-
+        std::shared_ptr<llvm::LLVMContext> m_Context;
     };
 }

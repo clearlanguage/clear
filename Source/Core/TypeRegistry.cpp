@@ -1,54 +1,44 @@
 #include "TypeRegistry.h"
 
-#include "API/LLVM/LLVMBackend.h"
+#include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
 #include "Utils.h"
 
 namespace clear 
 {
-    static std::shared_ptr<TypeRegistry> s_GlobalRegistry;
-
-    void TypeRegistry::InitGlobal()
+    TypeRegistry::TypeRegistry(std::shared_ptr<llvm::LLVMContext> context)
+        : m_Context(context)
     {
-        s_GlobalRegistry = std::make_shared<TypeRegistry>();
-        s_GlobalRegistry->RegisterBuiltinTypes();
-    }
-
-    std::shared_ptr<TypeRegistry> TypeRegistry::GetGlobal()
-    {
-        return s_GlobalRegistry;
     }
 
     void TypeRegistry::RegisterBuiltinTypes()
     {
-        auto& context = *LLVM::Backend::GetContext();
-
         TypeFlagSet signedIntegerFlags;
         signedIntegerFlags.set((size_t)TypeFlags::Integral);
         signedIntegerFlags.set((size_t)TypeFlags::Signed);
 
-        m_Types["int8"]  = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(context), signedIntegerFlags, "int8");
-        m_Types["int16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(context), signedIntegerFlags, "int16");
-        m_Types["int32"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(context), signedIntegerFlags, "int32");
-        m_Types["int64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(context), signedIntegerFlags, "int64");
+        m_Types["int8"]  = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(*m_Context), signedIntegerFlags, "int8");
+        m_Types["int16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(*m_Context), signedIntegerFlags, "int16");
+        m_Types["int32"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), signedIntegerFlags, "int32");
+        m_Types["int64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), signedIntegerFlags, "int64");
 
         TypeFlagSet integerFlags;
         signedIntegerFlags.set((size_t)TypeFlags::Integral);
 
-        m_Types["uint8"]  = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(context),  integerFlags, "uint8");
-        m_Types["uint16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(context), integerFlags, "uint16");
-        m_Types["uint32"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(context), integerFlags, "uint32");
-        m_Types["uint64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(context), integerFlags, "uint64");
-        m_Types["bool"]   = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(context), integerFlags, "bool");
+        m_Types["uint8"]  = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(*m_Context),  integerFlags, "uint8");
+        m_Types["uint16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(*m_Context), integerFlags, "uint16");
+        m_Types["uint32"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), integerFlags, "uint32");
+        m_Types["uint64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), integerFlags, "uint64");
+        m_Types["bool"]   = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(*m_Context), integerFlags, "bool");
 
         TypeFlagSet floatingFlags;
         floatingFlags.set((size_t)TypeFlags::Floating);
         floatingFlags.set((size_t)TypeFlags::Signed);
 
-        m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(context),  floatingFlags, "float32");
-        m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(context), floatingFlags, "float64");
+        m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(*m_Context),  floatingFlags, "float32");
+        m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(*m_Context), floatingFlags, "float64");
         
-        m_Types["null_type"] = std::make_shared<PrimitiveType>();
+        m_Types["null_type"] = std::make_shared<PrimitiveType>(*m_Context);
     }
 
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
@@ -70,7 +60,7 @@ namespace clear
         if(m_Types.contains(hash)) 
             return m_Types.at(hash);
 
-        std::shared_ptr<PointerType> ptr = std::make_shared<PointerType>(base);
+        std::shared_ptr<PointerType> ptr = std::make_shared<PointerType>(base, *m_Context);
         m_Types[hash] = ptr;
 
         return ptr;
