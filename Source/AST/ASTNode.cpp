@@ -833,13 +833,19 @@ namespace clear
 		auto& children = GetChildren();
 
 		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+
+		auto IsOperand = [](const std::shared_ptr<ASTNodeBase>& child) 
+		{
+			return child->GetType() == ASTNodeType::Literal || 
+				   child->GetType() == ASTNodeType::VariableExpression ||
+				   child->GetType() == ASTNodeType::VariableReference || 
+				   child->GetType() == ASTNodeType::FunctionCall || 
+				   child->GetType() == ASTNodeType::MemberAccess;
+		};
 		
 		for (const auto& child : children)
 		{
-			if (child->GetType() == ASTNodeType::Literal ||
-				child->GetType() == ASTNodeType::VariableExpression ||
-				child->GetType() == ASTNodeType::VariableReference || 
-				child->GetType() == ASTNodeType::FunctionCall)
+			if (IsOperand(child))
 			{
 				stack.push(child);
 				continue;
@@ -1026,8 +1032,8 @@ namespace clear
 			size_t index = parentType->GetMemberIndex(member->GetName());
 			getElementPtr = builder.CreateStructGEP(parentType->Get(), getElementPtr, index, "struct_get_element_ptr");
 
-			prev = parentType;
-			parentType = std::dynamic_pointer_cast<StructType>(parentType->GetMemberType(member->GetName()));
+			prev = parentType->GetMemberType(member->GetName());
+			parentType = std::dynamic_pointer_cast<StructType>(prev);
 		}
 
 		if(m_ValueReference)
