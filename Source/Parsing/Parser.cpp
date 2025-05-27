@@ -229,6 +229,11 @@ namespace clear
         Root()->Push(ParseAssignment(variableName));
     }
 
+    void Parser::ParseStruct()
+    {
+        
+    }
+
     void Parser::ParseFunctionDefinition()
     {
         Expect(TokenType::Function);

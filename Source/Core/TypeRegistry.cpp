@@ -117,6 +117,13 @@ namespace clear
         return GetType(GetTypeNameFromTokenType(token.TokenType));
     }
 
+    std::shared_ptr<Type> TypeRegistry::CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
+    {
+        std::shared_ptr<StructType> structType = std::make_shared<StructType>(name, members);
+        m_Types[name] = structType;
+        return structType;
+    }
+
     std::string TypeRegistry::GetTypeNameFromTokenType(TokenType type)
     {
         switch (type)

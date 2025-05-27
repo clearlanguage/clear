@@ -35,6 +35,7 @@ namespace clear
         void ParseFunctionDefinition();
         void ParseFunctionDecleration();        
         void ParseVariableDecleration();
+        void ParseStruct();
 
         std::shared_ptr<ASTNodeBase> ParseExpression(bool isValueReference = false);
         std::shared_ptr<ASTNodeBase> ParseVariableReference(bool isValueReference = false);

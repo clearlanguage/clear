@@ -125,22 +125,31 @@ namespace clear
         size_t m_Count;
     };
 
-    //class StructType : public Type 
-    //{
-    //public:
-    //    StructType(const std::string& name, llvm::StructType* llvmType,
-    //               const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
-    //        : name(name), llvmType(llvmType), members(members) {}
-//
-    //    llvm::Type* Get() const override { return llvmType; }
-//
-    //    const auto& GetMembers() const { return members; }
-//
-    //private:
-    //    std::string name;
-    //    llvm::StructType* llvmType;
-    //    std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-    //};
+    class StructType : public Type 
+    {
+    public:
+        StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
+
+        virtual ~StructType() = default;
+            
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
+        virtual std::string GetHash() const override { return m_Name; };
+
+        size_t GetMemberIndex(const std::string& member);
+        std::shared_ptr<Type> GetMemberType(const std::string& member);
+
+        const auto& GetMemberTypes()   const { return m_MemberTypes; }
+        const auto& GetMemberIndices() const {return m_MemberIndices; }
+
+    private:
+        llvm::StructType* m_LLVMType;
+        TypeFlagSet m_Flags;
+        std::unordered_map<std::string, std::shared_ptr<Type>> m_MemberTypes;
+        std::unordered_map<std::string, size_t> m_MemberIndices;
+
+        std::string m_Name;
+    };
 
 }
 

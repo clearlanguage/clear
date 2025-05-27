@@ -87,4 +87,34 @@ namespace clear
     {
         return m_BaseType->GetHash() + "[" + std::to_string(m_Count) + "]";
     }
+
+    StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
+        : m_Name(name)
+    {
+        std::vector<llvm::Type*> types;
+
+		uint32_t k = 0;
+
+		for (auto& [memberName, type] : members)
+		{
+			m_MemberIndices[memberName] = k++;
+            m_MemberTypes[memberName] = type;
+			types.push_back(type->Get());
+		}
+
+		m_LLVMType = llvm::StructType::create(types, name);
+
+        m_Flags.set((size_t)TypeFlags::Compound);
+    }
+
+    size_t StructType::GetMemberIndex(const std::string& member)
+    {
+        return m_MemberIndices.at(member);
+    }
+
+    std::shared_ptr<Type> StructType::GetMemberType(const std::string& member)
+    {
+        return m_MemberTypes.at(member);
+    }
 }
+ 
