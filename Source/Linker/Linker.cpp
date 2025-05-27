@@ -89,12 +89,14 @@ namespace clear {
         module.Build();
         for (std::filesystem::path  imp: module.importPaths) {
             auto ext = imp.extension().string();
-            CLEAR_VERIFY(std::filesystem::exists(imp),"Import path does not exist");
+            auto x = file.parent_path() / imp;
+
+            // CLEAR_VERIFY(std::filesystem::exists(file.parent_path() / imp),"Import path does not exist");
             if (ext == ".lib") {
-                lib.LibImports.push_back(imp.string());
+                lib.LibImports.push_back(x.string());
             }else if(ext == ".cl") {
-                lib.LibImports.push_back(imp.string());
-                GenerateLibraries(lib,imp);
+                lib.LibImports.push_back(x.string());
+                GenerateLibraries(lib,x);
 
             }else {
 
