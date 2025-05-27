@@ -83,6 +83,7 @@ namespace clear
         {"switch",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Switch }},
         {"default",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Default }},
         {"restriction",  {.NextState = LexerState::Restriction, .TokenToPush = TokenType::Restriction }},
+        {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }}
 
 
 
@@ -219,6 +220,7 @@ namespace clear
             case TokenType::Restriction: return "Restriction";
             case TokenType::RestrictionName: return "RestrictionName";
             case TokenType::RestrictionTypeName: return "RestrictionTypeName";
+            case TokenType::Import: return "Import";
 
             default:
                 break;
