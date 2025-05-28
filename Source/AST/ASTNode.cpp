@@ -62,7 +62,7 @@ namespace clear
 
 		for(auto& child : m_Children)
 		{
-			child->PropagateSymbolTable(registry);
+			child->PropagateSymbolTable(m_SymbolTable);
 		}
     }
 
@@ -1034,7 +1034,7 @@ namespace clear
 		auto& context = ctx.Context;
 		auto& children = GetChildren();
 
-		auto typeReg = ctx.Registry;
+		auto& typeReg = ctx.Registry;
 
 		CLEAR_VERIFY(children.size() > 1, "invalid member access");
 
