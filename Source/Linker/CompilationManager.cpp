@@ -61,27 +61,7 @@ namespace clear
 
         for(auto& [filepath, ast] : m_LookupTable)
         {
-            auto currentModule = std::make_unique<llvm::Module>(filepath.string(), *m_Context);
-
-            CodegenContext context(m_LookupTable, filepath.parent_path(), *m_Context, *m_Builder, *currentModule, ast.Registry);
-            
-            ast.Node->Codegen(context);
-
-            if(m_Config.EmitIntermiediateIR)
-            {
-                std::filesystem::path irPath = filepath;
-                irPath.replace_extension(".ll");
-
-                std::error_code EC;
-                llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
-
-                currentModule->print(file, nullptr);
-            }   
-
-            if(linker.linkInModule(std::move(currentModule)))
-            {
-                CLEAR_UNREACHABLE("linking error");
-            }
+            CodegenModule(filepath, linker);
         }
 
         BuildModule(m_MainModule.get(), m_Config.OutputPath / m_Config.OutputFilename);
@@ -306,5 +286,46 @@ namespace clear
 
 
         modulePM.run(*m_MainModule, moduleAM);
+    }
+
+    void CompilationManager::CodegenModule(const std::filesystem::path& path, llvm::Linker& linker)
+    {
+        if(m_GeneratedModules.contains(path)) 
+            return;
+
+        auto& [rootNode, reg] = m_LookupTable.at(path);
+
+        for(const auto& node : rootNode->GetChildren())
+        {
+            if(node->GetType() == ASTNodeType::Import)
+            {
+                std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
+                std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
+                CodegenModule(fullQualifiedPath, linker);
+            }
+        }
+
+        auto currentModule = std::make_unique<llvm::Module>(path.string(), *m_Context);
+
+        CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *currentModule, reg);
+        
+        rootNode->Codegen(context);
+
+        if(m_Config.EmitIntermiediateIR)
+        {
+            std::filesystem::path irPath = path;
+            irPath.replace_extension(".ll");
+            std::error_code EC;
+            llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
+
+            currentModule->print(file, nullptr);
+        }   
+
+        if(linker.linkInModule(std::move(currentModule)))
+        {
+            CLEAR_UNREACHABLE("linking error");
+        }
+
+        m_GeneratedModules.insert(path);
     }
 }

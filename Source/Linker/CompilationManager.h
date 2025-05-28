@@ -4,6 +4,8 @@
 #include "BuildConfig.h"
 
 #include <unordered_map>
+#include <unordered_set>
+#include <filesystem>
 
 namespace clear 
 {
@@ -27,6 +29,8 @@ namespace clear
         void LinkToStaticLibrary();
         void OptimizeModule();
 
+        void CodegenModule(const std::filesystem::path& path, llvm::Linker& linker);
+
     private:
         LookupAstTable m_LookupTable;
         BuildConfig m_Config;
@@ -34,5 +38,6 @@ namespace clear
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
         std::unique_ptr<llvm::Module> m_MainModule;
 
+        std::unordered_set<std::filesystem::path> m_GeneratedModules;
     };
 }
