@@ -19,7 +19,6 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-
     std::cout << std::filesystem::current_path() << std::endl;
     std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
     std::cout << std::filesystem::current_path() << std::endl;

@@ -1,6 +1,6 @@
 ApplicationName = 'clear app'
 DebugInfo = false
-EmitIntermediateIR = true
+EmitIntermiediateIR = false
 FavourSize = false
 IncludeCStandard = true
 IncludeClearStandard = false

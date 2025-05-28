@@ -92,7 +92,7 @@ namespace clear
 
         config.DebugInfo = tbl["DebugInfo"].value_or(false);
         config.FavourSize = tbl["FavourSize"].value_or(false);
-        config.EmitIntermiediateIR = tbl["EmitIntermiediateIR"].value_or(true);
+        config.EmitIntermiediateIR = tbl["EmitIntermiediateIR"].value_or(false);
         config.ParallelBuild = tbl["ParallelBuild"].value_or(false);
         config.IncludeCStandard = tbl["IncludeCStandard"].value_or(true);
         config.IncludeClearStandard = tbl["IncludeClearStandard"].value_or(true);
@@ -206,7 +206,7 @@ namespace clear
             { "FavourSize",             FavourSize },
             { "WarningLevel",           enumToString(WarningLevel) },
             { "OutputFormat",           enumToString(OutputFormat) },
-            { "EmitIntermediateIR",     EmitIntermiediateIR },
+            { "EmitIntermiediateIR",    EmitIntermiediateIR },
             { "TargetArchitecture",     enumToString(TargetArchitecture) },
             { "ParallelBuild",          ParallelBuild },
             { "IncludeCStandard",       IncludeCStandard },
