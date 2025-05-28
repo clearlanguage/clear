@@ -38,6 +38,7 @@ namespace clear
         void ParseVariableDecleration();
         void ParseStruct();
         void ParseImport();
+        void ParseReturn();
 
         std::shared_ptr<ASTNodeBase> ParseExpression(bool isValueReference = false);
         std::shared_ptr<ASTNodeBase> ParseVariableReference(bool isValueReference = false);

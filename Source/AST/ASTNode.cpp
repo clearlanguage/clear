@@ -77,8 +77,8 @@ namespace clear
 		return {value.Get(), value.GetType()};
 	}
 
-    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
-		: m_Expression(type)
+    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, bool isValueReference)
+		: m_Expression(type), m_IsValueReference(isValueReference)
 	{
 	}
 	
@@ -99,13 +99,21 @@ namespace clear
         if(!lhs.CodegenValue->getType()->isPointerTy()) 
 			HandleTypePromotion(lhs, rhs, ctx);
 
+		CLEAR_VERIFY(!rhs.CodegenType->IsPointer(), "pointer must be on left hand side");
+
+		if(lhs.CodegenType->IsPointer())
+			return HandlePointerArithmetic(lhs, rhs, ctx);
+
+		if(m_Expression == BinaryExpressionType::Index)
+			return HandleArrayIndex(lhs, rhs, ctx);
+				
 		if(IsMathExpression()) 
 			return HandleMathExpression(lhs, rhs, m_Expression, ctx);
 
 		if(IsCmpExpression()) 
 			return HandleCmpExpression(lhs, rhs, ctx);
 
-		return {}; //TODO
+		return HandleBitwiseExpression(lhs, rhs); 
     }
 
     void ASTBinaryExpression::HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
@@ -283,7 +291,7 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
 					     ctx.Registry.GetType("float64")  };
 			}
@@ -326,7 +334,7 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
 					     ctx.Registry.GetType("float64") };
 			}
@@ -367,7 +375,7 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
 						 ctx.Registry.GetType("float64") };
 			}
@@ -389,7 +397,7 @@ namespace clear
 		return HandleCmpExpressionUI(lhs, rhs, ctx);
     }
 
-    CodegenResult ASTBinaryExpression::HandleCmpExpressionF(CodegenResult &lhs, CodegenResult &rhs, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionF(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 
@@ -427,7 +435,7 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleCmpExpressionSI(CodegenResult &lhs, CodegenResult &rhs, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionSI(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 
@@ -465,7 +473,7 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleCmpExpressionUI(CodegenResult &lhs, CodegenResult &rhs, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleCmpExpressionUI(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 
@@ -503,19 +511,49 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleBitwiseExpression(CodegenResult &lhs, CodegenResult &rhs)
+    CodegenResult ASTBinaryExpression::HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs)
     {
-		//TODO
+		CLEAR_UNREACHABLE("unimplemented")
         return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult &lhs, CodegenResult &rhs)
+    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
+		CLEAR_VERIFY(lhs.CodegenType->IsPointer() || lhs.CodegenType->IsArray(), "left hand side is not a pointer");
+		CLEAR_VERIFY(rhs.CodegenType->IsIntegral(), "invalid pointer arithmetic");
+
+		if(rhs.CodegenType->GetSize() != 64) 
+		{
+			rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
+												 rhs.CodegenType, 
+												 ctx.Registry.GetType("int64"), 
+												 ctx.Builder);
+		}
+		
+		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
+
+		if(m_Expression == BinaryExpressionType::Add)
+		{
+			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
+		}
+
+		if(m_Expression == BinaryExpressionType::Sub)
+		{
+			rhs.CodegenValue = ctx.Builder.CreateNeg(rhs.CodegenValue);
+			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
+		}
+
+		CLEAR_UNREACHABLE("invalid binary expression");
+
         return {};
     }
 
+    CodegenResult ASTBinaryExpression::HandleArrayIndex(CodegenResult& lhs, CodegenResult& rhs, CodegenContext &ctx)
+    {
+        return CodegenResult();
+    }
 
-	ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
+    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
 		: m_Name(name), m_Type(type)
     {
     }
@@ -683,6 +721,10 @@ namespace clear
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
 		llvm::AllocaInst* returnAlloca = m_ReturnType ? builder.CreateAlloca(m_ReturnType->Get(), nullptr, "return_value") : nullptr;
 		
+		ctx.ReturnType   = m_ReturnType ? m_ReturnType : ctx.Registry.GetType("void");
+		ctx.ReturnBlock  = returnBlock;
+		ctx.ReturnAlloca = returnAlloca;
+
 		uint32_t k = 0;
 
 		for (const auto& param : m_Parameters)
@@ -1081,4 +1123,46 @@ namespace clear
 	{
 		return {};
 	}
+
+	CodegenResult ASTReturn::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+
+		llvm::BasicBlock* currentBlock = ctx.Builder.GetInsertBlock();
+
+		if(currentBlock->getTerminator()) 
+			return {};
+
+		if(children.size() == 0) 
+		{
+			EmitDefaultReturn(ctx);
+			return {};
+		}
+
+		CodegenResult codegen = children[0]->Codegen(ctx);
+
+		if(codegen.CodegenValue == nullptr)
+		{
+			EmitDefaultReturn(ctx);
+			return {};
+		}
+		
+		if(codegen.CodegenType != ctx.ReturnType)
+		{
+			codegen.CodegenValue = TypeCasting::Cast(codegen.CodegenValue, codegen.CodegenType, ctx.ReturnType, ctx.Builder);
+		}
+
+		ctx.Builder.CreateStore(codegen.CodegenValue, ctx.ReturnAlloca);
+		ctx.Builder.CreateBr(ctx.ReturnBlock);
+
+		return {};
+	}
+
+    void ASTReturn::EmitDefaultReturn(CodegenContext& ctx)
+    {
+		llvm::Type* retType = ctx.ReturnType->Get();
+    	llvm::Value* defaultVal = llvm::UndefValue::get(retType);
+    	ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
+    	ctx.Builder.CreateBr(ctx.ReturnBlock);
+    }
 }

@@ -23,7 +23,7 @@ namespace clear
         m_Types["int64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), signedIntegerFlags, "int64");
 
         TypeFlagSet integerFlags;
-        signedIntegerFlags.set((size_t)TypeFlags::Integral);
+        integerFlags.set((size_t)TypeFlags::Integral);
 
         m_Types["uint8"]  = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(*m_Context),  integerFlags, "uint8");
         m_Types["uint16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(*m_Context), integerFlags, "uint16");
@@ -38,7 +38,7 @@ namespace clear
         m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(*m_Context),  floatingFlags, "float32");
         m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(*m_Context), floatingFlags, "float64");
         
-        m_Types["null_type"] = std::make_shared<PrimitiveType>(*m_Context);
+        m_Types["void"] = std::make_shared<PrimitiveType>(*m_Context);
     }
 
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
@@ -52,7 +52,7 @@ namespace clear
     std::shared_ptr<Type> TypeRegistry::GetPointerTo(std::shared_ptr<Type> base)
     {
         if(!base) 
-            return GetPointerTo(m_Types["null_type"]);
+            return GetPointerTo(m_Types["void"]);
 
         std::string hash = base->GetHash();
         hash += "*";

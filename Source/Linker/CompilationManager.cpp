@@ -40,11 +40,21 @@ namespace clear
         Lexer lexer;
         ProgramInfo info = lexer.CreateTokensFromFile(path.string());
 
+        CLEAR_LOG_INFO("Tokens For ", path);
+
+        for(auto& token : info.Tokens)
+        {
+            CLEAR_LOG_INFO("TOKEN: ", TokenToString(token.TokenType));
+        }
+
+        CLEAR_LOG_INFO("End of tokens for ", path);
+    
         auto& lookup = m_LookupTable.emplace(path, AstLookupInfo(m_Context)).first->second;
         lookup.Registry.RegisterBuiltinTypes();
 
         Parser parser(info, lookup.Registry);
         lookup.Node = parser.GetResult();
+
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -318,7 +328,7 @@ namespace clear
             std::error_code EC;
             llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
 
-            currentModule->print(file, nullptr);
+            currentModule->print(file, nullptr, true, true);
         }   
 
         if(linker.linkInModule(std::move(currentModule)))

@@ -54,6 +54,11 @@ namespace clear
 
 		TypeRegistry& Registry;
 
+		std::shared_ptr<Type> ReturnType;
+		llvm::AllocaInst*  ReturnAlloca = nullptr;
+		llvm::BasicBlock*  ReturnBlock = nullptr; 
+
+
     	CodegenContext(LookupAstTable& map, const std::filesystem::path& path, llvm::LLVMContext& context, 
 					   llvm::IRBuilder<>& builder, llvm::Module& module, TypeRegistry& registry) 
 			: LookupTable(map), CurrentDirectory(path), Context(context), Builder(builder), Module(module), 
@@ -104,7 +109,7 @@ namespace clear
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type);
+		ASTBinaryExpression(BinaryExpressionType type, bool isValueReference = false);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -129,10 +134,13 @@ namespace clear
 		CodegenResult HandleCmpExpressionUI(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 
 		CodegenResult HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs);
-		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs);
-
+		
+		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
+		CodegenResult HandleArrayIndex(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
+			
 	private:
 		BinaryExpressionType m_Expression;
+		bool m_IsValueReference;
 	};
 
 	class ASTVariableDeclaration : public ASTNodeBase
@@ -315,4 +323,16 @@ namespace clear
 		bool m_ValueReference;
 	};
 
+	class ASTReturn : public ASTNodeBase 
+	{
+	public:
+		ASTReturn() = default;
+		virtual ~ASTReturn() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private:
+		void EmitDefaultReturn(CodegenContext& ctx);
+
+	};
 }

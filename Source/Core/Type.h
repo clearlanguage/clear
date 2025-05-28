@@ -18,15 +18,13 @@ namespace clear
 		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
 		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
 		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
-		BitwiseXor, Index, AccessOp
+		BitwiseXor, Index
 	};
 
 	enum class UnaryExpressionType : uint8_t
 	{
-		None = 0, BitwiseNot,	Increment, 
-		Decrement, Negation, PostIncrement, 
-		PostDecrement, Reference, Dereference, 
-		Cast
+		None = 0, BitwiseNot, Negation, 
+        Dereference, Cast
 	};
 
     enum class TypeFlags
@@ -80,7 +78,7 @@ namespace clear
         llvm::Type* m_LLVMType;
         TypeFlagSet m_Flags;
         size_t m_Size;
-        std::string m_Name = "null_type";
+        std::string m_Name = "void";
     };
 
     class PointerType : public Type 

@@ -29,6 +29,7 @@ int main(int argc, char* argv[])
         BuildConfig config = BuildConfig::BuildConfigFromToml("build.toml");
 
         std::cout << "Compiling " <<config.ApplicationName << std::endl;
+        
         CompilationManager manager(config);
         manager.LoadSources();
         manager.PropagateSymbolTables();

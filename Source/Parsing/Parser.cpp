@@ -203,6 +203,10 @@ namespace clear
         {
             ParseIndentation();
         }
+        else if (Match(TokenType::Return))
+        {
+            ParseReturn();
+        }
         else 
         {
             ParseGeneric();
@@ -293,6 +297,18 @@ namespace clear
         Expect(TokenType::EndLine);
 
         Root()->Push(import);
+    }
+
+    void Parser::ParseReturn()
+    {
+        Expect(TokenType::Return);
+
+        Consume();
+
+        std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
+        returnStatement->Push(ParseExpression());
+
+        Root()->Push(returnStatement);
     }
 
     void Parser::ParseFunctionDefinition()
@@ -756,7 +772,6 @@ namespace clear
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
 			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
-			case TokenType::DotOp:				return BinaryExpressionType::AccessOp;
 			default:
 				break;
 		}
