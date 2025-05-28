@@ -19,10 +19,6 @@ find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-include_directories(${LLVM_INCLUDE_DIRS} ${CLEAR_INCLUDE_DIRS})
-separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
-add_definitions(${LLVM_DEFINITIONS_LIST})
-
 llvm_map_components_to_libnames(llvm_libs
     support
     core
@@ -46,7 +42,18 @@ FetchContent_Declare(
   GIT_TAG tags/v6.1.6
   GIT_SHALLOW TRUE)
 
-FetchContent_MakeAvailable(fast_float)
-target_link_libraries(clear PUBLIC ${llvm_libs} fast_float) 
+FetchContent_Declare(
+  tomlplusplus
+  GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+  GIT_TAG v3.4.0
+)
+
+FetchContent_MakeAvailable(fast_float tomlplusplus)
+
+include_directories(${LLVM_INCLUDE_DIRS} ${CLEAR_INCLUDE_DIRS})
+separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS_LIST})
+target_link_libraries(clear PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlplusplus) 
+
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")

@@ -1,0 +1,33 @@
+ApplicationName = 'clear app'
+DebugInfo = false
+EmitIntermediateIR = true
+FavourSize = false
+IncludeCStandard = true
+IncludeClearStandard = false
+LibraryDirectories = []
+LibraryNames = []
+OptimizationLevel = 'Debugging'
+OutputFilename = 'test_application'
+OutputFormat = 'Executable'
+OutputPath = '/home/alanfayz/Development/C++ Projects/clear/Source/Tests/build'
+ParallelBuild = false
+SourceDirectories = [ '/home/alanfayz/Development/C++ Projects/clear/Source/Tests' ]
+SourceFiles = []
+TargetArchitecture = 'Default'
+TargetExtension = '.cl'
+WarningLevel = 'Medium'
+
+[CPUFeatures]
+AVX = false
+AVX2 = false
+AVX512 = false
+BMI1 = false
+BMI2 = false
+FMA = false
+NEON = false
+SSE = false
+SSE2 = false
+SSE3 = false
+SSE4_1 = false
+SSE4_2 = false
+SSSE3 = false

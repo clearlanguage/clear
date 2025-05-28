@@ -3,29 +3,28 @@
 #include "Parsing/Parser.h"
 #include "Core/TypeRegistry.h"
 #include "Linker/CompilationManager.h"
+#include "Core/Log.h"
 
+#include <toml++/toml.h>
 
 #include <iostream>
 #include <filesystem>
 
 using namespace clear;
 
-int main()
-{
+int main(int argc, char* argv[])
+{   
+    if(argc == 0) 
+    {
+        return 0;
+    }
+
+
+    std::cout << std::filesystem::current_path() << std::endl;
     std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
-    std::cout << std::filesystem::current_path();
+    std::cout << std::filesystem::current_path() << std::endl;
 
-    BuildConfig config;
-    config.SourceDirectories.push_back(std::filesystem::current_path() / "Tests");
-    config.OutputPath = std::filesystem::current_path() / "Tests" / "build";
-    config.OutputFilename = "test_application";
-    config.ApplicationName = "clear app";
-    config.OutputFormat = BuildConfig::OutputFormatType::IR;
-    config.OptimizationLevel = BuildConfig::OptimizationLevelType::Development;
-
-    std::filesystem::path lib = std::filesystem::current_path() / "Tests" / "build" / "libs" / "libplayground.a";
-    config.LibraryFilePaths.push_back(lib);
-
+    BuildConfig config = BuildConfig::BuildConfigFromToml("build.toml");
 
     CompilationManager manager(config);
     manager.LoadSources();

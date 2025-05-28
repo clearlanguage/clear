@@ -71,7 +71,12 @@ namespace clear
         bool ParallelBuild = false;
 
         bool IncludeCStandard = true;
+        bool IncludeClearStandard = false;
 
         CPUFeatures EnabledCPUFeatures;
+
+        static BuildConfig BuildConfigFromToml(const std::filesystem::path& path);
+
+        void Serialize(const std::filesystem::path& path);
     };
 }
