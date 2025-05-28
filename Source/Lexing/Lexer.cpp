@@ -705,6 +705,7 @@ namespace clear
 			m_CurrentString += current;
 			current = _GetNextChar();
 		}
+		_VerifyCondition(current == ':',53);
 		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
 		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
