@@ -294,7 +294,7 @@ namespace clear
 		}
 
 		if(lhs.CodegenType->IsPointer()) 
-			return HandlePointerArithmetic(lhs, rhs, ctx); //internally will verify correct expression type
+			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx); //internally will verify correct expression type
 
         return HandleMathExpression(lhs, rhs, m_Expression, ctx);
     }
@@ -570,7 +570,7 @@ namespace clear
         return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx)
     {
 		CLEAR_VERIFY(lhs.CodegenType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhs.CodegenType->IsIntegral(), "invalid pointer arithmetic");
@@ -585,12 +585,12 @@ namespace clear
 		
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
 
-		if(m_Expression == BinaryExpressionType::Add)
+		if(type == BinaryExpressionType::Add)
 		{
 			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
 		}
 
-		if(m_Expression == BinaryExpressionType::Sub)
+		if(type == BinaryExpressionType::Sub)
 		{
 			rhs.CodegenValue = ctx.Builder.CreateNeg(rhs.CodegenValue);
 			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
@@ -1364,26 +1364,34 @@ namespace clear
 		CodegenResult valueToStore;
 		CodegenResult returnValue;
 
+		auto ApplyFun = [&](BinaryExpressionType type)
+		{
+			if(ty->GetBaseType()->IsPointer())
+				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
+			else 
+				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
+		};
+
 		if(m_Type == UnaryExpressionType::PostIncrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Add, ctx);
+			ApplyFun(BinaryExpressionType::Add);
 		}
 		else if (m_Type == UnaryExpressionType::PostDecrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Sub, ctx);
+			ApplyFun(BinaryExpressionType::Sub);
 		}
 		else if (m_Type == UnaryExpressionType::PreIncrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Add, ctx);
+			ApplyFun(BinaryExpressionType::Add);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
 		else if (m_Type == UnaryExpressionType::PreDecrement)
@@ -1391,7 +1399,7 @@ namespace clear
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Sub, ctx);
+			ApplyFun(BinaryExpressionType::Sub);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
 		else 

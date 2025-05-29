@@ -121,6 +121,8 @@ namespace clear
 		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx);
 		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
 		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
+		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
+
 
 	private:
 		static void HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
@@ -137,7 +139,6 @@ namespace clear
 
 		CodegenResult HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs);
 		
-		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 		CodegenResult HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 			
 	private:
