@@ -9,7 +9,6 @@
 namespace clear 
 {
     static std::map<TokenType, int32_t> s_Precedence = {
-	    	{TokenType::DotOp,			    5},
 	        {TokenType::IndexOperator,      5}, 
 	        {TokenType::Power,              4}, 
 	        {TokenType::Negation,           4},
@@ -83,13 +82,18 @@ namespace clear
             TokenType::Eof
         });
 
-        m_UnaryExpression = CreateTokenSet({
+        m_PreUnaryExpression = CreateTokenSet({
             TokenType::Increment,    
             TokenType::Decrement,    
             TokenType::BitwiseNot,   
             TokenType::AddressOp,	  
             TokenType::DereferenceOp,
             TokenType::Negation     
+        });
+
+        m_PostUnaryExpression = CreateTokenSet({
+            TokenType::Increment,    
+            TokenType::Decrement
         });
 
         m_Literals = CreateTokenSet({
@@ -506,14 +510,9 @@ namespace clear
 
         std::shared_ptr<ASTNodeBase> variableReference;
 
-        if(Next().TokenType == TokenType::DotOp)
-        {
-            variableReference = ParseVariableReference();
-        }
-        else if (Match(TokenType::VariableReference)) 
-        {
-            variableReference = ParseVariableReference();
-        }
+        Expect(TokenType::VariableReference);
+
+        variableReference = ParseVariableReference();
 
         if(!Match(TokenType::DotOp)) 
             return variableReference;
@@ -624,8 +623,8 @@ namespace clear
 
                 if (currentOperator.BinaryExpression != BinaryExpressionType::None)
                     expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.BinaryExpression));
-
-                //TODO: unary expressions go here
+                else 
+                    expression->Push(std::make_shared<ASTUnaryExpression>(currentOperator.UnaryExpression));
                 
                 operators.pop();
             }
@@ -673,8 +672,53 @@ namespace clear
             Consume();
         };
 
+        auto HandlePreUnaryOperators = [&]() 
+        {
+            while(MatchAny(m_PreUnaryExpression))
+            {
+                Token token = Consume();
+                int precedence = s_Precedence.at(token.TokenType);
+
+                PopOperatorsUntil([&](const Operator& op) 
+                {
+                    return op.IsOpenBracket || precedence > op.Precedence;
+                });
+
+                operators.push({
+                    BinaryExpressionType::None,
+                    GetPreUnaryExpressionTypeFromTokenType(token.TokenType),
+                    false,
+                    precedence
+                });
+            }
+        };
+
+        auto HandlePostUnaryOperators = [&]() 
+        {
+            while(MatchAny(m_PostUnaryExpression))
+            {
+                Token token = Consume();
+
+                int precedence = s_Precedence.at(token.TokenType);
+
+                PopOperatorsUntil([&](const Operator& op) 
+                {
+                    return op.IsOpenBracket || precedence > op.Precedence;
+                });
+
+                operators.push({
+                    BinaryExpressionType::None,
+                    GetPostUnaryExpressionTypeFromTokenType(token.TokenType),
+                    false,
+                    precedence
+                });
+            }
+        };
+
         while (!MatchAny(m_Terminators)) 
         {
+            HandlePreUnaryOperators();
+
             if (IsOperand()) 
             {
                 expression->Push(ParseOperand());
@@ -691,11 +735,8 @@ namespace clear
             {
                 HandleOperator();
             }
-            else 
-            {
-                CLEAR_UNREACHABLE("unimplemented token");
-                break;
-            }
+
+            HandlePostUnaryOperators();
         }
 
         PopOperatorsUntil([](const Operator&) { return false; });
@@ -765,5 +806,36 @@ namespace clear
 		}
 
 		return BinaryExpressionType::None;
+    }
+
+    UnaryExpressionType Parser::GetPreUnaryExpressionTypeFromTokenType(TokenType type)
+    {
+        switch (type)
+        {
+			case TokenType::Increment:      return UnaryExpressionType::PreIncrement;
+			case TokenType::Decrement:      return UnaryExpressionType::PreDecrement;
+			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
+			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
+			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
+			case TokenType::Negation:       return UnaryExpressionType::Negation; 
+
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
+    }
+
+    UnaryExpressionType Parser::GetPostUnaryExpressionTypeFromTokenType(TokenType type)
+    {
+        switch (type)
+		{
+			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
+			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
+			default:
+				break;
+		}
+
+		return UnaryExpressionType::None;
     }
 }

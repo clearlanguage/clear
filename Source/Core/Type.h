@@ -24,7 +24,8 @@ namespace clear
 	enum class UnaryExpressionType : uint8_t
 	{
 		None = 0, BitwiseNot, Negation, 
-        Dereference, Cast
+        Dereference, Reference, Cast, PostIncrement, 
+        PostDecrement, PreIncrement, PreDecrement
 	};
 
     enum class TypeFlags

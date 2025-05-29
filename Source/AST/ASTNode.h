@@ -319,6 +319,17 @@ namespace clear
 
 	private:
 		void EmitDefaultReturn(CodegenContext& ctx);
+	};
 
+	class ASTUnaryExpression : public ASTNodeBase 
+	{
+	public:
+		ASTUnaryExpression(UnaryExpressionType type);
+		virtual ~ASTUnaryExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private: 
+		UnaryExpressionType m_Type;
 	};
 }

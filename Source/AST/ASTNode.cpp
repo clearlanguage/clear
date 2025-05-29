@@ -15,19 +15,19 @@ namespace clear
 	{
 	public:
 	    ValueRestoreGuard(T& variable, T newValue)
-	        : ref(variable), oldValue(variable)
+	        : m_Reference(variable), m_OldValue(variable)
 	    {
-	        ref = newValue;
+	        m_Reference = newValue;
 	    }
 
 	    ~ValueRestoreGuard()
 	    {
-	        ref = oldValue;
+	        m_Reference = m_OldValue;
 	    }
 
 	private:
-	    T& ref;
-	    T oldValue;
+	    T& m_Reference;
+	    T m_OldValue;
 	};
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
@@ -36,7 +36,8 @@ namespace clear
     {
     }
 
-    CodegenResult ASTNodeBase::Codegen(CodegenContext& ctx)
+
+    CodegenResult ASTNodeBase::Codegen(CodegenContext &ctx)
     {
         CodegenResult value;
 
@@ -994,18 +995,16 @@ namespace clear
 				continue;
 			}
 
-			/* if (child->GetType() == ASTNodeType::UnaryExpression)
+			if (std::shared_ptr<ASTUnaryExpression> unaryExpression = std::dynamic_pointer_cast<ASTUnaryExpression>(child))
 			{
-				Ref<ASTUnaryExpression> unaryExpression = DynamicCast<ASTUnaryExpression>(child);
 				CLEAR_VERIFY(unaryExpression->GetChildren().size() == 0, "");
 
-				unaryExpression->PushChild(stack.top());
+				unaryExpression->Push(stack.top());
 				stack.pop();
 
 				stack.push(unaryExpression);
-
 				continue;
-			} */
+			}
 
 			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
 
@@ -1278,4 +1277,52 @@ namespace clear
     	ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
+
+
+    ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type)
+		: m_Type(type)
+    {
+    }
+
+	CodegenResult ASTUnaryExpression::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
+
+		if(m_Type == UnaryExpressionType::Reference)
+		{
+			CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of address-of when address is already requested")
+		
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			CodegenResult result = children[0]->Codegen(ctx);
+
+			return result;
+		}
+
+		// *value = 5
+		if(m_Type == UnaryExpressionType::Dereference)
+		{
+			CodegenResult result;
+
+			{
+				ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+				result = children[0]->Codegen(ctx);
+			}
+
+			CLEAR_VERIFY(result.CodegenType->IsPointer(), "not a valid dereference");
+
+			if(ctx.WantAddress)
+				return result;
+			
+			std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
+			
+			return {ctx.Builder.CreateLoad(ptrType->GetBaseType()->Get(), 
+										   result.CodegenValue), ptrType->GetBaseType() };
+		}	
+
+		CLEAR_UNREACHABLE("unimplemented");
+		
+		return {};
+	}
 }
