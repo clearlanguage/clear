@@ -229,8 +229,8 @@ namespace clear
 		_PushToken(TokenType::EndFunctionArguments, ")"); //TODO: change me to end function args
 		current = _GetNextChar();
 		_SkipSpaces();
-		if (current != ')')
-			_Backtrack();
+		// if (current != ')')
+		_Backtrack();
 	}
 
 
