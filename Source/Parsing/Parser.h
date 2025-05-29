@@ -40,6 +40,9 @@ namespace clear
         void ParseStruct();
         void ParseImport();
         void ParseReturn();
+        void ParseIf();
+        void ParseElseIf();
+        void ParseElse();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();

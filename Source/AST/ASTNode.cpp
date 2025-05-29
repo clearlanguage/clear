@@ -1411,4 +1411,99 @@ namespace clear
 
 		return returnValue;
 	}
+
+
+	CodegenResult ASTIfExpression::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() > 1, "size must be greater than 1");
+
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		struct Branch
+		{
+			llvm::BasicBlock* ConditionBlock = nullptr;
+			llvm::BasicBlock* BodyBlock  = nullptr;
+			int64_t ExpressionIdx = 0;
+		};
+
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "");
+
+		std::vector<Branch> branches;
+
+		for (size_t i = 0; i + 1 < children.size(); i += 2)
+		{
+			Branch branch;
+			branch.ConditionBlock = llvm::BasicBlock::Create(ctx.Context, "if_condition");
+			branch.BodyBlock      = llvm::BasicBlock::Create(ctx.Context, "if_body");
+			branch.ExpressionIdx  = i;
+
+			branches.push_back(branch);
+		}
+
+		llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(ctx.Context, "else");
+		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx.Context, "merge");
+
+		if(!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(branches[0].ConditionBlock);
+
+		for (size_t i = 0; i < branches.size(); i++)
+		{
+			auto& branch = branches[i];
+
+			llvm::BasicBlock* nextBranch = (i + 1) < branches.size() ? branches[i + 1].ConditionBlock : elseBlock;
+			
+			function->insert(function->end(), branch.ConditionBlock);
+			ctx.Builder.SetInsertPoint(branch.ConditionBlock);
+
+			CodegenResult condition;
+
+			{
+				ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+				condition = children[branch.ExpressionIdx]->Codegen(ctx);
+			}
+
+			if (condition.CodegenType->IsIntegral() && condition.CodegenType->GetSize() > 1)
+			{
+				condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
+			}
+			else if (condition.CodegenType->IsFloatingPoint())
+			{
+				condition.CodegenValue = ctx.Builder.CreateFCmpONE(condition.CodegenValue, llvm::ConstantFP::get(condition.CodegenType->Get(), 0.0));
+			}
+			else if (condition.CodegenType->IsPointer())
+			{
+				condition.CodegenValue = ctx.Builder.CreatePtrToInt(condition.CodegenValue, ctx.Builder.getInt64Ty(), "cast");
+				condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, ctx.Builder.getInt64(0));
+			}
+
+			ctx.Builder.CreateCondBr(condition.CodegenValue, branch.BodyBlock, nextBranch);
+
+			function->insert(function->end(), branch.BodyBlock);
+			ctx.Builder.SetInsertPoint(branch.BodyBlock);
+
+			CLEAR_VERIFY(branch.ExpressionIdx + 1 < children.size(), "");
+			children[branch.ExpressionIdx + 1]->Codegen(ctx);
+
+			if (!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(mergeBlock);
+		}
+
+		function->insert(function->end(), elseBlock);
+		ctx.Builder.SetInsertPoint(elseBlock);
+
+		size_t last = children.size() - 1;
+
+		if (children.size() > 2 && children[last]->GetType() == children[last - 1]->GetType())
+			children[last]->Codegen(ctx);
+	
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(mergeBlock);
+
+		function->insert(function->end(), mergeBlock);
+		ctx.Builder.SetInsertPoint(mergeBlock);
+
+		return {};
+	}
 }

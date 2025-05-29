@@ -208,6 +208,18 @@ namespace clear
         {
             ParseFunctionDefinition();
         }
+        else if (Match(TokenType::ConditionalIf))
+        {
+            ParseIf();
+        }
+        else if ((Match(TokenType::ElseIf)))
+        {
+            ParseElseIf();
+        }
+        else if (Match(TokenType::Else))
+        {
+            ParseElse();
+        }
         else if (Match(TokenType::EndIndentation))
         {
             ParseIndentation();
@@ -318,6 +330,53 @@ namespace clear
         returnStatement->Push(ParseExpression());
 
         Root()->Push(returnStatement);
+    }
+
+    void Parser::ParseIf()
+    {
+        Expect(TokenType::ConditionalIf);
+        Consume();
+
+        std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
+        ifExpr->Push(ParseExpression());
+
+        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        ifExpr->Push(base);
+
+        Root()->Push(ifExpr);
+        m_RootStack.push_back(base);
+    }
+
+    void Parser::ParseElse()
+    {
+        Expect(TokenType::Else);
+        Consume();
+
+        auto& last = Root()->GetChildren().back();
+        std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
+        CLEAR_VERIFY(ifExpr, "invalid node");
+        
+        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        ifExpr->Push(base);
+            
+        m_RootStack.push_back(base);
+    }
+
+    void Parser::ParseElseIf()
+    {
+        Expect(TokenType::ElseIf);
+        Consume();
+
+        auto& last = Root()->GetChildren().back();
+        std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
+        CLEAR_VERIFY(ifExpr, "invalid node");
+
+        ifExpr->Push(ParseExpression());
+
+        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        ifExpr->Push(base);
+
+        m_RootStack.push_back(base);
     }
 
     void Parser::ParseFunctionDefinition()

@@ -333,4 +333,13 @@ namespace clear
 	private: 
 		UnaryExpressionType m_Type;
 	};
+
+	class ASTIfExpression : public ASTNodeBase 
+	{
+	public:
+		ASTIfExpression() = default;
+		virtual ~ASTIfExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
 }
