@@ -149,6 +149,11 @@ namespace clear
         return m_Tokens[m_Position + 1];
     }
 
+    Token Parser::Prev()
+    {
+        return m_Tokens[m_Position - 1];
+    }
+
     bool Parser::Match(TokenType token)
     {
         return Peak().TokenType == token;
@@ -630,6 +635,19 @@ namespace clear
             }
         };
 
+        auto IsTokenOperand = [&](Token token)
+        {
+            return token.TokenType == TokenType::VariableReference || 
+                   m_Literals.test((size_t)token.TokenType);
+        };
+
+        auto IsTokenBoundary = [&](Token token)
+        {
+            return GetBinaryExpressionFromTokenType(token.TokenType) != BinaryExpressionType::None ||
+                   token.TokenType == TokenType::CloseBracket ||
+                   m_Terminators.test((size_t)token.TokenType);
+        };
+
         auto IsOperand = [&]()
         {
             return Match(TokenType::VariableReference) || 
@@ -672,16 +690,27 @@ namespace clear
             Consume();
         };
 
+        auto ShouldHandleAsPost = [&]()
+        {
+            if(!(Match(TokenType::Increment) || Match(TokenType::Decrement)))
+                return false;
+            
+            bool left  = IsTokenOperand(Prev());
+            bool right = IsTokenBoundary(Next());
+            
+            return left && right;
+        };      
+
         auto HandlePreUnaryOperators = [&]() 
         {
-            while(MatchAny(m_PreUnaryExpression))
+            while(MatchAny(m_PreUnaryExpression) && !ShouldHandleAsPost())
             {
                 Token token = Consume();
                 int precedence = s_Precedence.at(token.TokenType);
 
                 PopOperatorsUntil([&](const Operator& op) 
                 {
-                    return op.IsOpenBracket || precedence > op.Precedence;
+                    return op.IsOpenBracket || precedence >= op.Precedence;
                 });
 
                 operators.push({
@@ -695,7 +724,7 @@ namespace clear
 
         auto HandlePostUnaryOperators = [&]() 
         {
-            while(MatchAny(m_PostUnaryExpression))
+            while(MatchAny(m_PostUnaryExpression) && ShouldHandleAsPost())
             {
                 Token token = Consume();
 

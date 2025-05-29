@@ -1334,7 +1334,15 @@ namespace clear
 		if(m_Type == UnaryExpressionType::Negation)
 		{			
 			CodegenResult result = children[0]->Codegen(ctx);
-			return { ctx.Builder.CreateNeg(result.CodegenValue), result.CodegenType };
+
+			llvm::Value* negated;
+
+			if(result.CodegenType->IsFloatingPoint())
+				negated = ctx.Builder.CreateFNeg(result.CodegenValue);
+			else 
+				negated = ctx.Builder.CreateNeg(result.CodegenValue);
+
+			return { negated, result.CodegenType };
 		}
 
 		if(m_Type == UnaryExpressionType::BitwiseNot)

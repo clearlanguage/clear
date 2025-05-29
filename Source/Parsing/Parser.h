@@ -24,6 +24,7 @@ namespace clear
         Token Consume();
         Token Peak();
         Token Next();
+        Token Prev();
 
         bool Match(TokenType tokenType);
         bool MatchAny(TokenSet tokenSet);
