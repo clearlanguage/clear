@@ -34,6 +34,7 @@ namespace clear
 		m_StateMap[LexerState::Increment] = [this]() {_IncrementOperator();};
 		m_StateMap[LexerState::Restriction] = [this]() {_RestrictionState();};
 		m_StateMap[LexerState::DotOp] = [this]() {_DotOpState();};
+		m_StateMap[LexerState::ClassName] = [this]() {ClassNameState();};
 
 
 	}
@@ -713,6 +714,33 @@ namespace clear
 
 		_PushToken(TokenType::StructName, m_CurrentString);
 		m_CurrentString.clear();
+		_Backtrack();
+		m_CurrentState = LexerState::Default;
+	}
+
+	void Lexer::ClassNameState() {
+		char current = _GetNextChar();
+
+		current = _SkipSpaces();
+		_VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+		m_TokenIndexStart = m_CurrentTokenIndex-1;
+		m_CurrentString.clear();
+
+		while (current!= '\n' && current != '\0' && current != ':' && !IsSpace(current))
+		{
+			_VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
+			m_CurrentString += current;
+			current = _GetNextChar();
+		}
+		// _VerifyCondition(current == ':',53);
+		_VerifyCondition(current == ':',54);
+		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
+		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
+		_PushToken(TokenType::ClassName, m_CurrentString);
+		m_CurrentString.clear();
+		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
+
+
 		_Backtrack();
 		m_CurrentState = LexerState::Default;
 	}

@@ -14,7 +14,7 @@
 using namespace clear;
 
 int main(int argc, char* argv[])
-{   
+{
     /* if(argc == 1)
     {
         std::cout<< "Clear language 0.5 dev branch\n";

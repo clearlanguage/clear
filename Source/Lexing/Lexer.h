@@ -168,6 +168,7 @@ namespace clear
 		void _EndLine();
 
 		void _PushVariableReference(const std::string& x);
+		void ClassNameState();
 
 
 	private:

@@ -82,7 +82,8 @@ namespace clear {
                 {"Cannot declare a variable with a restriction as type"}, // 50
                 {"Error 51 cannot use dot op on this"}, // 51
             {"Error 52 did not expect trailing space in generic start"}, // 51
-            {"Expected indentation missing :"}
+            {"Expected indentation missing :"},
+            {"Place holder error too lazy to write this"}
 
         };
 }

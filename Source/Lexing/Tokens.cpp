@@ -83,7 +83,8 @@ namespace clear
         {"switch",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Switch }},
         {"default",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Default }},
         {"restriction",  {.NextState = LexerState::Restriction, .TokenToPush = TokenType::Restriction }},
-        {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }}
+        {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }},
+        {"class",{.NextState = LexerState::ClassName, .TokenToPush = TokenType::Class }},
 
 
 
@@ -99,7 +100,7 @@ namespace clear
             {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}},
         {"callable",{TokenType::CloseBracket,TokenType::MemberName,TokenType::TypeIdentifier,TokenType::VariableReference}},
             {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}},
-        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName}}
+        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName,TokenType::EndFunctionArguments}}
 
 
 
@@ -221,6 +222,9 @@ namespace clear
             case TokenType::RestrictionName: return "RestrictionName";
             case TokenType::RestrictionTypeName: return "RestrictionTypeName";
             case TokenType::Import: return "Import";
+            case TokenType::Class: return "Class";
+            case TokenType::ClassName: return "ClassName";
+            case TokenType::Inherits: return "Inherits";
 
             default:
                 break;
