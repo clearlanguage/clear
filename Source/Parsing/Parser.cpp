@@ -215,7 +215,7 @@ namespace clear
 
     void Parser::ParseGeneric()
     {
-        std::shared_ptr<ASTNodeBase> expression = ParseExpression(true);
+        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
         if(MatchAny(m_AssignmentOperators))
         {
@@ -487,7 +487,7 @@ namespace clear
         return call;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference(bool isValueReference)
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
     {
         Expect(TokenType::VariableReference);
 
@@ -496,40 +496,29 @@ namespace clear
         if(Match(TokenType::FunctionCall)) 
             return ParseFunctionCall();
 
-        if(isValueReference)
-        {
-            return std::make_shared<ASTVariableReference>(name);
-        }
-
-        return std::make_shared<ASTVariableExpression>(name);
+        return std::make_shared<ASTVariable>(name);
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseOperand(bool isValueReference)
+    std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
-
-        if(Match(TokenType::AddressOp))
-        {
-            isValueReference = true;
-            Consume();
-        }
 
         std::shared_ptr<ASTNodeBase> variableReference;
 
         if(Next().TokenType == TokenType::DotOp)
         {
-            variableReference = ParseVariableReference(true);
+            variableReference = ParseVariableReference();
         }
         else if (Match(TokenType::VariableReference)) 
         {
-            variableReference = ParseVariableReference(isValueReference);
+            variableReference = ParseVariableReference();
         }
 
         if(!Match(TokenType::DotOp)) 
             return variableReference;
 
-        std::shared_ptr<ASTMemberAccess> memberAccess = std::make_shared<ASTMemberAccess>(isValueReference);
+        std::shared_ptr<ASTMemberAccess> memberAccess = std::make_shared<ASTMemberAccess>();
         memberAccess->Push(variableReference);
 
         Consume();
@@ -590,7 +579,7 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName)
     {
-        return ParseAssignment(std::make_shared<ASTVariableReference>(variableName));
+        return ParseAssignment(std::make_shared<ASTVariable>(variableName));
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage)
@@ -614,7 +603,7 @@ namespace clear
         return assign;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(bool isValueReference)
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
     {
         struct Operator
         {
@@ -645,7 +634,6 @@ namespace clear
         auto IsOperand = [&]()
         {
             return Match(TokenType::VariableReference) || 
-                   Match(TokenType::AddressOp) || 
                    MatchAny(m_Literals);
         };
 
@@ -689,7 +677,7 @@ namespace clear
         {
             if (IsOperand()) 
             {
-                expression->Push(ParseOperand(isValueReference));
+                expression->Push(ParseOperand());
             }
             else if (Match(TokenType::OpenBracket)) 
             {

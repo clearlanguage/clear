@@ -10,6 +10,26 @@
 
 namespace clear 
 {
+	template <typename T>
+	class ValueRestoreGuard 
+	{
+	public:
+	    ValueRestoreGuard(T& variable, T newValue)
+	        : ref(variable), oldValue(variable)
+	    {
+	        ref = newValue;
+	    }
+
+	    ~ValueRestoreGuard()
+	    {
+	        ref = oldValue;
+	    }
+
+	private:
+	    T& ref;
+	    T oldValue;
+	};
+
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 
     ASTNodeBase::ASTNodeBase()
@@ -30,7 +50,6 @@ namespace clear
     {
         m_Children.push_back(child);
     }
-
 
     void ASTNodeBase::Remove(const std::shared_ptr<ASTNodeBase>& child)
     {
@@ -77,8 +96,8 @@ namespace clear
 		return {value.Get(), value.GetType()};
 	}
 
-    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type, bool isValueReference)
-		: m_Expression(type), m_IsValueReference(isValueReference)
+    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
+		: m_Expression(type)
 	{
 	}
 	
@@ -93,27 +112,23 @@ namespace clear
 		auto& leftChild  = children[1];
 		auto& rightChild = children[0];
 
-		CodegenResult lhs = leftChild->Codegen(ctx);
-		CodegenResult rhs = rightChild->Codegen(ctx);
+		//CodegenResult lhs = leftChild->Codegen(ctx);
+		//CodegenResult rhs = rightChild->Codegen(ctx);
 
-        if(!lhs.CodegenValue->getType()->isPointerTy()) 
-			HandleTypePromotion(lhs, rhs, ctx);
-
-		CLEAR_VERIFY(!rhs.CodegenType->IsPointer(), "pointer must be on left hand side");
-
-		if(lhs.CodegenType->IsPointer())
-			return HandlePointerArithmetic(lhs, rhs, ctx);
-
-		if(m_Expression == BinaryExpressionType::Index)
-			return HandleArrayIndex(lhs, rhs, ctx);
+        //if(!lhs.CodegenValue->getType()->isPointerTy()) 
+		//	HandleTypePromotion(lhs, rhs, ctx);
 				
 		if(IsMathExpression()) 
-			return HandleMathExpression(lhs, rhs, m_Expression, ctx);
+			return HandleMathExpression(leftChild, rightChild, ctx);
 
-		if(IsCmpExpression()) 
-			return HandleCmpExpression(lhs, rhs, ctx);
+		if(IsCmpExpression())
+			return HandleCmpExpression(leftChild, rightChild, ctx);
 
-		return HandleBitwiseExpression(lhs, rhs); 
+		if(m_Expression == BinaryExpressionType::Index)
+			return HandleArrayIndex(leftChild, rightChild, ctx);
+
+		//return HandleBitwiseExpression(lhs, rhs); 
+		return {};
     }
 
     void ASTBinaryExpression::HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
@@ -252,6 +267,9 @@ namespace clear
 
     CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx)
     {
+		if(lhs.CodegenType != rhs.CodegenType)
+			HandleTypePromotion(lhs, rhs, ctx);
+
         if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
 			return HandleMathExpressionF(lhs, rhs, type, ctx);
 
@@ -259,6 +277,25 @@ namespace clear
 			return HandleMathExpressionSI(lhs, rhs, type, ctx);
 
 		return HandleMathExpressionUI(lhs, rhs, type, ctx);
+    }
+
+    CodegenResult ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    {
+		// ctx.WantAddress is set by parent to this node
+		CodegenResult lhs = left->Codegen(ctx);
+
+		// right hand side we always want a value
+
+		CodegenResult rhs;
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			rhs = right->Codegen(ctx);
+		}
+
+		if(lhs.CodegenType->IsPointer()) 
+			return HandlePointerArithmetic(lhs, rhs, ctx); //internally will verify correct expression type
+
+        return HandleMathExpression(lhs, rhs, m_Expression, ctx);
     }
 
     CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, BinaryExpressionType binExpressionType, CodegenContext& ctx)
@@ -386,7 +423,22 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    {
+		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+
+		CodegenResult lhs = left->Codegen(ctx);
+		CodegenResult rhs = right->Codegen(ctx);
+
+		if(lhs.CodegenType != rhs.CodegenType)
+		{
+			HandleTypePromotion(lhs, rhs, ctx);
+		}
+
+        return HandleCmpExpression(lhs, rhs, ctx);
+    }
+
+    CodegenResult ASTBinaryExpression::HandleCmpExpression(CodegenResult &lhs, CodegenResult &rhs, CodegenContext &ctx)
     {
         if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
 			return HandleCmpExpressionF(lhs, rhs, ctx);
@@ -519,7 +571,7 @@ namespace clear
 
     CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
-		CLEAR_VERIFY(lhs.CodegenType->IsPointer() || lhs.CodegenType->IsArray(), "left hand side is not a pointer");
+		CLEAR_VERIFY(lhs.CodegenType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhs.CodegenType->IsIntegral(), "invalid pointer arithmetic");
 
 		if(rhs.CodegenType->GetSize() != 64) 
@@ -548,9 +600,59 @@ namespace clear
         return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleArrayIndex(CodegenResult& lhs, CodegenResult& rhs, CodegenContext &ctx)
+    CodegenResult ASTBinaryExpression::HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
-        return CodegenResult();
+		CodegenResult lhs;
+
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			lhs = left->Codegen(ctx);
+		}
+
+		CodegenResult rhs;
+
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			rhs = right->Codegen(ctx);
+		}
+
+		// lhs is going to be a reference to the array
+		std::shared_ptr<PointerType> type = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
+		CLEAR_VERIFY(type, "invalid type");
+
+		llvm::Value* gep = nullptr;
+		std::shared_ptr<Type> baseType;
+
+		if(std::shared_ptr<ArrayType> arrType = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType()))
+		{
+			llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
+
+			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
+			{
+				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
+													 rhs.CodegenType, 
+													 ctx.Registry.GetType("int64"), 
+													 ctx.Builder);
+			}
+
+			// if debugging enabled will do checks in array indexing here TODO (ignore for now)
+
+			gep = ctx.Builder.CreateGEP(
+        		arrType->Get(),
+        		lhs.CodegenValue,
+        		{ zero, rhs.CodegenValue },
+        		"array_index_ptr"
+    		);
+
+			baseType = arrType->GetBaseType();
+		}	
+
+		//TODO: pointers here ( will do this later when pointers implemented ignore for now)
+
+		if(ctx.WantAddress)
+			return {gep, ctx.Registry.GetPointerTo(baseType) };
+
+        return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
     }
 
     ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
@@ -571,30 +673,13 @@ namespace clear
 		return codegenResult;
     }
 
-	ASTVariableReference::ASTVariableReference(const std::string& name)
+	
+	ASTVariable::ASTVariable(const std::string& name)
 		: m_Name(name)
     {
     }
 
-	CodegenResult ASTVariableReference::Codegen(CodegenContext& ctx)
-    {
-		CodegenResult result;
-
-		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
-
-		Allocation alloca = registry->GetAlloca(m_Name);
-		result.CodegenValue = alloca.Alloca;
-		result.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
-
-		return result;
-    }
-
-	ASTVariableExpression::ASTVariableExpression(const std::string& name)
-		: m_Name(name)
-    {
-    }
-
-	CodegenResult ASTVariableExpression::Codegen(CodegenContext& ctx)
+	CodegenResult ASTVariable::Codegen(CodegenContext& ctx)
     {
 		auto& builder = ctx.Builder;
 
@@ -603,8 +688,16 @@ namespace clear
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		Allocation alloca = registry->GetAlloca(m_Name);
 
-		result.CodegenValue = builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name);
-		result.CodegenType  = alloca.Type;
+		if(ctx.WantAddress)
+		{
+			result.CodegenValue = alloca.Alloca;
+			result.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
+		}
+		else 
+		{
+			result.CodegenValue = builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name);
+			result.CodegenType  = alloca.Type;
+		}
 
 		return result;
     }
@@ -621,9 +714,20 @@ namespace clear
 		auto& children = GetChildren();
 
 		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
+	
+		CodegenResult storage;
 		
-		CodegenResult storage = children[0]->Codegen(ctx);
-		CodegenResult data    = children[1]->Codegen(ctx);
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			storage = children[0]->Codegen(ctx);
+		}
+
+		CodegenResult data;
+
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			data    = children[1]->Codegen(ctx);
+		}
 
 		HandleDifferentTypes(storage, data, ctx);
 
@@ -693,7 +797,6 @@ namespace clear
 		data.CodegenType = underlyingStorageType; 
     }
 
-
 	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& Paramaters)
 		: m_Parameters(Paramaters), m_ReturnType(returnType), m_Name(name)
 	{
@@ -747,8 +850,6 @@ namespace clear
 		for (const auto& child : GetChildren())
 		{
 			child->Codegen(ctx);
-
-			// ADD THIS ONCE WE HAVE RETURN STATEMENTS if(std::dynamic_pointer_cast<ASTReturn>(child)) 
 		}
 
 		auto currip = builder.saveIP();
@@ -802,6 +903,8 @@ namespace clear
 
 		std::vector<llvm::Value*> args;
 
+		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+
 		for (auto& child : children)
 		{
 			CodegenResult gen = child->Codegen(ctx);
@@ -852,7 +955,7 @@ namespace clear
 		}
 
 		if (!m_ReturnType)
-			m_ReturnType = ctx.Registry.GetType("null_type");
+			m_ReturnType = ctx.Registry.GetType("void");
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
 		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
@@ -878,8 +981,7 @@ namespace clear
 		auto IsOperand = [](const std::shared_ptr<ASTNodeBase>& child) 
 		{
 			return child->GetType() == ASTNodeType::Literal || 
-				   child->GetType() == ASTNodeType::VariableExpression ||
-				   child->GetType() == ASTNodeType::VariableReference || 
+				   child->GetType() == ASTNodeType::Variable ||
 				   child->GetType() == ASTNodeType::FunctionCall || 
 				   child->GetType() == ASTNodeType::MemberAccess;
 		};
@@ -934,7 +1036,12 @@ namespace clear
 
 		CLEAR_VERIFY(children.size() > 0, "invalid array initializer");
 
-		CodegenResult storage = children[0]->Codegen(ctx);
+		CodegenResult storage;
+
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			storage = children[0]->Codegen(ctx);
+		}
 
 		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
 		CLEAR_VERIFY(storageType, "invalid storage type");
@@ -948,6 +1055,8 @@ namespace clear
 
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
 		builder.CreateStore(zeroArray, storage.CodegenValue);
+
+		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
 
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
@@ -1065,8 +1174,7 @@ namespace clear
 		return {};
 	}
 
-    ASTMemberAccess::ASTMemberAccess(bool isValueReference)
-		: m_ValueReference(isValueReference)
+    ASTMemberAccess::ASTMemberAccess()
     {
     }
 
@@ -1080,7 +1188,12 @@ namespace clear
 
 		CLEAR_VERIFY(children.size() > 1, "invalid member access");
 
-		CodegenResult parent = children[0]->Codegen(ctx); 
+		CodegenResult parent;
+		
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			parent = children[0]->Codegen(ctx); 
+		}
 
 		std::shared_ptr<StructType> parentType;
 
@@ -1106,7 +1219,7 @@ namespace clear
 			parentType = std::dynamic_pointer_cast<StructType>(prev);
 		}
 
-		if(m_ValueReference)
+		if(ctx.WantAddress)
 		{
 			return { getElementPtr, typeReg.GetPointerTo(prev) };
 		}

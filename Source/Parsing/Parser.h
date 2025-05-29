@@ -40,9 +40,9 @@ namespace clear
         void ParseImport();
         void ParseReturn();
 
-        std::shared_ptr<ASTNodeBase> ParseExpression(bool isValueReference = false);
-        std::shared_ptr<ASTNodeBase> ParseVariableReference(bool isValueReference = false);
-        std::shared_ptr<ASTNodeBase> ParseOperand(bool isValueReference = false);
+        std::shared_ptr<ASTNodeBase> ParseExpression();
+        std::shared_ptr<ASTNodeBase> ParseVariableReference();
+        std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName);
