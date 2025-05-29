@@ -14,14 +14,13 @@ namespace clear
 {
     enum class ASTNodeType
 	{
-		Base = 0, Literal, BinaryExpression,
-		VariableExpression, VariableDecleration,
+		Base = 0, Literal, BinaryExpression, VariableDecleration,
 		FunctionDefinition, FunctionDecleration,
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer, MemberAccess, AssignmentOperator, 
-		VariableReference, Import, Member
+		ArrayInitializer, MemberAccess, AssignmentOperator, Import, Member, 
+		Variable
 	};
 
 	struct CodegenResult
@@ -58,6 +57,7 @@ namespace clear
 		llvm::AllocaInst*  ReturnAlloca = nullptr;
 		llvm::BasicBlock*  ReturnBlock = nullptr; 
 
+		bool WantAddress;
 
     	CodegenContext(LookupAstTable& map, const std::filesystem::path& path, llvm::LLVMContext& context, 
 					   llvm::IRBuilder<>& builder, llvm::Module& module, TypeRegistry& registry) 
@@ -109,25 +109,27 @@ namespace clear
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type, bool isValueReference = false);
+		ASTBinaryExpression(BinaryExpressionType type);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
 
+		CodegenResult HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   BinaryExpressionType type, CodegenContext& ctx);
 		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx);
 		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
 		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
 
 	private:
-		void HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
+		static void HandleTypePromotion(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
 		bool IsBitwiseExpression() const;
 
+		CodegenResult HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		CodegenResult HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 		CodegenResult HandleCmpExpressionF(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 		CodegenResult HandleCmpExpressionSI(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
@@ -136,11 +138,10 @@ namespace clear
 		CodegenResult HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs);
 		
 		CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
-		CodegenResult HandleArrayIndex(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
+		CodegenResult HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 			
 	private:
 		BinaryExpressionType m_Expression;
-		bool m_IsValueReference;
 	};
 
 	class ASTVariableDeclaration : public ASTNodeBase
@@ -156,24 +157,12 @@ namespace clear
 		std::shared_ptr<Type> m_Type;
 	};
 
-	class ASTVariableReference : public ASTNodeBase
+	class ASTVariable : public ASTNodeBase
 	{
 	public:
-		ASTVariableReference(const std::string& name);
-		virtual ~ASTVariableReference() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableReference; }
-		virtual CodegenResult Codegen(CodegenContext&) override;
-
-	private:
-		std::string m_Name;
-	};
-
-	class ASTVariableExpression : public ASTNodeBase
-	{
-	public:
-		ASTVariableExpression(const std::string& name);
-		virtual ~ASTVariableExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableExpression; }
+		ASTVariable(const std::string& name);
+		virtual ~ASTVariable() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 	private:
@@ -314,13 +303,10 @@ namespace clear
 	class ASTMemberAccess : public ASTNodeBase
 	{
 	public:
-		ASTMemberAccess(bool isValueReference);
+		ASTMemberAccess();
 		virtual ~ASTMemberAccess() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
-
-	private:
-		bool m_ValueReference;
 	};
 
 	class ASTReturn : public ASTNodeBase 
@@ -333,6 +319,17 @@ namespace clear
 
 	private:
 		void EmitDefaultReturn(CodegenContext& ctx);
+	};
 
+	class ASTUnaryExpression : public ASTNodeBase 
+	{
+	public:
+		ASTUnaryExpression(UnaryExpressionType type);
+		virtual ~ASTUnaryExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private: 
+		UnaryExpressionType m_Type;
 	};
 }

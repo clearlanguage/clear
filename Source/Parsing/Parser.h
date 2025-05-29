@@ -40,9 +40,9 @@ namespace clear
         void ParseImport();
         void ParseReturn();
 
-        std::shared_ptr<ASTNodeBase> ParseExpression(bool isValueReference = false);
-        std::shared_ptr<ASTNodeBase> ParseVariableReference(bool isValueReference = false);
-        std::shared_ptr<ASTNodeBase> ParseOperand(bool isValueReference = false);
+        std::shared_ptr<ASTNodeBase> ParseExpression();
+        std::shared_ptr<ASTNodeBase> ParseVariableReference();
+        std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName);
@@ -52,6 +52,9 @@ namespace clear
         void ParseIndentation();
 
         BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
+        UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);
+        UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
+
 
     private:    
         std::vector<Token> m_Tokens;
@@ -63,7 +66,8 @@ namespace clear
         TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
         TokenSet m_Terminators;
-        TokenSet m_UnaryExpression;
+        TokenSet m_PreUnaryExpression;
+        TokenSet m_PostUnaryExpression;
         TokenSet m_Literals;
         TokenSet m_IgnoredTokens;
         TokenSet m_TypeIndirection;
