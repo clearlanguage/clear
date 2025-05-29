@@ -28,7 +28,7 @@ namespace clear
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr};
 		
 		if(hash == "int8*") return GetConstantString(data, context, module);
-		if(hash == "null_type*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
+		if(hash == "void*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
 
 
 		CLEAR_UNREACHABLE("invalid hash for constant ", hash);
