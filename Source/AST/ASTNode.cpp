@@ -37,7 +37,7 @@ namespace clear
     }
 
 
-    CodegenResult ASTNodeBase::Codegen(CodegenContext &ctx)
+    CodegenResult ASTNodeBase::Codegen(CodegenContext& ctx)
     {
         CodegenResult value;
 
@@ -1290,7 +1290,6 @@ namespace clear
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
 
-
     ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type)
 		: m_Type(type)
     {
@@ -1302,17 +1301,6 @@ namespace clear
 
 		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
 
-		if(m_Type == UnaryExpressionType::Reference)
-		{
-			CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of address-of when address is already requested")
-		
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
-			CodegenResult result = children[0]->Codegen(ctx);
-
-			return result;
-		}
-
-		// *value = 5
 		if(m_Type == UnaryExpressionType::Dereference)
 		{
 			CodegenResult result;
@@ -1333,8 +1321,78 @@ namespace clear
 										   result.CodegenValue), ptrType->GetBaseType() };
 		}	
 
-		CLEAR_UNREACHABLE("unimplemented");
+		CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of unary expression");
+
+		if(m_Type == UnaryExpressionType::Reference)
+		{		
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			CodegenResult result = children[0]->Codegen(ctx);
+
+			return result;
+		}
+
+		if(m_Type == UnaryExpressionType::Negation)
+		{			
+			CodegenResult result = children[0]->Codegen(ctx);
+			return { ctx.Builder.CreateNeg(result.CodegenValue), result.CodegenType };
+		}
+
+		if(m_Type == UnaryExpressionType::BitwiseNot)
+		{
+			CodegenResult result = children[0]->Codegen(ctx);
+			return { ctx.Builder.CreateNot(result.CodegenValue), result.CodegenType };
+		}	
 		
-		return {};
+		CodegenResult one;
+		one.CodegenType  = ctx.Registry.GetType("int64");
+		one.CodegenValue = ctx.Builder.getInt64(1);
+
+		ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+
+		CodegenResult result = children[0]->Codegen(ctx);
+		CLEAR_VERIFY(result.CodegenType->IsPointer(), "not valid type for increment");
+		std::shared_ptr<PointerType> ty = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
+
+		CodegenResult valueToStore;
+		CodegenResult returnValue;
+
+		if(m_Type == UnaryExpressionType::PostIncrement)
+		{
+			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
+			returnValue.CodegenType = ty->GetBaseType();
+
+			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Add, ctx);
+		}
+		else if (m_Type == UnaryExpressionType::PostDecrement)
+		{
+			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
+			returnValue.CodegenType = ty->GetBaseType();
+
+			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Sub, ctx);
+		}
+		else if (m_Type == UnaryExpressionType::PreIncrement)
+		{
+			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
+			returnValue.CodegenType = ty->GetBaseType();
+
+			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Add, ctx);
+			returnValue.CodegenValue = valueToStore.CodegenValue;
+		}
+		else if (m_Type == UnaryExpressionType::PreDecrement)
+		{
+			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
+			returnValue.CodegenType = ty->GetBaseType();
+
+			valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, BinaryExpressionType::Sub, ctx);
+			returnValue.CodegenValue = valueToStore.CodegenValue;
+		}
+		else 
+		{
+			CLEAR_UNREACHABLE("unimplemented");
+		}
+
+		ctx.Builder.CreateStore(valueToStore.CodegenValue, result.CodegenValue);
+
+		return returnValue;
 	}
 }
