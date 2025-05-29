@@ -1194,6 +1194,18 @@ namespace clear
 			parent = children[0]->Codegen(ctx); 
 		}
 
+		while(auto ty = std::dynamic_pointer_cast<PointerType>(parent.CodegenType))
+		{
+			if(ty->GetBaseType()->IsCompound())
+			{
+				parent.CodegenType = ty;
+				break;
+			}
+
+			parent.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), parent.CodegenValue);
+			parent.CodegenType = ty->GetBaseType();
+		}
+
 		std::shared_ptr<StructType> parentType;
 
 		if(auto t = std::dynamic_pointer_cast<PointerType>(parent.CodegenType))
@@ -1316,7 +1328,7 @@ namespace clear
 				return result;
 			
 			std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
-			
+
 			return {ctx.Builder.CreateLoad(ptrType->GetBaseType()->Get(), 
 										   result.CodegenValue), ptrType->GetBaseType() };
 		}	
