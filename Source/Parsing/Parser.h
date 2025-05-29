@@ -43,6 +43,7 @@ namespace clear
         void ParseIf();
         void ParseElseIf();
         void ParseElse();
+        void ParseWhile();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();

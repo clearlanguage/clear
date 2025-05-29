@@ -228,6 +228,10 @@ namespace clear
         {
             ParseReturn();
         }
+        else if (Match(TokenType::While))
+        {
+            ParseWhile();
+        }
         else 
         {
             ParseGeneric();
@@ -359,6 +363,21 @@ namespace clear
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         ifExpr->Push(base);
             
+        m_RootStack.push_back(base);
+    }
+
+    void Parser::ParseWhile()
+    {
+        Expect(TokenType::While);
+        Consume();
+
+        std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
+        whileExp->Push(ParseExpression());
+
+        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        whileExp->Push(base);
+
+        Root()->Push(whileExp);
         m_RootStack.push_back(base);
     }
 

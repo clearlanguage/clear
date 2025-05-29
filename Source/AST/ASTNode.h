@@ -342,4 +342,13 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
+
+	class ASTWhileExpression : public ASTNodeBase
+	{
+	public:
+		ASTWhileExpression() = default;
+		virtual ~ASTWhileExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
 }

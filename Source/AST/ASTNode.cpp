@@ -1506,4 +1506,51 @@ namespace clear
 
 		return {};
 	}
+
+	CodegenResult ASTWhileExpression::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
+		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "incorrect node type");
+
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "while_condition", function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(ctx.Context, "while_body");
+		llvm::BasicBlock* end   = llvm::BasicBlock::Create(ctx.Context, "while_end");
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(conditionBlock);
+
+		ctx.Builder.SetInsertPoint(conditionBlock);
+
+		CodegenResult condition;
+			
+		{
+			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			condition = children[0]->Codegen(ctx);
+		}
+
+		if (condition.CodegenType->IsIntegral())
+			condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
+			
+		else if (condition.CodegenType->IsFloatingPoint())
+			condition.CodegenValue = ctx.Builder.CreateFCmpONE(condition.CodegenValue, llvm::ConstantFP::get(condition.CodegenType->Get(), 0.0));
+
+		ctx.Builder.CreateCondBr(condition.CodegenValue, body, end);
+
+		function->insert(function->end(), body);
+		ctx.Builder.SetInsertPoint(body);
+
+		children[1]->Codegen(ctx);
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(conditionBlock);
+		
+		function->insert(function->end(), end);
+		ctx.Builder.SetInsertPoint(end);
+
+		return {};
+	}
 }
