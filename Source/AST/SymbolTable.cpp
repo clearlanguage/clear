@@ -81,7 +81,7 @@ namespace clear
             ptr = ptr->m_Previous;
         }
 
-        CLEAR_UNREACHABLE("unable to find variable");
+        CLEAR_UNREACHABLE("unable to find variable ", name);
         return {};
     }
 
