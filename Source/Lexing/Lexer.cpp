@@ -187,7 +187,7 @@ namespace clear
 		auto token = _GetLastToken();
 		auto tok =token.TokenType;
 
-		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
+		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments || tok == TokenType::Increment || tok == TokenType::Decrement) {
 			_PushToken(TokenType::SubOp,"-");
 		}else {
 			_PushToken(TokenType::Negation,"-");
