@@ -137,6 +137,7 @@ namespace clear
 			case TokenType::Float64Type:	return "float64";
 			case TokenType::Bool:			return "bool";
 			case TokenType::StringType:		return "int8*";
+        	case TokenType::Void:           return "void";
             case TokenType::RValueNumber:   
 			case TokenType::None:
 			default:
