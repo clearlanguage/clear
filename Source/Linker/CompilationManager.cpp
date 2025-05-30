@@ -44,7 +44,7 @@ namespace clear
 
         for(auto& token : info.Tokens)
         {
-            CLEAR_LOG_INFO("TOKEN: ", TokenToString(token.TokenType), " Line Number: ", token.Location.line);
+            CLEAR_LOG_INFO("TOKEN: ", TokenToString(token.TokenType), " DATA: ", token.Data,  " Line Number: ", token.Location.line);
         }
 
         CLEAR_LOG_INFO("End of tokens for ", path);
