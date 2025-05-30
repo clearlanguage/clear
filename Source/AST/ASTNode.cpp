@@ -1233,7 +1233,6 @@ namespace clear
     Parameter ASTImport::GetInfoFromArg(const std::vector<Token>& arg, CodegenContext &ctx)
     {
 		CLEAR_VERIFY(arg.size() >= 1, "args not valid");
-
 		Parameter param;
 		param.Name = "__unamed_c_parm";
 

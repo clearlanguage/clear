@@ -55,13 +55,12 @@ namespace clear {
         }
 
         
-        CLEAR_LOG_INFO(code);
         std::vector<HeaderFunc> funcs;
 
         std::regex pattern(
             R"(^\s*(?:extern\s+)?([\w\s\*]+?)\s+([\w_][\w_]*)\s*\(([^)]*)\)\s*;)",
             std::regex::ECMAScript | std::regex::multiline);
-            
+
         std::smatch match;
         auto begin = code.cbegin();
         auto end = code.cend();

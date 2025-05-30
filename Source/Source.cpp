@@ -10,6 +10,7 @@
 #include "Linker/LibraryLinker.h"
 #include <iostream>
 #include <filesystem>
+#include <cstdlib>
 
 using namespace clear;
 
@@ -36,7 +37,7 @@ int main(int argc, char* argv[])
         manager.PropagateSymbolTables();
         manager.GenerateIRAndObjectFiles();
         manager.Emit();
-        
+
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> duration = end - start;
         std::cout << "Finished compiling " <<        config.ApplicationName << std::endl;

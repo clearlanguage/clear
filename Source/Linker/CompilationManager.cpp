@@ -309,6 +309,29 @@ namespace clear
         if(path.extension() == ".h") 
             return;
         
+        if(!std::filesystem::exists(path))
+        {
+            const char* env = std::getenv("CLEAR_STANDARD_LIBRARY");
+            CLEAR_VERIFY(env, "don't have std lib in path");
+            
+            std::filesystem::path stdLib = env;
+            stdLib = stdLib / path;
+
+            CLEAR_VERIFY(std::filesystem::exists(stdLib), "file ", path, " doesn't exist");
+            
+            if(m_LookupTable.contains(stdLib)) 
+                return;
+            
+            LoadSourceFile(stdLib);
+            CodegenModule(stdLib, linker);
+
+            return;
+        }
+
+        CLEAR_VERIFY(std::filesystem::exists(path), "file ", path, " doesn't exist");
+        CLEAR_VERIFY(m_LookupTable.contains(path),  "file ", path, " not loaded");
+
+
         auto& [rootNode, reg] = m_LookupTable.at(path);
 
         for(const auto& node : rootNode->GetChildren())

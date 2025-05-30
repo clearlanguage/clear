@@ -6,7 +6,6 @@
 #include "Lexing/Tokens.h"
 #include <vector>
 
-
 namespace clear{
 
     struct HeaderFunc {
