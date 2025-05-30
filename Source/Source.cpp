@@ -7,7 +7,7 @@
 #include <chrono>
 
 #include <toml++/toml.h>
-
+#include "Linker/LibraryLinker.h"
 #include <iostream>
 #include <filesystem>
 
@@ -20,7 +20,8 @@ int main(int argc, char* argv[])
         std::cout<< "Clear language 0.5 dev branch\n";
         return 0;
     } */
-    //else if(std::string(argv[1]) == "build") 
+    //else if(std::string(argv[1]) == "build")
+    ExtractFunctions("/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/math.h");
     {
         auto start = std::chrono::high_resolution_clock::now();
         std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path() / "Tests");
