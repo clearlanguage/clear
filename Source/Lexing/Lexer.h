@@ -48,6 +48,8 @@ namespace clear
 	{
 	public:
 		using StateMapType    = std::map<LexerState, std::function<void()>>;
+		ProgramInfo SubParse(std::string arg);
+		ProgramInfo SubParse(std::string arg,bool allowvarname);
 
 	public:
 		Lexer();
@@ -131,8 +133,7 @@ namespace clear
 		void RaiseError(Error& err);
 		Error CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
-		ProgramInfo SubParse(std::string arg);
-		ProgramInfo SubParse(std::string arg,bool allowvarname);
+
 
 
 		bool IsTypeDeclared(const std::string& type);

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include "Lexing/Lexer.h"
 
 inline std::string Trim(const std::string& str)
 {
@@ -84,7 +85,7 @@ namespace clear {
 
         return funcs;
     }
-    std::string TranslateCTypeToClearLang(const std::string& ctype)
+    std::vector<Token> TranslateCTypeToClearLang(const std::string& ctype)
     {
         std::string clean = ctype;
     std::string type = clean;
@@ -145,14 +146,17 @@ namespace clear {
     } else {
         CLEAR_LOG_ERROR("Unknown C type: ", type);
         baseType = type; // Keep unknown type name
+        return {};
     }
 
     // Apply pointer indirection (e.g., int** → int8** in clear)
     for (int i = 0; i < pointerCount; ++i) {
         baseType += "*";
     }
-
-    return baseType;
+    Lexer lexer;
+    auto p = lexer.SubParse(baseType,false);
+        CLEAR_VERIFY(p.Errors.empty(),"could not parse cType" )
+        return p.Tokens;
     }
 
 }

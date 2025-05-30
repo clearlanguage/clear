@@ -3,17 +3,19 @@
 //
 
 #pragma once
+#include "Lexing/Tokens.h"
+#include <vector>
 
 
 namespace clear{
 
     struct HeaderFunc {
-        std::string returnType;
+        std::vector<Token> returnType;
         std::string name;
-        std::vector<std::string> args;
+        std::vector<std::vector<Token>> args;
     };
 
     std::string RunClangPreprocess(const std::string& headerFile);
     std::vector<HeaderFunc> ExtractFunctions(const std::string& code);
-    std::string TranslateCTypeToClearLang(const std::string& ctype);
+    std::vector<Token>TranslateCTypeToClearLang(const std::string& ctype);
 }
