@@ -13,38 +13,38 @@ namespace clear
 {
 	Lexer::Lexer()
 	{
-		m_StateMap[LexerState::Default]      = [this]() { _DefaultState(); };
-		m_StateMap[LexerState::VariableName] = [this]() { _VariableNameState(); };
-		m_StateMap[LexerState::RValue]       = [this]() { _ParsingRValueState(); };
-		m_StateMap[LexerState::Operator]     = [this]() { _OperatorState(); };
-		m_StateMap[LexerState::Indentation]  = [this]() { _IndentationState(); };
-		m_StateMap[LexerState::FunctionName] = [this]() {_FunctionNameState();};
-		m_StateMap[LexerState::FunctionParameters] = [this]() { _FunctionParameterState(); };
-		m_StateMap[LexerState::ArrowState] = [this](){_ArrowState();};
-		m_StateMap[LexerState::FunctionTypeState] = [this]() {_FunctionTypeState();};
-		m_StateMap[LexerState::StructName] = [this]() { _StructNameState(); };
-		m_StateMap[LexerState::FunctionParamaters] = [this]()  {_FunctionArgumentState(); };
-		m_StateMap[LexerState::Comment] = [this]() { _CommentState(); };
-		m_StateMap[LexerState::MultilineComment] = [this]() { _MultiLineCommentState(); };
-		m_StateMap[LexerState::IndexOperator] = [this]() { _IndexOperatorState(); };
-		m_StateMap[LexerState::AsterisksOperator] = [this]() {_AsterisksState();};
-		m_StateMap[LexerState::AmpersandOperator] = [this]() {_AmpersandState();};
-		m_StateMap[LexerState::Declaration] = [this](){_DeclarationState();};
-		m_StateMap[LexerState::MinusOperator] = [this]() {_MinusOperator();};
-		m_StateMap[LexerState::Increment] = [this]() {_IncrementOperator();};
-		m_StateMap[LexerState::Restriction] = [this]() {_RestrictionState();};
-		m_StateMap[LexerState::DotOp] = [this]() {_DotOpState();};
+		m_StateMap[LexerState::Default]      = [this]() { DefaultState(); };
+		m_StateMap[LexerState::VariableName] = [this]() { VariableNameState(); };
+		m_StateMap[LexerState::RValue]       = [this]() { ParsingRValueState(); };
+		m_StateMap[LexerState::Operator]     = [this]() { OperatorState(); };
+		m_StateMap[LexerState::Indentation]  = [this]() { IndentationState(); };
+		m_StateMap[LexerState::FunctionName] = [this]() {FunctionNameState();};
+		m_StateMap[LexerState::FunctionParameters] = [this]() { FunctionParameterState(); };
+		m_StateMap[LexerState::ArrowState] = [this](){ArrowState();};
+		m_StateMap[LexerState::FunctionTypeState] = [this]() {FunctionTypeState();};
+		m_StateMap[LexerState::StructName] = [this]() { StructNameState(); };
+		m_StateMap[LexerState::FunctionParamaters] = [this]()  {FunctionArgumentState(); };
+		m_StateMap[LexerState::Comment] = [this]() { CommentState(); };
+		m_StateMap[LexerState::MultilineComment] = [this]() { MultiLineCommentState(); };
+		m_StateMap[LexerState::IndexOperator] = [this]() { IndexOperatorState(); };
+		m_StateMap[LexerState::AsterisksOperator] = [this]() {AsterisksState();};
+		m_StateMap[LexerState::AmpersandOperator] = [this]() {AmpersandState();};
+		m_StateMap[LexerState::Declaration] = [this](){DeclarationState();};
+		m_StateMap[LexerState::MinusOperator] = [this]() {MinusOperator();};
+		m_StateMap[LexerState::Increment] = [this]() {IncrementOperator();};
+		m_StateMap[LexerState::Restriction] = [this]() {RestrictionState();};
+		m_StateMap[LexerState::DotOp] = [this]() {DotOpState();};
 		m_StateMap[LexerState::ClassName] = [this]() {ClassNameState();};
 
 
 	}
 
-	void Lexer::_PushToken(Token tok) {
-		_PushToken(tok.TokenType,tok.Data);
+	void Lexer::PushToken(Token tok) {
+		PushToken(tok.TokenType,tok.Data);
 	}
 
 
-	void Lexer::_PushToken(const TokenType tok, const std::string &data)
+	void Lexer::PushToken(const TokenType tok, const std::string &data)
 	{
 		TokenLocation location;
 		location.from = m_TokenIndexStart;
@@ -53,14 +53,14 @@ namespace clear
 		m_ProgramInfo.Tokens.push_back({ .TokenType = tok, .Data = data ,.Location = location});
 	}
 
-	Token Lexer::_GetLastToken() {
+	Token Lexer::GetLastToken() {
 		if (m_ProgramInfo.Tokens.empty())
 			return Token{.TokenType = TokenType::EndLine,.Data = ""};
 
 		return m_ProgramInfo.Tokens.at(m_ProgramInfo.Tokens.size()-1);
 	}
 
-	Token Lexer::_GetLastToken(size_t x) {
+	Token Lexer::GetLastToken(size_t x) {
 		if (m_ProgramInfo.Tokens.empty() || x >= m_ProgramInfo.Tokens.size())
 			return Token{.TokenType = TokenType::EndLine, .Data = ""};
 
@@ -68,7 +68,7 @@ namespace clear
 	}
 
 
-	char Lexer::_GetNextChar()
+	char Lexer::GetNextChar()
 	{
 		if(m_Buffer.length() > m_CurrentTokenIndex)
 		{
@@ -79,36 +79,36 @@ namespace clear
 		return 0;
 	}
 
-	void Lexer::_Backtrack()
+	void Lexer::Backtrack()
 	{
 		m_CurrentTokenIndex--;
 	}
 
-	// const bool Lexer::_IsEndOfFile()
+	// const bool Lexer::IsEndOfFile()
 	// {
 	// 	return m_CurrentTokenIndex == m_Buffer.length();
 	// }
 
-	void Lexer::_ResetSecondState() {
+	void Lexer::ResetSecondState() {
 		if (m_SecondState == LexerSecondaryState::None) {
 			return;
 		}
 
 		if (m_SecondState == LexerSecondaryState::Declaration) {
-			// auto tok = _GetLastToken().TokenType;
-			// _VerifyCondition(tok== TokenType::EndFunctionArguments,40);
+			// auto tok = GetLastToken().TokenType;
+			// VerifyCondition(tok== TokenType::EndFunctionArguments,40);
 
 		}
 		m_SecondState = LexerSecondaryState::None;
 	}
 
 
-	void Lexer::_EndLine()
+	void Lexer::EndLine()
 	{
-		if ( _GetLastToken().TokenType != TokenType::EndLine) {
-			_PushToken({ .TokenType = TokenType::EndLine });
+		if ( GetLastToken().TokenType != TokenType::EndLine) {
+			PushToken({ .TokenType = TokenType::EndLine });
 		}
-		_ResetSecondState();
+		ResetSecondState();
 		m_CurrentLine++;
 	}
 
@@ -127,10 +127,10 @@ namespace clear
 		CLEAR_PARSER_VERIFY(m_ProgramInfo.Errors.empty(),"99");
 		while (m_Indents > 0)
 		{
-			_PushToken({ .TokenType = TokenType::EndIndentation });
+			PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 		}
-		_VerifyCondition(m_BracketStack.empty(),1);
+		VerifyCondition(m_BracketStack.empty(),1);
 
 		return m_ProgramInfo;
 	}
@@ -174,82 +174,82 @@ namespace clear
 
 	}
 
-	 char Lexer::_SkipSpaces() {
-		_Backtrack();
-		char current = _GetNextChar();
+	 char Lexer::SkipSpaces() {
+		Backtrack();
+		char current = GetNextChar();
 		while (IsSpace(current))
-			current = _GetNextChar();
+			current = GetNextChar();
 
 		return current;
 	 }
 
-	void Lexer::_MinusOperator() {
-		auto token = _GetLastToken();
+	void Lexer::MinusOperator() {
+		auto token = GetLastToken();
 		auto tok =token.TokenType;
 
 		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments || tok == TokenType::Increment || tok == TokenType::Decrement) {
-			_PushToken(TokenType::SubOp,"-");
+			PushToken(TokenType::SubOp,"-");
 		}else {
-			_PushToken(TokenType::Negation,"-");
+			PushToken(TokenType::Negation,"-");
 		}
 		m_CurrentState = LexerState::RValue;
 	}
 
-	void Lexer::_DeclarationState() {
+	void Lexer::DeclarationState() {
 		m_SecondState = LexerSecondaryState::Declaration;
 		m_CurrentState = LexerState::Default;
 	}
 
 
 
-	void Lexer::_FunctionArgumentState() {
-		_GetNextChar();
+	void Lexer::FunctionArgumentState() {
+		GetNextChar();
 
-		char current = _SkipSpaces();
+		char current = SkipSpaces();
 		m_CurrentString.clear();
 		CLEAR_PARSER_VERIFY(current == '(', "149.FAS");
 
 		m_CurrentErrorState = "function arguments";
-		auto bracketsInfo = _ParseBrackets(')',true);
+		auto bracketsInfo = ParseBrackets(')',true);
 		m_CurrentState = LexerState::Default;
 		int i = 0;
 		for (const std::string& arg : bracketsInfo.tokens) {
 			m_TokenIndexStart = bracketsInfo.indexes.at(i);
-			ProgramInfo info = _SubParse(arg,true);
+			ProgramInfo info = SubParse(arg,true);
 			for (const Token& tok :info.Tokens) {
-				_PushToken(tok);
+				PushToken(tok);
 			}
-			_PushToken(TokenType::Comma, "");
+			PushToken(TokenType::Comma, "");
 			i++;
 		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
+		if (GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
 
-		_PushToken(TokenType::EndFunctionArguments, ")"); //TODO: change me to end function args
-		current = _GetNextChar();
-		_SkipSpaces();
+		PushToken(TokenType::EndFunctionArguments, ")"); //TODO: change me to end function args
+		current = GetNextChar();
+		SkipSpaces();
 		// if (current != ')')
-		_Backtrack();
+		Backtrack();
 	}
 
 
-	void Lexer::_MultiLineCommentState() {
-		char current = _GetNextChar();
+	void Lexer::MultiLineCommentState() {
+		char current = GetNextChar();
 		if (current =='\n')
 			m_CurrentLine++;
 		m_TokenIndexStart = m_CurrentTokenIndex-3;
 		while (current!= '\0') {
-			current = _GetNextChar();
+			current = GetNextChar();
 			if (current == '\n')
 				m_CurrentLine++;
 			if (current == '*') {
-				current = _GetNextChar();
+				current = GetNextChar();
 				if (current == '\\') {
 					m_CurrentState = LexerState::Default;
 					return;
 				}else {
-					_Backtrack();
+					Backtrack();
 				}
 			}
 		}
@@ -258,86 +258,86 @@ namespace clear
 			j++;
 		}
 
-		_VerifyCondition(false,17,m_TokenIndexStart,j);
+		VerifyCondition(false,17,m_TokenIndexStart,j);
 	}
 
-	std::string Lexer::_CleanBrackets(std::string x) {
+	std::string Lexer::CleanBrackets(std::string x) {
 		if (x.front() == '(' && x.back() == ')' ) {
 			return x.substr(1, x.size() - 2);
 		}
 		return x;
 	}
 
-	void Lexer::_CommentState() {
-		char current = _GetNextChar();
+	void Lexer::CommentState() {
+		char current = GetNextChar();
 		while (current != '\n' && current != '\0') {
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 		m_CurrentState = LexerState::Default;
 		if (current == '\n')
-			_Backtrack();
+			Backtrack();
 	}
-	bool Lexer::_IsEndOfLine() {
+	bool Lexer::IsEndOfLine() {
 		if (m_ProgramInfo.Tokens.empty())
 			return true;
-		TokenType tok = _GetLastToken().TokenType;
+		TokenType tok = GetLastToken().TokenType;
 		return (tok == TokenType::EndLine);
 	}
 
-	void Lexer::_DotOpState() {
-		_VerifyCondition(IsTokenOfType(_GetLastToken(1),"has_members"),51);
+	void Lexer::DotOpState() {
+		VerifyCondition(IsTokenOfType(GetLastToken(1),"has_members"),51);
 		m_CurrentState = LexerState::RValue;
 	}
 
 
-	void Lexer::_RestrictionState() {
-		char current = _GetNextChar();
+	void Lexer::RestrictionState() {
+		char current = GetNextChar();
 
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
 
 		bool expectingEnd = false;
 		while (current!= '\n' && current != '\0' && current != ':' && current != '<')
 		{
-			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
+			VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
 			if (IsSpace(current)) {
 				expectingEnd = true;
 			}else {
 
-				_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
+				VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
 			}
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"restriction");
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 47,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"restriction");
+		VerifyCondition(!IsTypeDeclared(m_CurrentString), 47,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().RestrictionDeclarations.insert(m_CurrentString);
-		_PushToken(TokenType::RestrictionName, m_CurrentString);
+		PushToken(TokenType::RestrictionName, m_CurrentString);
 		m_CurrentString.clear();
 
 		if (current == '<') {
 			bool end = false;
 			bool expectingEnd = false;
-			current = _GetNextChar();
+			current = GetNextChar();
 			while (current != '\0') {
 				if (current == '>') {
 					end = true;
 					break;
 				}
-				_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
+				VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"restriction");
 				if (IsSpace(current)) {
 					expectingEnd = true;
 				}else {
-					_VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
+					VerifyCondition(IsVarNameChar(current),36,Str(current),"restriction");
 				}
 				m_CurrentString += current;
-				current = _GetNextChar();
+				current = GetNextChar();
 			}
-			_VerifyCondition(end,48);
-			_PushToken(TokenType::RestrictionTypeName, m_CurrentString);
+			VerifyCondition(end,48);
+			PushToken(TokenType::RestrictionTypeName, m_CurrentString);
 		}else {
-			_PushToken(TokenType::RestrictionTypeName, "type");
+			PushToken(TokenType::RestrictionTypeName, "type");
 
 		}
 
@@ -349,7 +349,7 @@ namespace clear
 	}
 
 
-	std::string Lexer::_GetCurrentErrorContext(std::string ErrorRef) {
+	std::string Lexer::GetCurrentErrorContext(std::string ErrorRef) {
 		CLEAR_PARSER_VERIFY(!m_CurrentErrorState.empty(),ErrorRef)
 		if (IsSubLexer) {
 			return m_CurrentErrorState;
@@ -361,7 +361,7 @@ namespace clear
 
 
 
-	BracketParsingReturn Lexer::_ParseBrackets(char end, bool commas) {
+	BracketParsingReturn Lexer::ParseBrackets(char end, bool commas) {
 		char start = g_CloserToOpeners.at(end);
 		char current = start;
 		std::vector<char> stack;
@@ -370,11 +370,11 @@ namespace clear
 		bool ExpectingValue = false;
 		BracketParsingReturn ret;
 
-		std::string ErrorReference = _GetCurrentErrorContext("25410");
+		std::string ErrorReference = GetCurrentErrorContext("25410");
 
 		ret.indexes.push_back(m_CurrentTokenIndex);
 		while (!stack.empty() && current != '\0') {
-			current = _GetNextChar();
+			current = GetNextChar();
 			if ((current == '\'' || current == '"') && !(stack.back() == '\'' || stack.back() == '"')) {
 				stack.push_back(current);
 			}else {
@@ -384,7 +384,7 @@ namespace clear
 						stack.push_back(current);
 					}
 					if (g_CloserToOpeners.contains(current)) {
-						_VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(stack.back()),Str(g_CloserToOpeners.at(current)));
+						VerifyCondition(g_CloserToOpeners.at(current) == stack.back(),18,Str(stack.back()),Str(g_CloserToOpeners.at(current)));
 						stack.pop_back();
 					}
 				}else {
@@ -396,7 +396,7 @@ namespace clear
 							// }else {
 							// 	type = "char";
 							// }
-							// _VerifyCondition(current == stack.back(),19,type,Str(stack.back()),Str(current));
+							// VerifyCondition(current == stack.back(),19,type,Str(stack.back()),Str(current));
 							if (current == stack.back())
 								stack.pop_back();
 						}
@@ -407,9 +407,9 @@ namespace clear
 			if ( (current == end && stack.empty()) || (current == ',' && stack.size() == 1) || current == '\0')
 			{
 				if (!((current == ',' && commas) || current!= ',')) {
-					_VerifyCondition(false,16,ErrorReference);
+					VerifyCondition(false,16,ErrorReference);
 				}
-				_VerifyCondition(!(current == ',' && ExpectingValue),38,ErrorReference);
+				VerifyCondition(!(current == ',' && ExpectingValue),38,ErrorReference);
 				if (current ==',') {
 					ExpectingValue = true;
 				}
@@ -419,11 +419,11 @@ namespace clear
 					ExpectingValue = false;
 				}
 				else {
-					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
+					VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
 				}
 
 				if (current == end) {
-					_VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
+					VerifyCondition(!ExpectingValue,32,ret.indexes.back()-2);
 					m_CurrentString.clear();
 					detectedEnd = true;
 					break;
@@ -431,8 +431,8 @@ namespace clear
 
 				m_CurrentString.clear();
 				m_CurrentTokenIndex++;
-				_SkipSpaces();
-				_Backtrack();
+				SkipSpaces();
+				Backtrack();
 				ret.indexes.push_back(m_CurrentTokenIndex);
 
 
@@ -449,96 +449,96 @@ namespace clear
 
 
 
-		_VerifyCondition(detectedEnd, 27,ErrorReference, Str(end) );
+		VerifyCondition(detectedEnd, 27,ErrorReference, Str(end) );
 
 
 		return ret;
 	}
 
 
-	void Lexer::_PushVariableReference(const std::string& x) {
-		if (_GetLastToken().TokenType == TokenType::DotOp) {
-			_PushToken(TokenType::MemberName,x);
+	void Lexer::PushVariableReference(const std::string& x) {
+		if (GetLastToken().TokenType == TokenType::DotOp) {
+			PushToken(TokenType::MemberName,x);
 		}else {
-			_PushToken(TokenType::VariableReference, x);
+			PushToken(TokenType::VariableReference, x);
 
 		}
 	}
 
 
-	void Lexer::_IndexOperatorState() {
-		char current = _GetNextChar();
+	void Lexer::IndexOperatorState() {
+		char current = GetNextChar();
 		CLEAR_PARSER_VERIFY(current == '[', "318.IOS");
 
 		m_CurrentErrorState = "array index";
-		auto parsed= _ParseBrackets(']',false);
-		_VerifyCondition(!parsed.tokens.empty(),24);
+		auto parsed= ParseBrackets(']',false);
+		VerifyCondition(!parsed.tokens.empty(),24);
 		if (parsed.tokens.empty())
 			return;
 
-		ProgramInfo info = _SubParse( parsed.tokens.at(0),false);
+		ProgramInfo info = SubParse( parsed.tokens.at(0),false);
 		for (const Token& tok :info.Tokens) {
-			_PushToken(tok);
+			PushToken(tok);
 		}
 
 		m_CurrentString.clear();
 		m_CurrentState = LexerState::Default;
 
-		_PushToken(TokenType::CloseBracket,"]");
+		PushToken(TokenType::CloseBracket,"]");
 		// m_CurrentString+= "INDEX_OP";
 
 	}
 
-	void Lexer::_DefaultState()
+	void Lexer::DefaultState()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
 		if (current == '(')
 		{
-			if (!m_CurrentString.empty() || IsTokenOfType(_GetLastToken(),"callable"))
+			if (!m_CurrentString.empty() || IsTokenOfType(GetLastToken(),"callable"))
 			{
 				if (!m_CurrentString.empty())
 				{
-					_PushVariableReference(m_CurrentString);
+					PushVariableReference(m_CurrentString);
 				}
-				if (IsTokenOfType(_GetLastToken(),"named_callable")) {
-					m_CurrentString = _GetLastToken().Data;
+				if (IsTokenOfType(GetLastToken(),"named_callable")) {
+					m_CurrentString = GetLastToken().Data;
 				}
 
-				_PushToken(TokenType::FunctionCall, m_CurrentString);
+				PushToken(TokenType::FunctionCall, m_CurrentString);
 				m_CurrentState = LexerState::FunctionParamaters;
-				_Backtrack();
+				Backtrack();
 
 			}else {
 				m_BracketStack.push_back('(');
 			}
 
-			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 
 
 			return;
 		}
-		_VerifyCondition(current!=']',25,"index operator");
+		VerifyCondition(current!=']',25,"index operator");
 		if (current == '"' ) {
-			_VerifyCondition(m_CurrentString.empty(), 25,"string");
-			_ParseString();
+			VerifyCondition(m_CurrentString.empty(), 25,"string");
+			ParseString();
 			return;
 		}
 		if (current == '{') {
-			_VerifyCondition(m_CurrentString.empty(), 25,"list");
-			_ParseList();
+			VerifyCondition(m_CurrentString.empty(), 25,"list");
+			ParseList();
 			return;
 		}
 		if (current == '\'') {
-			_VerifyCondition(m_CurrentString.empty(), 25,"char");
-			_ParseChar();
+			VerifyCondition(m_CurrentString.empty(), 25,"char");
+			ParseChar();
 			return;
 		}
 
 		if (std::isdigit(current) && m_CurrentString.empty())
 		{
 				m_CurrentString += current;
-				_ParseNumber();
+				ParseNumber();
 				return;
 		}
 
@@ -554,29 +554,29 @@ namespace clear
 				m_CurrentState = value.NextState;
 
 				if (value.TokenToPush != TokenType::None)
-					_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+					PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 
 				m_CurrentString.clear();
 				if (!IsSpace(current))
-					_Backtrack();
+					Backtrack();
 				return;
 
 			}
-			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || ( current == '*' || current == '&' || current == '<')) && _IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType!= TokenType::DotOp) {
-				_PushToken(TokenType::TypeIdentifier, m_CurrentString);
+			if (((!g_OperatorMap.contains(Str(current)) && current != '\n' && current != ')') || ( current == '*' || current == '&' || current == '<')) && IsTypeDeclared(m_CurrentString) && GetLastToken().TokenType!= TokenType::DotOp) {
+				PushToken(TokenType::TypeIdentifier, m_CurrentString);
 				m_CurrentState = LexerState::VariableName;
 				m_CurrentString.clear();
 
 
 				if (!IsSpace(current))
-					_Backtrack();
+					Backtrack();
 
 				return;
 			}
 			else
 			{
-				_VerifyCondition(!_IsTypeDeclared(m_CurrentString),34);
-				_PushVariableReference( m_CurrentString);
+				VerifyCondition(!IsTypeDeclared(m_CurrentString),34);
+				PushVariableReference( m_CurrentString);
 				m_CurrentString.clear();
 
 			}
@@ -587,7 +587,7 @@ namespace clear
 			m_CurrentState = LexerState::Indentation;
 			m_CurrentString.clear();
 			if (current == '\n' && m_BracketStack.empty())
-				_EndLine();
+				EndLine();
 
 			return;
 		}
@@ -600,27 +600,27 @@ namespace clear
 
 		if (current == '[') {
 			m_CurrentState = LexerState::IndexOperator;
-			_PushToken(TokenType::IndexOperator,"");
-			_PushToken(TokenType::OpenBracket,"[");
-			_Backtrack();
+			PushToken(TokenType::IndexOperator,"");
+			PushToken(TokenType::OpenBracket,"[");
+			Backtrack();
 
 		}
 		if (current == ')')
 		{
-			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back(),25,"Brackets");
+			VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back(),25,"Brackets");
 
 			m_BracketStack.pop_back();
-			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")"});
+			PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")"});
 
 			return;
 		}
 
-		_VerifyCondition(IsVarNameChar(current)||g_OperatorMap.contains(Str(current)) ||g_Openers.contains(current) || g_CloserToOpeners.contains(current) || std::isspace(current) ,41,Str(current));
+		VerifyCondition(IsVarNameChar(current)||g_OperatorMap.contains(Str(current)) ||g_Openers.contains(current) || g_CloserToOpeners.contains(current) || std::isspace(current) ,41,Str(current));
 	}
-	void Lexer::_ArrowState()
+	void Lexer::ArrowState()
 	{
 		if ((m_ProgramInfo.Tokens.size() > 1 &&
-			_GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == LexerSecondaryState::Declaration)
+			GetLastToken(1).TokenType == TokenType::EndFunctionParameters) || m_SecondState == LexerSecondaryState::Declaration)
 		{
 			m_CurrentState = LexerState::FunctionTypeState;
 			return;
@@ -629,22 +629,22 @@ namespace clear
 		m_CurrentState = LexerState::Default;
 
 	}
-	void Lexer::_FunctionTypeState()
+	void Lexer::FunctionTypeState()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
 		//want to ignore all spaces in between type and variable
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		m_CurrentString.clear();
 
 		//allow _ and any character from alphabet
 		while (current != '\n' && current != '\0' && current != ':' && current!=';')
 		{
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
-		_PushToken({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
+		PushToken({ .TokenType = TokenType::FunctionType, .Data = m_CurrentString });
 		bool containsdata = false;
 		for (auto i : m_CurrentString) {
 			if (!std::isspace(i)) {
@@ -652,20 +652,20 @@ namespace clear
 				break;
 			}
 		}
-		_VerifyCondition(containsdata,40);
-		ProgramInfo info = _SubParse(m_CurrentString,true);
+		VerifyCondition(containsdata,40);
+		ProgramInfo info = SubParse(m_CurrentString,true);
 
 		for (const Token& tok :info.Tokens) {
-			_PushToken(tok);
+			PushToken(tok);
 		}
 
-		_Backtrack();
+		Backtrack();
 		m_CurrentString.clear();
 		m_CurrentState = LexerState::Default;
 
 	}
 
-	bool Lexer::_IsTypeDeclared(const std::string& type) {
+	bool Lexer::IsTypeDeclared(const std::string& type) {
 		for (TypeScope& arg : m_ScopeStack) {
 			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type)) {
 				return true;
@@ -674,7 +674,7 @@ namespace clear
 		return false;
 	}
 
-	bool Lexer::_IsRestrictionDeclared(const std::string &type) {
+	bool Lexer::IsRestrictionDeclared(const std::string &type) {
 		for (TypeScope& arg : m_ScopeStack) {
 			if (arg.RestrictionDeclarations.contains(type)) {
 				return true;
@@ -686,70 +686,70 @@ namespace clear
 
 
 
-	void Lexer::_StructNameState() {
-		char current = _GetNextChar();
+	void Lexer::StructNameState() {
+		char current = GetNextChar();
 
-		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+		current = SkipSpaces();
+		VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
 		bool expectingEnd = false;
 		while (current!= '\n' && current != '\0' && current != ':')
 		{
-			_VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"struct");
+			VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"struct");
 			if (IsSpace(current)) {
 				expectingEnd = true;
 			}else {
 
-			_VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
+			VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
 			}
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
-		_VerifyCondition(current == ':',53);
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		VerifyCondition(current == ':',53);
+		VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
+		VerifyCondition(!IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 
 
-		_PushToken(TokenType::StructName, m_CurrentString);
+		PushToken(TokenType::StructName, m_CurrentString);
 		m_CurrentString.clear();
-		_Backtrack();
+		Backtrack();
 		m_CurrentState = LexerState::Default;
 	}
 
 	void Lexer::ClassNameState() {
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
-		current = _SkipSpaces();
-		_VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+		current = SkipSpaces();
+		VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
 
 		while (current!= '\n' && current != '\0' && current != ':' && !IsSpace(current))
 		{
-			_VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
+			VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
-		// _VerifyCondition(current == ':',53);
-		_VerifyCondition(current == ':',54);
-		_VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
+		// VerifyCondition(current == ':',53);
+		VerifyCondition(current == ':',54);
+		VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
-		_PushToken(TokenType::ClassName, m_CurrentString);
+		PushToken(TokenType::ClassName, m_CurrentString);
 		m_CurrentString.clear();
-		_VerifyCondition(!_IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		VerifyCondition(!IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
 
 
-		_Backtrack();
+		Backtrack();
 		m_CurrentState = LexerState::Default;
 	}
 
-	Token Lexer::_CreateToken(const TokenType tok, const std::string &data) {
+	Token Lexer::CreateToken(const TokenType tok, const std::string &data) {
 		return Token{ .TokenType = tok, .Data = data };
 	}
 
-	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
+	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
 		if ((!condition) && !IsSubLexer) {
 
 		if (startIndex!= -1) {
@@ -759,31 +759,31 @@ namespace clear
 			m_CurrentTokenIndex = endIndex;
 			}
 		}
-		_VerifyCondition(condition, Error, Advice, ErrorType);
+		VerifyCondition(condition, Error, Advice, ErrorType);
 	}
 
-	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
+	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex) {
 		if (!condition && !IsSubLexer) {
 			if (startIndex!= -1) {
 				m_TokenIndexStart = startIndex;
 				}
 			}
 
-		_VerifyCondition(condition, Error, Advice, ErrorType);
+		VerifyCondition(condition, Error, Advice, ErrorType);
 
 	}
 
 
 
-	void Lexer::_ParsingRValueState()
+	void Lexer::ParsingRValueState()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
 		//want to ignore all spaces in between = and actual variable
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		m_CurrentString.clear();
 		if (m_BracketStack.empty())
-			_VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+			VerifyCondition(current != '\n' && current != '\0' && !g_CloserToOpeners.contains(current),5,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 		if (current == '\n') {
 			return;
 		}
@@ -795,110 +795,110 @@ namespace clear
 		if (current == '(')
 		{
 			m_BracketStack.push_back('(');
-			_PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
+			PushToken({ .TokenType = TokenType::OpenBracket, .Data = "(" });
 			m_CurrentState = LexerState::RValue;
 			return;
 		}
 		if (current == ')')
 		{
-			_PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
+			PushToken({ .TokenType = TokenType::CloseBracket, .Data = ")" });
 			m_CurrentState = LexerState::RValue;
 
-			_VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
+			VerifyCondition(!m_BracketStack.empty() && m_BracketStack.back() == '(',1);
 			m_BracketStack.pop_back();
 
 			return;
 		}
 		if (current == '"') //strings
 		{
-			_ParseString();
+			ParseString();
 		}else if(current == '{') {
-			_ParseList();
+			ParseList();
 		}
 		else if (std::isdigit(current) || current == '-') // positive/negative numbers
 		{
 			m_CurrentString.push_back(current);
-			_ParseNumber();
+			ParseNumber();
 		}else if (current == '\'') {
-			_ParseChar();
+			ParseChar();
 		}
 		else if(std::isalnum(current) || current == '_')
 		{
 			//could be a variable reference, class/struct reference etc...
 			m_CurrentString.push_back(current);
-			_Backtrack();
-			_ParseOther();
+			Backtrack();
+			ParseOther();
 		}else {
-			_VerifyCondition(false,41,Str(current));
+			VerifyCondition(false,41,Str(current));
 		}
 		if (m_CurrentState == LexerState::RValue)
 			m_CurrentState = LexerState::Default;
 	}
 
-	void Lexer::_ParseArrayDeclaration()
+	void Lexer::ParseArrayDeclaration()
 	{
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentErrorState = "Array declaration";
-		auto parsed = _ParseBrackets(']',false);
+		auto parsed = ParseBrackets(']',false);
 		m_CurrentString.clear();
 		if (!parsed.tokens.empty()) {
-			m_CurrentString = _CleanBrackets(parsed.tokens.at(0));
+			m_CurrentString = CleanBrackets(parsed.tokens.at(0));
 		}
 
 		if (m_CurrentString.empty()) {
-			_PushToken(TokenType::DynamicArrayDef,"");
+			PushToken(TokenType::DynamicArrayDef,"");
 		}else {
 			if (m_CurrentString.find_first_not_of("0123456789") == std::string::npos) {
-				_PushToken(TokenType::StaticArrayDef,m_CurrentString);
+				PushToken(TokenType::StaticArrayDef,m_CurrentString);
 			}
 			else if (m_CurrentString == "...") {
-				_PushToken(TokenType::StaticArrayDef,"...");
+				PushToken(TokenType::StaticArrayDef,"...");
 			}else {
-				_VerifyCondition(false,"Array declaration syntax error only expected numbers or ...","Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty","Array declaration error",m_TokenIndexStart,m_CurrentTokenIndex-1);
+				VerifyCondition(false,"Array declaration syntax error only expected numbers or ...","Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty","Array declaration error",m_TokenIndexStart,m_CurrentTokenIndex-1);
 
 			}
 		}
 		m_CurrentString.clear();
-		char current = _GetNextChar();
-		// _VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
+		char current = GetNextChar();
+		// VerifyCondition(IsSpace(current),47,m_CurrentTokenIndex-2);
 		while (IsSpace(current)) {
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
-		_VerifyCondition(current != ']',25,"Array declaration");
+		VerifyCondition(current != ']',25,"Array declaration");
 		if (current == '[') {
-			_ParseArrayDeclaration();
+			ParseArrayDeclaration();
 		}else  {
 			if (current != '\0')
-				_Backtrack();
+				Backtrack();
 		}
 
 
 	}
 
-	void Lexer::_ParsePointerDeclaration() {
-		char current = _GetNextChar();
+	void Lexer::ParsePointerDeclaration() {
+		char current = GetNextChar();
 		while (current == '*') {
-			_PushToken(TokenType::PointerDef,"*");
-			current = _GetNextChar();
+			PushToken(TokenType::PointerDef,"*");
+			current = GetNextChar();
 		}
-		_VerifyCondition(std::isspace(current) || current == '[' ,6);
-		current = _SkipSpaces();
-		_VerifyCondition(current!= '*',26);
+		VerifyCondition(std::isspace(current) || current == '[' ,6);
+		current = SkipSpaces();
+		VerifyCondition(current!= '*',26);
 
 		if (!IsSpace(current) && current != '\0') {
-			_Backtrack();
+			Backtrack();
 		}
 
 	}
 
-	void Lexer::_ParseGenericDeclaration() {
-		char current = _GetNextChar();
+	void Lexer::ParseGenericDeclaration() {
+		char current = GetNextChar();
 		int currentLevel = 1;
 		std::vector<std::string> tokens;
 		std::vector<int> indexes;
 		indexes.push_back(m_CurrentTokenIndex);
 		while (currentLevel!= 0&& current != '\0') {
-			current = _GetNextChar();
+			current = GetNextChar();
 			if (current == '<') {
 				currentLevel++;
 			}
@@ -907,42 +907,42 @@ namespace clear
 			}
 
 			if (current == ',' && currentLevel == 1 || currentLevel == 0) {
-				_VerifyCondition(!m_CurrentString.empty(),45);
+				VerifyCondition(!m_CurrentString.empty(),45);
 				tokens.push_back(m_CurrentString);
 				m_CurrentString.clear();
 				indexes.push_back(m_CurrentTokenIndex);
 				continue;
 			}
-			_VerifyCondition(!IsSpace(current),52,-1,m_CurrentTokenIndex+1);
-			_VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
+			VerifyCondition(!IsSpace(current),52,-1,m_CurrentTokenIndex+1);
+			VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
 			if (!(IsSpace(current) && m_CurrentString.empty())) {
 				m_CurrentString+=current;
 			}
 		}
 
-		_VerifyCondition(!tokens.empty(),43);
-		_PushToken(TokenType::GenericDeclarationStart,"");
+		VerifyCondition(!tokens.empty(),43);
+		PushToken(TokenType::GenericDeclarationStart,"");
 		for (auto &i : tokens) {
-			auto program = _SubParse(i,false);
-			_VerifyCondition(program.Tokens.at(0).TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(program.Tokens.at(0).Data),46);
+			auto program = SubParse(i,false);
+			VerifyCondition(program.Tokens.at(0).TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(program.Tokens.at(0).Data),46);
 			for (const Token& tok :program.Tokens) {
-				_PushToken(tok);
+				PushToken(tok);
 			}
-			_PushToken(TokenType::Comma,",");
+			PushToken(TokenType::Comma,",");
 		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
+		if (GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
-		_PushToken(TokenType::GenericDeclarationEnd,"");
-		current = _GetNextChar();
-		_VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
-		current = _SkipSpaces();
+		PushToken(TokenType::GenericDeclarationEnd,"");
+		current = GetNextChar();
+		VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
+		current = SkipSpaces();
 		if (!IsSpace(current) && current != '\0') {
-			_Backtrack();
+			Backtrack();
 		}
 	}
 
-	Error Lexer::_CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
+	Error Lexer::CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
 		Error err;
 		err.ErrorMessage = ErrorMsg;
 		err.Advice = Advice;
@@ -973,17 +973,17 @@ namespace clear
 		return err;
 
 	}
-	void Lexer::_RaiseError(Error& err) 
+	void Lexer::RaiseError(Error& err) 
 	{
 		PrintError(err);
 		CLEAR_HALT();
 	}
 
-	void Lexer::_VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
+	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
 		if (!condition) {
-			auto err = _CreateError(Error,Advice,ErrorType);
+			auto err = CreateError(Error,Advice,ErrorType);
 			if (!IsSubLexer) {
-				_RaiseError(err);
+				RaiseError(err);
 			}else {
 				m_subLexerError = true;
 				m_ProgramInfo.Errors.push_back(err);
@@ -993,67 +993,67 @@ namespace clear
 
 
 
-	void Lexer::_VariableNameState()
+	void Lexer::VariableNameState()
 	{
-		char current = _GetNextChar();
-		bool isDeclaration = IsTokenOfType(_GetLastToken(1),"is_declaration") && ( _GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(_GetLastToken().Data));
-		current = _SkipSpaces();
+		char current = GetNextChar();
+		bool isDeclaration = IsTokenOfType(GetLastToken(1),"is_declaration") && ( GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(GetLastToken().Data));
+		current = SkipSpaces();
 
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
-		// 	_Backtrack();
-		// 	_VerifyCondition(!IsType,7);
+		// 	Backtrack();
+		// 	VerifyCondition(!IsType,7);
 		// 	m_CurrentState = LexerState::Default;
 		// 	return;
 		// }
 		if (current == '(') {
-			_Backtrack();
+			Backtrack();
 			m_CurrentState = LexerState::Default;
 
 			return;
 		}
 		if (current == '<') {
-			_Backtrack();
-			_ParseGenericDeclaration();
-			current = _GetNextChar();
+			Backtrack();
+			ParseGenericDeclaration();
+			current = GetNextChar();
 
 		}
 		if (current == '*') {
-			_Backtrack();
-			_ParsePointerDeclaration();
-			current = _GetNextChar();
+			Backtrack();
+			ParsePointerDeclaration();
+			current = GetNextChar();
 		}
 
 
 		m_CurrentString.clear();
 		if (current == '[') {
-			_ParseArrayDeclaration();
-			current = _GetNextChar();
+			ParseArrayDeclaration();
+			current = GetNextChar();
 		}
 		m_CurrentString.clear();
-		_VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
-		_VerifyCondition(current != '*',26);
+		VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
+		VerifyCondition(current != '*',26);
 		if (m_NoVariableNames) {
-			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
-			_VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+			VerifyCondition(!g_OperatorMap.contains(Str(current)), 10,m_CurrentTokenIndex-1);
+			VerifyCondition(std::isspace(current) || current == '\0',42,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
 
 			m_CurrentState = LexerState::Default;
 			return;
 
 		}
 		if (current == '\n' || current == '\0' || !IsVarNameChar(current)) {
-			_VerifyCondition(!g_OperatorMap.contains(Str(current)), 10);
+			VerifyCondition(!g_OperatorMap.contains(Str(current)), 10);
 			//
 			// if (!IsVarNameChar(current) && current != '\0' && current != '\n') {
-			// 	_VerifyCondition(!IsType, 9);
+			// 	VerifyCondition(!IsType, 9);
 			// }
-			_VerifyCondition(!isDeclaration,8);
+			VerifyCondition(!isDeclaration,8);
 
 			m_CurrentState = LexerState::Default;
-			_Backtrack();
+			Backtrack();
 			return;
 		}
 		if (!isDeclaration) {
-			_Backtrack();
+			Backtrack();
 			m_CurrentState = LexerState::Default;
 			return;
 		}
@@ -1065,127 +1065,127 @@ namespace clear
 		bool ExpectingComma = false;
 		int lastValidVar = m_CurrentTokenIndex-1;
 		while ((current != '\0' && current != '\n') && (IsVarNameChar(current) || IsSpace(current)) ) {
-			_VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),11, m_CurrentTokenIndex-1,-1);
+			VerifyCondition(!(m_CurrentString.empty() && std::isdigit(current)),11, m_CurrentTokenIndex-1,-1);
 
 			if (!IsSpace(current)) {
 				m_CurrentString += current;
 			}
-			current = _GetNextChar();
+			current = GetNextChar();
 
 			if (IsSpace(current) && !m_CurrentString.empty()) {
 				ExpectingComma = true;
 			}
 
 
-			_VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),12,lastValidVar);
+			VerifyCondition(!(ExpectingComma && IsVarNameChar(current)),12,lastValidVar);
 
 
 			if (current == ',') {
 				ExpectingComma = false;
-				_VerifyCondition(!m_CurrentString.empty(),28);
-				_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,lastValidVar+1,m_CurrentTokenIndex-2,m_CurrentString);
+				VerifyCondition(!m_CurrentString.empty(),28);
+				VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,lastValidVar+1,m_CurrentTokenIndex-2,m_CurrentString);
 				lastValidVar = m_CurrentTokenIndex-1;
-				_PushToken(TokenType::VariableName, m_CurrentString);
-				_PushToken(TokenType::Comma,"");
+				PushToken(TokenType::VariableName, m_CurrentString);
+				PushToken(TokenType::Comma,"");
 				m_CurrentString.clear();
-				current = _GetNextChar();
+				current = GetNextChar();
 				commas++;
 				if (current == ',') {
 					commas++;
 				}
 				vars ++;
 			}
-			_VerifyCondition(current != ',',28);
+			VerifyCondition(current != ',',28);
 		}
 		if (!m_CurrentString.empty()) {
-			_VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,m_CurrentString);
-			_PushToken(TokenType::VariableName, m_CurrentString);
+			VerifyCondition(!g_KeyWordMap.contains(m_CurrentString),39,m_CurrentString);
+			PushToken(TokenType::VariableName, m_CurrentString);
 			vars++;
 
 		}
-		_VerifyCondition(commas < vars,28);
+		VerifyCondition(commas < vars,28);
 		if (!IsSpace(current)) {
-			_Backtrack();
+			Backtrack();
 		}
 		m_CurrentString.clear();
 
 		m_CurrentState = LexerState::Default;
 	}
 
-	void Lexer::_FunctionParameterState()
+	void Lexer::FunctionParameterState()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		int curtok = m_CurrentTokenIndex;
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		int skipped = m_CurrentTokenIndex-curtok;
 		m_CurrentString.clear();
-		_VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
+		VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
 
 		m_CurrentErrorState = "function parameters";
-		auto info = _ParseBrackets(')',true);
+		auto info = ParseBrackets(')',true);
 
-		_PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
+		PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
 		int ind = 0;
 
 		for (const auto& i: info.tokens)
 		{
-			// auto ParameterTokens = _ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
-			ProgramInfo ParameterTokens = _SubParse(i);
+			// auto ParameterTokens = ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
+			ProgramInfo ParameterTokens = SubParse(i);
 			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
-			_VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || _IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
+			VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
 			for (const Token& tok :ParameterTokens.Tokens) {
-				_PushToken(tok);
+				PushToken(tok);
 			}
-			_PushToken(TokenType::Comma,",");
+			PushToken(TokenType::Comma,",");
 			ind++;
 		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
+		if (GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
-		_PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
+		PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
 		m_CurrentState = LexerState::Default;
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		if (current != ')')
-			_Backtrack();
+			Backtrack();
 	}
 
-	void Lexer::_FunctionNameState()
+	void Lexer::FunctionNameState()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
-		current = _SkipSpaces();
+		current = SkipSpaces();
 		m_CurrentString.clear();
 		if (current == '(')
 		{
-			_Backtrack();
+			Backtrack();
 			m_CurrentState = LexerState::FunctionParameters;
-			_PushToken({ .TokenType = TokenType::Lambda, .Data = ""});
+			PushToken({ .TokenType = TokenType::Lambda, .Data = ""});
 			return;
 		}
 
 		while (IsVarNameChar(current))
 		{
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
 		if (current =='(')
-			_Backtrack();
+			Backtrack();
 
-		_PushToken({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
+		PushToken({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
 		m_CurrentString.clear();
 
-		_VerifyCondition(current != '\n',29);
+		VerifyCondition(current != '\n',29);
 		m_CurrentState = LexerState::FunctionParameters;
 	}
 
-	void Lexer::_IncrementOperator() {
-		char current = _GetNextChar();
-		char incrementType = _GetLastToken().Data.at(0);
+	void Lexer::IncrementOperator() {
+		char current = GetNextChar();
+		char incrementType = GetLastToken().Data.at(0);
 		TokenType tok = incrementType == '+' ? TokenType::AddOp : TokenType::SubOp;
 		if (current != incrementType) {
-			_Backtrack();
-			if (_GetLastToken().TokenType!= TokenType::Increment && _GetLastToken().TokenType!= TokenType::Decrement) {
+			Backtrack();
+			if (GetLastToken().TokenType!= TokenType::Increment && GetLastToken().TokenType!= TokenType::Decrement) {
 				m_CurrentState = LexerState::RValue;
 			}else {
 				m_CurrentState = LexerState::Default;
@@ -1193,37 +1193,37 @@ namespace clear
 			return;
 		}
 		m_ProgramInfo.Tokens.pop_back();
-		if (!IsTokenOfType(_GetLastToken(),"allow_op")) {
+		if (!IsTokenOfType(GetLastToken(),"allow_op")) {
 			if (tok == TokenType::SubOp) {
 				tok = TokenType::Negation;
 			}
 		}
-		_PushToken(tok,Str(incrementType));
-		_PushToken(tok,Str(incrementType));
+		PushToken(tok,Str(incrementType));
+		PushToken(tok,Str(incrementType));
 		while (current == incrementType) {
-			_PushToken(tok,Str(incrementType));
-			current = _GetNextChar();
+			PushToken(tok,Str(incrementType));
+			current = GetNextChar();
 		}
-		_Backtrack();
+		Backtrack();
 		m_CurrentState = LexerState::RValue;
 	}
 
 
-	void Lexer::_OperatorState()
+	void Lexer::OperatorState()
 	{
-		_Backtrack();
-		std::string before = Str(_GetNextChar());
+		Backtrack();
+		std::string before = Str(GetNextChar());
 		std::string h = "";
 		char current  = before.at(0);
 		while (g_OperatorMap.contains(Str(current)) && !(h.size()>1 &&g_OperatorMap.contains(h)))
 		{
 			h+=current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
 		LexerMapValue value;
 		std::string data;
-		_Backtrack();
+		Backtrack();
 
 		if (g_OperatorMap.contains(h))
 		{
@@ -1239,44 +1239,44 @@ namespace clear
 
 		}
 		if (value.TokenToPush != TokenType::None)
-			_PushToken({ .TokenType = value.TokenToPush, .Data = data });
+			PushToken({ .TokenType = value.TokenToPush, .Data = data });
 
 		m_CurrentState = value.NextState;
 	}
 
-	void Lexer::_AsterisksState() {
-		if (IsTokenOfType(_GetLastToken(),"allow_op")) {
-			_PushToken(TokenType::MulOp,"*");
+	void Lexer::AsterisksState() {
+		if (IsTokenOfType(GetLastToken(),"allow_op")) {
+			PushToken(TokenType::MulOp,"*");
 		}else {
-			_PushToken(TokenType::DereferenceOp,"*");
+			PushToken(TokenType::DereferenceOp,"*");
 		}
 		m_CurrentState = LexerState::RValue;
 
 	}
 
-	void Lexer::_AmpersandState() {
-		auto token = _GetLastToken();
+	void Lexer::AmpersandState() {
+		auto token = GetLastToken();
 		auto tok =token.TokenType;
 
 		if (tok == TokenType::VariableReference || tok == TokenType::RValueChar || tok == TokenType::RValueNumber || tok == TokenType::RValueString || tok == TokenType::CloseBracket || tok == TokenType::EndFunctionArguments) {
-			_PushToken(TokenType::BitwiseAnd,"&");
+			PushToken(TokenType::BitwiseAnd,"&");
 		}else {
-			_PushToken(TokenType::AddressOp,"&");
+			PushToken(TokenType::AddressOp,"&");
 		}
 		m_CurrentState = LexerState::RValue;
 
 	}
 
 
-	void Lexer::_IndentationState()
+	void Lexer::IndentationState()
 	{
 		size_t tabWidth = 4;
-		char next = _GetNextChar();
+		char next = GetNextChar();
 
 		if (next == '\n')
 		{
-			_EndLine();
-			next = _GetNextChar();
+			EndLine();
+			next = GetNextChar();
 		}
 
 		bool indenting = true;
@@ -1287,12 +1287,12 @@ namespace clear
 			if (next == '\t')
 			{
 				totalSpaces += tabWidth;
-				next = _GetNextChar();
+				next = GetNextChar();
 			}
 			else if (next == ' ')
 			{
 				totalSpaces++;
-				next = _GetNextChar();
+				next = GetNextChar();
 			}
 			else
 			{
@@ -1304,59 +1304,59 @@ namespace clear
 
 		if (localIndents > m_Indents)
 		{
-			_PushToken({ .TokenType = TokenType::StartIndentation });
+			PushToken({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
 			m_ScopeStack.emplace_back();
 		}
 
 		while (m_Indents > localIndents)
 		{
-			_PushToken({ .TokenType = TokenType::EndIndentation });
+			PushToken({ .TokenType = TokenType::EndIndentation });
 			m_Indents--;
 			m_ScopeStack.pop_back();
 		}
 
 		m_CurrentState = LexerState::Default;
-		_Backtrack();
+		Backtrack();
 	}
 
-	void Lexer::_ParseHexLiteral() {
+	void Lexer::ParseHexLiteral() {
 		m_CurrentString.clear();
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			_VerifyCondition(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
+			VerifyCondition(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
 		if (!IsSpace(current)) {
-			_Backtrack();
+			Backtrack();
 		}
 
-		_PushToken(TokenType::RValueNumber,std::to_string(HexStringToInteger(m_CurrentString)));
+		PushToken(TokenType::RValueNumber,std::to_string(HexStringToInteger(m_CurrentString)));
 		m_CurrentString.clear();
 	}
-	void Lexer::_ParseBinaryLiteral() {
+	void Lexer::ParseBinaryLiteral() {
 		m_CurrentString.clear();
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current))) {
-			_VerifyCondition(current == '0' || current == '1',31);
+			VerifyCondition(current == '0' || current == '1',31);
 			m_CurrentString += current;
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
 		if (!IsSpace(current)) {
-			_Backtrack();
+			Backtrack();
 		}
 
-		_PushToken(TokenType::RValueNumber,std::to_string(BinaryStringToInteger(m_CurrentString)));
+		PushToken(TokenType::RValueNumber,std::to_string(BinaryStringToInteger(m_CurrentString)));
 		m_CurrentString.clear();
 
 	}
 
-	void Lexer::_ParseExponentNumber(std::string x) {
+	void Lexer::ParseExponentNumber(std::string x) {
 		m_TokenIndexStart = m_CurrentTokenIndex;
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		bool usedDecimal = false;
 		m_CurrentString.clear();
 		while (std::isalnum(current) || current == '.' || current == '_')
@@ -1366,7 +1366,7 @@ namespace clear
 				m_CurrentString.push_back(current);
 			}
 
-			_VerifyCondition(!(current == '.' && usedDecimal),21);
+			VerifyCondition(!(current == '.' && usedDecimal),21);
 
 			if (current == '.')
 			{
@@ -1374,52 +1374,52 @@ namespace clear
 			}
 
 
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
 
-		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-		_PushToken(TokenType::RValueNumber,std::to_string(std::stod(x)*std::pow(10.0,std::stod(m_CurrentString))));
+		VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
+		PushToken(TokenType::RValueNumber,std::to_string(std::stod(x)*std::pow(10.0,std::stod(m_CurrentString))));
 		m_CurrentString.clear();
 	}
 
 
 
-	void Lexer::_ParseNumber()
+	void Lexer::ParseNumber()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 
 		if (current == '\0')
 		{
-			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 			m_CurrentString.clear();
 			return;
 		}
 
 		bool usedDecimal = false;
 		if (current == 'b') {
-			_VerifyCondition(m_CurrentString == "0", 22,"binary");
-			_ParseBinaryLiteral();
+			VerifyCondition(m_CurrentString == "0", 22,"binary");
+			ParseBinaryLiteral();
 			return;
 		}
 
 		if (current == 'x') {
-			_VerifyCondition(m_CurrentString == "0", 22,"hex");
-			_ParseHexLiteral();
+			VerifyCondition(m_CurrentString == "0", 22,"hex");
+			ParseHexLiteral();
 			return;
 		}
 
 		while (std::isalnum(current) || current == '.' || current == '_')
 		{
 			if (current == 'e') {
-				_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
-				return _ParseExponentNumber(m_CurrentString);
+				VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
+				return ParseExponentNumber(m_CurrentString);
 			}
 			if (current != '_')
 			{
 				m_CurrentString.push_back(current);
 			}
 
-			_VerifyCondition(!(current == '.' && usedDecimal),21);
+			VerifyCondition(!(current == '.' && usedDecimal),21);
 
 			if (current == '.')
 			{
@@ -1427,21 +1427,21 @@ namespace clear
 			}
 
 
-			current = _GetNextChar();
+			current = GetNextChar();
 		}
-		_VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
+		VerifyCondition(IsValidNumber(m_CurrentString),20,-1,m_CurrentTokenIndex-2);
 		if (m_CurrentString == "-") {
-			_PushToken(TokenType::SubOp,"-");
+			PushToken(TokenType::SubOp,"-");
 		}else {
 
-			_PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
+			PushToken({ .TokenType = TokenType::RValueNumber, .Data = m_CurrentString });
 		}
 		m_CurrentString.clear();
 		if (!IsSpace(current))
-			_Backtrack();
+			Backtrack();
 	}
 
-	ProgramInfo Lexer::_SubParse(std::string arg, bool allowvarname) {
+	ProgramInfo Lexer::SubParse(std::string arg, bool allowvarname) {
 		Lexer subLexer;
 		subLexer.InitLexer();
 		subLexer.m_Buffer = arg;
@@ -1453,9 +1453,9 @@ namespace clear
 
 		if (!info.Errors.empty()) {
 			auto cause = info.Errors.front();
-			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
-			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
-			// _RaiseError();
+			VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
+			// Vali(cause.ErrorMessage,cause.Advice,cause.);
+			// RaiseError();
 		}
 		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
 			info.Tokens.pop_back();
@@ -1464,7 +1464,7 @@ namespace clear
 		return info;
 	}
 
-	ProgramInfo Lexer::_SubParse(std::string arg) {
+	ProgramInfo Lexer::SubParse(std::string arg) {
 		Lexer subLexer;
 		subLexer.InitLexer();
 		subLexer.m_Buffer = arg;
@@ -1475,9 +1475,9 @@ namespace clear
 
 		if (!info.Errors.empty()) {
 			auto cause = info.Errors.front();
-			_VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
-			// _Vali(cause.ErrorMessage,cause.Advice,cause.);
-			// _RaiseError();
+			VerifyCondition(false,cause.ErrorMessage,cause.Advice,cause.ErrorType,m_TokenIndexStart,m_TokenIndexStart+(cause.to-cause.from));
+			// Vali(cause.ErrorMessage,cause.Advice,cause.);
+			// RaiseError();
 		}
 		if (info.Tokens.front().TokenType == TokenType::OpenBracket && info.Tokens.back().TokenType == TokenType::CloseBracket) {
 			info.Tokens.pop_back();
@@ -1487,34 +1487,34 @@ namespace clear
 	}
 
 
-	void Lexer::_ParseList() {
+	void Lexer::ParseList() {
 		m_CurrentErrorState = "List literal";
-		auto  bracketInfo = _ParseBrackets('}',true);
-		_PushToken(TokenType::StartArray,"{");
+		auto  bracketInfo = ParseBrackets('}',true);
+		PushToken(TokenType::StartArray,"{");
 
  		for (const std::string& arg : bracketInfo.tokens) {
 
-			ProgramInfo info = _SubParse(arg,false);
+			ProgramInfo info = SubParse(arg,false);
 			for (const Token& tok :info.Tokens) {
-				_PushToken(tok);
+				PushToken(tok);
 			}
-			_PushToken(TokenType::Comma, "");
+			PushToken(TokenType::Comma, "");
 		}
-		if (_GetLastToken().TokenType == TokenType::Comma) {
+		if (GetLastToken().TokenType == TokenType::Comma) {
 			m_ProgramInfo.Tokens.pop_back();
 		}
 
 
-		_PushToken(TokenType::EndArray,"}");
+		PushToken(TokenType::EndArray,"}");
 		m_CurrentState = LexerState::Default;
 	}
 
 
-	void Lexer::_ParseChar() {
-		char current = _GetNextChar();
+	void Lexer::ParseChar() {
+		char current = GetNextChar();
 		char data = current;
 		if (current == '\\') {
-			current = _GetNextChar();
+			current = GetNextChar();
 			if (current == '\'') {
 				data = '\'';
 				current = 0;
@@ -1541,7 +1541,7 @@ namespace clear
 			}
 			else {
 				std::string message = "\"\\"+ Str(current)+"\"";
-				_VerifyCondition(false,13,m_TokenIndexStart+1,message);
+				VerifyCondition(false,13,m_TokenIndexStart+1,message);
 
 			}
 
@@ -1550,23 +1550,23 @@ namespace clear
 		// if (current == '\'') {
 		// 	current = '';
 		// }
-		_VerifyCondition(current!= '\'',14);
+		VerifyCondition(current!= '\'',14);
 
 
-		_PushToken(TokenType::RValueChar,Str(data));
-		current = _GetNextChar();
-		_VerifyCondition(current == '\'',15);
+		PushToken(TokenType::RValueChar,Str(data));
+		current = GetNextChar();
+		VerifyCondition(current == '\'',15);
 	}
 
 
-	void Lexer::_ParseString()
+	void Lexer::ParseString()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		while (current != '"')
 		{
-			_VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
+			VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
 			if (current == '\\') {
-				current = _GetNextChar();
+				current = GetNextChar();
 				if (current == '"') {
 					m_CurrentString += '"';
 				}
@@ -1600,39 +1600,39 @@ namespace clear
 				m_CurrentString += current;
 
 			}
-			current = _GetNextChar();
+			current = GetNextChar();
 
 
 		}
 
-		_PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
+		PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
 		m_CurrentString.clear();
 	}
 
-	void Lexer::_ParseOther()
+	void Lexer::ParseOther()
 	{
-		char current = _GetNextChar();
+		char current = GetNextChar();
 		m_CurrentString.clear();
 
 		while (IsVarNameChar(current ) && current)
 		{
 			m_CurrentString += current;
 
-			current = _GetNextChar();
+			current = GetNextChar();
 			if (current == '\n' || current == '\0' || IsSpace(current))
 				break;
 		}
 		if (current == '(') {
 			if (!m_CurrentString.empty())
-				_Backtrack();
+				Backtrack();
 				return;
 		}
 
-		if (_IsTypeDeclared(m_CurrentString) && _GetLastToken().TokenType != TokenType::DotOp) {
-			_PushToken(TokenType::TypeIdentifier, m_CurrentString);
+		if (IsTypeDeclared(m_CurrentString) && GetLastToken().TokenType != TokenType::DotOp) {
+			PushToken(TokenType::TypeIdentifier, m_CurrentString);
 			m_CurrentString.clear();
 			m_CurrentState= LexerState::VariableName;
-			_Backtrack();
+			Backtrack();
 			return;
 
 		}
@@ -1640,20 +1640,20 @@ namespace clear
 		if (g_KeyWordMap.contains(m_CurrentString))
 		{
 			auto& value = g_KeyWordMap.at(m_CurrentString);
-			_PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
+			PushToken({ .TokenType = value.TokenToPush, .Data = m_CurrentString });
 			if (g_DataTypes.contains(m_CurrentString)) {
 				m_CurrentString.clear();
 				m_CurrentState= LexerState::VariableName;
-				_Backtrack();
+				Backtrack();
 				return;
 
 			}
 		}else {
-			_PushVariableReference( m_CurrentString);
+			PushVariableReference( m_CurrentString);
 		}
 
 		m_CurrentString.clear();
 		m_CurrentState = LexerState::Default;
-		_Backtrack();
+		Backtrack();
 	}
 }

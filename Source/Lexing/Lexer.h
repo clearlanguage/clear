@@ -60,35 +60,35 @@ namespace clear
 		bool IsSubLexer = false;
 
 	private:
-		void _DefaultState();
-		void _VariableNameState();
-		void _OperatorState();
-		void _IndentationState();
-		void _FunctionNameState();
-		void _FunctionParameterState();
-		void _ArrowState();
-		void _FunctionTypeState();
-		void _CommentState();
-		void _StructNameState();
-		void _FunctionArgumentState();
-		void _MultiLineCommentState();
-		void _IndexOperatorState();
-		void _AsterisksState();
-		void _MinusOperator();
-		void _DeclarationState();
-		void _IncrementOperator();
-		void _RestrictionState();
-		void _DotOpState();
+		void DefaultState();
+		void VariableNameState();
+		void OperatorState();
+		void IndentationState();
+		void FunctionNameState();
+		void FunctionParameterState();
+		void ArrowState();
+		void FunctionTypeState();
+		void CommentState();
+		void StructNameState();
+		void FunctionArgumentState();
+		void MultiLineCommentState();
+		void IndexOperatorState();
+		void AsterisksState();
+		void MinusOperator();
+		void DeclarationState();
+		void IncrementOperator();
+		void RestrictionState();
+		void DotOpState();
 
 
-		Token _GetLastToken();
-		Token _GetLastToken(size_t x);
-		Token _CreateToken(const TokenType tok, const std::string& data);
+		Token GetLastToken();
+		Token GetLastToken(size_t x);
+		Token CreateToken(const TokenType tok, const std::string& data);
 
 
 
 		template<typename ...Args>
-		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, int endIndex, Args&&... args) requires RestrictToString<Args...>
+		void VerifyCondition(bool condition, int ErrorNumber, int startIndex, int endIndex, Args&&... args) requires RestrictToString<Args...>
 		{
 			if (condition) return;
 			ErrorNumber--;
@@ -96,11 +96,11 @@ namespace clear
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
 			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
-			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex, endIndex);
+			VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex, endIndex);
 		}
 
 		template<typename ...Args>
-		void _VerifyCondition(bool condition, int ErrorNumber, int startIndex, Args&&... args) requires RestrictToString<Args...>
+		void VerifyCondition(bool condition, int ErrorNumber, int startIndex, Args&&... args) requires RestrictToString<Args...>
 		{
 			if (condition) return;
 			ErrorNumber--;
@@ -108,11 +108,11 @@ namespace clear
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
 			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
-			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex);
+			VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType, startIndex);
 		}
 
 		template<typename ...Args>
-		void _VerifyCondition(bool condition, int ErrorNumber, Args&&... args) requires RestrictToString<Args...>
+		void VerifyCondition(bool condition, int ErrorNumber, Args&&... args) requires RestrictToString<Args...>
 		{
 			if (condition) return;
 			ErrorNumber--;
@@ -120,54 +120,54 @@ namespace clear
 			err.ErrorMessage = std::vformat(err.ErrorMessage, std::make_format_args(args...));
 			err.Advice =  std::vformat(err.Advice, std::make_format_args(args...));
 			err.ErrorType = std::vformat(err.ErrorType, std::make_format_args(args...));
-			_VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType);
+			VerifyCondition(condition, err.ErrorMessage, err.Advice, err.ErrorType);
 		}
 
-		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
-		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex,int endIndex) ;
-		void _VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex);
+		void VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType);
+		void VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex,int endIndex) ;
+		void VerifyCondition(bool condition,std::string Error, std::string Advice,std::string ErrorType,int startIndex);
 
 
-		void _RaiseError(Error& err);
-		Error _CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
+		void RaiseError(Error& err);
+		Error CreateError(std::string& Error, std::string& Advice,std::string& ErrorType);
 
-		ProgramInfo _SubParse(std::string arg);
-		ProgramInfo _SubParse(std::string arg,bool allowvarname);
+		ProgramInfo SubParse(std::string arg);
+		ProgramInfo SubParse(std::string arg,bool allowvarname);
 
 
-		bool _IsTypeDeclared(const std::string& type);
-		bool _IsRestrictionDeclared(const std::string& type);
+		bool IsTypeDeclared(const std::string& type);
+		bool IsRestrictionDeclared(const std::string& type);
 
-		void _ParsingRValueState();
-		void _ParseNumber();
-		void _ParseString();
-		void _ParseOther();
-		void _ParseChar();
-		void _AmpersandState();
-		void _ParseBinaryLiteral();
-		void _ParseHexLiteral();
-		void _ParseExponentNumber(std::string x);
-		void _ParseList();
-		std::string _CleanBrackets(std::string x);
-		BracketParsingReturn _ParseBrackets(char end,bool commas);
+		void ParsingRValueState();
+		void ParseNumber();
+		void ParseString();
+		void ParseOther();
+		void ParseChar();
+		void AmpersandState();
+		void ParseBinaryLiteral();
+		void ParseHexLiteral();
+		void ParseExponentNumber(std::string x);
+		void ParseList();
+		std::string CleanBrackets(std::string x);
+		BracketParsingReturn ParseBrackets(char end,bool commas);
 
-		void _ParseArrayDeclaration();
-		void _ParsePointerDeclaration();
-		void _ParseGenericDeclaration();
+		void ParseArrayDeclaration();
+		void ParsePointerDeclaration();
+		void ParseGenericDeclaration();
 
-		void _PushToken(const TokenType tok, const std::string& data);
-		void _PushToken(Token tok);
-		bool _IsEndOfLine();
-		char _SkipSpaces();
-		void _ResetSecondState();
+		void PushToken(const TokenType tok, const std::string& data);
+		void PushToken(Token tok);
+		bool IsEndOfLine();
+		char SkipSpaces();
+		void ResetSecondState();
 
-		std::string _GetCurrentErrorContext(std::string ErrorRef);
+		std::string GetCurrentErrorContext(std::string ErrorRef);
 
-		char _GetNextChar();
-		void _Backtrack();
-		void _EndLine();
+		char GetNextChar();
+		void Backtrack();
+		void EndLine();
 
-		void _PushVariableReference(const std::string& x);
+		void PushVariableReference(const std::string& x);
 		void ClassNameState();
 
 
