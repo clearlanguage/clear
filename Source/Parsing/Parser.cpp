@@ -170,8 +170,7 @@ namespace clear
     {
         if(Match(tokenType)) return;
         
-        CLEAR_LOG_ERROR("missing expected token ", TokenToString(tokenType));
-        CLEAR_UNREACHABLE("TODO");
+        CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", Peak().Data);
     }
 
     void Parser::ExpectAny(TokenSet tokenSet)
