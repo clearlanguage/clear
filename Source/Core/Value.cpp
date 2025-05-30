@@ -23,7 +23,7 @@ namespace clear
 		if(hash == "uint64") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), true), nullptr};
 
 		if(hash == "float32") return {llvm::ConstantFP::get(llvm::Type::getFloatTy(context), (float)std::stod(data)), nullptr};
-		if(hash == "float64") return {llvm::ConstantFP::get(llvm::Type::getFloatTy(context), (double)std::stod(data)), nullptr};
+		if(hash == "float64") return {llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), (double)std::stod(data)), nullptr};
 
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data == "true" ? 1 : 0), nullptr};
 		

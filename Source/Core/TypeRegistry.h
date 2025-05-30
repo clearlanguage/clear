@@ -27,6 +27,7 @@ namespace clear
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);
+        void CascadeType(std::shared_ptr<Type> type);
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;

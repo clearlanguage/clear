@@ -45,6 +45,11 @@ namespace clear
     {
         CLEAR_VERIFY(!m_Types.contains(name), "conflicting type name ", name);
         m_Types[name] = type;
+
+        //if(type->IsArray() || type->IsPointer()) 
+        //{
+        //    CascadeType(type);
+        //}
     }
 
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
@@ -196,5 +201,21 @@ namespace clear
         
         CLEAR_LOG_ERROR("unable to guess type for ", number);
         return "";
+    }
+
+    void TypeRegistry::CascadeType(std::shared_ptr<Type> type)
+    {
+        if(auto ty = std::dynamic_pointer_cast<PointerType>(type))
+        {
+            std::string hash = ty->GetBaseType()->GetHash();
+
+            if(!m_Types.contains(hash))
+            {
+                m_Types[hash] = ty->GetBaseType();
+                CascadeType(ty);
+                return;
+            }
+
+        }
     }
 }

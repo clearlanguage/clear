@@ -897,7 +897,7 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 		FunctionData& data = symbolTable->GetFunction(m_Name);
-
+		
 		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
 
 		uint32_t k = 0;
@@ -1159,8 +1159,6 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(ctx.LookupTable.contains(completeFilePath), "cannot find ", completeFilePath);
-
-		
 		
 		ProcessTypes(completeFilePath, ctx);
 
@@ -1185,6 +1183,28 @@ namespace clear
 			registeredData.FunctionType = importedData.FunctionType;
 			registeredData.Function = llvm::cast<llvm::Function>(callee.getCallee());
 			registeredData.Parameters = importedData.Parameters;
+
+			//for(const auto& param : importedData.Parameters)
+			//{
+			//	if(param.IsVariadic)
+			//	{
+			//		registeredData.Parameters.push_back(param);
+			//		continue;
+			//	}
+//
+			//	Parameter translated;
+			//	translated.Type = ctx.Registry.GetType(param.Type->GetHash());
+			//	translated.Name = param.Name;
+//
+			//	if(!translated.Type)
+			//	{
+			//		ctx.Registry.RegisterType(param.Type->GetHash(), param.Type);
+			//		translated.Type = param.Type;
+			//	}
+//
+			//	registeredData.Parameters.push_back(param);
+			//}
+
 			registeredData.ReturnType = importedData.ReturnType;
 
 			if(!m_Alias.empty())

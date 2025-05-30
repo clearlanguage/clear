@@ -65,6 +65,11 @@ namespace clear
         m_Flags.set((size_t)TypeFlags::Pointer);
     }
 
+    void PointerType::SetBaseType(std::shared_ptr<Type> type)
+    {
+        m_BaseType = type;
+    }
+
     ArrayType::ArrayType(std::shared_ptr<Type> baseType, size_t count)
         : m_LLVMType(llvm::ArrayType::get(baseType->Get(), count)), m_BaseType(baseType), 
           m_Count(count)
@@ -80,6 +85,11 @@ namespace clear
     std::string ArrayType::GetShortHash() const
     {
         return m_BaseType->GetShortHash() + "[" + std::to_string(m_Count) + "]";
+    }
+
+    void ArrayType::SetBaseType(std::shared_ptr<Type> type)
+    {
+        
     }
 
     StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)

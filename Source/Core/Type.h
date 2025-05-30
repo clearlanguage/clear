@@ -98,6 +98,7 @@ namespace clear
 
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
+        void SetBaseType(std::shared_ptr<Type> type);
 
     private:
         std::shared_ptr<Type> m_BaseType;
@@ -118,6 +119,7 @@ namespace clear
         virtual std::string GetShortHash() const override;
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
+        void SetBaseType(std::shared_ptr<Type> type);
         size_t GetArraySize() const { return m_Count; }
 
 
