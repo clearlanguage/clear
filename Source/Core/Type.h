@@ -47,6 +47,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const = 0;
         virtual size_t      GetSize()  const { return 0; };
         virtual std::string GetHash()  const = 0;
+        virtual std::string GetShortHash() const = 0;
             
         bool IsSigned();
         bool IsFloatingPoint();
@@ -74,6 +75,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual size_t GetSize() const override { return m_Size; }
         virtual std::string GetHash() const override { return m_Name; }
+        virtual std::string GetShortHash() const override { return m_Name[0] + std::to_string(GetSize()); }
 
     private:
         llvm::Type* m_LLVMType;
@@ -92,6 +94,8 @@ namespace clear
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
+        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "*"; }
+
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
 
@@ -111,6 +115,7 @@ namespace clear
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override;
+        virtual std::string GetShortHash() const override;
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         size_t GetArraySize() const { return m_Count; }
@@ -133,6 +138,7 @@ namespace clear
         virtual llvm::Type* Get() const override { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_Name; };
+        virtual std::string GetShortHash() const override { return m_Name; };
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);

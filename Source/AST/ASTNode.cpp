@@ -1160,7 +1160,7 @@ namespace clear
 			
 			FunctionData& importedData = rootSymbolTable->GetFunction(fun->GetName());
 
-			llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(fun->GetName(), importedData.FunctionType);
+			llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(importedData.MangledName, importedData.FunctionType);
 
 			FunctionData registeredData;
 			registeredData.FunctionType = importedData.FunctionType;

@@ -77,6 +77,11 @@ namespace clear
         return m_BaseType->GetHash() + "[" + std::to_string(m_Count) + "]";
     }
 
+    std::string ArrayType::GetShortHash() const
+    {
+        return m_BaseType->GetShortHash() + "[" + std::to_string(m_Count) + "]";
+    }
+
     StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
         : m_Name(name)
     {

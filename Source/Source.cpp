@@ -25,9 +25,10 @@ int main(int argc, char* argv[])
         auto start = std::chrono::high_resolution_clock::now();
         std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path() / "Tests");
         std::cout << std::filesystem::current_path() << std::endl;
+        
+        CLEAR_LOG_INFO(LLVM_VERSION_STRING);
 
         BuildConfig config = BuildConfig::BuildConfigFromToml("build.toml");
-
         std::cout << "Compiling " <<config.ApplicationName << std::endl;
         
         CompilationManager manager(config);
