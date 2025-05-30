@@ -303,6 +303,7 @@ namespace clear
         if(m_GeneratedModules.contains(path)) 
             return;
 
+        
         auto& [rootNode, reg] = m_LookupTable.at(path);
 
         for(const auto& node : rootNode->GetChildren())

@@ -13,4 +13,4 @@ function main():
         n--
 
     int[3] arr = {1, 2, 3}
-    int* ptr = arr
+    int* ptr = &arr[0]

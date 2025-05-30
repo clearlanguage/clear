@@ -276,15 +276,17 @@ namespace clear
 	class ASTImport : public ASTNodeBase
 	{
 	public:
-		ASTImport(const std::filesystem::path& filepath);
+		ASTImport(const std::filesystem::path& filepath, const std::string& alias = "");
 		virtual ~ASTImport() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Import; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const std::filesystem::path& GetFilePath() const { return m_Filepath; }
+		const std::string& GetAlias() const { return m_Alias; }
 
 	private:
 		std::filesystem::path m_Filepath;
+		std::string m_Alias;
 	};
 
 	class ASTMember : public ASTNodeBase

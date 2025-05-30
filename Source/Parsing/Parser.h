@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <vector>
+#include <set>
 
 namespace clear  
 {
@@ -63,6 +64,7 @@ namespace clear
 
     private:    
         std::vector<Token> m_Tokens;
+        std::set<std::string> m_Aliases;
         size_t m_Position = 0;
         TypeRegistry& m_TypeRegistry;
 

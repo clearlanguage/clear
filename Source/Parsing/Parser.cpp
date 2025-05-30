@@ -317,10 +317,23 @@ namespace clear
 
         Expect(TokenType::RValueString);
 
-        std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(Consume().Data);
+        std::string path  = Consume().Data;
+        std::string alias = "";
+
+        if(Match(TokenType::VariableReference))
+        {
+            Consume();
+
+            Expect(TokenType::RValueString);
+            alias = Consume().Data;
+            
+            CLEAR_VERIFY(!m_Aliases.contains(alias), "conflicting aliases");
+            m_Aliases.insert(alias);
+        }
+
+        std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(path, alias);
 
         Expect(TokenType::EndLine);
-
         Root()->Push(import);
     }
 
@@ -547,9 +560,20 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        Expect(TokenType::FunctionCall);
+        Expect(TokenType::VariableReference);
 
         std::string functionName = Consume().Data;
+
+        while(Match(TokenType::DotOp))
+        {
+            functionName += ".";
+            Consume();
+            Expect(TokenType::MemberName);
+            functionName += Consume().Data;
+        }
+
+        Expect(TokenType::FunctionCall);    
+        Consume();
 
         Expect(TokenType::OpenBracket);
 
@@ -578,10 +602,15 @@ namespace clear
     {
         Expect(TokenType::VariableReference);
 
-        std::string name = Consume().Data;
-
-        if(Match(TokenType::FunctionCall)) 
+        if(Next().TokenType == TokenType::FunctionCall) 
             return ParseFunctionCall();
+        
+        if(m_Aliases.contains(Peak().Data))
+        {
+            return ParseFunctionCall();
+        }
+        
+        std::string name = Consume().Data;
 
         return std::make_shared<ASTVariable>(name);
     }

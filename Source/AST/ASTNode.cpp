@@ -967,8 +967,10 @@ namespace clear
 		data.Parameters = m_Parameters;
 		data.ReturnType = m_ReturnType;
 
+		
 		GetSymbolTable()->RegisterFunction(m_Name, data);
-			
+
+
 		return { data.Function, m_ReturnType };	
 	}
 
@@ -1134,8 +1136,8 @@ namespace clear
     }
 
 
-    ASTImport::ASTImport(const std::filesystem::path& filepath)
-		: m_Filepath(filepath)
+    ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
+		: m_Filepath(filepath), m_Alias(alias)
     {
     }
 
@@ -1166,7 +1168,10 @@ namespace clear
 			registeredData.Parameters = importedData.Parameters;
 			registeredData.ReturnType = importedData.ReturnType;
 
-			GetSymbolTable()->RegisterFunction(fun->GetName(), registeredData);
+			if(!m_Alias.empty())
+				GetSymbolTable()->RegisterFunction(m_Alias + "." + fun->GetName(), registeredData);
+			else 
+				GetSymbolTable()->RegisterFunction(fun->GetName(), registeredData);
 
 		}
 
