@@ -32,6 +32,7 @@ namespace clear
         llvm::Function* Function;
         std::shared_ptr<Type> ReturnType;
         std::vector<Parameter> Parameters;
+        std::string MangledName;
     };
 
     class SymbolTable
@@ -61,6 +62,10 @@ namespace clear
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
 
     private:
+        std::string MangleFunctionName(const std::string& name, const FunctionData& data);
+
+    private:
+
         std::unordered_map<std::string, Allocation>   m_Variables; 
         std::unordered_map<std::string, FunctionData> m_Functions; 
 

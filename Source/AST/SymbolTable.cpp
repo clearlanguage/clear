@@ -39,13 +39,15 @@ namespace clear
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), parameterTypes, false);
 
-		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, name, module);
 
 		FunctionData functionData;
-        functionData.Function     = function;
         functionData.FunctionType = functionType;
         functionData.ReturnType   = returnType;
         functionData.Parameters   = parameters;
+        functionData.MangledName = MangleFunctionName(name, functionData);
+
+		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, functionData.MangledName, module);
+        functionData.Function     = function;
 
         m_Functions[name] = functionData;
         return m_Functions[name];
@@ -106,5 +108,29 @@ namespace clear
     void SymbolTable::SetPrevious(const std::shared_ptr<SymbolTable>& previous)
     {
         m_Previous = previous;
+    }
+
+    std::string SymbolTable::MangleFunctionName(const std::string& name, const FunctionData& data)
+    {
+        if(name == "main") return name;
+
+        std::string mangledNamed = "_CLR";
+        mangledNamed += name;
+
+        for(const auto& param : data.Parameters)
+        {
+            if(param.IsVariadic)
+            {
+                mangledNamed += "V_";
+                break;
+            }
+            else
+            {
+                mangledNamed += param.Type->GetShortHash();
+            }
+        }
+
+
+        return mangledNamed;
     }
 }
