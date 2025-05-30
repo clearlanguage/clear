@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
         config.StandardLibrary = std::filesystem::current_path().parent_path() / "Standard";
         CLEAR_LOG_INFO(config.StandardLibrary);
         
-        CompilationManager manager(config);
+        CompilationManager manager(config); // comp
         manager.LoadSources();
         manager.PropagateSymbolTables();
         manager.GenerateIRAndObjectFiles();
