@@ -194,7 +194,10 @@ namespace clear
         std::vector<std::string> args = { "clang" };
 
         if(m_Config.IncludeCStandard)
+        {
             args.push_back("-std=c11");
+            args.push_back("-lm");
+        }
 
         if(m_Config.OutputFormat == BuildConfig::OutputFormatType::DynamicLibrary)
         {
@@ -303,6 +306,8 @@ namespace clear
         if(m_GeneratedModules.contains(path)) 
             return;
 
+        if(path.extension() == ".h") 
+            return;
         
         auto& [rootNode, reg] = m_LookupTable.at(path);
 

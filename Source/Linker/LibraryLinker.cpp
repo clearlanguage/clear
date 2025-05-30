@@ -25,10 +25,12 @@ inline std::string Trim(const std::string& str)
 
 
 namespace clear {
-    std::string RunClangPreprocess(const std::string& headerFile) {
+    std::string RunClangPreprocess(const std::string& headerFile) 
+    {
         const std::string tempFile = "clang_output.txt";
-        const std::string command = "clang -E -v " + headerFile + " > " + tempFile + " 2>&1";
-
+        
+        std::string command = "clang -E -v \"" + headerFile + "\"" + " > " + tempFile + " 2>&1";
+        
         int result = std::system(command.c_str());
         if (result != 0) {
             std::cerr << "Failed to run clang preprocess command\n";
@@ -52,9 +54,14 @@ namespace clear {
             CLEAR_HALT();
         }
 
+        
+        CLEAR_LOG_INFO(code);
         std::vector<HeaderFunc> funcs;
 
-        std::regex pattern(R"(([\w\s\*\d]+?)\s+([\w_][\w\d_]*)\s*\(([^)]*)\)\s*;)");
+        std::regex pattern(
+            R"(^\s*(?:extern\s+)?([\w\s\*]+?)\s+([\w_][\w_]*)\s*\(([^)]*)\)\s*;)",
+            std::regex::ECMAScript | std::regex::multiline);
+            
         std::smatch match;
         auto begin = code.cbegin();
         auto end = code.cend();
@@ -88,75 +95,75 @@ namespace clear {
     std::vector<Token> TranslateCTypeToClearLang(const std::string& ctype)
     {
         std::string clean = ctype;
-    std::string type = clean;
+         std::string type = clean;
 
-    // Remove qualifiers
-    const std::vector<std::string> qualifiers = { "extern", "const", "volatile", "static", "register", "inline" };
-    for (const auto& q : qualifiers) {
-        size_t pos;
-        while ((pos = type.find(q)) != std::string::npos) {
-            type.erase(pos, q.length());
+        // Remove qualifiers
+        const std::vector<std::string> qualifiers = { "extern", "const", "volatile", "static", "register", "inline" };
+        for (const auto& q : qualifiers) {
+            size_t pos;
+            while ((pos = type.find(q)) != std::string::npos) {
+                type.erase(pos, q.length());
+            }
         }
-    }
 
-    // Trim and normalize spaces
-    type = Trim(type);
-    while (type.find("  ") != std::string::npos)
-        type = std::regex_replace(type, std::regex("  +"), " ");
+        // Trim and normalize spaces
+        type = Trim(type);
+        while (type.find("  ") != std::string::npos)
+            type = std::regex_replace(type, std::regex("  +"), " ");
 
-    // Count pointer indirection levels (e.g., "int **" → 2)
-    int pointerCount = 0;
-    while (!type.empty() && (type.back() == '*' || type.back() == ' ')) {
-        if (type.back() == '*')
-            pointerCount++;
-        type.pop_back();
-    }
+        // Count pointer indirection levels (e.g., "int **" → 2)
+        int pointerCount = 0;
+        while (!type.empty() && (type.back() == '*' || type.back() == ' ')) {
+            if (type.back() == '*')
+                pointerCount++;
+            type.pop_back();
+        }
 
-    type = Trim(type);
+        type = Trim(type);
 
-    // Map C base types to ClearLang base types
-    static const std::unordered_map<std::string, std::string> typeMap = {
-        { "void", "void" },
-        { "char", "int8" },
-        { "short", "int16" },
-        { "int", "int32" },
-        { "long", "int64" },
-        { "float", "float32" },
-        { "double", "float64" },
-        { "unsigned char", "uint8" },
-        { "unsigned short", "uint16" },
-        { "unsigned int", "uint32" },
-        { "unsigned long", "uint64" },
-        { "signed char", "int8" },
-        { "signed short", "int16" },
-        { "signed int", "int32" },
-        { "signed long", "int64" },
-        { "long long", "int64" },  // Can be adapted if needed
-        { "unsigned long long", "uint64" },
-        { "size_t", "uint64" },
-        {"long double","float64"},
-        {"long int","int64"},
-        {"long long int","int64"}
-    };
+        // Map C base types to ClearLang base types
+        static const std::unordered_map<std::string, std::string> typeMap = {
+            { "void", "void" },
+            { "char", "int8" },
+            { "short", "int16" },
+            { "int", "int32" },
+            { "long", "int64" },
+            { "float", "float32" },
+            { "double", "float64" },
+            { "unsigned char", "uint8" },
+            { "unsigned short", "uint16" },
+            { "unsigned int", "uint32" },
+            { "unsigned long", "uint64" },
+            { "signed char", "int8" },
+            { "signed short", "int16" },
+            { "signed int", "int32" },
+            { "signed long", "int64" },
+            { "long long", "int64" },  // Can be adapted if needed
+            { "unsigned long long", "uint64" },
+            { "size_t", "uint64" },
+            {"long double","float64"},
+            {"long int","int64"},
+            {"long long int","int64"}
+        };
 
-    // Recombine multi-word types (e.g., "unsigned long")
-    std::string baseType = type;
-    if (typeMap.contains(baseType)) {
-        baseType = typeMap.at(baseType);
-    } else {
-        CLEAR_LOG_ERROR("Unknown C type: ", type);
-        baseType = type; // Keep unknown type name
-        return {};
-    }
-
-    // Apply pointer indirection (e.g., int** → int8** in clear)
-    for (int i = 0; i < pointerCount; ++i) {
-        baseType += "*";
-    }
-    Lexer lexer;
-    auto p = lexer.SubParse(baseType,false);
-        CLEAR_VERIFY(p.Errors.empty(),"could not parse cType" )
-        return p.Tokens;
-    }
-
+        // Recombine multi-word types (e.g., "unsigned long")
+        std::string baseType = type;
+        if (typeMap.contains(baseType)) {
+            baseType = typeMap.at(baseType);
+        } else {
+            CLEAR_LOG_ERROR("Unknown C type: ", type);
+            baseType = type; // Keep unknown type name
+            return {};
+        }
+    
+        // Apply pointer indirection (e.g., int** → int8** in clear)
+        for (int i = 0; i < pointerCount; ++i) {
+            baseType += "*";
+        }
+        Lexer lexer;
+        auto p = lexer.SubParse(baseType,false);
+            CLEAR_VERIFY(p.Errors.empty(),"could not parse cType" )
+            return p.Tokens;
+        }
+    
 }

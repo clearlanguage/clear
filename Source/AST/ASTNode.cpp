@@ -1144,12 +1144,26 @@ namespace clear
 	CodegenResult ASTImport::Codegen(CodegenContext& ctx)
 	{
 		std::filesystem::path completeFilePath = ctx.CurrentDirectory / m_Filepath;
+
+		if(completeFilePath.extension() == ".h")
+		{
+			CLEAR_VERIFY(std::filesystem::exists(completeFilePath), completeFilePath, " doesn't exist");
+			ProcessCImport(completeFilePath, ctx);
+
+			return {};
+		}
+
 		CLEAR_VERIFY(ctx.LookupTable.contains(completeFilePath), "cannot find ", completeFilePath);
+
+		
+		
+		ProcessTypes(completeFilePath, ctx);
 
 		auto& lookupInfo = ctx.LookupTable.at(completeFilePath);
 
 		auto& rootChildren = lookupInfo.Node->GetChildren();
 		auto rootSymbolTable = lookupInfo.Node->GetSymbolTable();
+
 
 		for(const auto& child : rootChildren)
 		{
@@ -1177,6 +1191,91 @@ namespace clear
 
 		return {};
 	}
+
+    void ASTImport::ProcessCImport(const std::filesystem::path& path, CodegenContext& ctx)
+    {
+		auto functions = ExtractFunctions(path);
+
+		for(const auto& header : functions)
+		{
+			FunctionData function = ParseHeader(header, ctx);
+
+			if(!m_Alias.empty())
+				GetSymbolTable()->RegisterFunction(m_Alias + "." + header.name, function);
+			else 
+				GetSymbolTable()->RegisterFunction(header.name, function);
+		}
+    }
+
+    FunctionData ASTImport::ParseHeader(const HeaderFunc& function, CodegenContext& ctx)
+    {
+		FunctionData functionData;
+		functionData.MangledName = function.name;
+
+		for(const auto& arg : function.args)
+		{
+			functionData.Parameters.push_back(GetInfoFromArg(arg, ctx));
+		}
+
+		functionData.ReturnType = GetInfoFromArg(function.returnType, ctx).Type;
+
+		std::vector<llvm::Type*> parameterTypes;
+        std::transform(functionData.Parameters.begin(), functionData.Parameters.end(), std::back_inserter(parameterTypes), [](Parameter& a) { return a.Type->Get(); });
+		llvm::FunctionType* functionType = llvm::FunctionType::get(functionData.ReturnType ? functionData.ReturnType->Get() : llvm::FunctionType::getVoidTy(ctx.Context), parameterTypes, false);
+		llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(function.name, functionType);
+
+		functionData.FunctionType = functionType;
+		functionData.Function = llvm::cast<llvm::Function>(callee.getCallee());
+	
+        return functionData;
+    }
+
+    Parameter ASTImport::GetInfoFromArg(const std::vector<Token>& arg, CodegenContext &ctx)
+    {
+		CLEAR_VERIFY(arg.size() >= 1, "args not valid");
+
+		Parameter param;
+		param.Name = "__unamed_c_parm";
+
+		if(arg[0].TokenType == TokenType::Ellipsis)
+		{
+			param.IsVariadic = true;
+			return param;
+		}
+
+		param.Type = ctx.Registry.GetTypeFromToken(arg[0]);
+		
+		for(size_t i = 1; i < arg.size(); i++)
+		{
+			if(arg[i].TokenType == TokenType::PointerDef)
+				param.Type = ctx.Registry.GetPointerTo(param.Type);
+			else if (arg[i].TokenType == TokenType::StaticArrayDef)
+				param.Type = ctx.Registry.GetArrayFrom(param.Type, std::stoull(arg[i].Data));
+			else
+				CLEAR_UNREACHABLE("invalid token");
+		}
+
+        return param;
+    }
+
+    void ASTImport::ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx)
+    {
+		auto& lookupInfo = ctx.LookupTable.at(path);
+
+		auto& rootChildren = lookupInfo.Node->GetChildren();
+		auto rootSymbolTable = lookupInfo.Node->GetSymbolTable();
+
+		for(const auto& [typeName, type] : lookupInfo.Registry.GetTypeTable())
+		{
+			if(type->IsCompound())
+			{
+				if(!m_Alias.empty())
+					ctx.Registry.RegisterType(m_Alias + "." + typeName, type);
+				else 
+					ctx.Registry.RegisterType(typeName, type);
+			}
+		}
+    }
 
     ASTMemberAccess::ASTMemberAccess()
     {

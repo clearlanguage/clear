@@ -13,6 +13,7 @@ namespace clear
         ~TypeRegistry() = default;
 
         void RegisterBuiltinTypes();
+        void RegisterType(const std::string& name, std::shared_ptr<Type> type);
 
         std::shared_ptr<Type> GetType(const std::string& name) const; 
         std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);
@@ -21,6 +22,8 @@ namespace clear
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
 
         static std::string GetTypeNameFromTokenType(TokenType type);
+
+        const auto& GetTypeTable() { return m_Types; }
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);

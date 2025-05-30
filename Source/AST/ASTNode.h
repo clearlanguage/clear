@@ -5,6 +5,7 @@
 
 #include "Lexing/Tokens.h"
 #include "SymbolTable.h"
+#include "Linker/LibraryLinker.h"
 
 #include <memory>
 #include <string>
@@ -283,6 +284,13 @@ namespace clear
 
 		const std::filesystem::path& GetFilePath() const { return m_Filepath; }
 		const std::string& GetAlias() const { return m_Alias; }
+
+	private:
+		void ProcessCImport(const std::filesystem::path& path,  CodegenContext& ctx);
+		FunctionData ParseHeader(const HeaderFunc& function, CodegenContext& ctx);
+		Parameter GetInfoFromArg(const std::vector<Token>& arg, CodegenContext& ctx);
+
+		void ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx);
 
 	private:
 		std::filesystem::path m_Filepath;

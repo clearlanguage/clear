@@ -17,5 +17,5 @@ namespace clear{
 
     std::string RunClangPreprocess(const std::string& headerFile);
     std::vector<HeaderFunc> ExtractFunctions(const std::string& code);
-    std::vector<Token>TranslateCTypeToClearLang(const std::string& ctype);
+    std::vector<Token> TranslateCTypeToClearLang(const std::string& ctype);
 }

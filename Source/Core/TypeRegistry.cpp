@@ -41,11 +41,17 @@ namespace clear
         m_Types["void"] = std::make_shared<PrimitiveType>(*m_Context);
     }
 
+    void TypeRegistry::RegisterType(const std::string& name, std::shared_ptr<Type> type)
+    {
+        CLEAR_VERIFY(!m_Types.contains(name), "conflicting type name ", name);
+        m_Types[name] = type;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
     {
         if(m_Types.contains(name)) 
             return m_Types.at(name);
-
+        
         return nullptr;
     }
 

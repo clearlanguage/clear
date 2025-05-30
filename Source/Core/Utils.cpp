@@ -57,6 +57,7 @@ namespace clear {
         return words;
     }
 
+
     int HexStringToInteger(const std::string& hexString)
     {
         int result = 0;
