@@ -12,7 +12,8 @@ endif()
 set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
-add_executable(clear "${MY_SOURCES}")
+add_executable(clear "${MY_SOURCES}"
+        Source/Linker/LibraryLinker.cpp)
 
 find_package(LLVM REQUIRED CONFIG)
 
@@ -53,7 +54,8 @@ FetchContent_MakeAvailable(fast_float tomlplusplus)
 include_directories(${LLVM_INCLUDE_DIRS} ${CLEAR_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
-target_link_libraries(clear PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlplusplus) 
+target_link_libraries(clear PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlplusplus)
 
+link_directories(${LLVM_LIBRARY_DIRS})
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")

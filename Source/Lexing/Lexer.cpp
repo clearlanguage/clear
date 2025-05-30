@@ -699,7 +699,7 @@ namespace clear
 			}
 		}
 		VerifyCondition(containsdata,40);
-		ProgramInfo info = SubParse(m_CurrentString,true);
+		ProgramInfo info = SubParse(m_CurrentString,false);
 
 		for (const Token& tok :info.Tokens)
 		{
@@ -1127,6 +1127,12 @@ namespace clear
 		{
 			ParseArrayDeclaration();
 			current = GetNextChar();
+			if (current == '*')
+			{
+				Backtrack();
+				ParsePointerDeclaration();
+				current = GetNextChar();
+			}
 		}
 		m_CurrentString.clear();
 		VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
