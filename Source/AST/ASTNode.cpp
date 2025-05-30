@@ -1153,6 +1153,11 @@ namespace clear
 			return {};
 		}
 
+		if(!ctx.LookupTable.contains(completeFilePath))
+		{
+			completeFilePath = ctx.StdLibraryDirectory / m_Filepath;
+		}
+
 		CLEAR_VERIFY(ctx.LookupTable.contains(completeFilePath), "cannot find ", completeFilePath);
 
 		
@@ -1200,10 +1205,12 @@ namespace clear
 		{
 			FunctionData function = ParseHeader(header, ctx);
 
+			std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
+
 			if(!m_Alias.empty())
-				GetSymbolTable()->RegisterFunction(m_Alias + "." + header.name, function);
+				tbl->RegisterFunction(m_Alias + "." + header.name, function);
 			else 
-				GetSymbolTable()->RegisterFunction(header.name, function);
+				tbl->RegisterFunction(header.name, function);
 		}
     }
 

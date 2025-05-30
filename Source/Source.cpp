@@ -24,13 +24,17 @@ int main(int argc, char* argv[])
     //else if(std::string(argv[1]) == "build")
     {
         auto start = std::chrono::high_resolution_clock::now();
-        std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path() / "Tests");
+        std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
         std::cout << std::filesystem::current_path() << std::endl;
         
         CLEAR_LOG_INFO(LLVM_VERSION_STRING);
 
-        BuildConfig config = BuildConfig::BuildConfigFromToml("build.toml");
+        BuildConfig config = BuildConfig::BuildConfigFromToml("Tests/build.toml");
         std::cout << "Compiling " <<config.ApplicationName << std::endl;
+
+        
+        config.StandardLibrary = std::filesystem::current_path().parent_path() / "Standard";
+        CLEAR_LOG_INFO(config.StandardLibrary);
         
         CompilationManager manager(config);
         manager.LoadSources();
@@ -42,6 +46,8 @@ int main(int argc, char* argv[])
         std::chrono::duration<double, std::milli> duration = end - start;
         std::cout << "Finished compiling " <<        config.ApplicationName << std::endl;
         std::cout << "Compilation took " << duration.count()/1000 << " s\n";
+
+        config.Serialize("Tests/build.toml");
     }
 
 

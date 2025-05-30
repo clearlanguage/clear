@@ -16,7 +16,7 @@ namespace clear
 
         BuildConfig config;
 
-        auto get_str_enum = [](const std::string& str, auto map, auto defaultVal) 
+        auto getStrEnum = [](const std::string& str, auto map, auto defaultVal) 
         {
             auto it = map.find(str);
             return it != map.end() ? it->second : defaultVal;
@@ -60,8 +60,7 @@ namespace clear
             {"NVPTX", BuildConfig::TargetArchitectureType::NVPTX}
         };
 
-        // Helper to load vector<string> -> vector<path>
-        auto load_path_array = [](const toml::array* arr) -> std::vector<std::filesystem::path> {
+        auto loadPathArray = [](const toml::array* arr) -> std::vector<std::filesystem::path> {
             std::vector<std::filesystem::path> result;
             if (!arr) return result;
             for (const auto& val : *arr) 
@@ -76,19 +75,20 @@ namespace clear
 
         config.ApplicationName = tbl["ApplicationName"].value_or("UnnamedApp");
 
-        config.SourceDirectories = load_path_array(tbl["SourceDirectories"].as_array());
-        config.SourceFiles = load_path_array(tbl["SourceFiles"].as_array());
-        config.LibraryDirectories = load_path_array(tbl["LibraryDirectories"].as_array());
-        config.LibraryNames = load_path_array(tbl["LibraryNames"].as_array());
-        config.LibraryFilePaths = load_path_array(tbl["LibraryFilePaths"].as_array());
+        config.SourceDirectories = loadPathArray(tbl["SourceDirectories"].as_array());
+        config.SourceFiles = loadPathArray(tbl["SourceFiles"].as_array());
+        config.LibraryDirectories = loadPathArray(tbl["LibraryDirectories"].as_array());
+        config.LibraryNames = loadPathArray(tbl["LibraryNames"].as_array());
+        config.LibraryFilePaths = loadPathArray(tbl["LibraryFilePaths"].as_array());
 
         if (auto v = tbl["OutputPath"].value<std::string>()) config.OutputPath = *v;
         if (auto v = tbl["OutputFilename"].value<std::string>()) config.OutputFilename = *v;
+        if (auto v = tbl["StandardLibrary"].value<std::string>()) config.StandardLibrary = *v;
 
-        config.OptimizationLevel = get_str_enum(tbl["OptimizationLevel"].value_or("Development"), optLevels, BuildConfig::OptimizationLevelType::Development);
-        config.WarningLevel = get_str_enum(tbl["WarningLevel"].value_or("Medium"), warningLevels, BuildConfig::WarningLevelType::Medium);
-        config.OutputFormat = get_str_enum(tbl["OutputFormat"].value_or("Executable"), outputFormats, BuildConfig::OutputFormatType::Executable);
-        config.TargetArchitecture = get_str_enum(tbl["TargetArchitecture"].value_or("Default"), archMap, BuildConfig::TargetArchitectureType::Default);
+        config.OptimizationLevel = getStrEnum(tbl["OptimizationLevel"].value_or("Development"), optLevels, BuildConfig::OptimizationLevelType::Development);
+        config.WarningLevel = getStrEnum(tbl["WarningLevel"].value_or("Medium"), warningLevels, BuildConfig::WarningLevelType::Medium);
+        config.OutputFormat = getStrEnum(tbl["OutputFormat"].value_or("Executable"), outputFormats, BuildConfig::OutputFormatType::Executable);
+        config.TargetArchitecture = getStrEnum(tbl["TargetArchitecture"].value_or("Default"), archMap, BuildConfig::TargetArchitectureType::Default);
 
         config.DebugInfo = tbl["DebugInfo"].value_or(false);
         config.FavourSize = tbl["FavourSize"].value_or(false);
@@ -201,6 +201,7 @@ namespace clear
             { "TargetExtension",        TargetExtension.string() },
             { "OutputPath",             OutputPath.string() },
             { "OutputFilename",         OutputFilename.string() },
+            { "StandardLibrary",        StandardLibrary.string()},
             { "OptimizationLevel",      enumToString(OptimizationLevel) },
             { "DebugInfo",              DebugInfo },
             { "FavourSize",             FavourSize },

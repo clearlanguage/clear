@@ -34,6 +34,7 @@ namespace clear
         
         std::filesystem::path OutputPath;
         std::filesystem::path OutputFilename;
+        std::filesystem::path StandardLibrary;
         
         enum class OptimizationLevelType
         {

@@ -47,6 +47,7 @@ namespace clear
     	LookupAstTable& LookupTable;
 
 		std::filesystem::path CurrentDirectory;
+		std::filesystem::path StdLibraryDirectory;
 
 		llvm::LLVMContext& Context;
         llvm::IRBuilder<>& Builder;

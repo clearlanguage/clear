@@ -21,3 +21,5 @@ build_proj
 Source/Tests/
 /run_test
 cmake-build-release/
+*.ll
+*.o

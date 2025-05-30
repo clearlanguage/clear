@@ -55,6 +55,25 @@ namespace clear
         Parser parser(info, lookup.Registry);
         lookup.Node = parser.GetResult();
 
+        for(const auto& node : lookup.Node->GetChildren())
+        {
+            if(node->GetType() == ASTNodeType::Import)
+            {
+                std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
+                std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
+                
+                if(!std::filesystem::exists(fullQualifiedPath))
+                {
+                    std::filesystem::path stdLib = m_Config.StandardLibrary / importNode->GetFilePath();
+                    CLEAR_VERIFY(std::filesystem::exists(stdLib), "file ", path, " doesn't exist");
+
+                    if(m_LookupTable.contains(stdLib)) 
+                        return;
+
+                    LoadSourceFile(stdLib);
+                }
+            }
+        }
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -311,20 +330,15 @@ namespace clear
         
         if(!std::filesystem::exists(path))
         {
-            const char* env = std::getenv("CLEAR_STANDARD_LIBRARY");
-            CLEAR_VERIFY(env, "don't have std lib in path");
-            
-            std::filesystem::path stdLib = env;
-            stdLib = stdLib / path;
-
+            std::filesystem::path stdLib = m_Config.StandardLibrary / path.filename();
             CLEAR_VERIFY(std::filesystem::exists(stdLib), "file ", path, " doesn't exist");
             
-            if(m_LookupTable.contains(stdLib)) 
+            if(m_GeneratedModules.contains(stdLib)) 
                 return;
             
-            LoadSourceFile(stdLib);
+            m_GeneratedModules.insert(stdLib);
             CodegenModule(stdLib, linker);
-
+            
             return;
         }
 
@@ -347,7 +361,8 @@ namespace clear
         auto currentModule = std::make_unique<llvm::Module>(path.string(), *m_Context);
 
         CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *currentModule, reg);
-        
+        context.StdLibraryDirectory = m_Config.StandardLibrary;
+
         rootNode->Codegen(context);
 
         if(m_Config.EmitIntermiediateIR)
