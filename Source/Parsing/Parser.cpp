@@ -2,9 +2,11 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Core/TypeRegistry.h"
+#include "Core/Utils.h"
 
 
 #include <stack>
+
 
 namespace clear 
 {
@@ -320,15 +322,15 @@ namespace clear
         std::string path  = Consume().Data;
         std::string alias = "";
 
-        if(Match(TokenType::VariableReference))
+        if(Match(TokenType::As))
         {
             Consume();
 
             Expect(TokenType::RValueString);
             alias = Consume().Data;
             
-            CLEAR_VERIFY(!m_Aliases.contains(alias), "conflicting aliases");
-            m_Aliases.insert(alias);
+            auto aliases = Split(alias, '.');            
+            m_Aliases.insert(aliases.begin(), aliases.end());
         }
 
         std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(path, alias);

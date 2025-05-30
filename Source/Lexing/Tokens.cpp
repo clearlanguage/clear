@@ -85,12 +85,7 @@ namespace clear
         {"restriction",  {.NextState = LexerState::Restriction, .TokenToPush = TokenType::Restriction }},
         {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }},
         {"class",{.NextState = LexerState::ClassName, .TokenToPush = TokenType::Class }},
-
-
-
-
-
-
+        {"as", {.NextState = LexerState::Default, .TokenToPush = TokenType::As}}
 
     };
 

@@ -712,7 +712,8 @@ namespace clear
 
 	}
 
-	bool Lexer::IsTypeDeclared(const std::string& type) {
+	bool Lexer::IsTypeDeclared(const std::string& type) 
+	{
 		for (TypeScope& arg : m_ScopeStack)
 		{
 			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type))
@@ -723,7 +724,8 @@ namespace clear
 		return false;
 	}
 
-	bool Lexer::IsRestrictionDeclared(const std::string &type) {
+	bool Lexer::IsRestrictionDeclared(const std::string &type) 
+	{
 		for (TypeScope& arg : m_ScopeStack)
 		{
 			if (arg.RestrictionDeclarations.contains(type))
@@ -737,7 +739,8 @@ namespace clear
 
 
 
-	void Lexer::StructNameState() {
+	void Lexer::StructNameState() 
+	{
 		char current = GetNextChar();
 
 		current = SkipSpaces();
@@ -751,10 +754,12 @@ namespace clear
 			if (IsSpace(current))
 			{
 				expectingEnd = true;
-			}else {
-
-			VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
 			}
+			else 
+			{
+				VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
+			}
+
 			m_CurrentString += current;
 			current = GetNextChar();
 		}
@@ -770,7 +775,8 @@ namespace clear
 		m_CurrentState = LexerState::Default;
 	}
 
-	void Lexer::ClassNameState() {
+	void Lexer::ClassNameState() 
+	{
 		char current = GetNextChar();
 
 		current = SkipSpaces();
@@ -804,14 +810,13 @@ namespace clear
 	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType, int startIndex, int endIndex) {
 		if ((!condition) && !IsSubLexer)
 		{
-
-		if (startIndex!= -1)
-		{
-			m_TokenIndexStart = startIndex;
-		}
-		if (endIndex != -1)
-		{
-			m_CurrentTokenIndex = endIndex;
+			if (startIndex!= -1)
+			{
+				m_TokenIndexStart = startIndex;
+			}
+			if (endIndex != -1)
+			{
+				m_CurrentTokenIndex = endIndex;
 			}
 		}
 		VerifyCondition(condition, Error, Advice, ErrorType);
@@ -823,8 +828,8 @@ namespace clear
 			if (startIndex!= -1)
 			{
 				m_TokenIndexStart = startIndex;
-				}
 			}
+		}
 
 		VerifyCondition(condition, Error, Advice, ErrorType);
 
@@ -895,7 +900,7 @@ namespace clear
 	}
 
 	void Lexer::ParseArrayDeclaration()
-		{
+	{
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentErrorState = "Array declaration";
 		auto parsed = ParseBrackets(']',false);
@@ -908,7 +913,9 @@ namespace clear
 		if (m_CurrentString.empty())
 		{
 			PushToken(TokenType::DynamicArrayDef,"");
-		}else {
+		}
+		else 
+		{
 			if (m_CurrentString.find_first_not_of("0123456789") == std::string::npos)
 			{
 				PushToken(TokenType::StaticArrayDef,m_CurrentString);
@@ -916,9 +923,10 @@ namespace clear
 			else if (m_CurrentString == "...")
 			{
 				PushToken(TokenType::StaticArrayDef,"...");
-			}else {
+			}
+			else
+			{
 				VerifyCondition(false,"Array declaration syntax error only expected numbers or ...","Either define a static size array by putting a size or a dynamic size array by leaving the square brackets empty","Array declaration error",m_TokenIndexStart,m_CurrentTokenIndex-1);
-
 			}
 		}
 		m_CurrentString.clear();
@@ -932,7 +940,9 @@ namespace clear
 		if (current == '[')
 		{
 			ParseArrayDeclaration();
-		}else  {
+		}
+		else  
+		{
 			if (current != '\0')
 				Backtrack();
 		}
@@ -941,7 +951,7 @@ namespace clear
 	}
 
 	void Lexer::ParsePointerDeclaration()
-			{
+	{
 		char current = GetNextChar();
 		while (current == '*')
 		{
@@ -959,7 +969,8 @@ namespace clear
 
 	}
 
-	void Lexer::ParseGenericDeclaration() {
+	void Lexer::ParseGenericDeclaration() 
+	{
 		char current = GetNextChar();
 		int currentLevel = 1;
 		std::vector<std::string> tokens;
@@ -1019,7 +1030,8 @@ namespace clear
 		}
 	}
 
-	Error Lexer::CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) {
+	Error Lexer::CreateError(std::string& ErrorMsg, std::string& Advice, std::string& ErrorType) 
+	{
 		Error err;
 		err.ErrorMessage = ErrorMsg;
 		err.Advice = Advice;
@@ -1059,7 +1071,8 @@ namespace clear
 		CLEAR_HALT();
 	}
 
-	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) {
+	void Lexer::VerifyCondition(bool condition, std::string Error, std::string Advice, std::string ErrorType) 
+	{
 		if (!condition)
 		{
 			auto err = CreateError(Error,Advice,ErrorType);
@@ -1240,7 +1253,7 @@ namespace clear
 		{
 			m_ProgramInfo.Tokens.pop_back();
 		}
-		
+
 		PushToken({ .TokenType = TokenType::EndFunctionParameters, .Data = "" });
 		m_CurrentState = LexerState::Default;
 		current = SkipSpaces();
