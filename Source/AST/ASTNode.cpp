@@ -898,6 +898,11 @@ namespace clear
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 		FunctionData& data = symbolTable->GetFunction(m_Name);
 		
+		if(m_Name == "cmath.abs")
+		{
+
+		}
+
 		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
 
 		uint32_t k = 0;
@@ -1021,6 +1026,7 @@ namespace clear
 
 		if(stack.size() > 0)
 		{
+			CLEAR_VERIFY(stack.size() == 1, "wot");
 			return stack.top()->Codegen(ctx);
 		}
 
@@ -1468,9 +1474,14 @@ namespace clear
 			llvm::Value* negated;
 
 			if(result.CodegenType->IsFloatingPoint())
+			{
 				negated = ctx.Builder.CreateFNeg(result.CodegenValue);
+			}
 			else 
+			{
 				negated = ctx.Builder.CreateNeg(result.CodegenValue);
+				result.CodegenType = ctx.Registry.GetSignedType(result.CodegenType);
+			}
 
 			return { negated, result.CodegenType };
 		}

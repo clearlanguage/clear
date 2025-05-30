@@ -93,6 +93,18 @@ namespace clear
         return ptr;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)
+    {
+        CLEAR_VERIFY(type->IsIntegral(), "only works on integral types!");
+
+        std::string hash = type->GetHash();
+
+        if(hash[0] == 'u') 
+            return GetType(hash.substr(1, hash.size()));
+
+        return type;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
         if(token.TokenType == TokenType::RValueString || token.TokenType == TokenType::StringType)

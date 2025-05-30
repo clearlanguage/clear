@@ -18,6 +18,7 @@ namespace clear
         std::shared_ptr<Type> GetType(const std::string& name) const; 
         std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);
         std::shared_ptr<Type> GetArrayFrom(std::shared_ptr<Type> base, size_t count);
+        std::shared_ptr<Type> GetSignedType(std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
 
