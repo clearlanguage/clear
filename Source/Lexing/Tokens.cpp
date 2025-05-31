@@ -4,90 +4,89 @@
 #include <set>
 #include <Core/Log.h>
 
-namespace clear {
+namespace clear 
+{
     const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','!','.',',','&','^','|','~',';'};
     const OperatorMapType g_OperatorMap = {
-        {"=",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::Assignment}},
-        {"*",   {.NextState = ParserState::AsterisksOperator, .TokenToPush = TokenType::None}},
-        {"/",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivOp}},
-        {"-",   {.NextState = ParserState::MinusOperator, .TokenToPush = TokenType::None}},
-        {"%",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModOp}},
-        {"+",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::AddOp}},
-        {"==",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::IsEqual}},
-        {"<",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::LessThan}},
-        {">",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThan}},
-        {"!=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::NotEqual}},
-        {"<=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::LessThanEqual}},
-        {">=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
-        {"...", {.NextState = ParserState::Default, .TokenToPush = TokenType::Ellipsis}},
-         {"!",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::Not}},
-        {"->",  {.NextState = ParserState::ArrowState, .TokenToPush = TokenType::RightArrow}},
-        {".",   {.NextState = ParserState::DotOp, .TokenToPush = TokenType::DotOp}},
-        {"//",  {.NextState = ParserState::Comment, .TokenToPush = TokenType::None}},
-        {"/*",  {.NextState = ParserState::MultilineComment, .TokenToPush = TokenType::None}},
-        {",",   {.NextState = ParserState::Default, .TokenToPush = TokenType::Comma}},
-        {"&",   {.NextState = ParserState::AmpersandOperator, .TokenToPush = TokenType::None}},
-        {"^",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseXor}},
-        {"|",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseOr}},
-        {"~",   {.NextState = ParserState::RValue, .TokenToPush = TokenType::BitwiseNot}},
-        {"<<",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::LeftShift}},
-        {">>",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::RightShift}},
-        {"*=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::MultiplyAssign}},
-        {"/=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::DivideAssign}},
-        {"%=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::ModuloAssign}},
-        {"+=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::PlusAssign}},
-        {"-=",  {.NextState = ParserState::RValue, .TokenToPush = TokenType::MinusAssign}},
-        {";",   {.NextState = ParserState::Default,.TokenToPush  =TokenType::EndLine}},
-        {"<-",  {.NextState = ParserState::Default, .TokenToPush =TokenType::LeftArrow}},
-        { "++", {.NextState = ParserState::Increment, .TokenToPush = TokenType::Increment} },
-        { "--", {.NextState = ParserState::Increment, .TokenToPush = TokenType::Decrement}},
-        {"^^",{.NextState = ParserState::RValue, .TokenToPush = TokenType::Power}},
+        {"=",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::Assignment}},
+        {"*",   {.NextState = LexerState::AsterisksOperator, .TokenToPush = TokenType::None}},
+        {"/",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::DivOp}},
+        {"-",   {.NextState = LexerState::MinusOperator, .TokenToPush = TokenType::None}},
+        {"%",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::ModOp}},
+        {"+",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::AddOp}},
+        {"==",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::IsEqual}},
+        {"<",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::LessThan}},
+        {">",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::GreaterThan}},
+        {"!=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::NotEqual}},
+        {"<=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::LessThanEqual}},
+        {">=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
+        {"...", {.NextState = LexerState::Default, .TokenToPush = TokenType::Ellipsis}},
+         {"!",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::Not}},
+        {"->",  {.NextState = LexerState::ArrowState, .TokenToPush = TokenType::RightArrow}},
+        {".",   {.NextState = LexerState::DotOp, .TokenToPush = TokenType::DotOp}},
+        {"//",  {.NextState = LexerState::Comment, .TokenToPush = TokenType::None}},
+        {"/*",  {.NextState = LexerState::MultilineComment, .TokenToPush = TokenType::None}},
+        {",",   {.NextState = LexerState::Default, .TokenToPush = TokenType::Comma}},
+        {"&",   {.NextState = LexerState::AmpersandOperator, .TokenToPush = TokenType::None}},
+        {"^",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::BitwiseXor}},
+        {"|",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::BitwiseOr}},
+        {"~",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::BitwiseNot}},
+        {"<<",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::LeftShift}},
+        {">>",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::RightShift}},
+        {"*=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::MultiplyAssign}},
+        {"/=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::DivideAssign}},
+        {"%=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::ModuloAssign}},
+        {"+=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::PlusAssign}},
+        {"-=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::MinusAssign}},
+        {";",   {.NextState = LexerState::Default,.TokenToPush  =TokenType::EndLine}},
+        {"<-",  {.NextState = LexerState::Default, .TokenToPush =TokenType::LeftArrow}},
+        { "++", {.NextState = LexerState::Increment, .TokenToPush = TokenType::Increment} },
+        { "--", {.NextState = LexerState::Increment, .TokenToPush = TokenType::Decrement}},
+        {"^^",{.NextState = LexerState::RValue, .TokenToPush = TokenType::Power}},
 
     };
 
     const KeyWordMapType g_KeyWordMap = {
-        {"int8",      {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int8Type}},
-        {"int16",     {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int16Type}},
-        {"int32",     {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
-        {"int64",     {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int64Type}},
-        {"uint8",     {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt8Type}},
-        {"uint16",    {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt16Type}},
-        {"uint32",    {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
-        {"uint64",    {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt64Type}},
-        {"string",    {.NextState = ParserState::VariableName, .TokenToPush = TokenType::StringType}},
-        {"bool",      {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Bool}},
-        {"float32",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
-        {"float64",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float64Type}},
-        {"false",     {.NextState = ParserState::Default, .TokenToPush = TokenType::BooleanData}},
-        {"true",      {.NextState = ParserState::Default, .TokenToPush = TokenType::BooleanData}},
-        {"null",      {.NextState = ParserState::Default, .TokenToPush = TokenType::Null}},
-        {"if",        {.NextState = ParserState::RValue, .TokenToPush = TokenType::ConditionalIf}},
-        {"function",  {.NextState = ParserState::FunctionName, .TokenToPush = TokenType::Function}},
-        {"int",       {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Int32Type}},
-        {"uint",      {.NextState = ParserState::VariableName, .TokenToPush = TokenType::UInt32Type}},
-        {"struct",    {.NextState = ParserState::StructName, .TokenToPush = TokenType::Struct}},
-        {"return",    {.NextState = ParserState::Default, .TokenToPush = TokenType::Return}},
-        {"char",      {.NextState = ParserState::VariableName, .TokenToPush = TokenType::CharType}},
-        {"declare",   {.NextState = ParserState::Declaration, .TokenToPush = TokenType::Declaration}},
-        {"defer",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Defer}},
-        {"else",      {.NextState = ParserState::Default, .TokenToPush = TokenType::Else}},
-        {"elseif",    {.NextState = ParserState::Default, .TokenToPush = TokenType::ElseIf}},
-        {"while",     {.NextState = ParserState::Default, .TokenToPush = TokenType::While }}, 
-        {"break",     {.NextState = ParserState::Default, .TokenToPush = TokenType::Break }},
-        {"continue",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Continue }},
-        {"float",   {.NextState = ParserState::VariableName, .TokenToPush = TokenType::Float32Type}},
-        {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
-        {"when",  {.NextState = ParserState::Default, .TokenToPush = TokenType::When }},
-        {"case",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Case }},
-        {"switch",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Switch }},
-        {"default",  {.NextState = ParserState::Default, .TokenToPush = TokenType::Default }},
-        {"restriction",  {.NextState = ParserState::Restriction, .TokenToPush = TokenType::Restriction }},
-
-
-
-
-
-
+        {"int8",      {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Int8Type}},
+        {"int16",     {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Int16Type}},
+        {"int32",     {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Int32Type}},
+        {"int64",     {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Int64Type}},
+        {"uint8",     {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt8Type}},
+        {"uint16",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt16Type}},
+        {"uint32",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt32Type}},
+        {"uint64",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt64Type}},
+        {"string",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::StringType}},
+        {"bool",      {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Bool}},
+        {"float32",   {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Float32Type}},
+        {"float64",   {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Float64Type}},
+        {"false",     {.NextState = LexerState::Default, .TokenToPush = TokenType::BooleanData}},
+        {"true",      {.NextState = LexerState::Default, .TokenToPush = TokenType::BooleanData}},
+        {"null",      {.NextState = LexerState::Default, .TokenToPush = TokenType::Null}},
+        {"if",        {.NextState = LexerState::RValue, .TokenToPush = TokenType::ConditionalIf}},
+        {"function",  {.NextState = LexerState::FunctionName, .TokenToPush = TokenType::Function}},
+        {"int",       {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Int64Type}},
+        {"uint",      {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt64Type}},
+        {"struct",    {.NextState = LexerState::StructName, .TokenToPush = TokenType::Struct}},
+        {"return",    {.NextState = LexerState::Default, .TokenToPush = TokenType::Return}},
+        {"char",      {.NextState = LexerState::VariableName, .TokenToPush = TokenType::CharType}},
+        {"declare",   {.NextState = LexerState::Declaration, .TokenToPush = TokenType::Declaration}},
+        {"defer",     {.NextState = LexerState::Default, .TokenToPush = TokenType::Defer}},
+        {"else",      {.NextState = LexerState::Default, .TokenToPush = TokenType::Else}},
+        {"elseif",    {.NextState = LexerState::Default, .TokenToPush = TokenType::ElseIf}},
+        {"while",     {.NextState = LexerState::Default, .TokenToPush = TokenType::While }}, 
+        {"break",     {.NextState = LexerState::Default, .TokenToPush = TokenType::Break }},
+        {"continue",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Continue }},
+        {"float",   {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Float64Type}},
+        {"switch",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Switch }},
+        {"when",  {.NextState = LexerState::Default, .TokenToPush = TokenType::When }},
+        {"case",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Case }},
+        {"switch",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Switch }},
+        {"default",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Default }},
+        {"restriction",  {.NextState = LexerState::Restriction, .TokenToPush = TokenType::Restriction }},
+        {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }},
+        {"class",{.NextState = LexerState::ClassName, .TokenToPush = TokenType::Class }},
+        {"as", {.NextState = LexerState::Default, .TokenToPush = TokenType::As}},
+        {"void",{.NextState = LexerState::Default, .TokenToPush = TokenType::Void}},
 
     };
 
@@ -97,7 +96,7 @@ namespace clear {
             {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}},
         {"callable",{TokenType::CloseBracket,TokenType::MemberName,TokenType::TypeIdentifier,TokenType::VariableReference}},
             {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}},
-        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName}}
+        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName,TokenType::EndFunctionArguments}}
 
 
 
@@ -108,7 +107,8 @@ namespace clear {
         "float64", "float32", "bool", "string", "uint64", "uint32", "uint16", "uint8", "int64", "int32", "int16", "int8","int","uint","char","float"
     };
 
-    bool IsTokenOfType(Token tok,std::string type) {
+    bool IsTokenOfType(Token tok,std::string type) 
+    {
         CLEAR_PARSER_VERIFY(g_TokenTypes.count(type),"96");
         return g_TokenTypes.at(type).contains(tok.TokenType);
     }
@@ -116,7 +116,6 @@ namespace clear {
 
     std::string_view TokenToString(TokenType token) 
     {
-
         switch (token)
         {
             case TokenType::None: return "None";
@@ -218,6 +217,10 @@ namespace clear {
             case TokenType::Restriction: return "Restriction";
             case TokenType::RestrictionName: return "RestrictionName";
             case TokenType::RestrictionTypeName: return "RestrictionTypeName";
+            case TokenType::Import: return "Import";
+            case TokenType::Class: return "Class";
+            case TokenType::ClassName: return "ClassName";
+            case TokenType::Inherits: return "Inherits";
 
             default:
                 break;

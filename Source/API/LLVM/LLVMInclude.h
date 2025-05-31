@@ -19,6 +19,12 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ToolOutputFile.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/Support/Program.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/TargetParser/Host.h>
+#include <llvm/Linker/Linker.h>
+#include <llvm/Passes/PassBuilder.h>
+
+
+

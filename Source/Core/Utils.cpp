@@ -57,6 +57,7 @@ namespace clear {
         return words;
     }
 
+
     int HexStringToInteger(const std::string& hexString)
     {
         int result = 0;
@@ -102,6 +103,19 @@ namespace clear {
         return result;
     }
 
+    bool IsOnlyWhitespace(const std::string &str)
+    {
+        for (char c : str) 
+        {
+            if (!std::isspace(c)) 
+            {
+                return false;  
+            }
+        }
+        
+        return true;  
+    }
+
     bool IsVarNameChar(char c)
     {
         return std::isalnum(c) || c == '_';
@@ -145,6 +159,7 @@ namespace clear {
                     }
 
                     info.BitsNeeded = sizeof(T) * 8;
+                    
                     return true;
                 }
                 return false;

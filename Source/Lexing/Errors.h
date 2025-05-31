@@ -16,7 +16,8 @@ namespace clear{
         size_t to;
     };
 
-    struct ErrorReference {
+    struct ErrorReference 
+    {
         std::string ErrorMessage;
         std::string Advice;
         std::string ErrorType;
