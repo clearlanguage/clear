@@ -1,5 +1,11 @@
 import "math.h" as "_cmath"
 
+function PI() -> float64:
+    return 3.14159265358979323846264338327950288
+
+function E() -> float64:
+    return 2.71828182845904523536028747135266250
+
 
 function sin(float64 x) -> float64:
     return _cmath.sin(x)
@@ -58,3 +64,10 @@ function abs(float64 x) -> float64:
 
 function logb(float64 base,float64 x ) -> float64:
     return log(x) / log(base)
+
+function radians(float64 x) -> float64:
+    return (PI()/180) * x
+
+
+function degrees(float64 x) -> float64:
+    return (180/PI()) * x
