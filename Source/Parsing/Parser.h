@@ -60,7 +60,7 @@ namespace clear
         BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
         UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);
         UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
-
+        AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
     private:    
         std::vector<Token> m_Tokens;

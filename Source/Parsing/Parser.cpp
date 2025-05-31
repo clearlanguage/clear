@@ -80,6 +80,11 @@ namespace clear
 		    TokenType::EndFunctionArguments, 
 		    TokenType::EndArray,
 		    TokenType::Assignment, 
+            TokenType::MultiplyAssign, 
+            TokenType::DivideAssign, 
+            TokenType::PlusAssign, 
+            TokenType::MinusAssign, 
+            TokenType::ModuloAssign, 
 		    TokenType::StartIndentation, 
             TokenType::Eof
         });
@@ -708,7 +713,7 @@ namespace clear
             return initializer;
         }
 
-        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(GetAssignmentOperatorFromTokenType(assignmentToken.TokenType));
         assign->Push(storage);            
         assign->Push(ParseExpression()); 
 
@@ -974,5 +979,24 @@ namespace clear
 		}
 
 		return UnaryExpressionType::None;
+    }
+
+    AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
+    {
+        switch (type)
+        {
+            case TokenType::Assignment:      return AssignmentOperatorType::Normal;
+            case TokenType::PlusAssign:      return AssignmentOperatorType::Add;
+            case TokenType::MinusAssign:     return AssignmentOperatorType::Sub;
+            case TokenType::MultiplyAssign:  return AssignmentOperatorType::Mul;
+            case TokenType::DivideAssign:    return AssignmentOperatorType::Div;    
+            case TokenType::ModuloAssign:    return AssignmentOperatorType::Mod;    
+            default:
+                break;
+        }
+
+        CLEAR_UNREACHABLE("invalid token type for assignment");
+
+        return AssignmentOperatorType();
     }
 }
