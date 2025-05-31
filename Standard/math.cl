@@ -1,7 +1,5 @@
 import "math.h" as "_cmath"
 
-float64 pi = 3.14159265358979323846264338327950288
-float64 e = 2.71828182845904523536028747135266250
 
 function sin(float64 x) -> float64:
     return _cmath.sin(x)
