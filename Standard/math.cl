@@ -66,8 +66,8 @@ function logb(float64 base,float64 x ) -> float64:
     return log(x) / log(base)
 
 function radians(float64 x) -> float64:
-    return (PI()/180) * x
+    return (pi()/180) * x
 
 
 function degrees(float64 x) -> float64:
-    return (180/PI()) * x
+    return (180/pi()) * x
