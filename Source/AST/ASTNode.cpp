@@ -112,12 +112,6 @@ namespace clear
 
 		auto& leftChild  = children[1];
 		auto& rightChild = children[0];
-
-		//CodegenResult lhs = leftChild->Codegen(ctx);
-		//CodegenResult rhs = rightChild->Codegen(ctx);
-
-        //if(!lhs.CodegenValue->getType()->isPointerTy()) 
-		//	HandleTypePromotion(lhs, rhs, ctx);
 				
 		if(IsMathExpression()) 
 			return HandleMathExpression(leftChild, rightChild, ctx);
@@ -741,9 +735,11 @@ namespace clear
 			return result;
 		}
 
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+
 		CodegenResult loadedValue;
-		loadedValue.CodegenValue = builder.CreateLoad(storage.CodegenType->Get(), storage.CodegenValue);
-		loadedValue.CodegenType = storage.CodegenType;
+		loadedValue.CodegenValue = builder.CreateLoad(storageType->GetBaseType()->Get(), storage.CodegenValue);
+		loadedValue.CodegenType = storageType->GetBaseType();
 
 		CodegenResult tmp;
 
@@ -846,7 +842,6 @@ namespace clear
 		functionData.Function->insert(functionData.Function->end(), body);
 		builder.SetInsertPoint(body);
 
-		//CodegenResult returnValue; TODO
 
 		for (const auto& child : GetChildren())
 		{
@@ -871,7 +866,7 @@ namespace clear
 			builder.CreateRetVoid();
 		}
 		else
-		{   //for now will do nothing but will do something once we have return statements.
+		{   
 			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
 			builder.CreateRet(load);
 		}
@@ -898,11 +893,6 @@ namespace clear
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 		FunctionData& data = symbolTable->GetFunction(m_Name);
 		
-		if(m_Name == "cmath.abs")
-		{
-
-		}
-
 		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
 
 		uint32_t k = 0;
@@ -1500,6 +1490,7 @@ namespace clear
 
 		CodegenResult result = children[0]->Codegen(ctx);
 		CLEAR_VERIFY(result.CodegenType->IsPointer(), "not valid type for increment");
+		
 		std::shared_ptr<PointerType> ty = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
 
 		CodegenResult valueToStore;
