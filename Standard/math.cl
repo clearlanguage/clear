@@ -55,5 +55,5 @@ function abs(float64 x) -> float64:
     return _cmath.fabs(x)
 
 
-function logb(float64 x, float64 base) -> float64:
+function logb(float64 base,float64 x) -> float64:
     return log(x) / log(base)
