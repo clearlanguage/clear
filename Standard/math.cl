@@ -1,9 +1,9 @@
 import "math.h" as "_cmath"
 
-function PI() -> float64:
+function pi() -> float64:
     return 3.14159265358979323846264338327950288
 
-function E() -> float64:
+function e() -> float64:
     return 2.71828182845904523536028747135266250
 
 
