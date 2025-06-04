@@ -48,7 +48,8 @@ namespace clear
         virtual size_t      GetSize()  const { return 0; };
         virtual std::string GetHash()  const = 0;
         virtual std::string GetShortHash() const = 0;
-            
+        virtual uint64_t GetID() const = 0;
+
         bool IsSigned();
         bool IsFloatingPoint();
         bool IsPointer();
@@ -60,7 +61,6 @@ namespace clear
         bool ContainsAny(TypeFlagSet set);
 
         TypeFlagSet MaskWith(TypeFlagSet mask);
-
     };
 
     class PrimitiveType : public Type 
@@ -76,6 +76,7 @@ namespace clear
         virtual size_t GetSize() const override { return m_Size; }
         virtual std::string GetHash() const override { return m_Name; }
         virtual std::string GetShortHash() const override { return m_Name[0] + std::to_string(GetSize()); }
+        virtual size_t GetID() const override;
 
     private:
         llvm::Type* m_LLVMType;
@@ -94,8 +95,8 @@ namespace clear
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
-        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "*"; }
-
+        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "P"; }
+        virtual size_t GetID() const override;
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -117,6 +118,8 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override;
         virtual std::string GetShortHash() const override;
+        virtual size_t GetID() const override;
+
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -141,9 +144,11 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_Name; };
         virtual std::string GetShortHash() const override { return m_Name; };
+        virtual size_t GetID() const override;
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);
+        std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
 
         const auto& GetMemberTypes()   const { return m_MemberTypes; }
         const auto& GetMemberIndices() const {return m_MemberIndices; }
@@ -155,7 +160,8 @@ namespace clear
         std::unordered_map<std::string, size_t> m_MemberIndices;
 
         std::string m_Name;
+        mutable std::optional<size_t> m_CachedID;
     };
-
+    
 }
 

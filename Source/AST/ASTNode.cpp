@@ -283,7 +283,7 @@ namespace clear
 
 		CodegenResult rhs;
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			ValueRestoreGuard guard(ctx.WantAddress, false);
 			rhs = right->Codegen(ctx);
 		}
 
@@ -420,7 +420,7 @@ namespace clear
 
     CodegenResult ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
-		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		CodegenResult lhs = left->Codegen(ctx);
 		CodegenResult rhs = right->Codegen(ctx);
@@ -600,14 +600,14 @@ namespace clear
 		CodegenResult lhs;
 
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			ValueRestoreGuard guard(ctx.WantAddress, true);
 			lhs = left->Codegen(ctx);
 		}
 
 		CodegenResult rhs;
 
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			ValueRestoreGuard guard(ctx.WantAddress, false);
 			rhs = right->Codegen(ctx);
 		}
 
@@ -640,9 +640,39 @@ namespace clear
     		);
 
 			baseType = arrType->GetBaseType();
-		}	
+		}
+		else if (std::shared_ptr<StructType> structType = std::dynamic_pointer_cast<StructType>(type->GetBaseType()))
+		{
+			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
+			{
+				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
+													 rhs.CodegenType, 
+													 ctx.Registry.GetType("int64"), 
+													 ctx.Builder);
+			}
 
-		//TODO: pointers here ( will do this later when pointers implemented ignore for now)
+	
+		
+			if (auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhs.CodegenValue)) 
+			{
+    			uint64_t index = constIdx->getZExtValue();
+
+    			llvm::Value* gep = ctx.Builder.CreateStructGEP(
+    			    structType->Get(),
+    			    lhs.CodegenValue,
+    			    index,
+    			    "field_gep"
+    			);
+
+				baseType = structType->GetMemberAtIndex(index);	
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("only allow constant expression indexing, runtime indexing is not supported yet");
+			}
+
+		}
+
 
 		if(ctx.WantAddress)
 			return {gep, ctx.Registry.GetPointerTo(baseType) };
@@ -713,14 +743,14 @@ namespace clear
 		CodegenResult storage;
 		
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			ValueRestoreGuard guard(ctx.WantAddress, true);
 			storage = children[0]->Codegen(ctx);
 		}
 
 		CodegenResult data;
 
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			ValueRestoreGuard guard(ctx.WantAddress, false);
 			data    = children[1]->Codegen(ctx);
 		}
 
@@ -809,8 +839,25 @@ namespace clear
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
 		CLEAR_VERIFY(prev, "prev was null");
 
-		FunctionData& functionData = prev->CreateFunction(m_Name, m_Parameters, m_ReturnType, ctx.Module, ctx.Context);
+		if(prev->HasTemplate(m_Name)) return {};
+
+		bool isVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
+		auto& functionTemplate = prev->GetFunctionCache().CreateTemplate(m_Name, m_ReturnType, m_Parameters, isVariadic, shared_from_this());
 		
+		if(m_Name == "main")
+		{
+			prev->GetFunctionCache().InstantiateOrReturn(m_Name, m_Parameters, m_ReturnType, ctx);
+		}		
+		
+		return {};
+	}
+
+    void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
+    {
+		auto& module  = ctx.Module;
+		auto& context = ctx.Context;
+		auto& builder = ctx.Builder;
+
 		s_InsertPoints.push(builder.saveIP());
 
 		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionData.Function);
@@ -827,8 +874,17 @@ namespace clear
 
 		uint32_t k = 0;
 
+		llvm::AllocaInst* vaList = nullptr;
+
+		bool hasVaArgs = false;
 		for (const auto& param : m_Parameters)
 		{
+			if(!param.Type)
+			{
+				hasVaArgs = true;
+				break;
+			}
+
 			llvm::AllocaInst* argAlloc = builder.CreateAlloca(param.Type->Get(), nullptr, param.Name);
 			builder.CreateStore(functionData.Function->getArg(k++), argAlloc);
 			
@@ -837,11 +893,28 @@ namespace clear
 			alloca.Type   = param.Type;
 
 			GetSymbolTable()->RegisterAllocation(param.Name, alloca);
+			k++;
+		}
+
+		
+		if(hasVaArgs)
+		{
+			std::string structTy = std::format("{}-{}", m_Parameters[k].Name, "struct");
+			auto ty = ctx.Registry.GetType(structTy);
+
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(ty->Get(), nullptr, m_Parameters[k].Name);
+			builder.CreateStore(functionData.Function->getArg(k), argAlloc);
+			
+			Allocation alloca;
+			alloca.Alloca = argAlloc;
+			alloca.Type   = ty;
+
+			GetSymbolTable()->RegisterAllocation(m_Parameters[k].Name, alloca);
+			k++;
 		}
 
 		functionData.Function->insert(functionData.Function->end(), body);
 		builder.SetInsertPoint(body);
-
 
 		for (const auto& child : GetChildren())
 		{
@@ -874,11 +947,9 @@ namespace clear
 		auto& ip = s_InsertPoints.top();
 		builder.restoreIP(ip);
 		s_InsertPoints.pop();
+    }
 
-		return {functionData.Function, functionData.ReturnType};
-	}
-
-	ASTFunctionCall::ASTFunctionCall(const std::string &name)
+    ASTFunctionCall::ASTFunctionCall(const std::string &name)
 		: m_Name(name)
     {
     }
@@ -891,39 +962,56 @@ namespace clear
 		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
-		FunctionData& data = symbolTable->GetFunction(m_Name);
-		
-		CLEAR_VERIFY(data.Function, m_Name, " definition doesn't exist");
 
+		FunctionTemplate& data = symbolTable->GetTemplate(m_Name);
+		
 		uint32_t k = 0;
 
 		std::vector<llvm::Value*> args;
+		std::vector<Parameter> params; // we only care about types here
 
-		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		for (auto& child : children)
 		{
 			CodegenResult gen = child->Codegen(ctx);
 
-			if(data.Parameters[k].IsVariadic)
+			if(data.IsVariadic && k - 1 >= data.Parameters.size())  //last item is reserved for var args name
 			{
 				args.push_back(gen.CodegenValue);
+				params.push_back({ "", gen.CodegenType});
 				continue;
 			}
+		
+			// we need a check here to see if type is a generic, if so then ignore any casting.
 
 			if (gen.CodegenType->Get() != data.Parameters[k].Type->Get())
 			{
 				gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
 												     gen.CodegenType, 
 													 data.Parameters[k].Type, ctx.Builder);
+				
+				gen.CodegenType = data.Parameters[k].Type;
 			}
 
 			args.push_back(gen.CodegenValue);
+			params.push_back({"", gen.CodegenType });
 
 			k++;
 		}
 
-		return { builder.CreateCall(data.Function, args), data.ReturnType };
+		// again, we need a check to make sure that return type is not a generic in the future, for now this is ok.
+
+		if(symbolTable->HasDecleration(m_Name))
+		{
+			FunctionInstance& instance = symbolTable->GetDecleration(m_Name);
+			return { ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType };
+		}
+
+		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
+		FunctionInstance& instance = symbolTable->GetPrevious()->GetFunctionCache().InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+
+		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
 
     ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types)
@@ -941,7 +1029,7 @@ namespace clear
 
 		for (auto& param : m_Parameters)
 		{
-			if (param.IsVariadic)
+			if (!param.Type)
 			{
 				isVariadic = true;
 				break;
@@ -956,15 +1044,22 @@ namespace clear
 		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
 		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 
-		FunctionData data;
+		FunctionInstance data;
 		data.FunctionType = functionType;
 		data.Function = llvm::cast<llvm::Function>(callee.getCallee());
 		data.Parameters = m_Parameters;
 		data.ReturnType = m_ReturnType;
-
+		data.MangledName = m_Name;
 		
-		GetSymbolTable()->RegisterFunction(m_Name, data);
+		GetSymbolTable()->GetFunctionCache().RegisterInstance(data);
 
+		FunctionTemplate functionTemplate;
+		functionTemplate.IsVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
+		functionTemplate.Parameters = m_Parameters;
+		functionTemplate.ReturnType = m_ReturnType;
+		functionTemplate.Root = nullptr; // external function so no root
+
+		GetSymbolTable()->GetFunctionCache().RegisterTemplate(data.MangledName, functionTemplate);
 
 		return { data.Function, m_ReturnType };	
 	}
@@ -1036,7 +1131,7 @@ namespace clear
 		CodegenResult storage;
 
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			ValueRestoreGuard guard(ctx.WantAddress, true);
 			storage = children[0]->Codegen(ctx);
 		}
 
@@ -1053,7 +1148,7 @@ namespace clear
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
 		builder.CreateStore(zeroArray, storage.CodegenValue);
 
-		ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
@@ -1171,14 +1266,39 @@ namespace clear
 			if(!fun) 
 				continue;
 			
-			FunctionData& importedData = rootSymbolTable->GetFunction(fun->GetName());
+			if(rootSymbolTable->HasInstance(fun->GetName()))
+			{
+				FunctionInstance& importedData = rootSymbolTable->GetInstance(fun->GetName());
 
-			llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(importedData.MangledName, importedData.FunctionType);
+				llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(importedData.MangledName, importedData.FunctionType);
 
-			FunctionData registeredData;
-			registeredData.FunctionType = importedData.FunctionType;
-			registeredData.Function = llvm::cast<llvm::Function>(callee.getCallee());
-			registeredData.Parameters = importedData.Parameters;
+				FunctionInstance registeredData;
+				registeredData.FunctionType = importedData.FunctionType;
+				registeredData.Function = llvm::cast<llvm::Function>(callee.getCallee());
+				registeredData.Parameters = importedData.Parameters;
+				
+				if(!m_Alias.empty())
+					registeredData.MangledName = std::format("{}.{}", m_Alias, fun->GetName());
+				else 
+					registeredData.MangledName = fun->GetName();
+
+				registeredData.ReturnType = importedData.ReturnType;
+
+				bool isVariadic = registeredData.Parameters.size() > 0 && !registeredData.Parameters.back().Type;
+				GetSymbolTable()->GetFunctionCache().RegisterDecleration(registeredData, isVariadic);
+			}
+			else if (rootSymbolTable->HasTemplate(fun->GetName()))
+			{
+				if(!m_Alias.empty())
+					GetSymbolTable()->GetFunctionCache().RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()),rootSymbolTable->GetTemplate(fun->GetName()));
+				else 
+					GetSymbolTable()->GetFunctionCache().RegisterTemplate(fun->GetName(),rootSymbolTable->GetTemplate(fun->GetName()));
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("uhhh what");
+			}
+			
 
 			//for(const auto& param : importedData.Parameters)
 			//{
@@ -1201,13 +1321,6 @@ namespace clear
 			//	registeredData.Parameters.push_back(param);
 			//}
 
-			registeredData.ReturnType = importedData.ReturnType;
-
-			if(!m_Alias.empty())
-				GetSymbolTable()->RegisterFunction(m_Alias + "." + fun->GetName(), registeredData);
-			else 
-				GetSymbolTable()->RegisterFunction(fun->GetName(), registeredData);
-
 		}
 
 		return {};
@@ -1219,20 +1332,23 @@ namespace clear
 
 		for(const auto& header : functions)
 		{
-			FunctionData function = ParseHeader(header, ctx);
+			FunctionInstance function = ParseHeader(header, ctx);
+
+			if(!m_Alias.empty())
+				function.MangledName = std::format("{}.{}", m_Alias, header.name);
+			else 
+				function.MangledName = header.name;
 
 			std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 
-			if(!m_Alias.empty())
-				tbl->RegisterFunction(m_Alias + "." + header.name, function);
-			else 
-				tbl->RegisterFunction(header.name, function);
+			bool isVariadic = function.Parameters.size() > 0 && !function.Parameters.back().Type;
+			tbl->GetFunctionCache().RegisterDecleration(function, isVariadic);
 		}
     }
 
-    FunctionData ASTImport::ParseHeader(const HeaderFunc& function, CodegenContext& ctx)
+    FunctionInstance ASTImport::ParseHeader(const HeaderFunc& function, CodegenContext& ctx)
     {
-		FunctionData functionData;
+		FunctionInstance functionData;
 		functionData.MangledName = function.name;
 
 		for(const auto& arg : function.args)
@@ -1248,8 +1364,9 @@ namespace clear
 		llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(function.name, functionType);
 
 		functionData.FunctionType = functionType;
-		functionData.Function = llvm::cast<llvm::Function>(callee.getCallee());
-	
+		functionData.Function = llvm::dyn_cast<llvm::Function>(callee.getCallee());
+
+		CLEAR_VERIFY(!llvm::verifyFunction(*functionData.Function, &llvm::errs()), "failed to verify function");	
         return functionData;
     }
 
@@ -1261,7 +1378,6 @@ namespace clear
 
 		if(arg[0].TokenType == TokenType::Ellipsis)
 		{
-			param.IsVariadic = true;
 			return param;
 		}
 
@@ -1316,7 +1432,7 @@ namespace clear
 		CodegenResult parent;
 		
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			ValueRestoreGuard guard(ctx.WantAddress, true);
 			parent = children[0]->Codegen(ctx); 
 		}
 
@@ -1432,7 +1548,7 @@ namespace clear
 			CodegenResult result;
 
 			{
-				ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+				ValueRestoreGuard guard(ctx.WantAddress, false);
 				result = children[0]->Codegen(ctx);
 			}
 
@@ -1451,7 +1567,7 @@ namespace clear
 
 		if(m_Type == UnaryExpressionType::Reference)
 		{		
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+			ValueRestoreGuard guard(ctx.WantAddress, true);
 			CodegenResult result = children[0]->Codegen(ctx);
 
 			return result;
@@ -1486,7 +1602,7 @@ namespace clear
 		one.CodegenType  = ctx.Registry.GetType("int64");
 		one.CodegenValue = ctx.Builder.getInt64(1);
 
-		ValueRestoreGuard<bool> guard(ctx.WantAddress, true);
+		ValueRestoreGuard guard(ctx.WantAddress, true);
 
 		CodegenResult result = children[0]->Codegen(ctx);
 		CLEAR_VERIFY(result.CodegenType->IsPointer(), "not valid type for increment");
@@ -1592,7 +1708,7 @@ namespace clear
 			CodegenResult condition;
 
 			{
-				ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+				ValueRestoreGuard guard(ctx.WantAddress, false);
 				condition = children[branch.ExpressionIdx]->Codegen(ctx);
 			}
 
@@ -1660,7 +1776,7 @@ namespace clear
 		CodegenResult condition;
 			
 		{
-			ValueRestoreGuard<bool> guard(ctx.WantAddress, false);
+			ValueRestoreGuard guard(ctx.WantAddress, false);
 			condition = children[0]->Codegen(ctx);
 		}
 

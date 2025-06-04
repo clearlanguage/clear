@@ -28,45 +28,9 @@ namespace clear
     }
 
 
-    FunctionData& SymbolTable::CreateFunction(const std::string& name, 
-                                              std::vector<Parameter>& parameters, 
-                                              const std::shared_ptr<Type>& returnType, 
-                                              llvm::Module& module, 
-                                              llvm::LLVMContext& context)
-    {
-		std::vector<llvm::Type*> parameterTypes;
-        std::transform(parameters.begin(), parameters.end(), std::back_inserter(parameterTypes), [](Parameter& a) { return a.Type->Get(); });
-
-		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), parameterTypes, false);
-
-
-		FunctionData functionData;
-        functionData.FunctionType = functionType;
-        functionData.ReturnType   = returnType;
-        functionData.Parameters   = parameters;
-        functionData.MangledName = MangleFunctionName(name, functionData);
-
-		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, functionData.MangledName, module);
-        functionData.Function     = function;
-
-        m_Functions[name] = functionData;
-        return m_Functions[name];
-    }
-
     void SymbolTable::RegisterAllocation(const std::string& name, Allocation allocation)
     {
         m_Variables[name] = allocation;
-    }
-
-    void SymbolTable::RegisterFunction(const std::string& name, const FunctionData& data)
-    {
-        if(!m_Functions.contains(name))
-        {
-            m_Functions[name] = data;
-            return;
-        }
-        
-        CLEAR_LOG_WARNING("registered function with name ", name, " multiple times");
     }
 
     Allocation SymbolTable::GetAlloca(const std::string& name)
@@ -87,50 +51,119 @@ namespace clear
         return {};
     }
 
-    FunctionData& SymbolTable::GetFunction(const std::string& name)
-    {
-       if(m_Functions.contains(name)) return m_Functions.at(name);
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {
-            if(ptr->m_Functions.contains(name)) return ptr->m_Functions.at(name);
-            ptr = ptr->m_Previous;
-        }
-
-        CLEAR_UNREACHABLE("unable to find function");
-
-        static FunctionData s_NullFunction;
-        return s_NullFunction;
-    }
-
     void SymbolTable::SetPrevious(const std::shared_ptr<SymbolTable>& previous)
     {
         m_Previous = previous;
     }
 
-    std::string SymbolTable::MangleFunctionName(const std::string& name, const FunctionData& data)
+    FunctionInstance& SymbolTable::GetInstance(const std::string& instanceName)
     {
-        if(name == "main") return name;
+        if(m_FunctionCache.HasInstance(instanceName)) return m_FunctionCache.GetInstance(instanceName);
 
-        std::string mangledNamed = "_CLR";
-        mangledNamed += name;
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
 
-        for(const auto& param : data.Parameters)
+        while(ptr)
         {
-            if(param.IsVariadic)
-            {
-                mangledNamed += "V_";
-                break;
-            }
-            else
-            {
-                mangledNamed += param.Type->GetShortHash();
-            }
+            if(ptr->m_FunctionCache.HasInstance(instanceName)) 
+                return ptr->m_FunctionCache.GetInstance(instanceName);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("unable to find instance ", instanceName);
+        static FunctionInstance s_NullInstance;
+        return s_NullInstance;
+    }
+
+    FunctionInstance& SymbolTable::GetDecleration(const std::string& declerationName)
+    {
+        if(m_FunctionCache.HasDecleration(declerationName)) return m_FunctionCache.GetDecleration(declerationName);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasDecleration(declerationName)) 
+                return ptr->m_FunctionCache.GetDecleration(declerationName);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("unable to find decleration ", declerationName);
+
+        static FunctionInstance s_NullInstance;
+        return s_NullInstance;
+    }
+
+    FunctionTemplate& SymbolTable::GetTemplate(const std::string& templateName)
+    {
+        if(m_FunctionCache.HasTemplate(templateName)) return m_FunctionCache.GetTemplate(templateName);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasTemplate(templateName)) 
+                return ptr->m_FunctionCache.GetTemplate(templateName);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("unable to find decleration ", templateName);
+
+        static FunctionTemplate s_NullTemplate;
+        return s_NullTemplate;
+    }
+
+    bool SymbolTable::HasInstance(const std::string& instanceName)
+    {
+         if(m_FunctionCache.HasInstance(instanceName)) return true;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasInstance(instanceName)) 
+                return true;
+                
+            ptr = ptr->m_Previous;
         }
 
 
-        return mangledNamed;
+        return false;
+    }
+
+    bool SymbolTable::HasDecleration(const std::string& declerationName)
+    {
+         if(m_FunctionCache.HasDecleration(declerationName)) return true;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasDecleration(declerationName)) 
+                return true;
+                
+            ptr = ptr->m_Previous;
+        }
+
+        return false;
+    }
+
+    bool SymbolTable::HasTemplate(const std::string& templateName)
+    {
+        if(m_FunctionCache.HasTemplate(templateName)) return true;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasTemplate(templateName)) 
+                return true;
+                
+            ptr = ptr->m_Previous;
+        }
+
+        return false;
     }
 }

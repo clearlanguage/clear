@@ -69,7 +69,7 @@ namespace clear
 		}
 	};
 
-    class ASTNodeBase
+    class ASTNodeBase : public std::enable_shared_from_this<ASTNodeBase>
 	{
 	public:
 		ASTNodeBase();
@@ -201,7 +201,7 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
 
-	class ASTFunctionDefinition : public ASTNodeBase 
+	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
 		ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& parameters);
@@ -210,6 +210,9 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const std::string& GetName() const { return m_Name; }
+		void SetName(const std::string& name) { m_Name = name;}
+
+		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
 	private:
 		std::vector<Parameter> m_Parameters;
@@ -224,7 +227,7 @@ namespace clear
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
-		
+				
 	private:
 		std::string m_Name;
 	};
@@ -288,7 +291,7 @@ namespace clear
 
 	private:
 		void ProcessCImport(const std::filesystem::path& path,  CodegenContext& ctx);
-		FunctionData ParseHeader(const HeaderFunc& function, CodegenContext& ctx);
+		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);
 		Parameter GetInfoFromArg(const std::vector<Token>& arg, CodegenContext& ctx);
 
 		void ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx);
