@@ -32,7 +32,8 @@ namespace clear
         while(it1 != params.end() && it2 != functionTemplate.Parameters.end())
         {
             // in future transferring of types from generics to real will happen here.
-            if(!it2->Type) break;
+            if(it2->IsVariadic) 
+                break;
 
             types.push_back(*it2);
 
@@ -41,8 +42,12 @@ namespace clear
         }
 
         while(it1 != params.end()) // we have variadic args, we will need to build a struct type to hold the arguments.
-        {               
-            types.push_back({ "", it1->Type } );
+        {              
+            if(!it2->Type)
+                types.push_back({ "", it1->Type } );
+            else 
+                types.push_back({ "", it2->Type } );
+
             it1++;
         }
 
