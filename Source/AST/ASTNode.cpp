@@ -631,6 +631,7 @@ namespace clear
 			if (auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhs.CodegenValue)) 
 			{
     			uint64_t index = constIdx->getZExtValue();
+				CLEAR_VERIFY(index < GetSymbolTable()->GetVariadicArguments().size(), "index out of range!");
 
 				Allocation alloc = GetSymbolTable()->GetVariadicArguments()[index];
 				
@@ -853,7 +854,7 @@ namespace clear
 
 		if(prev->HasTemplate(m_Name)) return {};
 
-		bool isVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
+		bool isVariadic = m_Parameters.size() > 0 && m_Parameters.back().IsVariadic;
 		auto& functionTemplate = prev->GetFunctionCache().CreateTemplate(m_Name, m_ReturnType, m_Parameters, isVariadic, shared_from_this());
 		
 		if(m_Name == "main")
@@ -894,7 +895,7 @@ namespace clear
 
 		for (const auto& param : m_Parameters)
 		{
-			if(!param.Type)
+			if(param.IsVariadic)
 			{
 				hasVaArgs = true;
 				break;
@@ -999,6 +1000,19 @@ namespace clear
 
 			if(data.IsVariadic && k - 1 >= data.Parameters.size())  //last item is reserved for var args name
 			{
+				if(data.Parameters.back().Type)
+				{
+					if (gen.CodegenType->Get() != data.Parameters.back().Type->Get())
+					{
+						gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
+														     gen.CodegenType, 
+															 data.Parameters.back().Type, ctx.Builder);
+						
+						gen.CodegenType = data.Parameters.back().Type;
+					}
+				}
+
+
 				args.push_back(gen.CodegenValue);
 				params.push_back({ "", gen.CodegenType});
 				continue;
@@ -1823,6 +1837,45 @@ namespace clear
 		
 		function->insert(function->end(), end);
 		ctx.Builder.SetInsertPoint(end);
+
+		return {};
+	}
+
+    ASTForExpression::ASTForExpression(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+    CodegenResult ASTForExpression::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+		CLEAR_VERIFY(children.size() == 2, "invalid for loop");
+
+		CodegenResult iterator;
+
+		{
+			ValueRestoreGuard guard(ctx.WantAddress, true);
+			iterator = children[0]->Codegen(ctx);
+		}	
+
+		auto tbl = GetSymbolTable();
+
+		if(iterator.CodegenType->IsVariadic())
+		{
+			auto& args = tbl->GetVariadicArguments();
+
+			for(size_t i = 0; i < args.size(); i++)
+			{
+				tbl->RegisterAllocation(m_Name, args[i]);
+
+				children[1]->Codegen(ctx);
+			}
+
+			return {};
+		}
+
+
+		CLEAR_UNREACHABLE("unimplemented");
 
 		return {};
 	}

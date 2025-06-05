@@ -238,6 +238,10 @@ namespace clear
         {
             ParseWhile();
         }
+        else if (Match(TokenType::For))
+        {
+            ParseFor();
+        }
         else 
         {
             ParseGeneric();
@@ -400,6 +404,33 @@ namespace clear
         m_RootStack.push_back(base);
     }
 
+    void Parser::ParseFor()
+    {
+        Expect(TokenType::For);
+        Consume();
+
+        Expect(TokenType::VariableReference);
+        std::string name = Consume().Data;
+
+        Expect(TokenType::In);
+        Consume();
+
+        // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
+
+        Expect(TokenType::VariableReference);
+        auto var = std::make_shared<ASTVariable>(Consume().Data);
+
+        auto forLoop = std::make_shared<ASTForExpression>(name);
+        forLoop->Push(var);
+
+        Root()->Push(forLoop);
+
+        auto body = std::make_shared<ASTNodeBase>();
+        forLoop->Push(body);
+
+        m_RootStack.push_back(body);
+    }
+
     void Parser::ParseElseIf()
     {
         Expect(TokenType::ElseIf);
@@ -439,6 +470,7 @@ namespace clear
 
             if(Match(TokenType::VariableReference))
             {
+                param.IsVariadic = true;
                 param.Name = Consume().Data;
                 Expect(TokenType::Ellipsis);
 
@@ -459,7 +491,7 @@ namespace clear
 
             if(Match(TokenType::Ellipsis))
             {
-                param.Type = nullptr;
+                param.IsVariadic = true;
                 params.push_back(param);
 
                 Consume();

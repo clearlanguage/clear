@@ -1459,7 +1459,7 @@ namespace clear
 		while (!std::isspace(current) && !g_OperatorMap.contains(Str(current)))
 		{
 
-			VerifyCondition(current == '0' || current == '1' || current == '2' || current == '3' || current == '4' || current == '5' || current == '6' || current == '7' || current == '8' || current == '9' || current == 'A' || current == 'B' || current == 'C' || current == 'D' || current == 'E' || current == 'F'  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
+			VerifyCondition((current >= '0' && current <= '9') || (current >= 'A' && current <= 'F')  || current == 'a' || current == 'b' || current == 'c' || current == 'd' || current == 'e' || current == 'f',30);
 			m_CurrentString += current;
 			current = GetNextChar();
 		}

@@ -11,6 +11,7 @@ namespace clear
 	{
 		std::string Name;
 		std::shared_ptr<Type> Type = nullptr;
+        bool IsVariadic = false;
 	};
 
     class ASTNodeBase; 

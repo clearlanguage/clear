@@ -87,7 +87,10 @@ namespace clear
         {"class",{.NextState = LexerState::ClassName, .TokenToPush = TokenType::Class }},
         {"as", {.NextState = LexerState::Default, .TokenToPush = TokenType::As}},
         {"void",{.NextState = LexerState::Default, .TokenToPush = TokenType::Void}},
-
+        {"for", {.NextState = LexerState::Default, .TokenToPush = TokenType::For}},
+        {"in",{.NextState = LexerState::Default, .TokenToPush = TokenType::In}},
+        {"try",{.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
+        {"catch", {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}}
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};

@@ -21,7 +21,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		ArrayInitializer, MemberAccess, AssignmentOperator, Import, Member, 
-		Variable
+		Variable, ForLoop
 	};
 
 	struct CodegenResult
@@ -364,5 +364,17 @@ namespace clear
 		virtual ~ASTWhileExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
+
+	class ASTForExpression : public ASTNodeBase 
+	{
+	public:
+		ASTForExpression(const std::string& name);
+		virtual ~ASTForExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ForLoop; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	
+	private:
+		std::string m_Name;
 	};
 }
