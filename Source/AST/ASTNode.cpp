@@ -852,10 +852,8 @@ namespace clear
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
 		CLEAR_VERIFY(prev, "prev was null");
 
-		if(prev->HasTemplate(m_Name)) return {};
-
 		bool isVariadic = m_Parameters.size() > 0 && m_Parameters.back().IsVariadic;
-		auto& functionTemplate = prev->GetFunctionCache().CreateTemplate(m_Name, m_ReturnType, m_Parameters, isVariadic, shared_from_this());
+		prev->GetFunctionCache().CreateTemplate(m_Name, m_ReturnType, m_Parameters, isVariadic, shared_from_this());
 		
 		if(m_Name == "main")
 		{
@@ -981,59 +979,19 @@ namespace clear
 		auto& builder  = ctx.Builder;
 		auto& module   = ctx.Module;
 		auto& context  = ctx.Context;
-		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 
-		FunctionTemplate& data = symbolTable->GetTemplate(m_Name);
-		
 		uint32_t k = 0;
 
 		std::vector<llvm::Value*> args;
 		std::vector<Parameter> params; // we only care about types here
 
-		ValueRestoreGuard guard(ctx.WantAddress, false);
+		BuildArgs(ctx, args, params);
 
-		for (auto& child : children)	 //TODO: move this into a build arguments function
-		{
-			CodegenResult gen = child->Codegen(ctx);
+		FunctionTemplate& data = symbolTable->GetTemplate(m_Name, params);
 
-			if(data.IsVariadic && k - 1 >= data.Parameters.size())  //last item is reserved for var args name
-			{
-				if(data.Parameters.back().Type)
-				{
-					if (gen.CodegenType->Get() != data.Parameters.back().Type->Get())
-					{
-						gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
-														     gen.CodegenType, 
-															 data.Parameters.back().Type, ctx.Builder);
-						
-						gen.CodegenType = data.Parameters.back().Type;
-					}
-				}
-
-
-				args.push_back(gen.CodegenValue);
-				params.push_back({ "", gen.CodegenType});
-				continue;
-			}
-		
-			// we need a check here to see if type is a generic, if so then ignore any casting.
-
-			if (gen.CodegenType->Get() != data.Parameters[k].Type->Get())
-			{
-				gen.CodegenValue = TypeCasting::Cast(gen.CodegenValue, 
-												     gen.CodegenType, 
-													 data.Parameters[k].Type, ctx.Builder);
-				
-				gen.CodegenType = data.Parameters[k].Type;
-			}
-
-			args.push_back(gen.CodegenValue);
-			params.push_back({"", gen.CodegenType });
-
-			k++;
-		}
+		CastArgs(ctx, args, params, data);
 
 		// again, we need a check to make sure that return type is not a generic in the future, for now this is ok.
 
@@ -1048,6 +1006,36 @@ namespace clear
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
+
+    void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
+    {
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+		for (auto& child : GetChildren())	
+		{
+			CodegenResult gen = child->Codegen(ctx);
+
+			args.push_back(gen.CodegenValue);
+			params.push_back({"", gen.CodegenType });
+		}
+    }
+
+    void ASTFunctionCall::CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate& fnTemplate)
+    {
+		for(size_t i = 0; i < args.size(); i++)
+		{
+			auto& param1 = params[i];
+			auto& param2 = i < fnTemplate.Parameters.size() ? fnTemplate.Parameters[i] : fnTemplate.Parameters.back();
+
+			if(!param2.Type) continue;
+
+			if(param1.Type->Get() != param2.Type->Get()) 
+			{
+				args[i] = TypeCasting::Cast(args[i], param1.Type, param2.Type, ctx.Builder);
+				params[i].Type = param2.Type;
+			}
+		}
+    }
 
     ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types)
 		: m_Name(name), m_Parameters(types), m_ReturnType(expectedReturnType)
@@ -1125,7 +1113,7 @@ namespace clear
 
 			if (std::shared_ptr<ASTUnaryExpression> unaryExpression = std::dynamic_pointer_cast<ASTUnaryExpression>(child))
 			{
-				CLEAR_VERIFY(unaryExpression->GetChildren().size() == 0, "");
+				unaryExpression->GetChildren().clear();
 
 				unaryExpression->Push(stack.top());
 				stack.pop();
@@ -1135,6 +1123,7 @@ namespace clear
 			}
 
 			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
+			binExp->GetChildren().clear();
 
 			binExp->Push(stack.top());
 			stack.pop();
@@ -1301,6 +1290,8 @@ namespace clear
 			
 			if(!fun) 
 				continue;
+
+			auto tbl = GetSymbolTable();
 			
 			if(rootSymbolTable->HasInstance(fun->GetName()))
 			{
@@ -1321,14 +1312,14 @@ namespace clear
 				registeredData.ReturnType = importedData.ReturnType;
 
 				bool isVariadic = registeredData.Parameters.size() > 0 && !registeredData.Parameters.back().Type;
-				GetSymbolTable()->GetFunctionCache().RegisterDecleration(registeredData, isVariadic);
+				tbl->GetFunctionCache().RegisterDecleration(registeredData, isVariadic);
 			}
 			else if (rootSymbolTable->HasTemplate(fun->GetName()))
 			{
 				if(!m_Alias.empty())
-					GetSymbolTable()->GetFunctionCache().RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()),rootSymbolTable->GetTemplate(fun->GetName()));
+					tbl->GetFunctionCache().RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
 				else 
-					GetSymbolTable()->GetFunctionCache().RegisterTemplate(fun->GetName(),rootSymbolTable->GetTemplate(fun->GetName()));
+					tbl->GetFunctionCache().RegisterTemplate(fun->GetName(), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
 			}
 			else 
 			{
@@ -1380,8 +1371,6 @@ namespace clear
 			bool isVariadic = function.Parameters.size() > 0 && !function.Parameters.back().Type;
 			tbl->GetFunctionCache().RegisterDecleration(function, isVariadic);
 
-			auto& fnTemplate = tbl->GetFunctionCache().GetTemplate(function.MangledName);
-			fnTemplate.IsExternal = true;
 		}
     }
 

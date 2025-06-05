@@ -95,16 +95,16 @@ namespace clear
         return s_NullInstance;
     }
 
-    FunctionTemplate& SymbolTable::GetTemplate(const std::string& templateName)
+    FunctionTemplate& SymbolTable::GetTemplate(const std::string& templateName,  const std::vector<Parameter>& params)
     {
-        if(m_FunctionCache.HasTemplate(templateName)) return m_FunctionCache.GetTemplate(templateName);
+        if(m_FunctionCache.HasTemplate(templateName)) return m_FunctionCache.GetTemplate(templateName, params);
 
         std::shared_ptr<SymbolTable> ptr = m_Previous;
 
         while(ptr)
         {
             if(ptr->m_FunctionCache.HasTemplate(templateName)) 
-                return ptr->m_FunctionCache.GetTemplate(templateName);
+                return ptr->m_FunctionCache.GetTemplate(templateName, params);
                 
             ptr = ptr->m_Previous;
         }

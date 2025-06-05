@@ -18,6 +18,6 @@ namespace clear
                                     std::shared_ptr<Type> type2) = delete; //TODO
 
         static bool CanBeCasted(std::shared_ptr<Type> src,
-                                 std::shared_ptr<Type> dst);
+                                std::shared_ptr<Type> dst);
     };
 }

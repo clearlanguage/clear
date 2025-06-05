@@ -3,14 +3,15 @@
 #include "Core/Log.h"
 
 #include "ASTNode.h"
+#include "TypeCasting.h"
+
+#include <queue>
 
 namespace clear 
 {
-    FunctionTemplate& FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, std::shared_ptr<ASTNodeBase> root)
+    void FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, std::shared_ptr<ASTNodeBase> root)
     {
-        CLEAR_VERIFY(!m_Templates.contains(templateName), "conflicting template function name!");
-        m_Templates[templateName] = {returnType, params, root, isVariadic};
-        return m_Templates[templateName];
+        m_Templates[templateName].push_back({returnType, params, root, isVariadic});
     }
 
     FunctionInstance& FunctionCache::InstantiateOrReturn(const std::string& templateName, std::vector<Parameter> params, std::shared_ptr<Type> returnType, CodegenContext& context)
@@ -22,7 +23,7 @@ namespace clear
         if(m_Instances.contains(templateName)) 
             return GetInstance(templateName);
 
-        FunctionTemplate& functionTemplate = m_Templates.at(templateName);
+        FunctionTemplate& functionTemplate = GetTemplate(templateName, params);
 
         std::vector<Parameter> types;
 
@@ -94,13 +95,79 @@ namespace clear
         return s_NullDecleration;    
     }
 
-    FunctionTemplate& FunctionCache::GetTemplate(const std::string& templateName)
+    FunctionTemplate& FunctionCache::GetTemplate(const std::string& templateName, const std::vector<Parameter>& params)
     {
-         if(m_Templates.contains(templateName)) return m_Templates.at(templateName);
-
-        CLEAR_UNREACHABLE("template name ", templateName, " doesn't exist");
         static FunctionTemplate s_NullTemplate;
-        return s_NullTemplate;
+
+        if(!m_Templates.contains(templateName))
+        {
+            CLEAR_UNREACHABLE("cannot find template name ", templateName);
+            return s_NullTemplate;
+        }
+        
+        auto& candidates = m_Templates.at(templateName);
+        
+        auto ScoreTemplate = [&](const FunctionTemplate& functionTemplate)
+        {
+            size_t score = 0;
+
+            if(params.size() > functionTemplate.Parameters.size() && !functionTemplate.IsVariadic) 
+                return score;
+            
+            if(params.size() == functionTemplate.Parameters.size())
+            {
+                score = 20;
+            }
+
+            for(size_t i = 0; i < params.size(); i++)
+            {
+                auto& param1 = params[i];
+                auto& param2 = i < functionTemplate.Parameters.size() ? functionTemplate.Parameters[i] : functionTemplate.Parameters.back();
+
+                if(!param2.Type) continue; // can be any type ignore rest of params
+
+                if(param1.Type == param2.Type)
+                {
+                    score += 100;
+                }
+                else if (TypeCasting::CanBeCasted(param1.Type, param2.Type))
+                {
+                    score += 50;
+                }
+                else 
+                {
+                    score = 0;
+                    break;
+                }
+
+            }
+
+            return score;
+        };
+
+        struct Candidate
+        {
+            size_t Index;
+            size_t Score;
+
+            bool operator<(const Candidate& other) const 
+            {
+                return Score < other.Score; 
+            }
+        };
+
+        std::priority_queue<Candidate> queue;
+
+        for (size_t i = 0; i < candidates.size(); ++i)
+        {
+            const auto& candidate = candidates[i];
+            size_t score = ScoreTemplate(candidate);
+            if (score > 0)
+                queue.push({ i, score });
+        }
+
+        CLEAR_VERIFY(!queue.empty(), "no viable function");
+        return candidates[queue.top().Index];
     }
 
     bool FunctionCache::HasInstance(const std::string& instanceName)
@@ -120,13 +187,7 @@ namespace clear
 
     void FunctionCache::RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate)
     {
-        if(m_Templates.contains(templateName))
-        {
-            CLEAR_LOG_WARNING("template name conflict not registering ", templateName);
-            return;
-        }
-
-        m_Templates[templateName] = functionTemplate;
+        m_Templates[templateName].push_back(functionTemplate);
     }
 
     void FunctionCache::RegisterInstance(const FunctionInstance &instance)
@@ -154,9 +215,10 @@ namespace clear
         templateF.Parameters = decleration.Parameters;
         templateF.IsVariadic = isVariadic;
         templateF.ReturnType = decleration.ReturnType;
+        templateF.IsExternal = true;
         templateF.Root = nullptr; // declerations have no responsibility to instantiate functions
 
-        m_Templates[decleration.MangledName] = templateF;
+        m_Templates[decleration.MangledName].push_back(templateF);
     }
 
     std::string FunctionCache::GetMangledName(const std::string& templateName, const std::vector<Parameter>& params, std::shared_ptr<Type> returnType)

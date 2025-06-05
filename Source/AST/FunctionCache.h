@@ -43,11 +43,11 @@ namespace clear
         FunctionCache() = default;
         ~FunctionCache() = default;
 
-        FunctionTemplate& CreateTemplate(const std::string& templateName,
-                                         std::shared_ptr<Type> returnType,
-                                         const std::vector<Parameter>& params,
-                                         bool isVariadic,
-                                         std::shared_ptr<ASTNodeBase> root);
+        void CreateTemplate(const std::string& templateName,
+                            std::shared_ptr<Type> returnType,
+                            const std::vector<Parameter>& params,
+                            bool isVariadic,
+                            std::shared_ptr<ASTNodeBase> root);
 
         FunctionInstance& InstantiateOrReturn(const std::string& templateName, 
                                               std::vector<Parameter> params, 
@@ -57,7 +57,7 @@ namespace clear
         
         FunctionInstance& GetInstance(const std::string& instanceName);
         FunctionInstance& GetDecleration(const std::string& decleration);
-        FunctionTemplate& GetTemplate(const std::string& templateName);
+        FunctionTemplate& GetTemplate(const std::string& templateName, const std::vector<Parameter>& params);
 
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
@@ -72,7 +72,7 @@ namespace clear
                                           std::shared_ptr<Type> returnType);
 
     private:
-        std::unordered_map<std::string, FunctionTemplate> m_Templates;
+        std::unordered_map<std::string, std::vector<FunctionTemplate>> m_Templates;
         std::unordered_map<std::string, FunctionInstance> m_Instances;
         std::unordered_map<std::string, FunctionInstance> m_Declerations; // external function/already instantiated (printf from c, scanf etc...)
 

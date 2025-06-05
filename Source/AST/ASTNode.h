@@ -86,7 +86,7 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
-		const auto& GetChildren() const { return m_Children; }
+		auto& GetChildren() { return m_Children; }
 	
 	private:
 		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
@@ -214,6 +214,8 @@ namespace clear
 
 		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
+		const auto& GetParameters() const { return m_Parameters; }
+
 	private:
 		std::vector<Parameter> m_Parameters;
 		std::string m_Name;
@@ -228,6 +230,10 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 				
+	private:
+		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params);
+		void CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate&);
+	
 	private:
 		std::string m_Name;
 	};

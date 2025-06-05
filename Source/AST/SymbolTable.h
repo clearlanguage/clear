@@ -44,7 +44,7 @@ namespace clear
 
         FunctionInstance& GetInstance(const std::string& instanceName);
         FunctionInstance& GetDecleration(const std::string& decleration);
-        FunctionTemplate& GetTemplate(const std::string& templateName);
+        FunctionTemplate& GetTemplate(const std::string& templateName, const std::vector<Parameter>& params);
 
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
