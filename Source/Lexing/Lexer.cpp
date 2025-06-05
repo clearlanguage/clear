@@ -1247,7 +1247,7 @@ namespace clear
 			// auto ParameterTokens = ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
 			ProgramInfo ParameterTokens = SubParse(i);
 			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
-			VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
+			//VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
 			for (const Token& tok :ParameterTokens.Tokens)
 			{
 				PushToken(tok);

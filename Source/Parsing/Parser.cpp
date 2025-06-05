@@ -437,7 +437,21 @@ namespace clear
         {
             Parameter param;
 
-            param.Type = ParseVariableType(); // TODO: check for variable type first
+            if(Match(TokenType::VariableReference))
+            {
+                param.Name = Consume().Data;
+                Expect(TokenType::Ellipsis);
+
+                param.Type = nullptr;
+                params.push_back(param);
+
+                Consume();
+                Expect(TokenType::EndFunctionParameters);
+
+                break;
+            }
+
+            param.Type = ParseVariableType(); 
             
             Expect(TokenType::VariableReference);
 
