@@ -17,9 +17,9 @@ namespace clear
 		if(hash == "int32") return {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)std::stoll(data), true), nullptr};
 		if(hash == "int64") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (int64_t)std::stoll(data), true), nullptr};
 
-		if(hash == "uint8")  return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint8_t)std::stoull(data), true), nullptr};
-		if(hash == "uint16") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint16_t)std::stoull(data), true), nullptr};
-		if(hash == "uint32") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint32_t)std::stoull(data), true), nullptr};
+		if(hash == "uint8")  return {llvm::ConstantInt::get(llvm::Type::getInt8Ty(context), (uint8_t)std::stoull(data), true), nullptr};
+		if(hash == "uint16") return {llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (uint16_t)std::stoull(data), true), nullptr};
+		if(hash == "uint32") return {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (uint32_t)std::stoull(data), true), nullptr};
 		if(hash == "uint64") return {llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), (uint64_t)std::stoull(data), true), nullptr};
 
 		if(hash == "float32") return {llvm::ConstantFP::get(llvm::Type::getFloatTy(context), (float)std::stod(data)), nullptr};

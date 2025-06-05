@@ -36,6 +36,7 @@ namespace clear
         {
             return;
         }
+        
 
         Lexer lexer;
         ProgramInfo info = lexer.CreateTokensFromFile(path.string());
@@ -55,6 +56,7 @@ namespace clear
         Parser parser(info, lookup.Registry);
         lookup.Node = parser.GetResult();
 
+        
         for(const auto& node : lookup.Node->GetChildren())
         {
             if(node->GetType() == ASTNodeType::Import)
@@ -90,8 +92,21 @@ namespace clear
 
         for(auto& [filepath, ast] : m_LookupTable)
         {
-            CodegenModule(filepath, linker);
+            CodegenModule(filepath);
         }
+
+        //m_MainModule->print(llvm::errs(), nullptr);
+        CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule, &llvm::errs()), "module verification failed");
+
+        if(m_Config.EmitIntermiediateIR)
+        {
+            std::filesystem::path irPath = m_Config.OutputPath / m_Config.OutputFilename;
+            irPath.replace_extension(".ll");
+            std::error_code EC;
+            llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
+            
+            m_MainModule->print(file, nullptr, true, true);
+        }   
 
         BuildModule(m_MainModule.get(), m_Config.OutputPath / m_Config.OutputFilename);
         OptimizeModule();
@@ -148,13 +163,6 @@ namespace clear
         std::string errorStr;
 		llvm::raw_string_ostream errorStream(errorStr);
 
-		bool isValid = llvm::verifyModule(*module, &errorStream);
-
-		if (isValid) 
-			llvm::errs() << "Module verification failed:\n" << errorStream.str() << "\n";
-		else 
-        	llvm::outs() << "Module verified successfully!\n";
-			
 
 		llvm::InitializeNativeTarget();
 		llvm::InitializeNativeTargetAsmPrinter();
@@ -200,6 +208,7 @@ namespace clear
     {
         std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
         std::filesystem::path objectPath = filepath;
+
         objectPath.replace_extension(".o");
 
         auto clangPath = llvm::sys::findProgramByName("clang");
@@ -320,7 +329,7 @@ namespace clear
         modulePM.run(*m_MainModule, moduleAM);
     }
 
-    void CompilationManager::CodegenModule(const std::filesystem::path& path, llvm::Linker& linker)
+    void CompilationManager::CodegenModule(const std::filesystem::path& path)
     {
         if(m_GeneratedModules.contains(path)) 
             return;
@@ -337,7 +346,7 @@ namespace clear
                 return;
             
             m_GeneratedModules.insert(stdLib);
-            CodegenModule(stdLib, linker);
+            CodegenModule(stdLib);
             
             return;
         }
@@ -354,32 +363,14 @@ namespace clear
             {
                 std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
                 std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
-                CodegenModule(fullQualifiedPath, linker);
+                CodegenModule(fullQualifiedPath);
             }
         }
-
-        auto currentModule = std::make_unique<llvm::Module>(path.string(), *m_Context);
-
-        CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *currentModule, reg);
+\
+        CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *m_MainModule, reg);
         context.StdLibraryDirectory = m_Config.StandardLibrary;
 
-        rootNode->Codegen(context);
-
-        if(m_Config.EmitIntermiediateIR)
-        {
-            std::filesystem::path irPath = path;
-            irPath.replace_extension(".ll");
-            std::error_code EC;
-            llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
-
-            currentModule->print(file, nullptr, true, true);
-        }   
-
-        if(linker.linkInModule(std::move(currentModule)))
-        {
-            CLEAR_UNREACHABLE("linking error");
-        }
-
+        rootNode->Codegen(context); 
         m_GeneratedModules.insert(path);
     }
 }

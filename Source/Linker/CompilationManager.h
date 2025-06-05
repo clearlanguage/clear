@@ -29,7 +29,7 @@ namespace clear
         void LinkToStaticLibrary();
         void OptimizeModule();
 
-        void CodegenModule(const std::filesystem::path& path, llvm::Linker& linker);
+        void CodegenModule(const std::filesystem::path& path);
 
     private:
         LookupAstTable m_LookupTable;

@@ -437,9 +437,15 @@ namespace clear
         {
             Parameter param;
 
+            param.Type = ParseVariableType(); // TODO: check for variable type first
+            
+            Expect(TokenType::VariableReference);
+
+            param.Name = Consume().Data;
+
             if(Match(TokenType::Ellipsis))
             {
-                param.IsVariadic = true;
+                param.Type = nullptr;
                 params.push_back(param);
 
                 Consume();
@@ -448,11 +454,6 @@ namespace clear
                 break;
             }
 
-            param.Type = ParseVariableType();
-            
-            Expect(TokenType::VariableReference);
-
-            param.Name = Consume().Data;
             params.push_back(param);
 
             if(!Match(TokenType::EndFunctionParameters)) 
@@ -522,7 +523,6 @@ namespace clear
             
             if(Match(TokenType::Ellipsis))
             {
-                param.IsVariadic = true;
                 Consume();
                 Expect(TokenType::EndFunctionArguments);
                 params.push_back(param);

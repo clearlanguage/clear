@@ -2,8 +2,10 @@
 
 #include "API/LLVM/LLVMInclude.h"
 #include "Core/Type.h"
+#include "FunctionCache.h"
 
 #include <unordered_map>
+#include <vector>
 
 namespace clear 
 {
@@ -11,14 +13,8 @@ namespace clear
     {
         llvm::AllocaInst* Alloca = nullptr;
         std::shared_ptr<Type> Type;
+        bool IsVariadicList = false;
     };
-
-    struct Parameter
-	{
-		std::string Name;
-		std::shared_ptr<Type> Type;
-		bool IsVariadic = false;
-	};
 
     struct Member
     {
@@ -43,31 +39,29 @@ namespace clear
         ~SymbolTable() = default;
 
         Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder);
-        FunctionData& CreateFunction(const std::string& name,
-                                     std::vector<Parameter>& parameters, 
-                                     const std::shared_ptr<Type>& returnType, 
-                                     llvm::Module& module, 
-                                     llvm::LLVMContext& context
-                                    );
-
-
-        void RegisterAllocation(const std::string& name, Allocation allocation);
-        void RegisterFunction(const std::string& name, const FunctionData& data);
-
-
         Allocation  GetAlloca(const std::string& name);
-        FunctionData& GetFunction(const std::string& name);
+        void        RegisterAllocation(const std::string& name, Allocation allocation);
+
+        FunctionInstance& GetInstance(const std::string& instanceName);
+        FunctionInstance& GetDecleration(const std::string& decleration);
+        FunctionTemplate& GetTemplate(const std::string& templateName);
+
+        bool HasInstance(const std::string& instanceName);
+        bool HasDecleration(const std::string& instanceName);
+        bool HasTemplate(const std::string& instanceName);
 
         void SetPrevious(const std::shared_ptr<SymbolTable>& previous);
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
 
-    private:
-        std::string MangleFunctionName(const std::string& name, const FunctionData& data);
+        FunctionCache& GetFunctionCache() { return m_FunctionCache; }
+        std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }
 
     private:
 
         std::unordered_map<std::string, Allocation>   m_Variables; 
-        std::unordered_map<std::string, FunctionData> m_Functions; 
+        std::vector<Allocation> m_VariadicArguments;
+
+        FunctionCache m_FunctionCache;
 
         std::shared_ptr<SymbolTable> m_Previous;
     };
