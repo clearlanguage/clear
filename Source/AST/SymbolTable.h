@@ -5,6 +5,7 @@
 #include "FunctionCache.h"
 
 #include <unordered_map>
+#include <vector>
 
 namespace clear 
 {
@@ -53,14 +54,12 @@ namespace clear
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
 
         FunctionCache& GetFunctionCache() { return m_FunctionCache; }
-
-    private:
-        //std::string MangleFunctionName(const std::string& name, const FunctionData& data);
+        std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }
 
     private:
 
         std::unordered_map<std::string, Allocation>   m_Variables; 
-        //std::unordered_map<std::string, FunctionData> m_Functions; 
+        std::vector<Allocation> m_VariadicArguments;
 
         FunctionCache m_FunctionCache;
 

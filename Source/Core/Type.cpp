@@ -32,6 +32,11 @@ namespace clear
         return GetFlags().test((size_t)TypeFlags::Compound);
     }
 
+    bool Type::IsVariadic()
+    {
+        return GetFlags().test((size_t)TypeFlags::Variadic);
+    }
+
     bool Type::ContainsAll(TypeFlagSet set)
     {
         return (GetFlags() & set) == set;
@@ -163,6 +168,11 @@ namespace clear
 
        m_CachedID = hash;
        return m_CachedID.value();
+    }
+
+    VariadicArgumentsHolder::VariadicArgumentsHolder()
+    {
+        m_Flags.set((size_t)TypeFlags::Variadic);
     }
 }
  

@@ -32,10 +32,10 @@ namespace clear
     {
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
-        Void, Count
+        Void, Variadic, Count
     };
     
-    using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
+    using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>; // may switch to uint32_t but don't know how many we will need in future.
 
     class Type 
     {
@@ -56,6 +56,7 @@ namespace clear
         bool IsIntegral();
         bool IsArray();
         bool IsCompound();
+        bool IsVariadic();
 
         bool ContainsAll(TypeFlagSet set);
         bool ContainsAny(TypeFlagSet set);
@@ -163,5 +164,21 @@ namespace clear
         mutable std::optional<size_t> m_CachedID;
     };
     
+    class VariadicArgumentsHolder : public Type 
+    {
+    public:
+        VariadicArgumentsHolder();
+        virtual ~VariadicArgumentsHolder() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
+        virtual std::string GetHash() const override { return "variadic"; };
+        virtual std::string GetShortHash() const override { return "va"; };
+        virtual size_t GetID() const override {return 0;};
+
+    private:
+        llvm::Type* m_LLVMType = nullptr;
+        TypeFlagSet m_Flags;
+    };
 }
 

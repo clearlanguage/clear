@@ -24,6 +24,8 @@ namespace clear
 
         FunctionTemplate& functionTemplate = m_Templates.at(templateName);
 
+        std::vector<Parameter> types;
+
         auto it1 = params.begin();
         auto it2 = functionTemplate.Parameters.begin();
 
@@ -32,40 +34,27 @@ namespace clear
             // in future transferring of types from generics to real will happen here.
             if(!it2->Type) break;
 
+            types.push_back(*it2);
+
             it1++;
             it2++;
         }
 
-        if(it1 != params.end()) // we have variadic args, we will need to build a struct type to hold the arguments.
+        while(it1 != params.end()) // we have variadic args, we will need to build a struct type to hold the arguments.
         {               
-            auto savedIt = it1;
-
-            CLEAR_VERIFY(functionTemplate.IsVariadic, "function needs to be variadic to accept extra parameters");
-
-            std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-            size_t argCount = 0; // avoid naming conflicts
-            while(it1 != params.end())
-            {
-                members.push_back({std::to_string(argCount++), it1->Type });
-                it1++;
-            }
-
-            auto structTy = context.Registry.CreateStruct(std::format("{}-{}", it2->Name, "struct"), members); 
-            
-            params.erase(savedIt, params.end()); // replace extra params with struct type.
-            params.push_back({it2->Name, structTy });
+            types.push_back({ "", it1->Type } );
+            it1++;
         }
 
         std::vector<llvm::Type*> parameterTypes;
-        std::transform(params.begin(), params.end(), std::back_inserter(parameterTypes), [](auto& a) { return a.Type->Get(); });
+        std::transform(types.begin(), types.end(), std::back_inserter(parameterTypes), [](auto& a) { return a.Type->Get(); });
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context.Context), parameterTypes, false);
 
 		FunctionInstance functionData;
         functionData.FunctionType = functionType;
         functionData.ReturnType   = returnType;
-        functionData.Parameters   = params;
+        functionData.Parameters   = types;
         functionData.MangledName  = mangledName;
 
 		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, functionData.MangledName, context.Module);

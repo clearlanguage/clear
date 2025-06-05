@@ -595,7 +595,7 @@ namespace clear
         return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    CodegenResult ASTBinaryExpression::HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		CodegenResult lhs;
 
@@ -611,12 +611,48 @@ namespace clear
 			rhs = right->Codegen(ctx);
 		}
 
-		// lhs is going to be a reference to the array
-		std::shared_ptr<PointerType> type = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
-		CLEAR_VERIFY(type, "invalid type");
-
 		llvm::Value* gep = nullptr;
 		std::shared_ptr<Type> baseType;
+
+		//TODO: clean this up.
+
+		if(lhs.CodegenType->IsVariadic())
+		{
+			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
+			{
+				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
+													 rhs.CodegenType, 
+													 ctx.Registry.GetType("int64"), 
+													 ctx.Builder);
+			}
+
+	
+		
+			if (auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhs.CodegenValue)) 
+			{
+    			uint64_t index = constIdx->getZExtValue();
+
+				Allocation alloc = GetSymbolTable()->GetVariadicArguments()[index];
+				
+				gep = alloc.Alloca;
+				baseType = alloc.Type;
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("only allow constant expression indexing, runtime indexing is not supported yet");
+			}
+
+			if(ctx.WantAddress)
+				return {gep, ctx.Registry.GetPointerTo(baseType) };
+
+        	return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
+				
+		}
+
+		// lhs is going to be a reference to the array
+
+		std::shared_ptr<PointerType> type = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
+		CLEAR_VERIFY(type, "invalid type");
 
 		if(std::shared_ptr<ArrayType> arrType = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType()))
 		{
@@ -641,37 +677,7 @@ namespace clear
 
 			baseType = arrType->GetBaseType();
 		}
-		else if (std::shared_ptr<StructType> structType = std::dynamic_pointer_cast<StructType>(type->GetBaseType()))
-		{
-			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
-			{
-				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
-													 rhs.CodegenType, 
-													 ctx.Registry.GetType("int64"), 
-													 ctx.Builder);
-			}
 
-	
-		
-			if (auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhs.CodegenValue)) 
-			{
-    			uint64_t index = constIdx->getZExtValue();
-
-    			gep = ctx.Builder.CreateStructGEP(
-    			    structType->Get(),
-    			    lhs.CodegenValue,
-    			    index,
-    			    "field_gep"
-    			);
-
-				baseType = structType->GetMemberAtIndex(index);	
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("only allow constant expression indexing, runtime indexing is not supported yet");
-			}
-
-		}
 
 
 		if(ctx.WantAddress)
@@ -712,6 +718,12 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		Allocation alloca = registry->GetAlloca(m_Name);
+
+		
+		if(alloca.Type->IsVariadic())  // special case
+		{
+			return { nullptr, alloca.Type }; 
+		}
 
 		if(ctx.WantAddress)
 		{
@@ -877,6 +889,9 @@ namespace clear
 		llvm::AllocaInst* vaList = nullptr;
 
 		bool hasVaArgs = false;
+
+		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
+
 		for (const auto& param : m_Parameters)
 		{
 			if(!param.Type)
@@ -892,25 +907,31 @@ namespace clear
 			alloca.Alloca = argAlloc;
 			alloca.Type   = param.Type;
 
-			GetSymbolTable()->RegisterAllocation(param.Name, alloca);
+			tbl->RegisterAllocation(param.Name, alloca);
 			k++;
 		}
 
+		auto& varArgs = tbl->GetVariadicArguments();
+		varArgs.clear();
 		
 		if(hasVaArgs)
 		{
-			std::string structTy = std::format("{}-{}", m_Parameters[k].Name, "struct");
-			auto ty = ctx.Registry.GetType(structTy);
+			for(size_t i = k; i < functionData.Parameters.size(); i++)
+			{
+				llvm::AllocaInst* argAlloc = builder.CreateAlloca(functionData.Parameters[i].Type->Get(), nullptr, m_Parameters[k].Name);
+				builder.CreateStore(functionData.Function->getArg(i), argAlloc);
 
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(ty->Get(), nullptr, m_Parameters[k].Name);
-			builder.CreateStore(functionData.Function->getArg(k), argAlloc);
-			
-			Allocation alloca;
-			alloca.Alloca = argAlloc;
-			alloca.Type   = ty;
+				Allocation alloca;
+				alloca.Alloca = argAlloc;
+				alloca.Type   = functionData.Parameters[i].Type;
+				varArgs.push_back(alloca);
+			}
 
-			GetSymbolTable()->RegisterAllocation(m_Parameters[k].Name, alloca);
-			k++;
+			Allocation dummy;
+			dummy.Alloca = nullptr;
+			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); // TODO: this should be registries job
+
+			tbl->RegisterAllocation(m_Parameters[k].Name, dummy);
 		}
 
 		functionData.Function->insert(functionData.Function->end(), body);
@@ -1010,26 +1031,6 @@ namespace clear
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
 		FunctionInstance& instance = symbolTable->GetPrevious()->GetFunctionCache().InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
-
-		if(data.IsVariadic && !data.IsExternal) // we need to format our arguments into a struct
-		{
-			size_t beginVariadic = data.Parameters.size() - 1;
-			std::string structTyName = std::format("{}-struct", data.Parameters.back().Name);
-			auto structTy = ctx.Registry.GetType(structTyName);
-			CLEAR_VERIFY(structTy, "internal error, struct type doesn't exist");
-			
-			llvm::AllocaInst* alloc = ctx.Builder.CreateAlloca(structTy->Get());
-
-			size_t k = 0;
-			for(size_t i = beginVariadic; i < args.size(); i++)
-			{
-				llvm::Value* gep = builder.CreateStructGEP(structTy->Get(), alloc, k++, "variadic_gep");
-				builder.CreateStore(args[i], gep);
-			}
-
-			args.erase(args.begin() + beginVariadic, args.end());
-			args.push_back(ctx.Builder.CreateLoad(alloc->getAllocatedType(), alloc));
-		}
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
