@@ -22,7 +22,22 @@ int main(int argc, char* argv[])
         return 0;
     } */
     //else if(std::string(argv[1]) == "build")
-    {
+    if (true) {
+        std::filesystem::path current = __FILE__;
+        std::filesystem::current_path(current.parent_path());
+
+
+        std::cout << "------PARSER TESTS--------" << std::endl;
+        Lexer parser;
+        ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");
+        for (size_t i = 0; i < info.Tokens.size(); i++)
+        {
+            std::cout << "Token Type: " << TokenToString(info.Tokens[i].TokenType);
+            std::cout << ", Data: " << info.Tokens[i].Data;
+            std::cout << std::endl;
+        }
+    }
+    if (false){
         auto start = std::chrono::high_resolution_clock::now();
         std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
         std::cout << std::filesystem::current_path() << std::endl;

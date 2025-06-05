@@ -11,6 +11,67 @@
 
 namespace clear
 {
+	std::string Strip(const std::string& str)
+	{
+		size_t start = 0;
+		while (start < str.size() && std::isspace(static_cast<unsigned char>(str[start])))
+		{
+			start++;
+		}
+
+		size_t end = str.size();
+		while (end > start && std::isspace(static_cast<unsigned char>(str[end - 1])))
+		{
+			end++;
+		}
+
+		return str.substr(start, end - start);
+	}
+
+	void FindByKeyword(const std::string& keyword, const std::string& end, std::vector<std::string>& res, const std::string& buffer)
+	{
+		size_t index = 0;
+
+		while ((index = buffer.find(keyword + " ", index)) != std::string::npos)
+		{
+			index += keyword.size();
+			size_t next = buffer.find(end, index);
+			res.push_back(buffer.substr(index, next - index));
+			index = next + 1;
+		}
+	}
+
+	std::vector<std::string> ProcessClearFile(const std::filesystem::path& path)
+	{
+		std::fstream file;
+
+		file.open(path);
+
+		if (!file.is_open())
+		{
+			std::cout << "failed to open file " << path << std::endl;
+			return {};
+		}
+
+		std::string line;
+		std::string buffer;
+		while(std::getline(file, line))
+		{
+			buffer += line + '\n';
+		}
+
+		std::vector<std::string> result;
+		FindByKeyword("class", ":", result, buffer);
+		FindByKeyword("restriction", ":", result, buffer);
+		FindByKeyword("struct", ":", result, buffer);
+
+		for(size_t i = 0; i < result.size(); i++)
+		{
+			result[i] = Strip(result[i]);
+		}
+
+		return result;
+	}
 	Lexer::Lexer()
 	{
 		m_StateMap[LexerState::Default]      = [this]() { DefaultState(); };
@@ -35,6 +96,8 @@ namespace clear
 		m_StateMap[LexerState::Restriction] = [this]() {RestrictionState();};
 		m_StateMap[LexerState::DotOp] = [this]() {DotOpState();};
 		m_StateMap[LexerState::ClassName] = [this]() {ClassNameState();};
+		m_StateMap[LexerState::Import] = [this]() {ImportState();};
+		m_StateMap[LexerState::As] = [this]() {AsState();};
 
 
 	}
@@ -157,6 +220,7 @@ namespace clear
 
 	ProgramInfo Lexer::CreateTokensFromFile(const std::filesystem::path& path)
 	{
+		InputFile = path;
 		InitLexer();
 		m_File.open(path);
 
@@ -502,6 +566,37 @@ namespace clear
 		}
 	}
 
+	void Lexer::ImportState() {
+		SkipSpaces();
+		ParseString();
+		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
+		std::string importedFile = GetLastToken().Data;
+		auto parent = InputFile.parent_path();
+		auto importPath = parent/ importedFile;
+
+
+		auto ret = ProcessClearFile(importPath);
+		globalImports[importPath] = ret;
+		m_CurrentState = LexerState::Default;
+
+	}
+
+	void Lexer::AsState() {
+		VerifyCondition(GetLastToken(2).TokenType == TokenType::Import,54);
+		SkipSpaces();
+		ParseString();
+		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
+
+		std::string alias = GetLastToken().Data;
+		std::string importedFile = GetLastToken(2).Data;
+		auto importPath = InputFile.parent_path()/ importedFile;
+
+		importAliases[alias] = globalImports[importPath];
+		globalImports.erase(importPath);
+
+		m_CurrentState = LexerState::Default;
+	}
+
 
 	void Lexer::IndexOperatorState() {
 		char current = GetNextChar();
@@ -710,6 +805,20 @@ namespace clear
 		m_CurrentString.clear();
 		m_CurrentState = LexerState::Default;
 
+	}
+
+	bool Lexer::IsAlias(std::string& type) {
+		if (GetLastToken().TokenType == TokenType::DotOp) {
+			if (GetLastToken(1).TokenType == TokenType::VariableReference) {
+				if (importAliases.contains(GetLastToken(1).Data)) {
+					auto x = importAliases[GetLastToken(1).Data];
+					if (std::find(x.begin(), x.end(), type) != x.end()) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	bool Lexer::IsTypeDeclared(const std::string& type) 
@@ -1790,7 +1899,7 @@ namespace clear
 				return;
 		}
 
-		if (IsTypeDeclared(m_CurrentString) && GetLastToken().TokenType != TokenType::DotOp)
+		if (IsTypeDeclared(m_CurrentString) && GetLastToken().TokenType != TokenType::DotOp || IsAlias(m_CurrentString))
 			{
 			PushToken(TokenType::TypeIdentifier, m_CurrentString);
 			m_CurrentString.clear();

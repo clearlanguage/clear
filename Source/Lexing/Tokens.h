@@ -51,7 +51,9 @@ namespace clear {
         Increment,
         Restriction,
         DotOp,
-        ClassName
+        ClassName,
+        Import,
+        As
     };
 
 

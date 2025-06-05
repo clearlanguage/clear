@@ -62,6 +62,10 @@ namespace clear
 		bool IsSubLexer = false;
 
 	private:
+		std::filesystem::path InputFile;
+		std::map<std::string, std::vector<std::string>> globalImports ;
+		std::map<std::string, std::vector<std::string>>  importAliases;
+
 		void DefaultState();
 		void VariableNameState();
 		void OperatorState();
@@ -81,6 +85,9 @@ namespace clear
 		void IncrementOperator();
 		void RestrictionState();
 		void DotOpState();
+		void ImportState();
+		void AsState();
+		bool IsAlias(std::string& type);
 
 
 		Token GetLastToken();

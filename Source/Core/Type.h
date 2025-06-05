@@ -77,7 +77,7 @@ namespace clear
         virtual size_t GetSize() const override { return m_Size; }
         virtual std::string GetHash() const override { return m_Name; }
         virtual std::string GetShortHash() const override { return m_Name[0] + std::to_string(GetSize()); }
-        virtual size_t GetID() const override;
+        virtual uint64_t GetID() const override;
 
     private:
         llvm::Type* m_LLVMType;
@@ -97,7 +97,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
         virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "P"; }
-        virtual size_t GetID() const override;
+        virtual uint64_t GetID() const override;
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -119,7 +119,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override;
         virtual std::string GetShortHash() const override;
-        virtual size_t GetID() const override;
+        virtual uint64_t GetID() const override;
 
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
@@ -145,7 +145,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_Name; };
         virtual std::string GetShortHash() const override { return m_Name; };
-        virtual size_t GetID() const override;
+        virtual uint64_t GetID() const override;
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);
@@ -174,7 +174,7 @@ namespace clear
         virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return "variadic"; };
         virtual std::string GetShortHash() const override { return "va"; };
-        virtual size_t GetID() const override {return 0;};
+        virtual uint64_t GetID() const override {return 0;};
 
     private:
         llvm::Type* m_LLVMType = nullptr;

@@ -83,9 +83,9 @@ namespace clear
         {"switch",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Switch }},
         {"default",  {.NextState = LexerState::Default, .TokenToPush = TokenType::Default }},
         {"restriction",  {.NextState = LexerState::Restriction, .TokenToPush = TokenType::Restriction }},
-        {"import",{.NextState = LexerState::Default, .TokenToPush = TokenType::Import }},
+        {"import",{.NextState = LexerState::Import, .TokenToPush = TokenType::Import }},
         {"class",{.NextState = LexerState::ClassName, .TokenToPush = TokenType::Class }},
-        {"as", {.NextState = LexerState::Default, .TokenToPush = TokenType::As}},
+        {"as", {.NextState = LexerState::As, .TokenToPush = TokenType::As}},
         {"void",{.NextState = LexerState::Default, .TokenToPush = TokenType::Void}},
 
     };
@@ -221,6 +221,7 @@ namespace clear
             case TokenType::Class: return "Class";
             case TokenType::ClassName: return "ClassName";
             case TokenType::Inherits: return "Inherits";
+            case TokenType::As: return "As";
 
             default:
                 break;

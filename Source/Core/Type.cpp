@@ -65,7 +65,7 @@ namespace clear
         CLEAR_VERIFY(m_LLVMType, "null type not allowed");
     }
 
-    size_t PrimitiveType::GetID() const
+    uint64_t PrimitiveType::GetID() const
     {
         return std::hash<std::string>()(m_Name);
     }
@@ -82,7 +82,7 @@ namespace clear
         m_BaseType = type;
     }
 
-    size_t PointerType::GetID() const 
+    uint64_t PointerType::GetID() const
     {
         return std::hash<std::string>()(GetHash());
     }
@@ -104,7 +104,7 @@ namespace clear
         return m_BaseType->GetShortHash() + "A" + std::to_string(m_Count);
     }
 
-    size_t ArrayType::GetID() const 
+    uint64_t ArrayType::GetID() const
     {
         return std::hash<std::string>()(GetHash());
     }
@@ -154,7 +154,7 @@ namespace clear
         return nullptr;
     }
 
-    size_t StructType::GetID() const
+    uint64_t StructType::GetID() const
     {
         if (m_CachedID.has_value())
             return m_CachedID.value();
