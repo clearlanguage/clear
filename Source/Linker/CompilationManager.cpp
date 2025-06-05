@@ -95,6 +95,7 @@ namespace clear
             CodegenModule(filepath);
         }
 
+        //m_MainModule->print(llvm::errs(), nullptr);
         CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule, &llvm::errs()), "module verification failed");
 
         if(m_Config.EmitIntermiediateIR)

@@ -21,6 +21,7 @@ namespace clear
         std::vector<Parameter> Parameters;
         std::shared_ptr<ASTNodeBase> Root;
         bool IsVariadic = false;
+        bool IsExternal = false;
     };
 
     struct FunctionInstance

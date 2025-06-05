@@ -177,7 +177,8 @@ namespace clear
             mangledName += param.Type->GetShortHash();
         }
 
-        mangledName += "rt" + returnType->GetShortHash();
+        if(returnType)
+            mangledName += "rt" + returnType->GetShortHash();
 
         return mangledName;
     }

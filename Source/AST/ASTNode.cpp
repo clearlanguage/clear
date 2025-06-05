@@ -657,7 +657,7 @@ namespace clear
 			{
     			uint64_t index = constIdx->getZExtValue();
 
-    			llvm::Value* gep = ctx.Builder.CreateStructGEP(
+    			gep = ctx.Builder.CreateStructGEP(
     			    structType->Get(),
     			    lhs.CodegenValue,
     			    index,
@@ -972,7 +972,7 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-		for (auto& child : children)
+		for (auto& child : children)	 //TODO: move this into a build arguments function
 		{
 			CodegenResult gen = child->Codegen(ctx);
 
@@ -1010,6 +1010,26 @@ namespace clear
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
 		FunctionInstance& instance = symbolTable->GetPrevious()->GetFunctionCache().InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+
+		if(data.IsVariadic && !data.IsExternal) // we need to format our arguments into a struct
+		{
+			size_t beginVariadic = data.Parameters.size() - 1;
+			std::string structTyName = std::format("{}-struct", data.Parameters.back().Name);
+			auto structTy = ctx.Registry.GetType(structTyName);
+			CLEAR_VERIFY(structTy, "internal error, struct type doesn't exist");
+			
+			llvm::AllocaInst* alloc = ctx.Builder.CreateAlloca(structTy->Get());
+
+			size_t k = 0;
+			for(size_t i = beginVariadic; i < args.size(); i++)
+			{
+				llvm::Value* gep = builder.CreateStructGEP(structTy->Get(), alloc, k++, "variadic_gep");
+				builder.CreateStore(args[i], gep);
+			}
+
+			args.erase(args.begin() + beginVariadic, args.end());
+			args.push_back(ctx.Builder.CreateLoad(alloc->getAllocatedType(), alloc));
+		}
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
@@ -1058,6 +1078,7 @@ namespace clear
 		functionTemplate.Parameters = m_Parameters;
 		functionTemplate.ReturnType = m_ReturnType;
 		functionTemplate.Root = nullptr; // external function so no root
+		functionTemplate.IsExternal = true;
 
 		GetSymbolTable()->GetFunctionCache().RegisterTemplate(data.MangledName, functionTemplate);
 
@@ -1343,6 +1364,9 @@ namespace clear
 
 			bool isVariadic = function.Parameters.size() > 0 && !function.Parameters.back().Type;
 			tbl->GetFunctionCache().RegisterDecleration(function, isVariadic);
+
+			auto& fnTemplate = tbl->GetFunctionCache().GetTemplate(function.MangledName);
+			fnTemplate.IsExternal = true;
 		}
     }
 
