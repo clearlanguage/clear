@@ -901,7 +901,7 @@ namespace clear
 			}
 
 			llvm::AllocaInst* argAlloc = builder.CreateAlloca(param.Type->Get(), nullptr, param.Name);
-			builder.CreateStore(functionData.Function->getArg(k++), argAlloc);
+			builder.CreateStore(functionData.Function->getArg(k), argAlloc);
 			
 			Allocation alloca;
 			alloca.Alloca = argAlloc;
