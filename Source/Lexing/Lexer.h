@@ -17,11 +17,7 @@ namespace clear
 	template<typename... Args>
 	concept RestrictToString = ((std::convertible_to<Args, std::string> || std::convertible_to<Args, const char*> || std::same_as<Args, char>) && ...);
 
-	struct ProgramInfo
-	{
-		std::vector<Token> Tokens;
-		std::vector<Error> Errors;
-	};
+
 
 	struct ArrayDeclarationReturn
 	{
@@ -42,6 +38,13 @@ namespace clear
 	{
 		std::set<std::string> TypeDeclarations;
 		std::set<std::string> RestrictionDeclarations;
+	};
+
+
+	struct ProgramInfo
+	{
+		std::vector<Token> Tokens;
+		std::vector<Error> Errors;
 	};
 
 	class Lexer
@@ -65,6 +68,7 @@ namespace clear
 		std::filesystem::path InputFile;
 		std::map<std::string, std::vector<std::string>> globalImports ;
 		std::map<std::string, std::vector<std::string>>  importAliases;
+		std::vector<std::string> GenericDeclarations;
 
 		void DefaultState();
 		void VariableNameState();
@@ -87,8 +91,10 @@ namespace clear
 		void DotOpState();
 		void ImportState();
 		void AsState();
-		bool IsAlias(std::string& type);
+		bool IsAlias(std::string type);
+		bool IsAlias(std::string type,int n);
 
+		void ParseFunctionGenericDeclaration();
 
 		Token GetLastToken();
 		Token GetLastToken(size_t x);
