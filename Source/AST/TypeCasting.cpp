@@ -72,4 +72,21 @@ namespace clear
         return castedValue;
     }
 
+    bool TypeCasting::CanBeCasted(std::shared_ptr<Type> src, std::shared_ptr<Type> dst)
+    {
+        llvm::Type* srcType = src->Get();
+        llvm::Type* dstType = dst->Get();
+
+        if (srcType == dstType)
+            return true;
+
+        if (srcType->isIntegerTy() && dstType->isFloatingPointTy()) return true;
+        else if (srcType->isFloatingPointTy() && dstType->isIntegerTy()) return true;
+        else if (srcType->isFloatTy() && dstType->isDoubleTy()) return true;
+        else if (srcType->isDoubleTy() && dstType->isFloatTy()) return true;
+        else if (srcType->isIntegerTy() && dstType->isIntegerTy()) return true;
+        else if (srcType->canLosslesslyBitCastTo(dstType)) return true;
+
+        return false;
+    }
 }

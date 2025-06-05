@@ -16,5 +16,8 @@ namespace clear
                                     llvm::Value* value2, 
                                     std::shared_ptr<Type> type1, 
                                     std::shared_ptr<Type> type2) = delete; //TODO
+
+        static bool CanBeCasted(std::shared_ptr<Type> src,
+                                 std::shared_ptr<Type> dst);
     };
 }
