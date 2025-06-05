@@ -23,6 +23,9 @@ namespace clear
         if(m_Instances.contains(templateName)) 
             return GetInstance(templateName);
 
+        if(m_Instances.contains(mangledName))
+            return GetInstance(mangledName);
+
         FunctionTemplate& functionTemplate = GetTemplate(templateName, params);
 
         std::vector<Parameter> types;
@@ -113,10 +116,13 @@ namespace clear
 
             if(params.size() > functionTemplate.Parameters.size() && !functionTemplate.IsVariadic) 
                 return score;
+
+            if(params.size() < functionTemplate.Parameters.size())
+                return score;
             
             if(params.size() == functionTemplate.Parameters.size())
             {
-                score = 20;
+                score = 100;
             }
 
             for(size_t i = 0; i < params.size(); i++)
@@ -130,9 +136,13 @@ namespace clear
                 {
                     score += 100;
                 }
+                else if (TypeCasting::CanBePromoted(param1.Type, param2.Type))
+                {
+                    score += 75;
+                }
                 else if (TypeCasting::CanBeCasted(param1.Type, param2.Type))
                 {
-                    score += 50;
+                    score += 25;
                 }
                 else 
                 {
@@ -167,6 +177,7 @@ namespace clear
         }
 
         CLEAR_VERIFY(!queue.empty(), "no viable function");
+
         return candidates[queue.top().Index];
     }
 

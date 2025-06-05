@@ -19,5 +19,8 @@ namespace clear
 
         static bool CanBeCasted(std::shared_ptr<Type> src,
                                 std::shared_ptr<Type> dst);
+
+        static bool CanBePromoted(std::shared_ptr<Type> src,
+                                  std::shared_ptr<Type> dst);
     };
 }
