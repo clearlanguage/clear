@@ -807,7 +807,7 @@ namespace clear
 
 	}
 
-	bool Lexer::IsAlias(std::string& type) {
+	bool Lexer::IsAlias(std::string type) {
 		if (GetLastToken().TokenType == TokenType::DotOp) {
 			if (GetLastToken(1).TokenType == TokenType::VariableReference) {
 				if (importAliases.contains(GetLastToken(1).Data)) {
@@ -820,9 +820,31 @@ namespace clear
 		}
 		return false;
 	}
+	bool Lexer::IsAlias(std::string type,int n) {
+		if (GetLastToken(n).TokenType == TokenType::DotOp) {
+			if (GetLastToken(1+n).TokenType == TokenType::VariableReference) {
+				if (importAliases.contains(GetLastToken(1+n).Data)) {
+					auto x = importAliases[GetLastToken(1+n).Data];
+					if (std::find(x.begin(), x.end(), type) != x.end()) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+
+
 
 	bool Lexer::IsTypeDeclared(const std::string& type) 
 	{
+
+		for (const auto& pair : globalImports) {
+			if (std::find(pair.second.begin(), pair.second.end(), type) != pair.second.end()) {
+				return true;
+			}
+		}
 		for (TypeScope& arg : m_ScopeStack)
 		{
 			if (arg.TypeDeclarations.contains(type) || arg.RestrictionDeclarations.contains(type))
@@ -1200,8 +1222,9 @@ namespace clear
 	void Lexer::VariableNameState()
 	{
 		char current = GetNextChar();
-		bool isDeclaration = IsTokenOfType(GetLastToken(1),"is_declaration") && ( GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(GetLastToken().Data));
+		bool isDeclaration = IsTokenOfType(GetLastToken(1),"is_declaration") && ( GetLastToken().TokenType == TokenType::TypeIdentifier || g_DataTypes.contains(GetLastToken().Data)) || IsAlias(GetLastToken().Data,1) && IsTokenOfType(GetLastToken(3),"is_declaration");
 		current = SkipSpaces();
+
 
 		// if ((current == ':' || g_OperatorMap.contains(Str(current))) && current != '*' && current != '<') {
 		// 	Backtrack();
@@ -1336,6 +1359,72 @@ namespace clear
 		m_CurrentState = LexerState::Default;
 	}
 
+void Lexer::ParseFunctionGenericDeclaration() {
+		char current = GetNextChar();
+		int currentLevel = 1;
+		std::vector<std::string> tokens;
+		std::vector<int> indexes;
+		indexes.push_back(m_CurrentTokenIndex);
+		while (currentLevel!= 0&& current != '\0')
+		{
+			current = GetNextChar();
+			if (current == '<')
+			{
+				currentLevel++;
+			}
+			else if (current == '>')
+			{
+				currentLevel--;
+			}
+
+			if (current == ',' && currentLevel == 1 || currentLevel == 0)
+			{
+				VerifyCondition(!m_CurrentString.empty(),45);
+				tokens.push_back(m_CurrentString);
+				m_CurrentString.clear();
+				indexes.push_back(m_CurrentTokenIndex);
+				continue;
+			}
+			// VerifyCondition(!IsSpace(current),52,-1,m_CurrentTokenIndex+1);
+			// VerifyCondition(IsVarNameChar(current) || current == '<' || current == '>' || current == ',',44);
+			if (!(IsSpace(current) && m_CurrentString.empty()))
+			{
+				m_CurrentString+=current;
+			}
+		}
+
+		VerifyCondition(!tokens.empty(),43);
+		PushToken(TokenType::GenericDeclarationStart,"");
+		CLEAR_PARSER_VERIFY(GenericDeclarations.empty(),"L bozo")
+		for (auto &i : tokens)
+		{
+			ProgramInfo program = SubParse(i,true);
+			VerifyCondition((program.Tokens.size() == 1 && program.Tokens.back().TokenType == TokenType::VariableReference) || (program.Tokens.size() > 1 && program.Tokens.back().TokenType == TokenType::VariableName) ,54);
+			GenericDeclarations.push_back(program.Tokens.back().Data);
+			program.Tokens.back().TokenType = TokenType::VariableName;
+
+			for (const Token& tok :program.Tokens)
+			{
+				PushToken(tok);
+			}
+			PushToken(TokenType::Comma,",");
+		}
+		if (GetLastToken().TokenType == TokenType::Comma)
+		{
+			m_ProgramInfo.Tokens.pop_back();
+		}
+		PushToken(TokenType::GenericDeclarationEnd,"");
+		current = GetNextChar();
+		VerifyCondition(!IsVarNameChar(current),47,m_CurrentTokenIndex-2);
+		current = SkipSpaces();
+		if (!IsSpace(current) && current != '\0')
+		{
+			Backtrack();
+		}
+	}
+
+
+
 	void Lexer::FunctionParameterState()
 	{
 		char current = GetNextChar();
@@ -1343,9 +1432,15 @@ namespace clear
 		current = SkipSpaces();
 		int skipped = m_CurrentTokenIndex-curtok;
 		m_CurrentString.clear();
+		VerifyCondition(current == '(' || current == '<', 29,m_TokenIndexStart+skipped);
+		if (current == '<') {
+			Backtrack();
+			ParseFunctionGenericDeclaration();
+			current = GetNextChar();
+		}
+		m_CurrentErrorState = "function parameters";
 		VerifyCondition(current == '(', 29,m_TokenIndexStart+skipped);
 
-		m_CurrentErrorState = "function parameters";
 		auto info = ParseBrackets(')',true);
 
 		PushToken({ .TokenType = TokenType::StartFunctionParameters, .Data = "" });
@@ -1356,7 +1451,7 @@ namespace clear
 			// auto ParameterTokens = ParseFunctionParameter(i,info.indexes.at(ind),info.indexes.at(ind+1));
 			ProgramInfo ParameterTokens = SubParse(i);
 			CLEAR_VERIFY(!ParameterTokens.Tokens.empty(),"Tokens in function parameter empty");
-			//VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
+			// VerifyCondition(g_DataTypes.contains(ParameterTokens.Tokens.at(0).Data) || IsTypeDeclared(ParameterTokens.Tokens.at(0).Data),33,info.indexes.at(ind),m_CurrentTokenIndex-2,std::string(TokenToString(ParameterTokens.Tokens.at(0).TokenType)));
 			for (const Token& tok :ParameterTokens.Tokens)
 			{
 				PushToken(tok);
@@ -1396,7 +1491,7 @@ namespace clear
 			current = GetNextChar();
 		}
 
-		if (current =='(')
+		if (current =='(' || current == '<')
 			Backtrack();
 
 		PushToken({ .TokenType = TokenType::FunctionName, .Data = m_CurrentString });
@@ -1548,6 +1643,10 @@ namespace clear
 			PushToken({ .TokenType = TokenType::StartIndentation });
 			m_Indents = localIndents;
 			m_ScopeStack.emplace_back();
+			if (!GenericDeclarations.empty()) {
+				m_ScopeStack.back().TypeDeclarations.insert(GenericDeclarations.begin(),GenericDeclarations.end());
+				GenericDeclarations.clear();
+			}
 		}
 
 		while (m_Indents > localIndents)
@@ -1702,6 +1801,8 @@ namespace clear
 		subLexer.m_Buffer = arg;
 		subLexer.m_Buffer+=" ";
 		subLexer.m_ScopeStack = m_ScopeStack;
+		subLexer.importAliases = importAliases;
+		subLexer.globalImports = globalImports;
 		subLexer.IsSubLexer = true;
 		subLexer.m_NoVariableNames = !allowvarname;
 		ProgramInfo info = subLexer.ParseProgram();
@@ -1727,6 +1828,8 @@ namespace clear
 		subLexer.m_Buffer = arg;
 		subLexer.m_Buffer+=" ";
 		subLexer.m_ScopeStack = m_ScopeStack;
+		subLexer.importAliases = importAliases;
+		subLexer.globalImports = globalImports;
 		subLexer.IsSubLexer = true;
 		ProgramInfo info = subLexer.ParseProgram();
 
@@ -1896,7 +1999,7 @@ namespace clear
 			{
 			if (!m_CurrentString.empty())
 				Backtrack();
-				return;
+				 return;
 		}
 
 		if (IsTypeDeclared(m_CurrentString) && GetLastToken().TokenType != TokenType::DotOp || IsAlias(m_CurrentString))
