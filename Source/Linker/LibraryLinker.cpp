@@ -13,19 +13,20 @@
 #include <string>
 #include "Lexing/Lexer.h"
 
-inline std::string Trim(const std::string& str)
+namespace clear
 {
-    size_t first = str.find_first_not_of(" \t\n\r\f\v");
-    if (first == std::string::npos)
-        return ""; // no content
+    inline std::string Trim(const std::string& str)
+    {
+        size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos)
+            return ""; // no content
 
-    size_t last = str.find_last_not_of(" \t\n\r\f\v");
-    return str.substr(first, (last - first + 1));
-}
+        size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return str.substr(first, (last - first + 1));
+    }
 
 
-namespace clear {
-    std::string RunClangPreprocess(const std::string& headerFile) 
+    std::string RunClangPreprocess(const std::string& headerFile)
     {
         const std::string tempFile = "clang_output.txt";
         
