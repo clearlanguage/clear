@@ -89,4 +89,27 @@ namespace clear
 
         return false;
     }
+
+    bool TypeCasting::CanBePromoted(std::shared_ptr<Type> src, std::shared_ptr<Type> dst)
+    {
+        llvm::Type* lhsType = src->Get();
+        llvm::Type* rhsType = dst->Get();
+
+        if (lhsType == rhsType)
+            return true;
+
+        if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy()) return false;
+        else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy()) return false;
+        else if (lhsType->isFloatTy() && rhsType->isDoubleTy()) return true;
+        else if (lhsType->isDoubleTy() && rhsType->isFloatTy()) return false;
+        else if (lhsType->isIntegerTy() && rhsType->isIntegerTy())
+        {
+            uint32_t lhsBits = lhsType->getIntegerBitWidth();
+            uint32_t rhsBits = rhsType->getIntegerBitWidth();
+
+            if (lhsBits < rhsBits) return true;
+        }
+
+        return false;
+    }
 }
