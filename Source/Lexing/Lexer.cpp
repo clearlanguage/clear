@@ -2067,9 +2067,7 @@ void Lexer::ParseFunctionGenericDeclaration() {
 			if (input[i] == '{') {
 				size_t start = i + 1;
 				size_t end = input.find('}', start);
-				if (end == std::string::npos) {
-					throw std::runtime_error("Unterminated template expression in string.");
-				}
+				VerifyCondition(end != std::string::npos,54);
 				std::string expr = input.substr(start, end - start);
 				expressionsOut.push_back(expr);
 				formatOut += "{}";
