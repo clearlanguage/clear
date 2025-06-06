@@ -724,6 +724,12 @@ namespace clear
 			ParseString();
 			return;
 		}
+		if (current == '`') {
+			VerifyCondition(m_CurrentString.empty(), 25,"template string");
+			ParseTemplateString();
+			return;
+
+		}
 		if (current == '{') {
 			VerifyCondition(m_CurrentString.empty(), 25,"list");
 			ParseList();
@@ -2051,6 +2057,110 @@ void Lexer::ParseFunctionGenericDeclaration() {
 		PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
 		m_CurrentString.clear();
 	}
+
+	void Lexer::ParseFmtString(const std::string& input, std::string& formatOut, std::vector<std::string>& expressionsOut) {
+		formatOut.clear();
+		expressionsOut.clear();
+
+		size_t i = 0;
+		while (i < input.length()) {
+			if (input[i] == '{') {
+				size_t start = i + 1;
+				size_t end = input.find('}', start);
+				if (end == std::string::npos) {
+					throw std::runtime_error("Unterminated template expression in string.");
+				}
+				std::string expr = input.substr(start, end - start);
+				expressionsOut.push_back(expr);
+				formatOut += "{}";
+				i = end + 1;
+			} else {
+				formatOut += input[i++];
+			}
+		}
+	}
+
+
+	void Lexer::ParseTemplateString() {
+		char current = GetNextChar();
+		while (current != '`')
+		{
+			VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
+			if (current == '\\')
+			{
+				current = GetNextChar();
+				if (current == '"')
+				{
+					m_CurrentString += '"';
+				}
+				else if(current == 'n')
+				{
+					m_CurrentString += '\n';
+				}
+				else if(current == '\\')
+				{
+					m_CurrentString += '\\';
+				}else if(current == 't') {
+					m_CurrentString += '\t';
+				}else if(current == 'r') {
+					m_CurrentString += '\r';
+				}else if(current == 'b') {
+					m_CurrentString += '\b';
+				}else if(current == '0') {
+					m_CurrentString+= '\0';
+				}else if(current == 'f') {
+					m_CurrentString = '\f';
+				}else if(current == 'v') {
+					m_CurrentString = '\v';
+				}else if(current == 'a') {
+					m_CurrentString = '\a';
+				}
+
+				else {
+					m_CurrentString += '\\';
+					m_CurrentString += current;
+
+				}
+			}else {
+				m_CurrentString += current;
+
+			}
+			current = GetNextChar();
+
+
+		}
+		std::string fmt;
+		std::vector<std::string> exprs;
+
+		ParseFmtString(m_CurrentString, fmt, exprs);
+
+		m_CurrentString.clear();
+		PushToken(TokenType::RValueString,fmt);
+		PushToken(TokenType::DotOp,".");
+		PushToken(TokenType::MemberName,"format");
+		PushToken(TokenType::FunctionCall,"format");
+		PushToken(TokenType::OpenBracket,"(");
+		for (std::string & i : exprs) {
+			auto program = SubParse(i,false);
+			for (auto & t : program.Tokens) {
+				PushToken(t);
+			}
+			PushToken(TokenType::Comma,",");
+		}
+		if (GetLastToken().TokenType == TokenType::Comma)
+		{
+			m_ProgramInfo.Tokens.pop_back();
+		}
+
+		PushToken(TokenType::EndFunctionArguments,")");
+
+
+
+
+
+
+	}
+
 
 	void Lexer::ParseOther()
 	{

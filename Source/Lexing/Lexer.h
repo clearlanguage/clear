@@ -159,6 +159,8 @@ namespace clear
 		void ParseString();
 		void ParseOther();
 		void ParseChar();
+		void ParseTemplateString();
+		void ParseFmtString(const std::string& input, std::string& formatOut, std::vector<std::string>& expressionsOut);
 		void AmpersandState();
 		void ParseBinaryLiteral();
 		void ParseHexLiteral();
