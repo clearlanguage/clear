@@ -100,6 +100,8 @@ namespace clear
 		Token GetLastToken(size_t x);
 		Token CreateToken(const TokenType tok, const std::string& data);
 
+		std::filesystem::path GetImportFile(std::string name) const;
+
 
 
 		template<typename ...Args>
@@ -157,6 +159,8 @@ namespace clear
 		void ParseString();
 		void ParseOther();
 		void ParseChar();
+		void ParseTemplateString();
+		void ParseFmtString(const std::string& input, std::string& formatOut, std::vector<std::string>& expressionsOut);
 		void AmpersandState();
 		void ParseBinaryLiteral();
 		void ParseHexLiteral();
@@ -176,6 +180,7 @@ namespace clear
 		void ResetSecondState();
 
 		std::string GetCurrentErrorContext(std::string ErrorRef);
+		std::filesystem::path standardLibPath;
 
 		char GetNextChar();
 		void Backtrack();

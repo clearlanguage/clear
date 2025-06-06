@@ -100,7 +100,7 @@ namespace clear
             {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}},
         {"callable",{TokenType::CloseBracket,TokenType::MemberName,TokenType::TypeIdentifier,TokenType::VariableReference}},
             {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}},
-        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName,TokenType::EndFunctionArguments}}
+        {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName,TokenType::EndFunctionArguments,TokenType::RValueString}}
 
 
 

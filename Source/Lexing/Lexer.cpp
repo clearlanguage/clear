@@ -11,6 +11,48 @@
 
 namespace clear
 {
+	int LevenshteinDistance(const std::string& s1, const std::string& s2) {
+		const size_t m = s1.size(), n = s2.size();
+		std::vector<std::vector<int>> dp(m + 1, std::vector<int>(n + 1));
+
+		for (size_t i = 0; i <= m; ++i) dp[i][0] = i;
+		for (size_t j = 0; j <= n; ++j) dp[0][j] = j;
+
+		for (size_t i = 1; i <= m; ++i) {
+			for (size_t j = 1; j <= n; ++j) {
+				int cost = (tolower(s1[i - 1]) == tolower(s2[j - 1])) ? 0 : 1;
+				dp[i][j] = std::min({
+					dp[i - 1][j] + 1,
+					dp[i][j - 1] + 1,
+					dp[i - 1][j - 1] + cost
+				});
+			}
+		}
+		return dp[m][n];
+	}
+
+	std::string SuggestClosestModule(const std::string& missingModule, const std::string& libraryPath) {
+		std::string bestMatch;
+		int minDistance = std::numeric_limits<int>::max();
+
+		for (const auto& entry : std::filesystem::directory_iterator(libraryPath)) {
+			if (entry.is_regular_file() && entry.path().extension() == ".cl") {
+				std::string filename = entry.path().filename().string();
+				int dist = LevenshteinDistance(missingModule, filename);
+				if (dist < minDistance) {
+					minDistance = dist;
+					bestMatch = filename;
+				}
+			}
+		}
+
+		if (!bestMatch.empty() && minDistance <= 3) {
+			return "Did you mean to import \"" + bestMatch + "\"?";
+		} else {
+			return "";
+		}
+	}
+
 	std::string Strip(const std::string& str)
 	{
 		size_t start = 0;
@@ -215,6 +257,7 @@ namespace clear
 		m_CurrentState = LexerState::Default;
 		m_Buffer.clear();
 		m_CurrentString.clear();
+		standardLibPath = std::filesystem::current_path().parent_path() / "Standard";
 	}
 
 
@@ -448,6 +491,19 @@ namespace clear
 		return ret;
 	}
 
+	std::filesystem::path Lexer::GetImportFile(std::string name) const {
+		auto parent = InputFile.parent_path();
+		auto importPath = parent/ name;
+
+		if(exists(importPath)) {
+			return importPath;
+		}
+		else {
+			return standardLibPath/ name;
+		}
+
+	}
+
 
 
 	BracketParsingReturn Lexer::ParseBrackets(char end, bool commas) {
@@ -572,10 +628,16 @@ namespace clear
 		ParseString();
 		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
 		std::string importedFile = GetLastToken().Data;
-		auto parent = InputFile.parent_path();
-		auto importPath = parent/ importedFile;
 
+		auto importPath = GetImportFile(importedFile);
+		if (!exists(importPath)) {
+			std::string x = SuggestClosestModule(importedFile,standardLibPath);
+			std::string e = std::format("The requested module '{}' could not be found in the import paths.",importedFile);
+			std::string r = "Import not found";
+			auto err = CreateError(e,x,r);
+			RaiseError(err);
 
+		}
 		auto ret = ProcessClearFile(importPath);
 		globalImports[importPath] = ret;
 		m_CurrentState = LexerState::Default;
@@ -586,12 +648,14 @@ namespace clear
 		VerifyCondition(GetLastToken(2).TokenType == TokenType::Import,54);
 		SkipSpaces();
 		ParseString();
-		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
+		VerifyCondition(GetLastToken().TokenType == TokenType::RValueString,54);
 
 		std::string alias = GetLastToken().Data;
 		std::string importedFile = GetLastToken(2).Data;
-		auto importPath = InputFile.parent_path()/ importedFile;
+		auto importPath = GetImportFile(importedFile);
 
+		CLEAR_PARSER_VERIFY(globalImports.contains(importPath),"FAS.212");
+		VerifyCondition(!importAliases.count(alias),56,alias);
 		importAliases[alias] = globalImports[importPath];
 		globalImports.erase(importPath);
 
@@ -659,6 +723,12 @@ namespace clear
 			VerifyCondition(m_CurrentString.empty(), 25,"string");
 			ParseString();
 			return;
+		}
+		if (current == '`') {
+			VerifyCondition(m_CurrentString.empty(), 25,"template string");
+			ParseTemplateString();
+			return;
+
 		}
 		if (current == '{') {
 			VerifyCondition(m_CurrentString.empty(), 25,"list");
@@ -1987,6 +2057,108 @@ void Lexer::ParseFunctionGenericDeclaration() {
 		PushToken({ .TokenType = TokenType::RValueString, .Data = m_CurrentString });
 		m_CurrentString.clear();
 	}
+
+	void Lexer::ParseFmtString(const std::string& input, std::string& formatOut, std::vector<std::string>& expressionsOut) {
+		formatOut.clear();
+		expressionsOut.clear();
+
+		size_t i = 0;
+		while (i < input.length()) {
+			if (input[i] == '{') {
+				size_t start = i + 1;
+				size_t end = input.find('}', start);
+				VerifyCondition(end != std::string::npos,54);
+				std::string expr = input.substr(start, end - start);
+				expressionsOut.push_back(expr);
+				formatOut += "{}";
+				i = end + 1;
+			} else {
+				formatOut += input[i++];
+			}
+		}
+	}
+
+
+	void Lexer::ParseTemplateString() {
+		char current = GetNextChar();
+		while (current != '`')
+		{
+			VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
+			if (current == '\\')
+			{
+				current = GetNextChar();
+				if (current == '"')
+				{
+					m_CurrentString += '"';
+				}
+				else if(current == 'n')
+				{
+					m_CurrentString += '\n';
+				}
+				else if(current == '\\')
+				{
+					m_CurrentString += '\\';
+				}else if(current == 't') {
+					m_CurrentString += '\t';
+				}else if(current == 'r') {
+					m_CurrentString += '\r';
+				}else if(current == 'b') {
+					m_CurrentString += '\b';
+				}else if(current == '0') {
+					m_CurrentString+= '\0';
+				}else if(current == 'f') {
+					m_CurrentString = '\f';
+				}else if(current == 'v') {
+					m_CurrentString = '\v';
+				}else if(current == 'a') {
+					m_CurrentString = '\a';
+				}
+
+				else {
+					m_CurrentString += '\\';
+					m_CurrentString += current;
+
+				}
+			}else {
+				m_CurrentString += current;
+
+			}
+			current = GetNextChar();
+
+
+		}
+		std::string fmt;
+		std::vector<std::string> exprs;
+
+		ParseFmtString(m_CurrentString, fmt, exprs);
+
+		m_CurrentString.clear();
+		PushToken(TokenType::VariableReference,"format");
+		PushToken(TokenType::FunctionCall,"format");
+		PushToken(TokenType::OpenBracket,"(");
+		PushToken(TokenType::RValueString,fmt);
+		PushToken(TokenType::Comma,",");
+		for (std::string & i : exprs) {
+			auto program = SubParse(i,false);
+			for (auto & t : program.Tokens) {
+				PushToken(t);
+			}
+			PushToken(TokenType::Comma,",");
+		}
+		if (GetLastToken().TokenType == TokenType::Comma)
+		{
+			m_ProgramInfo.Tokens.pop_back();
+		}
+
+		PushToken(TokenType::EndFunctionArguments,")");
+
+
+
+
+
+
+	}
+
 
 	void Lexer::ParseOther()
 	{
