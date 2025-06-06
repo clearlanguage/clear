@@ -130,7 +130,11 @@ namespace clear
                 auto& param1 = params[i];
                 auto& param2 = i < functionTemplate.Parameters.size() ? functionTemplate.Parameters[i] : functionTemplate.Parameters.back();
 
-                if(!param2.Type) continue; // can be any type ignore rest of params
+                if(!param2.Type)  // can be any type 
+                {
+                    score += 75;
+                    continue;
+                };
 
                 if(param1.Type == param2.Type)
                 {
