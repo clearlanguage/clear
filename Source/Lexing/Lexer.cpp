@@ -2133,11 +2133,11 @@ void Lexer::ParseFunctionGenericDeclaration() {
 		ParseFmtString(m_CurrentString, fmt, exprs);
 
 		m_CurrentString.clear();
-		PushToken(TokenType::RValueString,fmt);
-		PushToken(TokenType::DotOp,".");
-		PushToken(TokenType::MemberName,"format");
+		PushToken(TokenType::VariableReference,"format");
 		PushToken(TokenType::FunctionCall,"format");
 		PushToken(TokenType::OpenBracket,"(");
+		PushToken(TokenType::RValueString,fmt);
+		PushToken(TokenType::Comma,",");
 		for (std::string & i : exprs) {
 			auto program = SubParse(i,false);
 			for (auto & t : program.Tokens) {
