@@ -117,7 +117,9 @@ namespace clear
             if(params.size() > functionTemplate.Parameters.size() && !functionTemplate.IsVariadic) 
                 return score;
 
-            if(params.size() < functionTemplate.Parameters.size())
+            size_t paramSize = functionTemplate.IsVariadic ? functionTemplate.Parameters.size() - 1 : functionTemplate.Parameters.size();
+
+            if(params.size() < paramSize)
                 return score;
             
             if(params.size() == functionTemplate.Parameters.size())
