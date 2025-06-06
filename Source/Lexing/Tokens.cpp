@@ -90,7 +90,8 @@ namespace clear
         {"for", {.NextState = LexerState::Default, .TokenToPush = TokenType::For}},
         {"in",{.NextState = LexerState::Default, .TokenToPush = TokenType::In}},
         {"try",{.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
-        {"catch", {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}}
+        {"catch", {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}},
+        {"inherits",{.NextState = LexerState::Default, .TokenToPush = TokenType::Inherits}},
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};

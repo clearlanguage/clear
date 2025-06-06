@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
         return 0;
     } */
     //else if(std::string(argv[1]) == "build")
-    if (false) {
+    if (true) {
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
             std::cout << std::endl;
         }
     }
-    if (true){
+    if (false){
         auto start = std::chrono::high_resolution_clock::now();
         std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
         std::cout << std::filesystem::current_path() << std::endl;

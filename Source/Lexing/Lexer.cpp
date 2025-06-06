@@ -915,19 +915,24 @@ namespace clear
 		m_TokenIndexStart = m_CurrentTokenIndex-1;
 		m_CurrentString.clear();
 
-		while (current!= '\n' && current != '\0' && current != ':' && !IsSpace(current))
+		while (current!= '\n' && current != '\0' && current != ':' && !IsSpace(current) && current != '<')
 		{
 			VerifyCondition(IsVarNameChar(current),36,Str(current),"struct");
 			m_CurrentString += current;
 			current = GetNextChar();
 		}
 		// VerifyCondition(current == ':',53);
-		VerifyCondition(current == ':',54);
+		// VerifyCondition(current == ':',54);
 		VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"struct");
 		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
 		PushToken(TokenType::ClassName, m_CurrentString);
 		m_CurrentString.clear();
 		VerifyCondition(!IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		if (current == '<') {
+			Backtrack();
+			ParseFunctionGenericDeclaration();
+		}
+
 
 
 		Backtrack();
