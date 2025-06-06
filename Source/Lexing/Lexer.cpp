@@ -430,7 +430,8 @@ namespace clear
 
 
 
-
+		CLEAR_PARSER_VERIFY(GenericDeclarations.empty(),"L bozo")
+		GenericDeclarations.push_back(GetLastToken().Data);
 		m_CurrentString.clear();
 		m_CurrentState = LexerState::Default;
 	}
