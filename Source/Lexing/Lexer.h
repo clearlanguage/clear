@@ -100,6 +100,8 @@ namespace clear
 		Token GetLastToken(size_t x);
 		Token CreateToken(const TokenType tok, const std::string& data);
 
+		std::filesystem::path GetImportFile(std::string name) const;
+
 
 
 		template<typename ...Args>

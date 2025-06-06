@@ -448,6 +448,19 @@ namespace clear
 		return ret;
 	}
 
+	std::filesystem::path Lexer::GetImportFile(std::string name) const {
+		auto parent = InputFile.parent_path();
+		auto importPath = parent/ name;
+
+		if(exists(importPath)) {
+			return importPath;
+		}
+		else {
+			return std::filesystem::current_path().parent_path() / "Standard" / name;
+		}
+
+	}
+
 
 
 	BracketParsingReturn Lexer::ParseBrackets(char end, bool commas) {
@@ -572,10 +585,9 @@ namespace clear
 		ParseString();
 		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
 		std::string importedFile = GetLastToken().Data;
-		auto parent = InputFile.parent_path();
-		auto importPath = parent/ importedFile;
 
-
+		auto importPath = GetImportFile(importedFile);
+		VerifyCondition(exists(importPath),55,importedFile);
 		auto ret = ProcessClearFile(importPath);
 		globalImports[importPath] = ret;
 		m_CurrentState = LexerState::Default;
@@ -586,12 +598,14 @@ namespace clear
 		VerifyCondition(GetLastToken(2).TokenType == TokenType::Import,54);
 		SkipSpaces();
 		ParseString();
-		CLEAR_PARSER_VERIFY(GetLastToken().TokenType == TokenType::RValueString,"FAS.212");
+		VerifyCondition(GetLastToken().TokenType == TokenType::RValueString,54);
 
 		std::string alias = GetLastToken().Data;
 		std::string importedFile = GetLastToken(2).Data;
-		auto importPath = InputFile.parent_path()/ importedFile;
+		auto importPath = GetImportFile(importedFile);
 
+		CLEAR_PARSER_VERIFY(globalImports.contains(importPath),"FAS.212");
+		VerifyCondition(!importAliases.count(alias),56,alias);
 		importAliases[alias] = globalImports[importPath];
 		globalImports.erase(importPath);
 
