@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
         return 0;
     } */
     //else if(std::string(argv[1]) == "build")
-    if (false) {
+    if (true) {
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 

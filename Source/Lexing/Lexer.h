@@ -178,6 +178,7 @@ namespace clear
 		void ResetSecondState();
 
 		std::string GetCurrentErrorContext(std::string ErrorRef);
+		std::filesystem::path standardLibPath;
 
 		char GetNextChar();
 		void Backtrack();
