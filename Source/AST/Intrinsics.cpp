@@ -11,7 +11,7 @@ namespace clear
 
         if(name == "__trap")
         {
-            llvm::Function* trapFunc = llvm::Intrinsic::getOrInsertDeclaration(&ctx.Module, llvm::Intrinsic::trap);
+            llvm::Function* trapFunc = llvm::Intrinsic::getDeclaration(&ctx.Module, llvm::Intrinsic::trap);
             ctx.Builder.CreateCall(trapFunc);
             ctx.Builder.CreateUnreachable();
 
