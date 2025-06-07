@@ -10,6 +10,8 @@ namespace clear
 
 	Value::ConstantPair Value::GetConstant(const std::shared_ptr<Type>& type, const std::string& data, llvm::LLVMContext& context, llvm::Module& module)
 	{
+		if(data == "null") return { llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), nullptr} ;
+
 		std::string hash = type->GetHash();
 
 		if(hash == "int8")  return {llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)std::stoll(data), true), nullptr};

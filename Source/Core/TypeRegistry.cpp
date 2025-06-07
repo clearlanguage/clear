@@ -110,6 +110,8 @@ namespace clear
 
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
+        if(token.Data == "null") return m_Types["opaque_ptr"];
+
         if(token.TokenType == TokenType::RValueString || token.TokenType == TokenType::StringType)
         {
             return GetPointerTo(GetType("int8"));
