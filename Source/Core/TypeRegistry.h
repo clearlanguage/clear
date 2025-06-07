@@ -4,8 +4,19 @@
 #include "Lexing/Tokens.h"
 #include "API/LLVM/LLVMInclude.h"
 
+#include "Lexing/Tokens.h"
+
 namespace clear 
 {
+    struct TypeDescriptor
+    {
+        // could be int****, structName[10] etc...
+        std::vector<Token> Description;
+
+        // this is for compound types (structs/classes), that have multiple types
+        std::vector<std::pair<std::string, std::shared_ptr<TypeDescriptor>>> ChildTypes;
+    };
+
     class TypeRegistry 
     {
     public:
@@ -21,6 +32,8 @@ namespace clear
         std::shared_ptr<Type> GetSignedType(std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
+        std::shared_ptr<Type> ResolveType(const TypeDescriptor& descriptor);
+
 
         static std::string GetTypeNameFromTokenType(TokenType type);
 
@@ -28,7 +41,8 @@ namespace clear
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);
-        void CascadeType(std::shared_ptr<Type> type);
+
+        std::shared_ptr<Type> ResolveStruct(const TypeDescriptor& descriptor);
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;

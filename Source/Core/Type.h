@@ -137,7 +137,10 @@ namespace clear
     class StructType : public Type 
     {
     public:
+        StructType(const std::string& name, llvm::LLVMContext& context);
         StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
+
+        void SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
 
         virtual ~StructType() = default;
             
@@ -149,6 +152,7 @@ namespace clear
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);
+        void SetMember(const std::string& member, std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
 
         const auto& GetMemberTypes()   const { return m_MemberTypes; }

@@ -44,6 +44,7 @@ namespace clear
         
         m_Types["float"] = m_Types["float64"];
 
+        m_Types["opaque_ptr"] = std::make_shared<PointerType>(nullptr, *m_Context);
 
         m_Types["void"] = std::make_shared<PrimitiveType>(*m_Context);
     }
@@ -52,11 +53,6 @@ namespace clear
     {
         CLEAR_VERIFY(!m_Types.contains(name), "conflicting type name ", name);
         m_Types[name] = type;
-
-        //if(type->IsArray() || type->IsPointer()) 
-        //{
-        //    CascadeType(type);
-        //}
     }
 
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
@@ -144,6 +140,59 @@ namespace clear
         return structType;
     }
 
+    std::shared_ptr<Type> TypeRegistry::ResolveType(const TypeDescriptor& descriptor)
+    {
+        CLEAR_VERIFY(descriptor.Description.size() > 0, "invalid descriptor");
+
+        auto Resolve = [&](const TypeDescriptor& desc) 
+        {
+            std::shared_ptr<Type> baseType = m_Types[desc.Description[0].Data];
+
+            for(size_t i = 1; i < desc.Description.size(); i++)
+            {
+                Token token = desc.Description[i];
+
+                if(token.TokenType == TokenType::PointerDef)
+                {
+                    baseType = GetPointerTo(baseType); 
+                }
+                else if (token.TokenType == TokenType::StaticArrayDef)
+                {
+                    baseType = GetArrayFrom(baseType, std::stoll(token.Data));
+                }
+                else 
+                {
+                    CLEAR_UNREACHABLE("unimplemented type ", token.Data);
+                }
+            }
+
+            return baseType;
+        };
+
+        if(m_Types.contains(descriptor.Description[0].Data)) // type we already have just have to retrieve
+        {
+            return Resolve(descriptor);
+        }
+
+        CLEAR_VERIFY(descriptor.Description[0].TokenType == TokenType::TypeIdentifier, "not a valid compound type ", descriptor.Description[0].Data);
+
+        std::string structName = descriptor.Description[0].Data;
+
+        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
+        m_Types[structName] = structTy;
+
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
+
+        for(auto& [typeName, subType] : descriptor.ChildTypes)
+        {
+            std::shared_ptr<Type> type = ResolveType(*subType);
+            members.push_back({typeName, type});
+        }
+
+        structTy->SetBody(members);
+        return structTy;
+    }
+
     std::string TypeRegistry::GetTypeNameFromTokenType(TokenType type)
     {
         switch (type)
@@ -222,19 +271,8 @@ namespace clear
         return "";
     }
 
-    void TypeRegistry::CascadeType(std::shared_ptr<Type> type)
+    std::shared_ptr<Type> TypeRegistry::ResolveStruct(const TypeDescriptor &descriptor)
     {
-        if(auto ty = std::dynamic_pointer_cast<PointerType>(type))
-        {
-            std::string hash = ty->GetBaseType()->GetHash();
-
-            if(!m_Types.contains(hash))
-            {
-                m_Types[hash] = ty->GetBaseType();
-                CascadeType(ty);
-                return;
-            }
-
-        }
+        return std::shared_ptr<Type>();
     }
 }

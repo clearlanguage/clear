@@ -1479,49 +1479,55 @@ namespace clear
 			ValueRestoreGuard guard(ctx.WantAddress, true);
 			parent = children[0]->Codegen(ctx); 
 		}
+		
+		llvm::Value* getElementPtr = parent.CodegenValue; 
+		std::shared_ptr<Type> curr = parent.CodegenType;
 
-		while(auto ty = std::dynamic_pointer_cast<PointerType>(parent.CodegenType))
+		while(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
 		{
 			if(ty->GetBaseType()->IsCompound())
 			{
-				parent.CodegenType = ty;
+				curr = ty;
 				break;
 			}
 
-			parent.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), parent.CodegenValue);
-			parent.CodegenType = ty->GetBaseType();
+			getElementPtr = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), getElementPtr);
+			curr = ty->GetBaseType();
 		}
-
-		std::shared_ptr<StructType> parentType;
-
-		if(auto t = std::dynamic_pointer_cast<PointerType>(parent.CodegenType))
-		{
-			parentType = std::dynamic_pointer_cast<StructType>(t->GetBaseType());
-		}
-
-		CLEAR_VERIFY(parentType, "invalid type");
-		
-		llvm::Value* getElementPtr = parent.CodegenValue; 
-		std::shared_ptr<Type> prev;
 
 		for(size_t i = 1; i < children.size(); i++)
-		{
+		{			
+			std::shared_ptr<StructType> structTy;
+			
+			if(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
+				structTy = std::dynamic_pointer_cast<StructType>(ty->GetBaseType());
+			else 
+				structTy = std::dynamic_pointer_cast<StructType>(curr);
+
+			CLEAR_VERIFY(structTy, "not a valid type ", curr->GetHash());
+
 			std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(children[i]);
-			CLEAR_VERIFY(member && parentType, "invalid child");
 
-			size_t index = parentType->GetMemberIndex(member->GetName());
-			getElementPtr = builder.CreateStructGEP(parentType->Get(), getElementPtr, index, "struct_get_element_ptr");
+			size_t index = structTy->GetMemberIndex(member->GetName());
+			getElementPtr = builder.CreateStructGEP(structTy->Get(), getElementPtr, index, "gep");
+			curr = structTy->GetMemberType(member->GetName());
 
-			prev = parentType->GetMemberType(member->GetName());
-			parentType = std::dynamic_pointer_cast<StructType>(prev);
+			if (curr->IsPointer() && i + 1 < children.size())
+			{
+				auto pointerTy = std::dynamic_pointer_cast<PointerType>(curr);
+				CLEAR_VERIFY(pointerTy, "expected pointer type");
+			
+				getElementPtr = ctx.Builder.CreateLoad(pointerTy->Get(), getElementPtr);
+				curr = pointerTy->GetBaseType();
+			}
 		}
 
 		if(ctx.WantAddress)
 		{
-			return { getElementPtr, typeReg.GetPointerTo(prev) };
+			return { getElementPtr, typeReg.GetPointerTo(curr) };
 		}
 
-		return { builder.CreateLoad(prev->Get(), getElementPtr), prev };
+		return { builder.CreateLoad(curr->Get(), getElementPtr), curr };
 	}
 
 	ASTMember::ASTMember(const std::string& name)

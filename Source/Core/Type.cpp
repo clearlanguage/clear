@@ -114,6 +114,12 @@ namespace clear
         m_BaseType = type;
     }
 
+    StructType::StructType(const std::string& name, llvm::LLVMContext& context)
+        : m_Name(name), m_LLVMType(llvm::StructType::create(context, name))
+    {
+        m_Flags.set((size_t)TypeFlags::Compound);
+    }
+
     StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
         : m_Name(name)
     {
@@ -129,9 +135,24 @@ namespace clear
 		}
 
 		m_LLVMType = llvm::StructType::create(types, name);
-
         m_Flags.set((size_t)TypeFlags::Compound);
     }
+
+    void StructType::SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
+    {
+        std::vector<llvm::Type*> types;
+
+		uint32_t k = 0;
+
+		for (auto& [memberName, type] : members)
+		{
+			m_MemberIndices[memberName] = k++;
+            m_MemberTypes[memberName] = type;
+			types.push_back(type->Get());
+		}
+        
+        m_LLVMType->setBody(types);
+    }   
 
     size_t StructType::GetMemberIndex(const std::string& member)
     {
@@ -141,6 +162,14 @@ namespace clear
     std::shared_ptr<Type> StructType::GetMemberType(const std::string& member)
     {
         return m_MemberTypes.at(member);
+    }
+
+    void StructType::SetMember(const std::string& member, std::shared_ptr<Type> type)
+    {
+        CLEAR_VERIFY(m_MemberTypes.contains(member), "invalid member");
+        CLEAR_VERIFY(m_MemberTypes[member]->IsPointer() && type->IsPointer(), "cannot redefine a member that is not a pointer");
+
+        m_MemberTypes[member] = type;
     }
 
     std::shared_ptr<Type> StructType::GetMemberAtIndex(uint64_t index)

@@ -3,7 +3,7 @@
 #include "Core/Log.h"
 #include "Core/TypeRegistry.h"
 #include "Core/Utils.h"
-
+#include "Lexing/Tokens.h"
 
 #include <stack>
 
@@ -298,23 +298,29 @@ namespace clear
         Expect(TokenType::StartIndentation);
         Consume();
 
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> types;
+        Token token;
+        token.TokenType = TokenType::TypeIdentifier;
+        token.Data = structName;
+
+        TypeDescriptor structTyDesc;
+        structTyDesc.Description = { token };
 
         while(!Match(TokenType::EndIndentation))
         {
-            std::shared_ptr<Type> type = ParseVariableType();
+            std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
+
+            subType->Description = ParseVariableTypeTokens(); 
             
             Expect(TokenType::VariableName);
 
             std::string name = Consume().Data;
+            structTyDesc.ChildTypes.push_back({name, subType});
 
             Expect(TokenType::EndLine);
             Consume();
-
-            types.push_back({name, type});
         }
 
-        m_TypeRegistry.CreateStruct(structName, types);
+        m_TypeRegistry.ResolveType(structTyDesc);
 
         Consume();
     }
@@ -951,6 +957,21 @@ namespace clear
 
         return type;
     }
+
+    std::vector<Token> Parser::ParseVariableTypeTokens()
+    {
+        std::vector<Token> tokens;
+        tokens.push_back(Consume());
+
+        while(MatchAny(m_TypeIndirection))
+        {
+            tokens.push_back(Consume());
+        }
+
+
+        return tokens;
+    }
+
 
     void Parser::ParseIndentation()
     {

@@ -58,6 +58,8 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<Type> ParseVariableType();
 
+        std::vector<Token> ParseVariableTypeTokens();
+
 
         BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
         UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);

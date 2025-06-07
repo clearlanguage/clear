@@ -13,6 +13,7 @@ namespace clear
         {
             llvm::Function* trapFunc = llvm::Intrinsic::getOrInsertDeclaration(&ctx.Module, llvm::Intrinsic::trap);
             ctx.Builder.CreateCall(trapFunc);
+            ctx.Builder.CreateUnreachable();
 
             return nullptr;
         }
