@@ -18,6 +18,11 @@ namespace clear
             return nullptr;
         }
 
+        if(name == "sizeof")
+        {
+            return ctx.Builder.getInt64(ctx.Module.getDataLayout().getTypeSizeInBits(value->getType()) / 8); 
+        }
+
         CLEAR_VERIFY(value && type, "value or type was invalid");
 
         auto ty = ctx.Registry.GetType(name);
@@ -32,7 +37,7 @@ namespace clear
             "int8", "int16", "int32", "int64",
             "uint8", "uint16", "uint32", "uint64",
             "bool", "float32", "float64", "int", "float", "uint",
-             "__trap"
+             "__trap", "sizeof"
         };
 
         return s_Intrinsics.contains(name);

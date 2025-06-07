@@ -997,10 +997,12 @@ namespace clear
 			if(args.size() > 0)
 				value = Intrinsics::ApplyIntrinsic(m_Name, args[0], params[0].Type, ctx);
 			else
-				Intrinsics::ApplyIntrinsic(m_Name, nullptr, nullptr, ctx);
+				value = Intrinsics::ApplyIntrinsic(m_Name, nullptr, nullptr, ctx);
 
 
 			if(!value) return {};
+
+			if(m_Name == "sizeof") return { value, ctx.Registry.GetType("int64") };
 
 			return { value, ctx.Registry.GetType(m_Name) };
 		}

@@ -47,7 +47,6 @@ int main(int argc, char* argv[])
         BuildConfig config = BuildConfig::BuildConfigFromToml("Tests/build.toml");
         std::cout << "Compiling " <<config.ApplicationName << std::endl;
 
-        
         config.StandardLibrary = std::filesystem::current_path().parent_path() / "Standard";
         CLEAR_LOG_INFO(config.StandardLibrary);
         
