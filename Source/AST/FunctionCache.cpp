@@ -45,7 +45,7 @@ namespace clear
             it2++;
         }
 
-        while(it1 != params.end()) // we have variadic args, we will need to build a struct type to hold the arguments.
+        while(it1 != params.end()) // we have variadic args
         {              
             if(!it2->Type)
                 types.push_back({ "", it1->Type } );

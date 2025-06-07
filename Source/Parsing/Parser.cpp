@@ -961,6 +961,18 @@ namespace clear
         }
     }
 
+    void Parser::ParseClass()
+    {
+        Expect(TokenType::Class);
+        Consume();
+
+        Expect(TokenType::ClassName);
+        std::string className = Consume().Data;
+
+        SkipUntil(TokenType::StartIndentation);
+        Consume();
+    }
+
     BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
     {
         switch (type)
@@ -1044,5 +1056,33 @@ namespace clear
         CLEAR_UNREACHABLE("invalid token type for assignment");
 
         return AssignmentOperatorType();
+    }
+
+    void Parser::SavePosition()
+    {
+        m_RestorePoints.push_back(m_Position);
+    }
+
+    void Parser::RestorePosition()
+    {
+        CLEAR_VERIFY(!m_RestorePoints.empty(), " cannot restore position when there aren't any saved!");
+        m_Position = m_RestorePoints.back();
+        m_RestorePoints.pop_back();
+    }
+
+    void Parser::SkipUntil(TokenType type)
+    {
+        while(!Match(type) && !Match(TokenType::Eof))
+        {
+            Consume();
+        }
+    }
+
+    void Parser::SkipUntil(TokenSet set)
+    {
+        while(!MatchAny(set) && !Match(TokenType::Eof))
+        {
+            Consume();
+        }
     }
 }

@@ -46,6 +46,8 @@ namespace clear
         void ParseElse();
         void ParseWhile();
         void ParseFor();
+        void ParseIndentation();
+        void ParseClass();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();
@@ -56,12 +58,16 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<Type> ParseVariableType();
 
-        void ParseIndentation();
 
         BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
         UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);
         UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
+
+        void SavePosition();
+        void RestorePosition();
+        void SkipUntil(TokenType type);
+        void SkipUntil(TokenSet set);
 
     private:    
         std::vector<Token> m_Tokens;
@@ -70,6 +76,7 @@ namespace clear
         TypeRegistry& m_TypeRegistry;
 
         std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
+        std::vector<size_t> m_RestorePoints;
 
         TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;

@@ -5,6 +5,7 @@
 #include "TypeCasting.h"
 
 #include "Core/TypeRegistry.h"
+#include "Intrinsics.h"
 
 #include <stack>
 
@@ -988,6 +989,21 @@ namespace clear
 		std::vector<Parameter> params; // we only care about types here
 
 		BuildArgs(ctx, args, params);
+
+		if(Intrinsics::IsIntrinsic(m_Name))
+		{
+			llvm::Value* value = nullptr;
+
+			if(args.size() > 0)
+				value = Intrinsics::ApplyIntrinsic(m_Name, args[0], params[0].Type, ctx);
+			else
+				Intrinsics::ApplyIntrinsic(m_Name, nullptr, nullptr, ctx);
+
+
+			if(!value) return {};
+
+			return { value, ctx.Registry.GetType(m_Name) };
+		}
 
 		FunctionTemplate& data = symbolTable->GetTemplate(m_Name, params);
 
