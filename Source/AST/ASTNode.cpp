@@ -708,7 +708,7 @@ namespace clear
 		    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(
 		        llvm::cast<llvm::PointerType>(alloca.Type->Get())
 		    );
-			
+
 		    ctx.Builder.CreateStore(nullPtr, codegenResult.CodegenValue);
 		}
 		else if (alloca.Type->IsCompound())
@@ -909,9 +909,9 @@ namespace clear
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
 		llvm::AllocaInst* returnAlloca = m_ReturnType ? builder.CreateAlloca(m_ReturnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ctx.ReturnType   = m_ReturnType ? m_ReturnType : ctx.Registry.GetType("void");
-		ctx.ReturnBlock  = returnBlock;
-		ctx.ReturnAlloca = returnAlloca;
+		ValueRestoreGuard guard1(ctx.ReturnType,   m_ReturnType ? m_ReturnType : ctx.Registry.GetType("void"));
+		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
+		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 
 		uint32_t k = 0;
 
