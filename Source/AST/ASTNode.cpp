@@ -1512,7 +1512,7 @@ namespace clear
 			getElementPtr = builder.CreateStructGEP(structTy->Get(), getElementPtr, index, "gep");
 			curr = structTy->GetMemberType(member->GetName());
 
-			if (curr->IsPointer() && i + 1 < children.size())
+			while (curr->IsPointer() && i + 1 < children.size())
 			{
 				auto pointerTy = std::dynamic_pointer_cast<PointerType>(curr);
 				CLEAR_VERIFY(pointerTy, "expected pointer type");
