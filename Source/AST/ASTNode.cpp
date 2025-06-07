@@ -703,6 +703,35 @@ namespace clear
 		codegenResult.CodegenValue = alloca.Alloca;
 		codegenResult.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
 
+		if (alloca.Type->IsPointer()) 
+		{
+		    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(
+		        llvm::cast<llvm::PointerType>(alloca.Type->Get())
+		    );
+			
+		    ctx.Builder.CreateStore(nullPtr, codegenResult.CodegenValue);
+		}
+		else if (alloca.Type->IsCompound())
+		{
+		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(alloca.Type->Get());
+		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
+		}
+		else if (alloca.Type->IsArray())
+		{
+		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(alloca.Type->Get());
+		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
+		}
+		else if (alloca.Type->IsIntegral())
+		{
+		    llvm::Constant* zero = llvm::ConstantInt::get(alloca.Type->Get(), 0);
+		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
+		}
+		else if (alloca.Type->IsFloatingPoint())
+		{
+		    llvm::Constant* zero = llvm::ConstantFP::get(alloca.Type->Get(), 0.0);
+		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
+		}
+
 		return codegenResult;
     }
 
