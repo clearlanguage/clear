@@ -20,6 +20,7 @@ namespace clear
 	        {TokenType::DereferenceOp,      4},
 	        {TokenType::AddressOp,          4},
 	        {TokenType::DivOp,              3},
+	        {TokenType::ModOp,              3},
 	        {TokenType::MulOp,              3},
 	        {TokenType::LeftShift,          3},
 	        {TokenType::RightShift,         3},
