@@ -1,7 +1,7 @@
 #pragma once 
 
 #include "API/LLVM/LLVMInclude.h"
-#include "Core/Type.h"
+#include "Core/TypeRegistry.h"
 
 #include <unordered_map>
 
@@ -10,9 +10,16 @@ namespace clear
     struct Parameter
 	{
 		std::string Name;
-		std::shared_ptr<Type> Type = nullptr;
+		std::shared_ptr<Type> Type;
         bool IsVariadic = false;
 	};
+
+    struct UnresolvedParameter
+    {
+        std::string Name;
+		TypeDescriptor Type;
+        bool IsVariadic = false;
+    };
 
     class ASTNodeBase; 
 

@@ -33,7 +33,7 @@ namespace clear
 
         m_Types["int"]  = m_Types["int64"];
         m_Types["uint"] = m_Types["uint64"];
-
+        m_Types["string"] = GetPointerTo(m_Types["int8"]); //TODO: gonna be a class soon
 
         TypeFlagSet floatingFlags;
         floatingFlags.set((size_t)TypeFlags::Floating);
@@ -144,7 +144,7 @@ namespace clear
 
     std::shared_ptr<Type> TypeRegistry::ResolveType(const TypeDescriptor& descriptor)
     {
-        CLEAR_VERIFY(descriptor.Description.size() > 0, "invalid descriptor");
+        if(descriptor.Description.size() == 0) return nullptr;
 
         auto Resolve = [&](const TypeDescriptor& desc) 
         {

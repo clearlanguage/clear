@@ -53,9 +53,8 @@ namespace clear
         auto& lookup = m_LookupTable.emplace(path, AstLookupInfo(m_Context)).first->second;
         lookup.Registry.RegisterBuiltinTypes();
 
-        Parser parser(info, lookup.Registry);
+        Parser parser(info);
         lookup.Node = parser.GetResult();
-
         
         for(const auto& node : lookup.Node->GetChildren())
         {

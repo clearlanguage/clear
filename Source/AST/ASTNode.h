@@ -150,7 +150,7 @@ namespace clear
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type);
+		ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -159,7 +159,7 @@ namespace clear
 
 	private:
 		std::string m_Name;
-		std::shared_ptr<Type> m_Type;
+		TypeDescriptor m_Type;
 	};
 
 	class ASTVariable : public ASTNodeBase
@@ -194,19 +194,11 @@ namespace clear
 		AssignmentOperatorType m_Type;
 	};
 
-	class ASTStruct : public ASTNodeBase
-	{
-	public:
-		ASTStruct() = default;
-		virtual ~ASTStruct() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
-		virtual CodegenResult Codegen(CodegenContext&) override;
-	};
 
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& parameters);
+		ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType, const std::vector<UnresolvedParameter>& parameters);
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -216,12 +208,15 @@ namespace clear
 
 		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
-		const auto& GetParameters() const { return m_Parameters; }
+		const auto& GetParameters() const { return m_ResolvedParams; }
 
 	private:
-		std::vector<Parameter> m_Parameters;
+		std::vector<UnresolvedParameter> m_Parameters;
 		std::string m_Name;
-		std::shared_ptr<Type> m_ReturnType;
+		TypeDescriptor m_ReturnType;
+
+		std::vector<Parameter> m_ResolvedParams;
+		std::shared_ptr<Type> m_ResolvedReturnType;
 	};
 
 	class ASTFunctionCall : public ASTNodeBase
@@ -243,14 +238,14 @@ namespace clear
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types);
+		ASTFunctionDecleration(const std::string& name, const TypeDescriptor& expectedReturnType, const std::vector<UnresolvedParameter>& types);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 	private:
-		std::vector<Parameter> m_Parameters;
-		std::shared_ptr<Type> m_ReturnType;
+		std::vector<UnresolvedParameter> m_Parameters;
+		TypeDescriptor m_ReturnType;
 		std::string m_Name;
 	};
 
@@ -385,4 +380,17 @@ namespace clear
 	private:
 		std::string m_Name;
 	};
+
+	class ASTStruct : public ASTNodeBase
+	{
+	public:
+		ASTStruct(const TypeDescriptor& structTy);
+		virtual ~ASTStruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private:
+		TypeDescriptor m_StructTy;
+	};
+	
 }

@@ -14,7 +14,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const ProgramInfo& info, TypeRegistry& registry);
+        Parser(const ProgramInfo& info);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -57,7 +57,6 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage);
         std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName);
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage);
-        std::shared_ptr<Type> ParseVariableType();
 
         std::vector<Token> ParseVariableTypeTokens();
 
@@ -76,7 +75,6 @@ namespace clear
         std::vector<Token> m_Tokens;
         std::set<std::string> m_Aliases;
         size_t m_Position = 0;
-        TypeRegistry& m_TypeRegistry;
 
         std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
         std::vector<size_t> m_RestorePoints;

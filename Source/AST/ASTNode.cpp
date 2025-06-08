@@ -38,7 +38,7 @@ namespace clear
     }
 
 
-    CodegenResult ASTNodeBase::Codegen(CodegenContext& ctx)
+    CodegenResult ASTNodeBase::Codegen(CodegenContext &ctx)
     {
         CodegenResult value;
 
@@ -446,7 +446,7 @@ namespace clear
         return HandleCmpExpression(lhs, rhs, ctx);
     }
 
-    CodegenResult ASTBinaryExpression::HandleCmpExpression(CodegenResult &lhs, CodegenResult &rhs, CodegenContext &ctx)
+    CodegenResult ASTBinaryExpression::HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx)
     {
         if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
 			return HandleCmpExpressionF(lhs, rhs, ctx);
@@ -730,7 +730,7 @@ namespace clear
         return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
     }
 
-    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, std::shared_ptr<Type> type)
+    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type)
 		: m_Name(name), m_Type(type)
     {
     }
@@ -741,7 +741,9 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		
-		Allocation alloca = registry->CreateAlloca(m_Name, m_Type, ctx.Builder);
+		std::shared_ptr<Type> resolvedType = ctx.Registry.ResolveType(m_Type);
+
+		Allocation alloca = registry->CreateAlloca(m_Name, resolvedType, ctx.Builder);
 		codegenResult.CodegenValue = alloca.Alloca;
 		codegenResult.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
 
@@ -909,8 +911,8 @@ namespace clear
 		data.CodegenType = underlyingStorageType; 
     }
 
-	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const std::shared_ptr<Type>& returnType, const std::vector<Parameter>& Paramaters)
-		: m_Parameters(Paramaters), m_ReturnType(returnType), m_Name(name)
+	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType, const std::vector<UnresolvedParameter>& paramaters)
+		: m_ReturnType(returnType), m_Name(name), m_Parameters(paramaters)
 	{
 		CreateSymbolTable();
 	}
@@ -925,11 +927,19 @@ namespace clear
 		CLEAR_VERIFY(prev, "prev was null");
 
 		bool isVariadic = m_Parameters.size() > 0 && m_Parameters.back().IsVariadic;
-		prev->GetFunctionCache().CreateTemplate(m_Name, m_ReturnType, m_Parameters, isVariadic, shared_from_this());
+
+		std::transform(m_Parameters.begin(), m_Parameters.end(), std::back_inserter(m_ResolvedParams), [&](auto& a)
+		{
+			return Parameter{ a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic };
+		});
+			
+		m_ResolvedReturnType = ctx.Registry.ResolveType(m_ReturnType);
+
+		prev->GetFunctionCache().CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, shared_from_this());
 		
 		if(m_Name == "main")
 		{
-			prev->GetFunctionCache().InstantiateOrReturn(m_Name, m_Parameters, m_ReturnType, ctx);
+			prev->GetFunctionCache().InstantiateOrReturn(m_Name, m_ResolvedParams, m_ResolvedReturnType, ctx);
 		}		
 		
 		return {};
@@ -949,9 +959,9 @@ namespace clear
 		builder.SetInsertPoint(entry);
 
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
-		llvm::AllocaInst* returnAlloca = m_ReturnType ? builder.CreateAlloca(m_ReturnType->Get(), nullptr, "return_value") : nullptr;
+		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(m_ResolvedReturnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ValueRestoreGuard guard1(ctx.ReturnType,   m_ReturnType ? m_ReturnType : ctx.Registry.GetType("void"));
+		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : ctx.Registry.GetType("void"));
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 
@@ -963,7 +973,7 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 
-		for (const auto& param : m_Parameters)
+		for (const auto& param : m_ResolvedParams)
 		{
 			if(param.IsVariadic)
 			{
@@ -1125,7 +1135,7 @@ namespace clear
 		}
     }
 
-    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const std::shared_ptr<Type>& expectedReturnType, const std::vector<Parameter>& types)
+    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const TypeDescriptor& expectedReturnType, const std::vector<UnresolvedParameter>& types)
 		: m_Name(name), m_Parameters(types), m_ReturnType(expectedReturnType)
     {
     }
@@ -1135,10 +1145,16 @@ namespace clear
 		auto& module = ctx.Module;
 
 		std::vector<llvm::Type*> types;
+		std::vector<Parameter> params;
+
+		std::transform(m_Parameters.begin(), m_Parameters.end(), std::back_inserter(params), [&](auto& a)
+		{
+			return Parameter{a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic};
+		});
 
 		bool isVariadic = false;
 
-		for (auto& param : m_Parameters)
+		for (auto& param : params)
 		{
 			if (!param.Type)
 			{
@@ -1149,31 +1165,33 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		if (!m_ReturnType)
-			m_ReturnType = ctx.Registry.GetType("void");
+		std::shared_ptr<Type> resolvedType = ctx.Registry.GetType("void");
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
+		if (!m_ReturnType.Description.empty())
+			resolvedType = ctx.Registry.ResolveType(m_ReturnType);
+
+		llvm::FunctionType* functionType = llvm::FunctionType::get(resolvedType->Get(), types, isVariadic);
 		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 
 		FunctionInstance data;
 		data.FunctionType = functionType;
 		data.Function = llvm::cast<llvm::Function>(callee.getCallee());
-		data.Parameters = m_Parameters;
-		data.ReturnType = m_ReturnType;
+		data.Parameters = params;
+		data.ReturnType = resolvedType;
 		data.MangledName = m_Name;
 		
 		GetSymbolTable()->GetFunctionCache().RegisterInstance(data);
 
 		FunctionTemplate functionTemplate;
-		functionTemplate.IsVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
-		functionTemplate.Parameters = m_Parameters;
-		functionTemplate.ReturnType = m_ReturnType;
+		functionTemplate.IsVariadic = params.size() > 0 && !params.back().Type;
+		functionTemplate.Parameters = params;
+		functionTemplate.ReturnType = resolvedType;
 		functionTemplate.Root = nullptr; // external function so no root
 		functionTemplate.IsExternal = true;
 
 		GetSymbolTable()->GetFunctionCache().RegisterTemplate(data.MangledName, functionTemplate);
 
-		return { data.Function, m_ReturnType };	
+		return { data.Function, resolvedType };	
 	}
 
     CodegenResult ASTExpression::Codegen(CodegenContext& ctx)
@@ -1960,6 +1978,17 @@ namespace clear
 
 		CLEAR_UNREACHABLE("unimplemented");
 
+		return {};
+	}
+
+	ASTStruct::ASTStruct(const TypeDescriptor& structTy)
+		: m_StructTy(structTy)
+    {
+    }
+
+	CodegenResult ASTStruct::Codegen(CodegenContext& ctx)
+	{
+		ctx.Registry.ResolveType(m_StructTy);
 		return {};
 	}
 }

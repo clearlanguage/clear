@@ -38,8 +38,8 @@ namespace clear
 	        {TokenType::OpenBracket,       -1}  
 	    };
 
-    Parser::Parser(const ProgramInfo& info, TypeRegistry& typeRegistry)
-        : m_Tokens(info.Tokens), m_TypeRegistry(typeRegistry)
+    Parser::Parser(const ProgramInfo& info)
+        : m_Tokens(info.Tokens)
     {
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
         root->CreateSymbolTable();
@@ -270,7 +270,7 @@ namespace clear
 
     void Parser::ParseVariableDecleration()
     {
-        std::shared_ptr<Type> variableType = ParseVariableType();
+        TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
         Expect(TokenType::VariableName);
 
@@ -355,8 +355,8 @@ namespace clear
             Consume();
         }
 
-        m_TypeRegistry.ResolveType(structTyDesc);
-
+        //m_TypeRegistry.ResolveType(structTyDesc);
+        Root()->Push(std::make_shared<ASTStruct>(structTyDesc));
         Consume();
     }
 
@@ -498,8 +498,8 @@ namespace clear
         Expect(TokenType::FunctionName);
 
         std::string name = Consume().Data;
-        std::shared_ptr<Type> returnType;
-        std::vector<Parameter> params;
+        TypeDescriptor returnType;
+        std::vector<UnresolvedParameter> params;
 
         Expect(TokenType::StartFunctionParameters);
 
@@ -507,7 +507,7 @@ namespace clear
 
         while(!Match(TokenType::EndFunctionParameters)) 
         {
-            Parameter param;
+            UnresolvedParameter param;
 
             if(Match(TokenType::VariableReference))
             {
@@ -515,7 +515,6 @@ namespace clear
                 param.Name = Consume().Data;
                 Expect(TokenType::Ellipsis);
 
-                param.Type = nullptr;
                 params.push_back(param);
 
                 Consume();
@@ -524,7 +523,7 @@ namespace clear
                 break;
             }
 
-            param.Type = ParseVariableType(); 
+            param.Type = { ParseVariableTypeTokens() };  
             
             Expect(TokenType::VariableReference);
 
@@ -573,7 +572,7 @@ namespace clear
 
         ExpectAny(m_VariableType);
 
-        returnType = ParseVariableType();
+        returnType = { ParseVariableTypeTokens() };
 
         std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
         Root()->Push(func);
@@ -602,11 +601,11 @@ namespace clear
 
         Consume();
 
-        std::vector<Parameter> params;
+        std::vector<UnresolvedParameter> params;
 
         while(!MatchAny(m_Terminators))
         {
-            Parameter param;
+            UnresolvedParameter param;
             
             if(Match(TokenType::Ellipsis))
             {
@@ -617,7 +616,7 @@ namespace clear
                 break;
             }
             
-            param.Type = ParseVariableType();
+            param.Type = { ParseVariableTypeTokens() };
 
             if(Match(TokenType::VariableReference)) 
                 Consume();
@@ -635,7 +634,7 @@ namespace clear
 
         Consume();
 
-        std::shared_ptr<Type> returnType;
+        TypeDescriptor returnType;
 
         if(Match(TokenType::RightArrow))
         {
@@ -645,7 +644,7 @@ namespace clear
 
             Consume();
 
-            returnType = ParseVariableType();
+            returnType = { ParseVariableTypeTokens() };
         }
 
         Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
@@ -975,26 +974,6 @@ namespace clear
         return expression;
     }
 
-    std::shared_ptr<Type> Parser::ParseVariableType()
-    {
-        std::shared_ptr<Type> type = m_TypeRegistry.GetTypeFromToken(Consume());
-
-        while(MatchAny(m_TypeIndirection))
-        {
-            if(Match(TokenType::PointerDef))
-            {
-                type = m_TypeRegistry.GetPointerTo(type); 
-                Consume();
-            }
-            else 
-            {
-                type = m_TypeRegistry.GetArrayFrom(type, std::stoull(Consume().Data));            
-            }
-        }
-
-        return type;
-    }
-
     std::vector<Token> Parser::ParseVariableTypeTokens()
     {
         std::vector<Token> tokens;
@@ -1004,7 +983,6 @@ namespace clear
         {
             tokens.push_back(Consume());
         }
-
 
         return tokens;
     }
