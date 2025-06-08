@@ -112,7 +112,8 @@ namespace clear
 
         m_IgnoredTokens = CreateTokenSet({
             TokenType::StartIndentation,
-            TokenType::EndLine
+            TokenType::EndLine, 
+            TokenType::Comma
         });
 
         m_TypeIndirection = CreateTokenSet({
@@ -269,17 +270,45 @@ namespace clear
 
         std::string variableName = Consume().Data;
 
-        Root()->Push(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
+        std::vector<std::shared_ptr<ASTVariableDeclaration>> variableDeclerations;
+        std::vector<std::shared_ptr<ASTNodeBase>> assignmentOperators;
+
+        variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
+
+        auto Flush = [&]()
+        {   
+            for(auto dec : variableDeclerations)
+            {
+                Root()->Push(dec);
+            }
+
+            for(auto assignment : assignmentOperators)
+            {
+                Root()->Push(assignment);
+            }
+        };
 
         if(Match(TokenType::EndLine))
         {
+           Flush();
            Consume();
            return; 
         }
 
-        ExpectAny(m_AssignmentOperators);
+        while(Match(TokenType::Comma) || MatchAny(m_AssignmentOperators))
+        {
+            if(MatchAny(m_AssignmentOperators))
+            {
+                assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName()));
+                continue;
+            }
 
-        Root()->Push(ParseAssignment(variableName));
+            Consume();
+            Expect(TokenType::VariableReference);
+            variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(Consume().Data, variableType));
+        }
+
+        Flush();
     }
 
     void Parser::ParseStruct()

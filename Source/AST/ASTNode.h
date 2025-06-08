@@ -155,6 +155,8 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
+		const auto& GetName() const { return m_Name; }
+
 	private:
 		std::string m_Name;
 		std::shared_ptr<Type> m_Type;
