@@ -42,7 +42,7 @@ namespace clear
         {"<-",  {.NextState = LexerState::Default, .TokenToPush =TokenType::LeftArrow}},
         { "++", {.NextState = LexerState::Increment, .TokenToPush = TokenType::Increment} },
         { "--", {.NextState = LexerState::Increment, .TokenToPush = TokenType::Decrement}},
-        {"^^",{.NextState = LexerState::RValue, .TokenToPush = TokenType::Power}},
+        {"**",{.NextState = LexerState::RValue, .TokenToPush = TokenType::Power}},
 
     };
 

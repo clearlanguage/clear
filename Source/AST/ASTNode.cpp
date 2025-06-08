@@ -9,7 +9,7 @@
 
 #include <stack>
 
-namespace clear 
+namespace clear
 {
 	template <typename T>
 	class ValueRestoreGuard 
@@ -61,7 +61,7 @@ namespace clear
 
     void ASTNodeBase::PropagateSymbolTableToChildren()
     {
-		for(auto& child : m_Children) 
+		for(auto& child : m_Children)
 			child->PropagateSymbolTable(m_SymbolTable);
     }
 
@@ -72,11 +72,11 @@ namespace clear
 
     void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
     {
-		if(m_SymbolTable) 
+		if(m_SymbolTable)
 		{
 			m_SymbolTable->SetPrevious(registry);
 		}
-		else 
+		else
 		{
 			m_SymbolTable = registry;
 		}
@@ -102,8 +102,8 @@ namespace clear
 		: m_Expression(type)
 	{
 	}
-	
-	CodegenResult ASTBinaryExpression::Codegen(CodegenContext& ctx) 
+
+	CodegenResult ASTBinaryExpression::Codegen(CodegenContext& ctx)
 	{
 		auto& builder = ctx.Builder;
 		auto& context = ctx.Context;
@@ -113,8 +113,8 @@ namespace clear
 
 		auto& leftChild  = children[1];
 		auto& rightChild = children[0];
-				
-		if(IsMathExpression()) 
+
+		if(IsMathExpression())
 			return HandleMathExpression(leftChild, rightChild, ctx);
 
 		if(IsCmpExpression())
@@ -123,7 +123,8 @@ namespace clear
 		if(m_Expression == BinaryExpressionType::Index)
 			return HandleArrayIndex(leftChild, rightChild, ctx);
 
-		//return HandleBitwiseExpression(lhs, rhs); 
+    	if (IsBitwiseExpression())
+			return HandleBitwiseExpression(leftChild, rightChild, ctx);
 		return {};
     }
 
@@ -139,61 +140,61 @@ namespace clear
             return;
 
         // int -> float
-        if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy()) 
+        if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy())
         {
 			if(lhs.CodegenType->IsSigned())
             	lhs.CodegenValue = builder.CreateSIToFP(lhs.CodegenValue, rhsType, "cast");
-			else 
+			else
             	lhs.CodegenValue = builder.CreateUIToFP(lhs.CodegenValue, rhsType, "cast");
 
             lhs.CodegenType = rhs.CodegenType;
-        } 
-        else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy()) 
+        }
+        else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy())
         {
 			if(rhs.CodegenType->IsSigned())
             	rhs.CodegenValue = builder.CreateSIToFP(rhs.CodegenValue, lhsType, "cast");
-			else 
+			else
             	rhs.CodegenValue = builder.CreateUIToFP(rhs.CodegenValue, lhsType, "cast");
 
             rhs.CodegenType = lhs.CodegenType;
         }
         // float -> double
-        else if (lhsType->isFloatTy() && rhsType->isDoubleTy()) 
+        else if (lhsType->isFloatTy() && rhsType->isDoubleTy())
         {
             lhs.CodegenValue = builder.CreateFPExt(lhs.CodegenValue, rhsType, "cast");
             lhs.CodegenType = rhs.CodegenType;
-        } 
-        else if (lhsType->isDoubleTy() && rhsType->isFloatTy()) 
+        }
+        else if (lhsType->isDoubleTy() && rhsType->isFloatTy())
         {
             rhs.CodegenValue = builder.CreateFPExt(rhs.CodegenValue, lhsType, "cast");
             rhs.CodegenType = lhs.CodegenType;
         }
-        // small int -> big int 
+        // small int -> big int
         else if (lhsType->isIntegerTy() && rhsType->isIntegerTy())
         {
             uint32_t lhsBits = lhsType->getIntegerBitWidth();
             uint32_t rhsBits = rhsType->getIntegerBitWidth();
 
-            if (lhsBits < rhsBits) 
+            if (lhsBits < rhsBits)
             {
                 if(lhs.CodegenType->IsSigned())
                 {
                     lhs.CodegenValue = builder.CreateSExt(lhs.CodegenValue, rhsType, "cast");
                 }
-                else 
+                else
                 {
                     lhs.CodegenValue =  builder.CreateZExt(lhs.CodegenValue, rhsType, "cast");
                 }
 
                 lhs.CodegenType = rhs.CodegenType;
-            } 
-            else 
+            }
+            else
             {
                 if(rhs.CodegenType->IsSigned())
                 {
                     rhs.CodegenValue = builder.CreateSExt(rhs.CodegenValue, lhsType, "cast");
                 }
-                else 
+                else
                 {
                     rhs.CodegenValue =  builder.CreateZExt(rhs.CodegenValue, lhsType, "cast");
                 }
@@ -201,7 +202,7 @@ namespace clear
                 rhs.CodegenType = lhs.CodegenType;
             }
         }
-        else 
+        else
         {
             CLEAR_UNREACHABLE("unsupported type promotion");
         }
@@ -328,7 +329,7 @@ namespace clear
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 
 
-				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
 					     ctx.Registry.GetType("float64")  };
 			}
@@ -374,7 +375,7 @@ namespace clear
 				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 
-				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
 					     ctx.Registry.GetType("float64")  };
 			}
@@ -418,7 +419,7 @@ namespace clear
 				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 
-				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
 					     ctx.Registry.GetType("float64")  };
 			}
@@ -569,9 +570,39 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleBitwiseExpression(CodegenResult& lhs, CodegenResult& rhs)
+    CodegenResult ASTBinaryExpression::HandleBitwiseExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		CLEAR_UNREACHABLE("unimplemented")
+
+    	auto& builder = ctx.Builder;
+    	// ctx.WantAddress is set by parent to this node
+    	CodegenResult lhs = left->Codegen(ctx);
+
+    	// right hand side we always want a value
+
+    	CodegenResult rhs;
+	    {
+    		ValueRestoreGuard guard(ctx.WantAddress, false);
+    		rhs = right->Codegen(ctx);
+	    }
+
+    	switch (m_Expression) {
+    		case BinaryExpressionType::BitwiseAnd:
+    			return { builder.CreateAnd(lhs.CodegenValue, rhs.CodegenValue, "andtmp"), lhs.CodegenType };
+    		case BinaryExpressionType::BitwiseOr:
+    			return { builder.CreateOr(lhs.CodegenValue, rhs.CodegenValue, "ortmp"), lhs.CodegenType };
+    		case BinaryExpressionType::BitwiseXor:
+    			return { builder.CreateXor(lhs.CodegenValue, rhs.CodegenValue, "xortmp"), lhs.CodegenType };
+    		case BinaryExpressionType::BitwiseLeftShift:
+    			return { builder.CreateShl(lhs.CodegenValue, rhs.CodegenValue, "shltmp"), lhs.CodegenType };
+    		case BinaryExpressionType::BitwiseRightShift:
+    			return { builder.CreateLShr(lhs.CodegenValue, rhs.CodegenValue, "lshrtmp"), lhs.CodegenType };
+    		case BinaryExpressionType::BitwiseNot:
+    			return { builder.CreateNot(lhs.CodegenValue, "nottmp"), lhs.CodegenType };
+    		default:
+    			// Error handling or fallback
+    				return {};
+    	}
+
         return {};
     }
 
