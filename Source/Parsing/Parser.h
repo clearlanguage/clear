@@ -26,6 +26,7 @@ namespace clear
         Token Peak();
         Token Next();
         Token Prev();
+        void Undo();
 
         bool Match(TokenType tokenType);
         bool MatchAny(TokenSet tokenSet);

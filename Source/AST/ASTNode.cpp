@@ -324,8 +324,12 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+
+
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+                return { builder.CreateCall(powFunction, {cast1, cast2}), 
 					     ctx.Registry.GetType("float64")  };
 			}
 			default:
@@ -367,9 +371,12 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
-					     ctx.Registry.GetType("float64") };
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+                return { builder.CreateCall(powFunction, {cast1, cast2}), 
+					     ctx.Registry.GetType("float64")  };
 			}
 			default:
 				break;
@@ -408,9 +415,12 @@ namespace clear
 			}
 			case BinaryExpressionType::Pow:
 			{
-				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
-                return { builder.CreateCall(powFunction, {lhs.CodegenValue, rhs.CodegenValue}), 
-						 ctx.Registry.GetType("float64") };
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+
+				llvm::Function* powFunction = llvm::Intrinsic::getOrInsertDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
+                return { builder.CreateCall(powFunction, {cast1, cast2}), 
+					     ctx.Registry.GetType("float64")  };
 			}
 			default:
 				break;

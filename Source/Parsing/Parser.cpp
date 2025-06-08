@@ -162,6 +162,11 @@ namespace clear
         return m_Tokens[m_Position - 1];
     }
 
+    void Parser::Undo()
+    {
+        m_Position--;
+    }
+
     bool Parser::Match(TokenType token)
     {
         return Peak().TokenType == token;
@@ -176,7 +181,7 @@ namespace clear
     {
         if(Match(tokenType)) return;
         
-        CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", Peak().Data);
+        CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
     }
 
     void Parser::ExpectAny(TokenSet tokenSet)
@@ -546,7 +551,7 @@ namespace clear
 
         Consume();
 
-        if(Match(TokenType::EndLine))
+        if(Match(TokenType::EndLine) || Match(TokenType::StartIndentation)) 
         {
             std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
             Root()->Push(func);
@@ -707,6 +712,8 @@ namespace clear
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
+        if(Match(TokenType::FunctionCall)) Undo();
+
         std::shared_ptr<ASTNodeBase> variableReference;
 
         Expect(TokenType::VariableReference);
@@ -844,7 +851,7 @@ namespace clear
 
         auto IsOperand = [&]()
         {
-            return Match(TokenType::VariableReference) || 
+            return Match(TokenType::VariableReference) || Match(TokenType::FunctionCall) ||
                    MatchAny(m_Literals);
         };
 
@@ -1051,6 +1058,7 @@ namespace clear
 			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
 			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
+            case TokenType::Power:              return BinaryExpressionType::Pow;
 			default:
 				break;
 		}
