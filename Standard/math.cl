@@ -1,4 +1,4 @@
-import "math.h" as "_cmath"
+import "Headers/math.h" as "_cmath"
 
 function pi() -> float64:
     return 3.14159265358979323846264338327950288
