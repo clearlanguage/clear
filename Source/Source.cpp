@@ -26,7 +26,6 @@ int main(int argc, char* argv[])
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 
-
         std::cout << "------PARSER TESTS--------" << std::endl;
         Lexer parser;
         ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");

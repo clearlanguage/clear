@@ -20,7 +20,7 @@ find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)
 
 add_custom_command(TARGET clear PRE_BUILD 
-                   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/build.py
+                   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/Build.py
                    VERBATIM
 )
 

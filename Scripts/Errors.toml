@@ -1,0 +1,7 @@
+[InvalidSyntax]
+Message = "Syntax is invalid"
+Advice = ""
+
+[DivisionByZero]  
+Message = "Cannot divide by 0"
+Advice  = "Check denominator"
