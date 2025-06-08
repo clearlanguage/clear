@@ -1028,7 +1028,6 @@ namespace clear
 			else
 				value = Intrinsics::ApplyIntrinsic(m_Name, nullptr, nullptr, ctx);
 
-
 			if(!value) return {};
 
 			if(m_Name == "sizeof") return { value, ctx.Registry.GetType("int64") };

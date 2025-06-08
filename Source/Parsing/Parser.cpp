@@ -112,7 +112,8 @@ namespace clear
 
         m_IgnoredTokens = CreateTokenSet({
             TokenType::StartIndentation,
-            TokenType::EndLine
+            TokenType::EndLine, 
+            TokenType::Comma
         });
 
         m_TypeIndirection = CreateTokenSet({
