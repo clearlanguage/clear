@@ -125,6 +125,7 @@ namespace clear
 
     	if (IsBitwiseExpression())
 			return HandleBitwiseExpression(leftChild, rightChild, ctx);
+
 		return {};
     }
 
@@ -584,8 +585,8 @@ namespace clear
     		ValueRestoreGuard guard(ctx.WantAddress, false);
     		rhs = right->Codegen(ctx);
 	    }
-
-    	switch (m_Expression) {
+    	switch (m_Expression) 
+		{
     		case BinaryExpressionType::BitwiseAnd:
     			return { builder.CreateAnd(lhs.CodegenValue, rhs.CodegenValue, "andtmp"), lhs.CodegenType };
     		case BinaryExpressionType::BitwiseOr:
