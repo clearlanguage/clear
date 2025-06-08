@@ -6,7 +6,7 @@
 
 namespace clear 
 {
-    const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','!','.',',','&','^','|','~',';'};
+    const std::set<char> g_Operators = {'=','*','/','-','%','+','<','>','.',',','&','^','|','~',';'};
     const OperatorMapType g_OperatorMap = {
         {"=",   {.NextState = LexerState::RValue, .TokenToPush = TokenType::Assignment}},
         {"*",   {.NextState = LexerState::AsterisksOperator, .TokenToPush = TokenType::None}},
@@ -21,7 +21,6 @@ namespace clear
         {"<=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::LessThanEqual}},
         {">=",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::GreaterThanEqual}},
         {"...", {.NextState = LexerState::Default, .TokenToPush = TokenType::Ellipsis}},
-         {"!",  {.NextState = LexerState::RValue, .TokenToPush = TokenType::Not}},
         {"->",  {.NextState = LexerState::ArrowState, .TokenToPush = TokenType::RightArrow}},
         {".",   {.NextState = LexerState::DotOp, .TokenToPush = TokenType::DotOp}},
         {"//",  {.NextState = LexerState::Comment, .TokenToPush = TokenType::None}},
@@ -92,6 +91,10 @@ namespace clear
         {"try",{.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
         {"catch", {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}},
         {"inherits",{.NextState = LexerState::Default, .TokenToPush = TokenType::Inherits}},
+            {"not",{.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
+        {"and",{.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
+        {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}
+        ,
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
@@ -226,6 +229,8 @@ namespace clear
             case TokenType::ClassName: return "ClassName";
             case TokenType::Inherits: return "Inherits";
             case TokenType::As: return "As";
+            case TokenType::And: return "And";
+            case TokenType::Or: return "Or";
 
             default:
                 break;
