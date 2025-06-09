@@ -585,6 +585,8 @@ namespace clear
     		ValueRestoreGuard guard(ctx.WantAddress, false);
     		rhs = right->Codegen(ctx);
 	    }
+    	CLEAR_VERIFY(rhs.CodegenType->IsIntegral(),"RHS must be an int")
+    	CLEAR_VERIFY(lhs.CodegenType->IsIntegral(),"LHS must be an int")
     	switch (m_Expression) 
 		{
     		case BinaryExpressionType::BitwiseAnd:
