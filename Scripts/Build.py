@@ -1,4 +1,4 @@
-import toml
+import tomllib
 import os
 import sys
 
@@ -11,8 +11,8 @@ error_header = os.path.join(path, "Source", "Errors", "ErrorCode.h")
 def load_errors():
     global path
 
-    with open(error_path, 'r') as f:
-        config = toml.load(f)
+    with open(error_path, 'rb') as f:
+        config = tomllib.load(f)
 
     enums    = "\tenum ErrorCode\n\t{\n"
     messages = "\tstatic const char* g_ErrorMessages[] = {\n"
@@ -20,8 +20,8 @@ def load_errors():
 
     for key, value in config.items():
         enums += f"\t\tErrorCode_{key},\n"
-        messages += f"\t\t\"{value["Message"]}\",\n"
-        advices += f"\t\t\"{value["Advice"]}\",\n"
+        messages += f"\t\t\"{value['Message']}\",\n"
+        advices += f"\t\t\"{value['Advice']}\",\n"
 
     enums += "\t\tErrorCode_Count\n"
 
