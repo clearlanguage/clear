@@ -18,14 +18,14 @@ namespace clear
 		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
 		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
 		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
-		BitwiseXor, Index
+		BitwiseXor, Index, And, Or, Not
 	};
 
 	enum class UnaryExpressionType : uint8_t
 	{
 		None = 0, BitwiseNot, Negation, 
         Dereference, Reference, Cast, PostIncrement, 
-        PostDecrement, PreIncrement, PreDecrement
+        PostDecrement, PreIncrement, PreDecrement, Not
 	};
 
     enum class TypeFlags

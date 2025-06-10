@@ -126,6 +126,11 @@ namespace clear
     	if (IsBitwiseExpression())
 			return HandleBitwiseExpression(leftChild, rightChild, ctx);
 
+		if (IsLogicalOperator())
+			return HandleLogicalExpression(leftChild, rightChild, ctx);
+
+		CLEAR_UNREACHABLE("unimplmented");
+
 		return {};
     }
 
@@ -261,6 +266,20 @@ namespace clear
 		}
 
 		return false;
+    }
+
+    bool ASTBinaryExpression::IsLogicalOperator() const
+    {
+		switch(m_Expression)
+		{
+			case BinaryExpressionType::And:
+			case BinaryExpressionType::Or:
+				return true;
+			default:
+				break;
+		}
+
+        return false;
     }
 
     CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx)
@@ -607,6 +626,64 @@ namespace clear
     	}
 
         return {};
+    }
+
+    CodegenResult ASTBinaryExpression::HandleLogicalExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    {
+		if(ctx.Builder.GetInsertBlock()->getTerminator()) return {};
+			
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+		CodegenResult lhs = left->Codegen(ctx);
+
+		lhs.CodegenValue = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
+		lhs.CodegenType  = ctx.Registry.GetType("bool");
+
+		CodegenResult result;
+
+		llvm::BasicBlock* checkSecond  = llvm::BasicBlock::Create(ctx.Context, "check_second");
+		llvm::BasicBlock* trueResult   = llvm::BasicBlock::Create(ctx.Context, "true_value");
+		llvm::BasicBlock* falseResult  = llvm::BasicBlock::Create(ctx.Context, "false_value");
+		llvm::BasicBlock* merge  	   = llvm::BasicBlock::Create(ctx.Context, "merge");
+
+		if(m_Expression == BinaryExpressionType::And)
+			ctx.Builder.CreateCondBr(lhs.CodegenValue, checkSecond, falseResult);
+		else 
+			ctx.Builder.CreateCondBr(lhs.CodegenValue, trueResult, checkSecond);
+
+		function->insert(function->end(), checkSecond);
+		ctx.Builder.SetInsertPoint(checkSecond);
+		
+		CodegenResult rhs = right->Codegen(ctx);
+		
+		rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
+		rhs.CodegenType  = ctx.Registry.GetType("bool");
+		
+		ctx.Builder.CreateCondBr(rhs.CodegenValue, trueResult, falseResult);
+		
+		function->insert(function->end(), trueResult);
+		ctx.Builder.SetInsertPoint(trueResult);
+
+		ctx.Builder.CreateBr(merge);
+
+		function->insert(function->end(), falseResult);
+		ctx.Builder.SetInsertPoint(falseResult);
+
+		ctx.Builder.CreateBr(merge);
+
+		function->insert(function->end(), merge);
+		ctx.Builder.SetInsertPoint(merge);
+
+		auto phiNode = ctx.Builder.CreatePHI(rhs.CodegenType->Get(), 2);
+		phiNode->addIncoming(ctx.Builder.getInt1(true), trueResult);
+		phiNode->addIncoming(ctx.Builder.getInt1(false), falseResult);
+
+		result.CodegenValue = phiNode;
+		result.CodegenType = rhs.CodegenType;
+
+        return result;
     }
 
     CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx)
@@ -1739,6 +1816,17 @@ namespace clear
 			CodegenResult result = children[0]->Codegen(ctx);
 			return { ctx.Builder.CreateNot(result.CodegenValue), result.CodegenType };
 		}	
+
+		if(m_Type == UnaryExpressionType::Not)
+		{
+			CodegenResult result = children[0]->Codegen(ctx);
+			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
+			result.CodegenType  = ctx.Registry.GetType("bool");
+
+			result.CodegenValue = ctx.Builder.CreateXor(ctx.Builder.getTrue(), result.CodegenValue);
+
+			return result;
+		}
 		
 		CodegenResult one;
 		one.CodegenType  = ctx.Registry.GetType("int64");

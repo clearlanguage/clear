@@ -11,32 +11,42 @@
 namespace clear 
 {
     static std::map<TokenType, int32_t> s_Precedence = {
-	        {TokenType::IndexOperator,      5}, 
-	        {TokenType::Power,              4}, 
-	        {TokenType::Negation,           4},
-	        {TokenType::Increment,          4},
-	        {TokenType::Decrement,          4},
-	        {TokenType::BitwiseNot,         4},
-	        {TokenType::DereferenceOp,      4},
-	        {TokenType::AddressOp,          4},
-	        {TokenType::DivOp,              3},
-	        {TokenType::ModOp,              3},
-	        {TokenType::MulOp,              3},
-	        {TokenType::LeftShift,          3},
-	        {TokenType::RightShift,         3},
-	        {TokenType::AddOp,              2},
-	        {TokenType::SubOp,              2},
-	        {TokenType::BitwiseAnd,         1}, 
-	        {TokenType::BitwiseXor,         1},
-	        {TokenType::BitwiseOr,          1},
-	        {TokenType::IsEqual,            0}, 
-	        {TokenType::NotEqual,           0},
-	        {TokenType::LessThan,           0},
-	        {TokenType::GreaterThan,        0},
-	        {TokenType::LessThanEqual,      0},
-	        {TokenType::GreaterThanEqual,   0},
-	        {TokenType::OpenBracket,       -1}  
-	    };
+        {TokenType::IndexOperator,      7}, // x[y]
+        
+        {TokenType::Negation,           6}, // -x
+        {TokenType::Increment,          6}, // ++x
+        {TokenType::Decrement,          6}, // --x
+        {TokenType::BitwiseNot,         6}, // ~x
+        {TokenType::AddressOp,          6}, // &x
+        {TokenType::DereferenceOp,      6}, // *x
+        {TokenType::Not,                6}, // not x
+
+        {TokenType::Power,              5}, // x ** y
+
+        {TokenType::MulOp,              4}, // x * y
+        {TokenType::DivOp,              4}, // x / y
+        {TokenType::ModOp,              4}, // x % y
+
+        {TokenType::AddOp,              3}, // x + y
+        {TokenType::SubOp,              3}, // x - y
+
+        {TokenType::LeftShift,          2}, // x << y
+        {TokenType::RightShift,         2}, // x >> y
+
+        {TokenType::BitwiseAnd,         1}, // x & y
+        {TokenType::BitwiseXor,         1}, // x ^ y
+        {TokenType::BitwiseOr,          1}, // x | y
+
+        {TokenType::LessThan,           0},
+        {TokenType::GreaterThan,        0},
+        {TokenType::LessThanEqual,      0},
+        {TokenType::GreaterThanEqual,   0},
+        {TokenType::IsEqual,            0},
+        {TokenType::NotEqual,           0},
+
+        {TokenType::And,               -1}, // x and y
+        {TokenType::Or,                -2}, // x or y
+    };
 
     Parser::Parser(const ProgramInfo& info)
         : m_Tokens(info.Tokens)
@@ -96,7 +106,8 @@ namespace clear
             TokenType::BitwiseNot,   
             TokenType::AddressOp,	  
             TokenType::DereferenceOp,
-            TokenType::Negation     
+            TokenType::Negation, 
+            TokenType::Not
         });
 
         m_PostUnaryExpression = CreateTokenSet({
@@ -1038,6 +1049,10 @@ namespace clear
 			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
 			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
             case TokenType::Power:              return BinaryExpressionType::Pow;
+            case TokenType::And:                return BinaryExpressionType::And;
+            case TokenType::Or:                 return BinaryExpressionType::Or;
+            
+
 			default:
 				break;
 		}
@@ -1055,10 +1070,11 @@ namespace clear
 			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
 			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
 			case TokenType::Negation:       return UnaryExpressionType::Negation; 
-
+			case TokenType::Not:            return UnaryExpressionType::Not; 
 			default:
 				break;
 		}
+
 
 		return UnaryExpressionType::None;
     }

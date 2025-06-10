@@ -132,6 +132,7 @@ namespace clear
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
 		bool IsBitwiseExpression() const;
+		bool IsLogicalOperator()   const;
 
 		CodegenResult HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		CodegenResult HandleCmpExpression(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
@@ -140,7 +141,8 @@ namespace clear
 		CodegenResult HandleCmpExpressionUI(CodegenResult& lhs, CodegenResult& rhs, CodegenContext& ctx);
 
 		CodegenResult HandleBitwiseExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		
+		CodegenResult HandleLogicalExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
+
 		CodegenResult HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 			
 	private:
