@@ -31,8 +31,8 @@ namespace clear
         m_Types["uint64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt64Ty(*m_Context), integerFlags, "uint64");
         m_Types["bool"]   = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(*m_Context), integerFlags, "bool");
 
-        m_Types["int"]  = m_Types["int64"];
-        m_Types["uint"] = m_Types["uint64"];
+        m_Types["int"]  = m_Types["int32"];
+        m_Types["uint"] = m_Types["uint32"];
         m_Types["string"] = GetPointerTo(m_Types["int8"]); //TODO: gonna be a class soon
 
         TypeFlagSet floatingFlags;
@@ -42,7 +42,7 @@ namespace clear
         m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(*m_Context),  floatingFlags, "float32");
         m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(*m_Context), floatingFlags, "float64");
         
-        m_Types["float"] = m_Types["float64"];
+        m_Types["float"] = m_Types["float32"];
 
         m_Types["opaque_ptr"] = std::make_shared<PointerType>(nullptr, *m_Context);
 
