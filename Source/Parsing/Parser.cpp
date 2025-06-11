@@ -212,53 +212,30 @@ namespace clear
             return;
         }
 
+        static std::map<TokenType, std::function<void()>> s_MappedFunctions = {
+            {TokenType::Import,        [this]() { ParseImport(); }},
+            {TokenType::Struct,        [this]() { ParseStruct(); }},
+            {TokenType::Declaration,   [this]() { ParseFunctionDeclaration(); }},
+            {TokenType::Function,      [this]() { ParseFunctionDefinition(); }},
+            {TokenType::ConditionalIf, [this]() { ParseIf(); }},
+            {TokenType::ElseIf,        [this]() { ParseElseIf(); }},
+            {TokenType::Else,          [this]() { ParseElse(); }},
+            {TokenType::EndIndentation,[this]() { ParseIndentation(); }},
+            {TokenType::Return,        [this]() { ParseReturn(); }},
+            {TokenType::While,         [this]() { ParseWhile(); }},
+            {TokenType::For,           [this]() { ParseFor(); }},
+            {TokenType::Let,           [this]() { ParseLetDecleration(); }}
+        };
+
         if(MatchAny(m_VariableType))
         {
             ParseVariableDecleration();
+            return;
         }
-        else if (Match(TokenType::Import))
+
+        if(s_MappedFunctions.contains(Peak().TokenType))
         {
-            ParseImport();
-        }
-        else if (Match(TokenType::Struct))
-        {
-            ParseStruct();
-        }
-        else if (Match(TokenType::Declaration))
-        {
-            ParseFunctionDecleration();
-        }
-        else if (Match(TokenType::Function))
-        {
-            ParseFunctionDefinition();
-        }
-        else if (Match(TokenType::ConditionalIf))
-        {
-            ParseIf();
-        }
-        else if ((Match(TokenType::ElseIf)))
-        {
-            ParseElseIf();
-        }
-        else if (Match(TokenType::Else))
-        {
-            ParseElse();
-        }
-        else if (Match(TokenType::EndIndentation))
-        {
-            ParseIndentation();
-        }
-        else if (Match(TokenType::Return))
-        {
-            ParseReturn();
-        }
-        else if (Match(TokenType::While))
-        {
-            ParseWhile();
-        }
-        else if (Match(TokenType::For))
-        {
-            ParseFor();
+            s_MappedFunctions.at(Peak().TokenType)();
         }
         else 
         {
@@ -326,6 +303,33 @@ namespace clear
         }
 
         Flush();
+    }
+
+    void Parser::ParseLetDecleration()
+    {
+        Expect(TokenType::Let);
+        Consume();
+
+        Expect(TokenType::VariableReference);
+
+        while(Match(TokenType::VariableReference))
+        {
+            std::string variableName = Consume().Data;
+
+            Expect(TokenType::Assignment);
+            Consume();
+
+            auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
+            inferredType->Push(ParseExpression());
+            
+            Root()->Push(inferredType);
+            
+            if(Match(TokenType::Comma))
+            {
+                Consume();
+                Expect(TokenType::VariableReference);
+            }
+        }
     }
 
     void Parser::ParseStruct()
@@ -594,7 +598,7 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseFunctionDecleration()
+    void Parser::ParseFunctionDeclaration()
     {
         Expect(TokenType::Declaration);
 

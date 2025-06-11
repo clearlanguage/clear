@@ -55,6 +55,7 @@ namespace clear
         {"uint32",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt32Type}},
         {"uint64",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::UInt64Type}},
         {"string",    {.NextState = LexerState::VariableName, .TokenToPush = TokenType::StringType}},
+        {"let",       {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Let}},
         {"bool",      {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Bool}},
         {"float32",   {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Float32Type}},
         {"float64",   {.NextState = LexerState::VariableName, .TokenToPush = TokenType::Float64Type}},

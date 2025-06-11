@@ -37,8 +37,9 @@ namespace clear
         void ParseStatement();
         void ParseGeneric();
         void ParseFunctionDefinition();
-        void ParseFunctionDecleration();        
+        void ParseFunctionDeclaration();        
         void ParseVariableDecleration();
+        void ParseLetDecleration();
         void ParseStruct();
         void ParseImport();
         void ParseReturn();

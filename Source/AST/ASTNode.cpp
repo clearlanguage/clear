@@ -37,7 +37,6 @@ namespace clear
     {
     }
 
-
     CodegenResult ASTNodeBase::Codegen(CodegenContext &ctx)
     {
         CodegenResult value;
@@ -857,6 +856,26 @@ namespace clear
 
 		return codegenResult;
     }
+
+	ASTInferredDecleration::ASTInferredDecleration(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+	CodegenResult ASTInferredDecleration::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+		CLEAR_VERIFY(children.size() == 1, "invalid child size");
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+		CodegenResult result = children[0]->Codegen(ctx);
+
+		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		
+		Allocation alloca = registry->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
+		ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
+		return {alloca.Alloca, ctx.Registry.GetPointerTo(alloca.Type)};
+	}
 
 	
 	ASTVariable::ASTVariable(const std::string& name)
