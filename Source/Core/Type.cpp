@@ -37,6 +37,11 @@ namespace clear
         return GetFlags().test((size_t)TypeFlags::Variadic);
     }
 
+    bool Type::IsConstant()
+    {
+        return GetFlags().test((size_t)TypeFlags::Constant);
+    }
+
     bool Type::ContainsAll(TypeFlagSet set)
     {
         return (GetFlags() & set) == set;
@@ -65,11 +70,6 @@ namespace clear
         CLEAR_VERIFY(m_LLVMType, "null type not allowed");
     }
 
-    uint64_t PrimitiveType::GetID() const
-    {
-        return std::hash<std::string>()(m_Name);
-    }
-
     PointerType::PointerType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context)
         : m_BaseType(baseType)
     {
@@ -80,11 +80,6 @@ namespace clear
     void PointerType::SetBaseType(std::shared_ptr<Type> type)
     {
         m_BaseType = type;
-    }
-
-    uint64_t PointerType::GetID() const
-    {
-        return std::hash<std::string>()(GetHash());
     }
 
     ArrayType::ArrayType(std::shared_ptr<Type> baseType, size_t count)
@@ -102,11 +97,6 @@ namespace clear
     std::string ArrayType::GetShortHash() const
     {
         return m_BaseType->GetShortHash() + "A" + std::to_string(m_Count);
-    }
-
-    uint64_t ArrayType::GetID() const
-    {
-        return std::hash<std::string>()(GetHash());
     }
 
     void ArrayType::SetBaseType(std::shared_ptr<Type> type)
@@ -181,22 +171,6 @@ namespace clear
 
         CLEAR_UNREACHABLE("unable to find index", index);
         return nullptr;
-    }
-
-    uint64_t StructType::GetID() const
-    {
-        if (m_CachedID.has_value())
-            return m_CachedID.value();
-
-       size_t hash = std::hash<std::string>()(GetHash());
-
-       for (const auto& [name, type] : m_MemberTypes)
-       {
-           hash ^= type->GetID() + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-       }
-
-       m_CachedID = hash;
-       return m_CachedID.value();
     }
 
     VariadicArgumentsHolder::VariadicArgumentsHolder()
