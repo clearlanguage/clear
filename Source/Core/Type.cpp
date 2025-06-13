@@ -9,72 +9,64 @@ namespace clear
 {
     bool Type::IsSigned()
     {
-        return GetFlags().test((size_t)TypeFlags::Signed);
+        return m_Flags.test((size_t)TypeFlags::Signed);
     }
     bool Type::IsFloatingPoint()
     {
-        return GetFlags().test((size_t)TypeFlags::Floating);
+        return m_Flags.test((size_t)TypeFlags::Floating);
     }
     bool Type::IsPointer()
     {
-        return GetFlags().test((size_t)TypeFlags::Pointer);
+        return m_Flags.test((size_t)TypeFlags::Pointer);
     }
     bool Type::IsIntegral()
     {
-        return GetFlags().test((size_t)TypeFlags::Integral);
+        return m_Flags.test((size_t)TypeFlags::Integral);
     }
     bool Type::IsArray()
     {
-        return GetFlags().test((size_t)TypeFlags::Array);
+        return m_Flags.test((size_t)TypeFlags::Array);
     }
     bool Type::IsCompound()
     {
-        return GetFlags().test((size_t)TypeFlags::Compound);
+        return m_Flags.test((size_t)TypeFlags::Compound);
     }
 
     bool Type::IsVariadic()
     {
-        return GetFlags().test((size_t)TypeFlags::Variadic);
+        return m_Flags.test((size_t)TypeFlags::Variadic);
     }
 
-    bool Type::IsConstant()
+    void Type::Toggle(TypeFlags flag)
     {
-        return GetFlags().test((size_t)TypeFlags::Constant);
+        m_Flags.set((size_t)flag);
     }
 
-    bool Type::ContainsAll(TypeFlagSet set)
+    void Type::Toggle(TypeFlagSet set)
     {
-        return (GetFlags() & set) == set;
-    }
-
-    bool Type::ContainsAny(TypeFlagSet set)
-    {
-        return (GetFlags() & set).any();
-    }
-
-    TypeFlagSet Type::MaskWith(TypeFlagSet mask)
-    {
-        return GetFlags() & mask;
+        m_Flags = m_Flags ^ set;
     }
 
     PrimitiveType::PrimitiveType(llvm::LLVMContext& context)
     {
         m_LLVMType = llvm::Type::getVoidTy(context);
-        m_Flags.set((size_t)TypeFlags::Void);
+        Toggle(TypeFlags::Void);
+
         m_Size = 0;
     }
 
     PrimitiveType::PrimitiveType(llvm::Type* type, TypeFlagSet flags, const std::string& name)
-        : m_LLVMType(type), m_Flags(flags), m_Size(type->getScalarSizeInBits()), m_Name(name)
+        : m_LLVMType(type), m_Size(type->getScalarSizeInBits()), m_Name(name)
     {
         CLEAR_VERIFY(m_LLVMType, "null type not allowed");
+        Toggle(flags);
     }
 
     PointerType::PointerType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context)
         : m_BaseType(baseType)
     {
         m_LLVMType = llvm::PointerType::get(context , 0);
-        m_Flags.set((size_t)TypeFlags::Pointer);
+        Toggle(TypeFlags::Pointer);
     }
 
     void PointerType::SetBaseType(std::shared_ptr<Type> type)
@@ -86,7 +78,7 @@ namespace clear
         : m_LLVMType(llvm::ArrayType::get(baseType->Get(), count)), m_BaseType(baseType), 
           m_Count(count)
     {
-        m_Flags.set((size_t)TypeFlags::Array);
+        Toggle(TypeFlags::Array);
     }
 
     std::string ArrayType::GetHash() const
@@ -107,7 +99,7 @@ namespace clear
     StructType::StructType(const std::string& name, llvm::LLVMContext& context)
         : m_Name(name), m_LLVMType(llvm::StructType::create(context, name))
     {
-        m_Flags.set((size_t)TypeFlags::Compound);
+        Toggle(TypeFlags::Compound);
     }
 
     StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
@@ -125,7 +117,7 @@ namespace clear
 		}
 
 		m_LLVMType = llvm::StructType::create(types, name);
-        m_Flags.set((size_t)TypeFlags::Compound);
+        Toggle(TypeFlags::Compound);
     }
 
     void StructType::SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
@@ -175,7 +167,7 @@ namespace clear
 
     VariadicArgumentsHolder::VariadicArgumentsHolder()
     {
-        m_Flags.set((size_t)TypeFlags::Variadic);
+        Toggle(TypeFlags::Variadic);
     }
 }
  

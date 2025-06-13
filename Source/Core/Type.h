@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Lexing/Tokens.h"
+
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -32,10 +34,10 @@ namespace clear
     {
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
-        Void, Variadic, Constant, Count
+        Void, Variadic, Count
     };
     
-    using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>; // may switch to uint32_t but don't know how many we will need in future.
+    using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
 
     class Type 
     {
@@ -44,7 +46,6 @@ namespace clear
         virtual ~Type() = default;
 
         virtual llvm::Type* Get()      const = 0;
-        virtual TypeFlagSet GetFlags() const = 0;
         virtual size_t      GetSize()  const { return 0; };
         virtual std::string GetHash()  const = 0;
         virtual std::string GetShortHash() const = 0;
@@ -56,12 +57,31 @@ namespace clear
         bool IsArray();
         bool IsCompound();
         bool IsVariadic();
-        bool IsConstant();
 
-        bool ContainsAll(TypeFlagSet set);
-        bool ContainsAny(TypeFlagSet set);
+    protected:
+        void Toggle(TypeFlags flag);
+        void Toggle(TypeFlagSet set);
 
-        TypeFlagSet MaskWith(TypeFlagSet mask);
+    private:
+        TypeFlagSet m_Flags;
+    };
+
+    struct QualifiedType
+    {
+        // int, float, struct etc...
+        std::shared_ptr<Type> Type;
+
+        // constant type
+        bool IsConst = false;
+
+        // reference to some other variable
+        bool IsReference = false;
+        
+        // for debugging information in the future
+        Token Source; 
+
+        // we might want types to alias other types 
+        std::string AliasName;
     };
 
     class PrimitiveType : public Type 
@@ -73,14 +93,12 @@ namespace clear
         virtual ~PrimitiveType() = default;
 
         virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual size_t GetSize() const override { return m_Size; }
         virtual std::string GetHash() const override { return m_Name; }
         virtual std::string GetShortHash() const override { return m_Name[0] + std::to_string(GetSize()); }
 
     private:
         llvm::Type* m_LLVMType;
-        TypeFlagSet m_Flags;
         size_t m_Size;
         std::string m_Name = "void";
     };
@@ -93,7 +111,6 @@ namespace clear
         virtual ~PointerType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
-        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
         virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "P"; }
 
@@ -103,7 +120,6 @@ namespace clear
     private:
         std::shared_ptr<Type> m_BaseType;
         llvm::PointerType* m_LLVMType;
-        TypeFlagSet m_Flags;
     };
 
     class ArrayType : public Type 
@@ -114,10 +130,8 @@ namespace clear
         virtual ~ArrayType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
-        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override;
         virtual std::string GetShortHash() const override;
-
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -127,7 +141,6 @@ namespace clear
     private:
         std::shared_ptr<Type> m_BaseType;
         llvm::ArrayType* m_LLVMType;
-        TypeFlagSet m_Flags;
         size_t m_Count;
     };
 
@@ -142,7 +155,6 @@ namespace clear
         virtual ~StructType() = default;
             
         virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return m_Name; };
         virtual std::string GetShortHash() const override { return m_Name; };
 
@@ -156,7 +168,6 @@ namespace clear
 
     private:
         llvm::StructType* m_LLVMType;
-        TypeFlagSet m_Flags;
         std::unordered_map<std::string, std::shared_ptr<Type>> m_MemberTypes;
         std::unordered_map<std::string, size_t> m_MemberIndices;
 
@@ -170,13 +181,11 @@ namespace clear
         virtual ~VariadicArgumentsHolder() = default;
 
         virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual TypeFlagSet GetFlags() const override { return m_Flags; };
         virtual std::string GetHash() const override { return "variadic"; };
         virtual std::string GetShortHash() const override { return "va"; };
 
     private:
         llvm::Type* m_LLVMType = nullptr;
-        TypeFlagSet m_Flags;
     };
 }
 
