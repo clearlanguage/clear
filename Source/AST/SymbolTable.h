@@ -11,7 +11,7 @@ namespace clear
 {
     struct Allocation
     {
-        llvm::AllocaInst* Alloca = nullptr;
+        llvm::Value* Alloca = nullptr;
         std::shared_ptr<Type> Type;
         bool IsVariadicList = false;
     };
@@ -37,7 +37,8 @@ namespace clear
         SymbolTable()  = default;
         SymbolTable(const std::shared_ptr<SymbolTable>& other);
         ~SymbolTable() = default;
-
+        
+        Allocation  CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value = nullptr); //TODO: add linkage and threading options
         Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder);
         Allocation  GetAlloca(const std::string& name);
         void        RegisterAllocation(const std::string& name, Allocation allocation);

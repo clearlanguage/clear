@@ -821,7 +821,19 @@ namespace clear
 		
 		std::shared_ptr<Type> resolvedType = ctx.Registry.ResolveType(m_Type);
 
-		Allocation alloca = registry->CreateAlloca(m_Name, resolvedType, ctx.Builder);
+        bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
+
+		Allocation alloca;
+
+		if(isGlobal)
+		{
+			alloca = registry->CreateGlobal(m_Name, resolvedType, ctx.Module);
+		}
+		else 
+		{
+			alloca = registry->CreateAlloca(m_Name, resolvedType, ctx.Builder);
+		}
+
 		codegenResult.CodegenValue = alloca.Alloca;
 		codegenResult.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
 
@@ -875,8 +887,21 @@ namespace clear
 		if(m_IsConst)
 			result.CodegenType = ctx.Registry.GetConstFrom(result.CodegenType);
 
-		Allocation alloca = tbl->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
-		ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
+		
+		bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
+
+		Allocation alloca;
+
+		if(isGlobal)
+		{
+			alloca = tbl->CreateGlobal(m_Name, result.CodegenType, ctx.Module, result.CodegenValue);
+		}
+		else 
+		{
+			alloca = tbl->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
+			ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
+		}
+
 		return {alloca.Alloca, ctx.Registry.GetPointerTo(alloca.Type)};
 	}
 

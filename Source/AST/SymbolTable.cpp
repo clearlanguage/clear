@@ -9,11 +9,34 @@ namespace clear
         m_Previous = other;
     }
 
+    Allocation SymbolTable::CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value)
+    {
+        Allocation alloca;
+
+        alloca.Alloca = new llvm::GlobalVariable(
+            module,
+            type->Get(),
+            false,
+            llvm::GlobalValue::ExternalLinkage,
+            value ? llvm::cast<llvm::Constant>(value) : nullptr,
+            name
+        );
+        
+        alloca.Type = type;
+        m_Variables[name] = alloca;
+
+        return alloca;
+    }
+
     Allocation SymbolTable::CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder)
     {
+        llvm::BasicBlock* insertBlock = builder.GetInsertBlock();
+        
+        CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");
+
 		auto ip = builder.saveIP();
 
-		llvm::Function* function = builder.GetInsertBlock()->getParent();
+		llvm::Function* function = insertBlock->getParent();
 
 		builder.SetInsertPoint(&function->getEntryBlock());
 	

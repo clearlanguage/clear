@@ -87,8 +87,6 @@ namespace clear
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
-        llvm::Linker linker(*m_MainModule);
-
         for(auto& [filepath, ast] : m_LookupTable)
         {
             CodegenModule(filepath);
