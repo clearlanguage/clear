@@ -140,6 +140,11 @@ namespace clear
             TokenType::DereferenceOp,
         });
 
+        m_VariableName = CreateTokenSet({
+            TokenType::VariableName,
+            TokenType::VariableReference
+        });
+
         while(!Match(TokenType::Eof))
         {
             ParseStatement();
@@ -263,7 +268,8 @@ namespace clear
     {
         TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
-        //Expect(TokenType::VariableName);
+        //ExpectAny(m_VariableName);
+        ExpectAny(m_VariableName);
 
         std::string variableName = Consume().Data;
 
@@ -301,7 +307,7 @@ namespace clear
             }
 
             Consume();
-            Expect(TokenType::VariableReference);
+            ExpectAny(m_VariableName);
             variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(Consume().Data, variableType));
         }
 
@@ -313,9 +319,9 @@ namespace clear
         Expect(TokenType::Let);
         Consume();
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
-        while(Match(TokenType::VariableReference))
+        while(MatchAny(m_VariableName))
         {
             std::string variableName = Consume().Data;
 
@@ -330,7 +336,7 @@ namespace clear
             if(Match(TokenType::Comma))
             {
                 Consume();
-                Expect(TokenType::VariableReference);
+                ExpectAny(m_VariableName);
             }
         }
     }
@@ -352,9 +358,9 @@ namespace clear
         variableType.Description.pop_back(); // remove the variable reference
         Undo();
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
-        while(Match(TokenType::VariableReference))
+        while(MatchAny(m_VariableName))
         {
             std::string variableName = Consume().Data;
 
@@ -369,7 +375,7 @@ namespace clear
             if(Match(TokenType::Comma))
             {
                 Consume();
-                Expect(TokenType::VariableReference);
+                ExpectAny(m_VariableName);
             }
         }
     }
@@ -403,7 +409,7 @@ namespace clear
 
             subType->Description = ParseVariableTypeTokens(); 
             
-            Expect(TokenType::VariableName);
+            ExpectAny(m_VariableName);
 
             std::string name = Consume().Data;
             structTyDesc.ChildTypes.push_back({name, subType});
@@ -507,7 +513,7 @@ namespace clear
         Expect(TokenType::For);
         Consume();
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
         std::string name = Consume().Data;
 
         Expect(TokenType::In);
@@ -515,7 +521,7 @@ namespace clear
 
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
         auto var = std::make_shared<ASTVariable>(Consume().Data);
 
         auto forLoop = std::make_shared<ASTForExpression>(name);
@@ -566,7 +572,7 @@ namespace clear
         {
             UnresolvedParameter param;
 
-            if(Match(TokenType::VariableReference))
+            if(MatchAny(m_VariableName))
             {
                 param.IsVariadic = true;
                 param.Name = Consume().Data;
@@ -582,7 +588,7 @@ namespace clear
 
             param.Type = { ParseVariableTypeTokens() };  
             
-            Expect(TokenType::VariableReference);
+            ExpectAny(m_VariableName);
 
             param.Name = Consume().Data;
 
@@ -646,7 +652,7 @@ namespace clear
 
         Consume();
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
         Consume();
 
@@ -675,7 +681,7 @@ namespace clear
             
             param.Type = { ParseVariableTypeTokens() };
 
-            if(Match(TokenType::VariableReference)) 
+            if(MatchAny(m_VariableName)) 
                 Consume();
             
             if(!Match(TokenType::EndFunctionArguments))
@@ -709,7 +715,7 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
         std::string functionName = Consume().Data;
 
@@ -749,7 +755,7 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
     {
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
         if(Next().TokenType == TokenType::FunctionCall) 
             return ParseFunctionCall();
@@ -773,7 +779,7 @@ namespace clear
 
         std::shared_ptr<ASTNodeBase> variableReference;
 
-        Expect(TokenType::VariableReference);
+        ExpectAny(m_VariableName);
 
         variableReference = ParseVariableReference();
 
@@ -908,7 +914,7 @@ namespace clear
 
         auto IsTokenOperand = [&](Token token)
         {
-            return token.TokenType == TokenType::VariableReference || 
+            return token.TokenType == TokenType::VariableReference || token.TokenType == TokenType::VariableName ||
                    m_Literals.test((size_t)token.TokenType);
         };
 
@@ -921,7 +927,7 @@ namespace clear
 
         auto IsOperand = [&]()
         {
-            return Match(TokenType::VariableReference) || Match(TokenType::FunctionCall) ||
+            return MatchAny(m_VariableName) || Match(TokenType::FunctionCall) ||
                    MatchAny(m_Literals);
         };
 

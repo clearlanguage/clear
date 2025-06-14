@@ -90,5 +90,6 @@ namespace clear
         TokenSet m_IgnoredTokens;
         TokenSet m_TypeIndirection;
         TokenSet m_ValueReferences;
+        TokenSet m_VariableName;
     };
 }
