@@ -857,8 +857,8 @@ namespace clear
 		return codegenResult;
     }
 
-	ASTInferredDecleration::ASTInferredDecleration(const std::string& name)
-		: m_Name(name)
+	ASTInferredDecleration::ASTInferredDecleration(const std::string& name, bool isConst)
+		: m_Name(name), m_IsConst(isConst)
     {
     }
 
@@ -870,9 +870,12 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 		CodegenResult result = children[0]->Codegen(ctx);
 
-		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
-		
-		Allocation alloca = registry->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
+		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
+	
+		if(m_IsConst)
+			result.CodegenType = ctx.Registry.GetConstFrom(result.CodegenType);
+
+		Allocation alloca = tbl->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
 		ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
 		return {alloca.Alloca, ctx.Registry.GetPointerTo(alloca.Type)};
 	}
@@ -943,7 +946,7 @@ namespace clear
 
 		CodegenResult result;
 
-		if(m_Type == AssignmentOperatorType::Normal)
+		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
 			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
 			result.CodegenType = storage.CodegenType;
@@ -995,6 +998,9 @@ namespace clear
 		
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
 		CLEAR_VERIFY(ptrType, "storage must have pointer type");
+
+		if(m_Type != AssignmentOperatorType::Initialize)
+			CLEAR_VERIFY(!ptrType->GetBaseType()->IsConst(), "cannot assign to constant!");
 
 		std::shared_ptr<Type> underlyingStorageType = ptrType->GetBaseType();
 		CLEAR_VERIFY(underlyingStorageType, "not valid storage");

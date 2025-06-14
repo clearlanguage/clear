@@ -96,6 +96,21 @@ namespace clear
         return ptr;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetConstFrom(std::shared_ptr<Type> base)
+    {
+        CLEAR_VERIFY(base, "invalid base");
+
+        std::string hash = "const" + base->GetHash();
+
+        if(m_Types.contains(hash)) 
+            return m_Types.at(hash);
+
+        std::shared_ptr<ConstantType> ptr = std::make_shared<ConstantType>(base);
+        m_Types[hash] = ptr;
+
+        return ptr;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)
     {
         CLEAR_VERIFY(type->IsIntegral(), "only works on integral types!");
@@ -148,9 +163,20 @@ namespace clear
 
         auto Resolve = [&](const TypeDescriptor& desc) 
         {
-            std::shared_ptr<Type> baseType = m_Types[desc.Description[0].Data];
+            std::shared_ptr<Type> baseType;
+            size_t start = 1;
 
-            for(size_t i = 1; i < desc.Description.size(); i++)
+            if(desc.Description[0].TokenType == TokenType::Const)
+            {
+                baseType = GetConstFrom(m_Types[desc.Description[1].Data]);
+                start++;
+            }
+            else 
+            {
+                baseType = m_Types[desc.Description[0].Data];
+            }
+
+            for(size_t i = start; i < desc.Description.size(); i++)
             {
                 Token token = desc.Description[i];
 
@@ -162,6 +188,11 @@ namespace clear
                 {
                     baseType = GetArrayFrom(baseType, std::stoll(token.Data));
                 }
+                else if (token.TokenType == TokenType::Const)
+                {
+                    CLEAR_VERIFY(!baseType->IsConst(), "cannot have a const of a constant!");
+                    baseType = GetConstFrom(baseType);
+                }
                 else 
                 {
                     CLEAR_UNREACHABLE("unimplemented type ", token.Data);
@@ -171,14 +202,22 @@ namespace clear
             return baseType;
         };
 
-        if(m_Types.contains(descriptor.Description[0].Data)) // type we already have just have to retrieve
+        size_t index = 0;
+
+        if(descriptor.Description[0].TokenType == TokenType::Const)
+        {
+            index++;
+            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
+        }
+
+        if(m_Types.contains(descriptor.Description[index].Data)) // type we already have just have to retrieve
         {
             return Resolve(descriptor);
         }
 
-        CLEAR_VERIFY(descriptor.Description[0].TokenType == TokenType::TypeIdentifier, "not a valid compound type ", descriptor.Description[0].Data);
+        CLEAR_VERIFY(descriptor.Description[index].TokenType == TokenType::TypeIdentifier, "not a valid compound type ", descriptor.Description[0].Data);
 
-        std::string structName = descriptor.Description[0].Data;
+        std::string structName = descriptor.Description[index].Data;
 
         std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
         m_Types[structName] = structTy;

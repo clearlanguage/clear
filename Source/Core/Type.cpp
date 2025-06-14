@@ -37,14 +37,19 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Variadic);
     }
 
+    bool Type::IsConst()
+    {
+        return m_Flags.test((size_t)TypeFlags::Constant);
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
-        m_Flags.set((size_t)flag);
+        m_Flags.flip((size_t)flag);
     }
 
     void Type::Toggle(TypeFlagSet set)
     {
-        m_Flags = m_Flags ^ set;
+        m_Flags ^= set;
     }
 
     PrimitiveType::PrimitiveType(llvm::LLVMContext& context)
@@ -168,6 +173,12 @@ namespace clear
     VariadicArgumentsHolder::VariadicArgumentsHolder()
     {
         Toggle(TypeFlags::Variadic);
+    }
+
+    ConstantType::ConstantType(std::shared_ptr<Type> base)
+        : m_Base(base)
+    {
+        Toggle(TypeFlags::Constant);
     }
 }
  

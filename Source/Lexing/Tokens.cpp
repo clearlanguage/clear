@@ -94,8 +94,9 @@ namespace clear
         {"inherits",{.NextState = LexerState::Default, .TokenToPush = TokenType::Inherits}},
             {"not",{.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
         {"and",{.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
-        {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}
-        ,
+        {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}, 
+        {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}}
+        
     };
 
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};

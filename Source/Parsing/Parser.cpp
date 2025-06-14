@@ -72,7 +72,8 @@ namespace clear
             TokenType::StructName,
             TokenType::StringType, 
             TokenType::CharType, 
-            TokenType::TypeIdentifier
+            TokenType::TypeIdentifier, 
+            TokenType::Const
         });
 
         m_AssignmentOperators = CreateTokenSet({
@@ -130,7 +131,8 @@ namespace clear
 
         m_TypeIndirection = CreateTokenSet({
             TokenType::PointerDef,
-            TokenType::StaticArrayDef
+            TokenType::StaticArrayDef,
+            TokenType::Const
         });
 
         m_ValueReferences = CreateTokenSet({
@@ -224,10 +226,11 @@ namespace clear
             {TokenType::Return,        [this]() { ParseReturn(); }},
             {TokenType::While,         [this]() { ParseWhile(); }},
             {TokenType::For,           [this]() { ParseFor(); }},
-            {TokenType::Let,           [this]() { ParseLetDecleration(); }}
+            {TokenType::Let,           [this]() { ParseLetDecleration(); }},
+            {TokenType::Const,         [this]() { ParseConstDecleration(); }}
         };
 
-        if(MatchAny(m_VariableType))
+        if(MatchAny(m_VariableType) && !Match(TokenType::Const))
         {
             ParseVariableDecleration();
             return;
@@ -260,7 +263,7 @@ namespace clear
     {
         TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
-        Expect(TokenType::VariableName);
+        //Expect(TokenType::VariableName);
 
         std::string variableName = Consume().Data;
 
@@ -293,7 +296,7 @@ namespace clear
         {
             if(MatchAny(m_AssignmentOperators))
             {
-                assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName()));
+                assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName(), true));
                 continue;
             }
 
@@ -320,6 +323,45 @@ namespace clear
             Consume();
 
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
+            inferredType->Push(ParseExpression());
+            
+            Root()->Push(inferredType);
+            
+            if(Match(TokenType::Comma))
+            {
+                Consume();
+                Expect(TokenType::VariableReference);
+            }
+        }
+    }
+
+    void Parser::ParseConstDecleration()
+    {
+        Expect(TokenType::Const);
+        SavePosition();
+
+        TypeDescriptor variableType = { ParseVariableTypeTokens() };
+
+        if(variableType.Description.size() == 2 && variableType.Description.back().TokenType != TokenType::VariableReference)
+        {
+            RestorePosition();
+            ParseVariableDecleration();
+            return;
+        }
+
+        variableType.Description.pop_back(); // remove the variable reference
+        Undo();
+
+        Expect(TokenType::VariableReference);
+
+        while(Match(TokenType::VariableReference))
+        {
+            std::string variableName = Consume().Data;
+
+            Expect(TokenType::Assignment);
+            Consume();
+
+            auto inferredType = std::make_shared<ASTInferredDecleration>(variableName, true);
             inferredType->Push(ParseExpression());
             
             Root()->Push(inferredType);
@@ -797,12 +839,12 @@ namespace clear
         return initializer;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName)
+    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName, bool initialize)
     {
-        return ParseAssignment(std::make_shared<ASTVariable>(variableName));
+        return ParseAssignment(std::make_shared<ASTVariable>(variableName), initialize);
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage)
+    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
         ExpectAny(m_AssignmentOperators);
 
@@ -816,7 +858,20 @@ namespace clear
             return initializer;
         }
 
-        std::shared_ptr<ASTAssignmentOperator> assign = std::make_shared<ASTAssignmentOperator>(GetAssignmentOperatorFromTokenType(assignmentToken.TokenType));
+        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.TokenType);
+
+        std::shared_ptr<ASTAssignmentOperator> assign;
+
+        if(initialize)
+        {
+            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid initializer");
+            assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Initialize);
+        }
+        else 
+        {
+            assign = std::make_shared<ASTAssignmentOperator>(assignType);
+        }
+
         assign->Push(storage);            
         assign->Push(ParseExpression()); 
 
@@ -992,6 +1047,10 @@ namespace clear
     std::vector<Token> Parser::ParseVariableTypeTokens()
     {
         std::vector<Token> tokens;
+
+        if(Match(TokenType::Const))
+            tokens.push_back(Consume());
+        
         tokens.push_back(Consume());
 
         while(MatchAny(m_TypeIndirection))

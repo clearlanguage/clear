@@ -167,7 +167,7 @@ namespace clear
 	class ASTInferredDecleration : public ASTNodeBase 
 	{
 	public:
-		ASTInferredDecleration(const std::string& name);
+		ASTInferredDecleration(const std::string& name, bool isConst = false);
 		virtual ~ASTInferredDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::InferredDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -176,6 +176,7 @@ namespace clear
 
 	private:
 		std::string m_Name;
+		bool m_IsConst;
 	};
 
 	class ASTVariable : public ASTNodeBase
@@ -192,7 +193,7 @@ namespace clear
 
 	enum class AssignmentOperatorType 
 	{
-		Normal = 0, Mul, Div, Add, Sub, Mod
+		Initialize, Normal, Mul, Div, Add, Sub, Mod
 	};
 
 	class ASTAssignmentOperator : public ASTNodeBase

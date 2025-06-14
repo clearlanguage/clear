@@ -34,7 +34,7 @@ namespace clear
     {
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
-        Void, Variadic, Count
+        Void, Variadic, Constant, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -57,6 +57,7 @@ namespace clear
         bool IsArray();
         bool IsCompound();
         bool IsVariadic();
+        bool IsConst();
 
     protected:
         void Toggle(TypeFlags flag);
@@ -64,24 +65,6 @@ namespace clear
 
     private:
         TypeFlagSet m_Flags;
-    };
-
-    struct QualifiedType
-    {
-        // int, float, struct etc...
-        std::shared_ptr<Type> Type;
-
-        // constant type
-        bool IsConst = false;
-
-        // reference to some other variable
-        bool IsReference = false;
-        
-        // for debugging information in the future
-        Token Source; 
-
-        // we might want types to alias other types 
-        std::string AliasName;
     };
 
     class PrimitiveType : public Type 
@@ -186,6 +169,20 @@ namespace clear
 
     private:
         llvm::Type* m_LLVMType = nullptr;
+    };
+
+    class ConstantType : public Type
+    {
+    public:
+        ConstantType(std::shared_ptr<Type> base);
+        virtual ~ConstantType() = default;
+
+        virtual llvm::Type* Get() const override { return m_Base->Get(); }
+        virtual std::string GetHash() const override { return "const" + m_Base->GetHash(); };
+        virtual std::string GetShortHash() const override { return "c" + m_Base->GetShortHash(); };
+
+    private:
+        std::shared_ptr<Type> m_Base;
     };
 }
 
