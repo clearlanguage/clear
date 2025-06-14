@@ -102,7 +102,7 @@ namespace clear
     const std::map<char,char> g_CloserToOpeners = {{')','('},{']','['},{'}','{'}};
     extern const std::map<std::string,std::set<TokenType>> g_TokenTypes = {
         {"allow_op",{TokenType::RValueNumber,TokenType::RValueString,TokenType::CloseBracket,TokenType::BooleanData,TokenType::EndArray,TokenType::VariableReference,TokenType::EndFunctionArguments,TokenType::Increment,TokenType::Decrement}},
-            {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation}},
+            {"is_declaration",{TokenType::EndLine,TokenType::StartIndentation,TokenType::EndIndentation,TokenType::Const}},
         {"callable",{TokenType::CloseBracket,TokenType::MemberName,TokenType::TypeIdentifier,TokenType::VariableReference}},
             {"named_callable",{TokenType::TypeIdentifier,TokenType::VariableReference}},
         {"has_members",{TokenType::TypeIdentifier,TokenType::VariableReference,TokenType::MemberName,TokenType::EndFunctionArguments,TokenType::RValueString}}
@@ -233,6 +233,7 @@ namespace clear
             case TokenType::As: return "As";
             case TokenType::And: return "And";
             case TokenType::Or: return "Or";
+            case TokenType::Const: return "Const";
 
             default:
                 break;

@@ -1055,6 +1055,23 @@ namespace clear
 
 
 	}
+	void Lexer::ParseConst() {
+		int currentPos = m_CurrentTokenIndex;
+		char current = GetNextChar();
+		while (IsVarNameChar(current)) {
+			m_CurrentString+=current;
+			current = GetNextChar();
+
+		}
+		if (m_CurrentString == "const") {
+			PushToken(TokenType::Const,"const");
+			Backtrack();
+		}else {
+			m_CurrentTokenIndex = currentPos;
+		}
+		m_CurrentString.clear();
+	}
+
 
 	void Lexer::ParsePointerDeclaration()
 	{
@@ -1067,6 +1084,12 @@ namespace clear
 		VerifyCondition(std::isspace(current) || current == '[' ,6);
 		current = SkipSpaces();
 		VerifyCondition(current!= '*',26);
+
+		if (current == 'c') {
+			Backtrack();
+			ParseConst();
+			current = GetNextChar();
+		}
 
 		if (!IsSpace(current) && current != '\0')
 		{

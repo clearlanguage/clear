@@ -162,6 +162,7 @@ namespace clear
 		void ParseTemplateString();
 		void ParseFmtString(const std::string& input, std::string& formatOut, std::vector<std::string>& expressionsOut);
 		void AmpersandState();
+		void ParseConst();
 		void ParseBinaryLiteral();
 		void ParseHexLiteral();
 		void ParseExponentNumber(std::string x);
