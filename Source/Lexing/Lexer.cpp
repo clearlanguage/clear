@@ -1931,7 +1931,7 @@ void Lexer::ParseFunctionGenericDeclaration() {
 		char current = GetNextChar();
 		while (current != '"')
 		{
-			VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
+			VerifyCondition(!(current == '\0'),23,m_TokenIndexStart+1);
 			if (current == '\\')
 			{
 				current = GetNextChar();
@@ -2005,15 +2005,11 @@ void Lexer::ParseFunctionGenericDeclaration() {
 		char current = GetNextChar();
 		while (current != '`')
 		{
-			VerifyCondition(!(current == '\n' || current == '\0'),23,m_TokenIndexStart+1);
+			VerifyCondition(!(current == '\0'),23,m_TokenIndexStart+1);
 			if (current == '\\')
 			{
 				current = GetNextChar();
-				if (current == '"')
-				{
-					m_CurrentString += '"';
-				}
-				else if(current == 'n')
+				if(current == 'n')
 				{
 					m_CurrentString += '\n';
 				}
@@ -2034,6 +2030,8 @@ void Lexer::ParseFunctionGenericDeclaration() {
 					m_CurrentString = '\v';
 				}else if(current == 'a') {
 					m_CurrentString = '\a';
+				}else if(current == '`') {
+					m_CurrentString = '`';
 				}
 
 				else {
