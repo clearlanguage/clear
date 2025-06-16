@@ -2172,7 +2172,8 @@ namespace clear
 		function->insert(function->end(), body);
 		ctx.Builder.SetInsertPoint(body);
 
-    	ValueRestoreGuard guard(ctx.LoopConditionBlock, conditionBlock);
+    	ValueRestoreGuard guard1(ctx.LoopConditionBlock, conditionBlock);
+    	ValueRestoreGuard guard2(ctx.LoopEndBlock,       end);
 
 		children[1]->Codegen(ctx);
 
@@ -2229,8 +2230,9 @@ namespace clear
     {
     }
 
-	ASTLoopControlFlow::ASTLoopControlFlow(TokenType J) {
-		jumpTy = J;
+	ASTLoopControlFlow::ASTLoopControlFlow(TokenType jumpTy) 
+		: m_JumpTy(jumpTy)
+	{
 	}
 
 
@@ -2240,13 +2242,16 @@ namespace clear
 		return {};
 	}
 
-	CodegenResult ASTLoopControlFlow::Codegen(CodegenContext& ctx) {
-    	CLEAR_VERIFY(ctx.LoopConditionBlock != nullptr,"BREAK/CONTINUE not in loop")
-    	if (jumpTy == TokenType::Continue) {
+	CodegenResult ASTLoopControlFlow::Codegen(CodegenContext& ctx) 
+	{
+    	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
+		
+    	if (m_JumpTy == TokenType::Continue) 
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
-    	}else if(jumpTy == TokenType::Break) {
+		
+    	else if(m_JumpTy == TokenType::Break) 
     		ctx.Builder.CreateBr(ctx.LoopEndBlock);
-    	}
+    	
     	return {};
     }
 }
