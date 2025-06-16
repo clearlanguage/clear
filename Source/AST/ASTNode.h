@@ -425,7 +425,7 @@ namespace clear
 	class ASTLoopControlFlow : public ASTNodeBase
 	{
 	public:
-		ASTLoopControlFlow(TokenType jumpTy);
+		ASTLoopControlFlow(TokenType J);
 		virtual ~ASTLoopControlFlow() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::LoopControlFlow; }
 		virtual CodegenResult Codegen(CodegenContext&) override;

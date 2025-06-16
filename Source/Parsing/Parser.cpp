@@ -233,7 +233,9 @@ namespace clear
             {TokenType::For,           [this]() { ParseFor(); }},
             {TokenType::Let,           [this]() { ParseLetDecleration(); }},
             {TokenType::Const,         [this]() { ParseConstDecleration(); }},
-            {TokenType::Continue,      [this]()  {ParseLoopControls();}}
+            {TokenType::Continue,      [this]()  {ParseLoopControls();}},
+        {TokenType::Break,      [this]()  {ParseLoopControls();}}
+
         };
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
