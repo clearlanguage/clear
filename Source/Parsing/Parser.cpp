@@ -232,7 +232,8 @@ namespace clear
             {TokenType::While,         [this]() { ParseWhile(); }},
             {TokenType::For,           [this]() { ParseFor(); }},
             {TokenType::Let,           [this]() { ParseLetDecleration(); }},
-            {TokenType::Const,         [this]() { ParseConstDecleration(); }}
+            {TokenType::Const,         [this]() { ParseConstDecleration(); }},
+            {TokenType::Continue,      [this]()  {ParseLoopControls();}}
         };
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
@@ -313,6 +314,14 @@ namespace clear
 
         Flush();
     }
+
+    void Parser::ParseLoopControls() {
+        auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
+        Consume();
+        Root()->Push(node);
+
+    }
+
 
     void Parser::ParseLetDecleration()
     {
