@@ -156,6 +156,39 @@ namespace clear
 
         std::string m_Name;
     };
+
+    class ClassType : public Type
+    {
+    public:
+        ClassType(const std::string& name, llvm::LLVMContext& context) = delete;
+        ClassType(const std::string& name,
+                  const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members,
+                  const std::vector<std::string>& functions) = delete;
+
+        void SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members,
+                     const std::vector<std::string>& functions) = delete;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override { return m_Name; };
+        virtual std::string GetShortHash() const override { return m_Name; };
+
+        size_t GetMemberIndex(const std::string& member);
+        std::shared_ptr<Type> GetMemberType(const std::string& member);
+        void SetMember(const std::string& member, std::shared_ptr<Type> type);
+        std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
+
+        const auto& GetMemberTypes()   const { return m_MemberTypes; }
+        const auto& GetMemberIndices() const {return  m_MemberIndices; }
+        const auto& GetFunctions()     const {return  m_Functions; }
+
+    private:
+        llvm::StructType* m_LLVMType;
+        std::unordered_map<std::string, std::shared_ptr<Type>> m_MemberTypes;
+        std::unordered_map<std::string, size_t> m_MemberIndices;
+        std::vector<std::string> m_Functions;
+
+        std::string m_Name;
+    };
     
     class VariadicArgumentsHolder : public Type 
     {

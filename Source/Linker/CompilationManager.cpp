@@ -363,7 +363,7 @@ namespace clear
                 CodegenModule(fullQualifiedPath);
             }
         }
-\
+
         CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *m_MainModule, reg);
         context.StdLibraryDirectory = m_Config.StandardLibrary;
 

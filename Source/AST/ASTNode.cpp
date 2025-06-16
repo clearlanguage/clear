@@ -1234,6 +1234,7 @@ namespace clear
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
 
+
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
     {
 		ValueRestoreGuard guard(ctx.WantAddress, false);
@@ -1698,8 +1699,20 @@ namespace clear
 			ValueRestoreGuard guard(ctx.WantAddress, true);
 			parent = children[0]->Codegen(ctx); 
 		}
+
 		
-		llvm::Value* getElementPtr = parent.CodegenValue; 
+		if(auto ty = std::dynamic_pointer_cast<PointerType>(parent.CodegenType)) 
+			return DoMemberAccessForAddress(ctx, parent);
+		
+		return DoMemberAccessForValue(ctx, parent);
+	}
+
+    CodegenResult ASTMemberAccess::DoMemberAccessForAddress(CodegenContext& ctx, CodegenResult parent)
+    {
+		auto& children = GetChildren();
+		auto& builder = ctx.Builder;
+
+        llvm::Value* getElementPtr = parent.CodegenValue; 
 		std::shared_ptr<Type> curr = parent.CodegenType;
 
 		while(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
@@ -1743,13 +1756,27 @@ namespace clear
 
 		if(ctx.WantAddress)
 		{
-			return { getElementPtr, typeReg.GetPointerTo(curr) };
+			return { getElementPtr, ctx.Registry.GetPointerTo(curr) };
 		}
 
 		return { builder.CreateLoad(curr->Get(), getElementPtr), curr };
-	}
+    }
 
-	ASTMember::ASTMember(const std::string& name)
+    CodegenResult ASTMemberAccess::DoMemberAccessForValue(CodegenContext& ctx, CodegenResult parent)
+    {
+		CLEAR_VERIFY(!ctx.WantAddress, "cannot get an address to a temporary!");
+
+		auto tbl = GetSymbolTable();
+		Allocation temp = tbl->RequestTemporary(parent.CodegenType, ctx.Builder);
+		ctx.Builder.CreateStore(parent.CodegenValue, temp.Alloca);
+		
+		parent.CodegenValue = temp.Alloca;
+		parent.CodegenType = temp.Type;
+
+       return DoMemberAccessForAddress(ctx, parent);
+    }
+
+    ASTMember::ASTMember(const std::string& name)
 		: m_MemberName(name)
     {
     }
@@ -1774,6 +1801,7 @@ namespace clear
 			return {};
 		}
 
+		ValueRestoreGuard guard(ctx.WantAddress, false);
 		CodegenResult codegen = children[0]->Codegen(ctx);
 
 		if(codegen.CodegenValue == nullptr)

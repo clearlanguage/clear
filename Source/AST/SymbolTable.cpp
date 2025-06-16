@@ -9,7 +9,29 @@ namespace clear
         m_Previous = other;
     }
 
-    Allocation SymbolTable::CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value)
+    Allocation SymbolTable::RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder)
+    {
+        auto [it, inserted] = m_Temporaries.try_emplace(type->Get(), Allocation{});
+        if (!inserted)
+           return it->second;
+
+        llvm::BasicBlock* insertBlock = builder.GetInsertBlock();
+        
+        CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
+	    auto ip = builder.saveIP(); 
+	    llvm::Function* function = insertBlock->getParent();    
+	    builder.SetInsertPoint(&function->getEntryBlock());
+
+	    Allocation allocation;
+        allocation.Alloca = builder.CreateAlloca(type->Get(), nullptr, std::format("{}.{}", "tmp", type->GetHash()));
+        allocation.Type = type; 
+	    builder.restoreIP(ip);  
+        m_Temporaries[type->Get()] = allocation;
+
+        return allocation;
+    }
+
+    Allocation SymbolTable::CreateGlobal(const std::string &name, std::shared_ptr<Type> type, llvm::Module &module, llvm::Value *value)
     {
         Allocation alloca;
 

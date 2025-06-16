@@ -38,6 +38,7 @@ namespace clear
         SymbolTable(const std::shared_ptr<SymbolTable>& other);
         ~SymbolTable() = default;
         
+        Allocation  RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder);
         Allocation  CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value = nullptr); //TODO: add linkage and threading options
         Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder);
         Allocation  GetAlloca(const std::string& name);
@@ -58,8 +59,9 @@ namespace clear
         std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }
 
     private:
+        std::unordered_map<std::string, Allocation> m_Variables; 
+        std::unordered_map<llvm::Type*, Allocation>  m_Temporaries; 
 
-        std::unordered_map<std::string, Allocation>   m_Variables; 
         std::vector<Allocation> m_VariadicArguments;
 
         FunctionCache m_FunctionCache;

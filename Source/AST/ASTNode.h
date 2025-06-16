@@ -342,6 +342,11 @@ namespace clear
 		virtual ~ASTMemberAccess() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private:
+		CodegenResult DoMemberAccessForAddress(CodegenContext& ctx, CodegenResult parent);
+		CodegenResult DoMemberAccessForValue(CodegenContext& ctx, CodegenResult parent);
+
 	};
 
 	class ASTReturn : public ASTNodeBase 
