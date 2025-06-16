@@ -21,7 +21,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
-		Variable, ForLoop, InferredDecleration
+		Variable, ForLoop, InferredDecleration,LoopControlFlow
 	};
 
 	struct CodegenResult
@@ -46,6 +46,7 @@ namespace clear
 	{
     	LookupAstTable& LookupTable;
 
+
 		std::filesystem::path CurrentDirectory;
 		std::filesystem::path StdLibraryDirectory;
 
@@ -57,7 +58,10 @@ namespace clear
 
 		std::shared_ptr<Type> ReturnType;
 		llvm::AllocaInst*  ReturnAlloca = nullptr;
-		llvm::BasicBlock*  ReturnBlock = nullptr; 
+		llvm::BasicBlock*  ReturnBlock = nullptr;
+		llvm::BasicBlock* LoopConditionBlock = nullptr;
+		llvm::BasicBlock* LoopEndBlock = nullptr;
+
 
 		bool WantAddress;
 
@@ -416,5 +420,18 @@ namespace clear
 	private:
 		TypeDescriptor m_StructTy;
 	};
-	
+
+
+	class ASTLoopControlFlow : public ASTNodeBase
+	{
+	public:
+		ASTLoopControlFlow(TokenType jumpTy);
+		virtual ~ASTLoopControlFlow() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::LoopControlFlow; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+	private:
+		TokenType jumpTy;
+	};
+
 }

@@ -2152,6 +2152,8 @@ namespace clear
 			condition = children[0]->Codegen(ctx);
 		}
 
+
+
 		if (condition.CodegenType->IsIntegral())
 			condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
 			
@@ -2162,7 +2164,7 @@ namespace clear
 
 		function->insert(function->end(), body);
 		ctx.Builder.SetInsertPoint(body);
-
+    	ValueRestoreGuard guard(ctx.LoopConditionBlock, conditionBlock);
 		children[1]->Codegen(ctx);
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
@@ -2218,9 +2220,19 @@ namespace clear
     {
     }
 
+	ASTLoopControlFlow::ASTLoopControlFlow(TokenType jumpTy) {
+		jumpTy = jumpTy;
+	}
+
+
 	CodegenResult ASTStruct::Codegen(CodegenContext& ctx)
 	{
 		ctx.Registry.ResolveType(m_StructTy);
 		return {};
 	}
+
+	CodegenResult ASTLoopControlFlow::Codegen(CodegenContext& ctx) {
+		ctx.Builder.CreateBr(ctx.LoopConditionBlock);
+    	return {};
+    }
 }
