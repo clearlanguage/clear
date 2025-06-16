@@ -97,7 +97,7 @@ namespace clear
             TokenType::PlusAssign, 
             TokenType::MinusAssign, 
             TokenType::ModuloAssign, 
-		    TokenType::StartIndentation, 
+            TokenType::StartIndentation,
             TokenType::Eof
         });
 
@@ -809,7 +809,7 @@ namespace clear
         std::vector<std::vector<size_t>> indices;
         std::vector<size_t> currentIndex = { 0 };
 
-        std::shared_ptr<ASTArrayInitializer> initializer = std::make_shared<ASTArrayInitializer>();
+        std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>();
         initializer->Push(storage);
 
         while(!Match(TokenType::EndLine))

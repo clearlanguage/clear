@@ -1381,7 +1381,7 @@ namespace clear
 	}
 
 
-	CodegenResult ASTArrayInitializer::Codegen(CodegenContext& ctx)
+	CodegenResult ASTInitializerList::Codegen(CodegenContext& ctx)
 	{
 		auto& builder = ctx.Builder;
 		auto& context = ctx.Context;
@@ -1403,11 +1403,35 @@ namespace clear
 
 		llvm::Type* intTy = llvm::Type::getInt64Ty(context);
 
+		if(auto baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType()))
+		{
+			DoInitForArray(ctx, storage);
+		}
+		else if (auto baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType()))
+		{
+			DoInitForStruct(ctx, storage);
+		}
+		
+		return {};
+	}
+
+    void ASTInitializerList::SetIndices(const std::vector<std::vector<size_t>>& indices)
+    {
+		m_Indices = indices;
+    }
+
+    void ASTInitializerList::DoInitForArray(CodegenContext& ctx, CodegenResult storage)
+    {
+		auto& children = GetChildren();
+
+		llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
+
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
 		std::shared_ptr<ArrayType> baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType());
 		CLEAR_VERIFY(baseType, "base type is not an array type");
 
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
-		builder.CreateStore(zeroArray, storage.CodegenValue);
+		ctx.Builder.CreateStore(zeroArray, storage.CodegenValue);
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
@@ -1424,7 +1448,7 @@ namespace clear
 
 			VerifyArray(baseType, m_Indices[i]);
 			
-			llvm::Value* elemPtr = builder.CreateInBoundsGEP(baseType->Get(), 
+			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
 													 		 storage.CodegenValue, indices, 
 													 		 "get_element_ptr");
 			
@@ -1441,18 +1465,58 @@ namespace clear
 							ctx.Builder);
 			}
 
-			builder.CreateStore(valueToStore.CodegenValue, elemPtr);
+			ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
 		}
-		
-		return {};
-	}
-
-    void ASTArrayInitializer::SetIndices(const std::vector<std::vector<size_t>>& indices)
-    {
-		m_Indices = indices;
     }
 
-    void ASTArrayInitializer::VerifyArray(std::shared_ptr<ArrayType> type, const std::vector<size_t>& index)
+    void ASTInitializerList::DoInitForStruct(CodegenContext &ctx, CodegenResult storage)
+    {
+		auto& children = GetChildren();
+
+		//llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
+
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		std::shared_ptr<StructType> baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType());
+		CLEAR_VERIFY(baseType, "base type is not a struct type");
+
+		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
+		ctx.Builder.CreateStore(zeroArray, storage.CodegenValue);
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+		for(size_t i = 0; i < m_Indices.size(); i++)
+		{
+			//std::vector<llvm::Value*> indices(m_Indices[i].size());
+			CLEAR_VERIFY(m_Indices[i].size() == 2, "");
+
+			//std::transform(m_Indices[i].begin()+1, m_Indices[i].end(), indices.begin(), 
+		 	//	[&](size_t index)
+			//	{
+			//		return llvm::ConstantInt::get(intTy, index);
+			//	}
+			//);
+			//VerifyArray(baseType, m_Indices[i]); --> TODO: verify structs
+			
+			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.CodegenValue, i, "gep");
+			
+			std::shared_ptr<Type> innerType = baseType->GetMemberAtIndex(i);
+			
+			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
+
+			if(valueToStore.CodegenType != innerType)
+			{
+				valueToStore.CodegenValue = TypeCasting::Cast(
+							valueToStore.CodegenValue,
+							valueToStore.CodegenType, 
+							innerType,
+							ctx.Builder);
+			}
+
+			ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
+		}
+    }
+
+    void ASTInitializerList::VerifyArray(std::shared_ptr<ArrayType> type, const std::vector<size_t> &index)
     {
 		//first index always guaranteed to be 0.
 
@@ -1464,7 +1528,7 @@ namespace clear
 			type = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType());
 		}
     }
-    std::shared_ptr<Type> ASTArrayInitializer::GetElementType(std::shared_ptr<Type> type)
+    std::shared_ptr<Type> ASTInitializerList::GetElementType(std::shared_ptr<Type> type)
     {
 		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
 		{
@@ -1473,7 +1537,7 @@ namespace clear
 
         return type;
     }
-    std::shared_ptr<Type> ASTArrayInitializer::GetInnerType(std::shared_ptr<Type> type, size_t index)
+    std::shared_ptr<Type> ASTInitializerList::GetInnerType(std::shared_ptr<Type> type, size_t index)
     {
 		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
 		{

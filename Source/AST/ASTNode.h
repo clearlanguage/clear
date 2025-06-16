@@ -20,7 +20,7 @@ namespace clear
 		ReturnStatement, Expression, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		ArrayInitializer, MemberAccess, AssignmentOperator, Import, Member, 
+		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration
 	};
 
@@ -275,18 +275,20 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
 
-	//TODO: change to InitializerList (can be used to initialize structs as well in future)
-	class ASTArrayInitializer : public ASTNodeBase
+	class ASTInitializerList : public ASTNodeBase
 	{
 	public:
-		ASTArrayInitializer() = default;
-		virtual ~ASTArrayInitializer() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ArrayInitializer; }
+		ASTInitializerList() = default;
+		virtual ~ASTInitializerList() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::InitializerList; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		void SetIndices(const std::vector<std::vector<size_t>>& indices);
 
 	private:
+		void DoInitForArray(CodegenContext& ctx, CodegenResult storage);
+		void DoInitForStruct(CodegenContext& ctx, CodegenResult storage);
+
 		void VerifyArray(std::shared_ptr<ArrayType> type, 
 						 const std::vector<size_t>& index);
 
