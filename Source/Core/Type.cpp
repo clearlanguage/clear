@@ -139,9 +139,10 @@ namespace clear
 		}
         
         m_LLVMType->setBody(types);
-    }   
+    }
 
-    size_t StructType::GetMemberIndex(const std::string& member)
+
+    size_t StructType::GetMemberIndex(const std::string &member)
     {
         return m_MemberIndices.at(member);
     }
@@ -180,5 +181,29 @@ namespace clear
     {
         Toggle(TypeFlags::Constant);
     }
-}
+
+    ClassType::ClassType(std::shared_ptr<StructType> structTy, const std::vector<std::string>& functions)
+        : m_Functions(functions), m_StructType(structTy)
+    {
+        Toggle(TypeFlags::Compound);
+        Toggle(TypeFlags::Class);
+    }
+
+    size_t ClassType::GetMemberIndex(const std::string& member)
+    {
+        return m_StructType->GetMemberIndex(member);
+    }
+
+    std::shared_ptr<Type> ClassType::GetMemberType(const std::string& member)
+    {
+        return m_StructType->GetMemberType(member);
+    }
+
+    void ClassType::SetMember(const std::string& member, std::shared_ptr<Type> type)
+    {
+        m_StructType->SetMember(member, type);
+    }
+
+
+}   
  
