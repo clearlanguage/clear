@@ -21,11 +21,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
-<<<<<<< HEAD
-		Variable, ForLoop, InferredDecleration, Class
-=======
-		Variable, ForLoop, InferredDecleration,LoopControlFlow
->>>>>>> ec81b909f36300bbc7667978b9b8f8df0e8fa537
+		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow
 	};
 
 	struct CodegenResult
