@@ -21,7 +21,7 @@ namespace clear
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
-		Variable, ForLoop, InferredDecleration,LoopControlFlow
+		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow
 	};
 
 	struct CodegenResult
@@ -421,6 +421,16 @@ namespace clear
 		TypeDescriptor m_StructTy;
 	};
 
+	class ASTClass : public ASTNodeBase
+	{
+	public:
+		ASTClass() = default;
+		virtual ~ASTClass() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
+	
+
 
 	class ASTLoopControlFlow : public ASTNodeBase
 	{
@@ -433,5 +443,6 @@ namespace clear
 	private:
 		TokenType jumpTy;
 	};
+
 
 }

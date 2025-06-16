@@ -42,7 +42,11 @@ namespace clear
         CodegenResult value;
 
 		for (auto& child : GetChildren())
+		{
+			bool isContinue = child->GetType() == ASTNodeType::LoopControlFlow;
 			value = child->Codegen(ctx);
+			if(isContinue) break;
+		}
 
 		return value;
     }
@@ -1971,8 +1975,8 @@ namespace clear
 		}
 		
 		CodegenResult one;
-		one.CodegenType  = ctx.Registry.GetType("int64");
-		one.CodegenValue = ctx.Builder.getInt64(1);
+		one.CodegenType  = ctx.Registry.GetType("int32");
+		one.CodegenValue = ctx.Builder.getInt32(1);
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 
@@ -2026,6 +2030,8 @@ namespace clear
 		{
 			CLEAR_UNREACHABLE("unimplemented");
 		}
+
+		valueToStore.CodegenValue = TypeCasting::Cast(valueToStore.CodegenValue, valueToStore.CodegenType, ty->GetBaseType(), ctx.Builder);
 
 		ctx.Builder.CreateStore(valueToStore.CodegenValue, result.CodegenValue);
 
@@ -2160,14 +2166,15 @@ namespace clear
 		else if (condition.CodegenType->IsFloatingPoint())
 			condition.CodegenValue = ctx.Builder.CreateFCmpONE(condition.CodegenValue, llvm::ConstantFP::get(condition.CodegenType->Get(), 0.0));
 
-		ctx.Builder.CreateCondBr(condition.CodegenValue, body, end);
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateCondBr(condition.CodegenValue, body, end);
 
 		function->insert(function->end(), body);
 		ctx.Builder.SetInsertPoint(body);
-    	ValueRestoreGuard guard(ctx.LoopConditionBlock, conditionBlock);
-    	ValueRestoreGuard g(ctx.LoopEndBlock, end);
 
-    	children[1]->Codegen(ctx);
+    	ValueRestoreGuard guard(ctx.LoopConditionBlock, conditionBlock);
+
+		children[1]->Codegen(ctx);
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 			ctx.Builder.CreateBr(conditionBlock);

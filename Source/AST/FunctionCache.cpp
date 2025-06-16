@@ -33,11 +33,16 @@ namespace clear
         auto it1 = params.begin();
         auto it2 = functionTemplate.Parameters.begin();
 
+        bool useTemplateParams = true;
+
         while(it1 != params.end() && it2 != functionTemplate.Parameters.end())
         {
             // in future transferring of types from generics to real will happen here.
             if(it2->IsVariadic) 
+            {
+                useTemplateParams = false;
                 break;
+            };
 
             types.push_back(*it2);
 
@@ -59,6 +64,12 @@ namespace clear
         std::transform(types.begin(), types.end(), std::back_inserter(parameterTypes), [](auto& a) { return a.Type->Get(); });
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context.Context), parameterTypes, false);
+
+
+        if(useTemplateParams)
+        {
+            mangledName = GetMangledName(templateName, functionTemplate.Parameters, functionTemplate.ReturnType);
+        }
 
 		FunctionInstance functionData;
         functionData.FunctionType = functionType;
