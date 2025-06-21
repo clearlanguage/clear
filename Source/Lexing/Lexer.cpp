@@ -308,8 +308,8 @@ namespace clear
 	}
 
 	void Lexer::DotOpState()
-		{
-		VerifyCondition(IsTokenOfType(GetLastToken(1),"has_members"),51);
+	{
+		//VerifyCondition(IsTokenOfType(GetLastToken(1),"has_members"),51);
 		m_CurrentState = LexerState::RValue;
 	}
 

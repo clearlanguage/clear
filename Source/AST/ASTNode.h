@@ -294,12 +294,15 @@ namespace clear
 		void DoInitForArray(CodegenContext& ctx, CodegenResult storage);
 		void DoInitForStruct(CodegenContext& ctx, CodegenResult storage);
 
-		void VerifyArray(std::shared_ptr<ArrayType> type, 
-						 const std::vector<size_t>& index);
-
 		std::shared_ptr<Type> GetElementType(std::shared_ptr<Type> type);
-
 		std::shared_ptr<Type> GetInnerType(std::shared_ptr<Type> type, size_t index);
+
+
+		std::pair<llvm::Value*, std::shared_ptr<Type>> GetBasePointer(size_t index, 
+																	  llvm::Value* elemPtr, 
+																	  std::shared_ptr<Type> innerType,
+																	  size_t startingIndex, 
+																	  CodegenContext& ctx);
 
 	private:
 		std::vector<std::vector<size_t>> m_Indices;

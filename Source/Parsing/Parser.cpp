@@ -318,13 +318,12 @@ namespace clear
         Flush();
     }
 
-    void Parser::ParseLoopControls() {
+    void Parser::ParseLoopControls() 
+    {
         auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
         Consume();
         Root()->Push(node);
-
     }
-
 
     void Parser::ParseLetDecleration()
     {
@@ -1096,7 +1095,6 @@ namespace clear
 
         return tokens;
     }
-
 
     void Parser::ParseIndentation()
     {

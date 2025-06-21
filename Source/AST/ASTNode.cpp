@@ -798,12 +798,15 @@ namespace clear
         		arrType->Get(),
         		lhs.CodegenValue,
         		{ zero, rhs.CodegenValue },
-        		"array_index_ptr"
+        		"gep"
     		);
 
 			baseType = arrType->GetBaseType();
 		}
-
+		else 
+		{
+			CLEAR_UNREACHABLE("invalid base type ", type->GetBaseType()->GetHash());
+		}
 
 
 		if(ctx.WantAddress)
@@ -909,7 +912,6 @@ namespace clear
 		return {alloca.Alloca, ctx.Registry.GetPointerTo(alloca.Type)};
 	}
 
-	
 	ASTVariable::ASTVariable(const std::string& name)
 		: m_Name(name)
     {
@@ -1158,7 +1160,7 @@ namespace clear
 
 			Allocation dummy;
 			dummy.Alloca = nullptr;
-			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); // TODO: this should be registries job
+			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); 
 
 			tbl->RegisterAllocation(m_Parameters[k].Name, dummy);
 		}
@@ -1260,7 +1262,6 @@ namespace clear
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
-
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
     {
@@ -1464,22 +1465,12 @@ namespace clear
 
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
-			std::vector<llvm::Value*> indices(m_Indices[i].size());
-			
-			std::transform(m_Indices[i].begin(), m_Indices[i].end(), indices.begin(), 
-		 		[&](size_t index)
-				{
-					return llvm::ConstantInt::get(intTy, index);
-				}
-			);
-
-			VerifyArray(baseType, m_Indices[i]);
-			
 			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
-													 		 storage.CodegenValue, indices, 
-													 		 "get_element_ptr");
-			
-			std::shared_ptr<Type> innerType = GetInnerType(baseType, m_Indices[i].size() - 1);
+													 		 storage.CodegenValue, ctx.Builder.getInt64(0), 
+													 		 "gep");
+
+			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx);
+			elemPtr = elemPtr1;
 			
 			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
 
@@ -1514,20 +1505,16 @@ namespace clear
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
 			//std::vector<llvm::Value*> indices(m_Indices[i].size());
-			CLEAR_VERIFY(m_Indices[i].size() == 2, "");
+			CLEAR_VERIFY(m_Indices[i].size() >= 2, "");
 
-			//std::transform(m_Indices[i].begin()+1, m_Indices[i].end(), indices.begin(), 
-		 	//	[&](size_t index)
-			//	{
-			//		return llvm::ConstantInt::get(intTy, index);
-			//	}
-			//);
-			//VerifyArray(baseType, m_Indices[i]); --> TODO: verify structs
-			
-			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.CodegenValue, i, "gep");
-			
-			std::shared_ptr<Type> innerType = baseType->GetMemberAtIndex(i);
-			
+			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.CodegenValue, m_Indices[i][1], "gep");
+			std::shared_ptr<Type> innerType = baseType->GetMemberAtIndex(m_Indices[i][1]);
+
+			auto [elemPtr2, innerType2] = GetBasePointer(i, elemPtr, innerType, 2, ctx);
+
+			elemPtr = elemPtr2;
+			innerType = innerType2;
+
 			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
 
 			if(valueToStore.CodegenType != innerType)
@@ -1541,20 +1528,10 @@ namespace clear
 
 			ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
 		}
+		
+		
     }
 
-    void ASTInitializerList::VerifyArray(std::shared_ptr<ArrayType> type, const std::vector<size_t> &index)
-    {
-		//first index always guaranteed to be 0.
-
-		for(size_t i = 1; i < index.size(); i++)
-		{
-			CLEAR_VERIFY(type, "invalid type"); //TODO: more formal error handling needed
-			CLEAR_VERIFY(index[i] < type->GetArraySize(), "index out of bounds error");
-
-			type = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType());
-		}
-    }
     std::shared_ptr<Type> ASTInitializerList::GetElementType(std::shared_ptr<Type> type)
     {
 		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
@@ -1578,6 +1555,29 @@ namespace clear
         return type;
     }
 
+    std::pair<llvm::Value*, std::shared_ptr<Type>> ASTInitializerList::GetBasePointer(size_t index, llvm::Value* elemPtr, std::shared_ptr<Type> innerType, size_t startingIndex, CodegenContext& ctx)
+    {	
+		for(size_t j = startingIndex; j < m_Indices[index].size(); j++)
+		{
+			if(innerType->IsCompound())
+			{
+				auto tmp = std::dynamic_pointer_cast<StructType>(innerType);
+				size_t structIndex = m_Indices[index][j] % tmp->GetMemberTypes().size();
+				elemPtr = ctx.Builder.CreateStructGEP(innerType->Get(), elemPtr, structIndex, "gep");
+				innerType = tmp->GetMemberAtIndex(structIndex);
+			}
+			else 
+			{
+				CLEAR_VERIFY(innerType->IsArray(), "invalid type");
+				auto tmp = std::dynamic_pointer_cast<ArrayType>(innerType);
+				size_t arrayIndex = m_Indices[index][j] % tmp->GetArraySize();
+				elemPtr = ctx.Builder.CreateGEP(tmp->GetBaseType()->Get(), elemPtr, ctx.Builder.getInt64(arrayIndex), "gep");
+				innerType = tmp->GetBaseType();
+			}
+		}
+
+        return std::make_pair(elemPtr, innerType);
+    }
 
     ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
 		: m_Filepath(filepath), m_Alias(alias)
