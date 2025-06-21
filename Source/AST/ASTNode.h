@@ -149,7 +149,9 @@ namespace clear
 		CodegenResult HandleLogicalExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
 		CodegenResult HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-			
+		CodegenResult HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);	
+
+
 	private:
 		BinaryExpressionType m_Expression;
 	};
@@ -343,20 +345,6 @@ namespace clear
 
 	private:
 		std::string m_MemberName;
-	};
-
-	class ASTMemberAccess : public ASTNodeBase
-	{
-	public:
-		ASTMemberAccess();
-		virtual ~ASTMemberAccess() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MemberAccess; }
-		virtual CodegenResult Codegen(CodegenContext&) override;
-
-	private:
-		CodegenResult DoMemberAccessForAddress(CodegenContext& ctx, CodegenResult parent);
-		CodegenResult DoMemberAccessForValue(CodegenContext& ctx, CodegenResult parent);
-
 	};
 
 	class ASTReturn : public ASTNodeBase 

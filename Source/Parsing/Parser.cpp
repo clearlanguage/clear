@@ -12,7 +12,8 @@ namespace clear
 {
     static std::map<TokenType, int32_t> s_Precedence = {
         {TokenType::IndexOperator,      7}, // x[y]
-        
+        {TokenType::DotOp,              7}, // x.y
+
         {TokenType::Negation,           6}, // -x
         {TokenType::Increment,          6}, // ++x
         {TokenType::Decrement,          6}, // --x
@@ -804,6 +805,9 @@ namespace clear
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
+        if(Match(TokenType::MemberName))
+            return std::make_shared<ASTMember>(Consume().Data);
+
         if(Match(TokenType::FunctionCall)) Undo();
 
         std::shared_ptr<ASTNodeBase> variableReference;
@@ -812,23 +816,7 @@ namespace clear
 
         variableReference = ParseVariableReference();
 
-        if(!Match(TokenType::DotOp)) 
-            return variableReference;
-
-        std::shared_ptr<ASTMemberAccess> memberAccess = std::make_shared<ASTMemberAccess>();
-        memberAccess->Push(variableReference);
-
-        Consume();
-
-        while(Match(TokenType::MemberName))
-        {
-            memberAccess->Push(std::make_shared<ASTMember>(Consume().Data));
-
-            if(Match(TokenType::DotOp)) 
-                Consume();
-        }
-
-        return memberAccess;
+        return variableReference;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage)
@@ -957,7 +945,7 @@ namespace clear
         auto IsOperand = [&]()
         {
             return MatchAny(m_VariableName) || Match(TokenType::FunctionCall) ||
-                   MatchAny(m_Literals);
+                   MatchAny(m_Literals) || Match(TokenType::MemberName);
         };
 
         auto HandleOpenBracket = [&]() 
@@ -1148,7 +1136,7 @@ namespace clear
             case TokenType::Power:              return BinaryExpressionType::Pow;
             case TokenType::And:                return BinaryExpressionType::And;
             case TokenType::Or:                 return BinaryExpressionType::Or;
-            
+            case TokenType::DotOp:              return BinaryExpressionType::MemberAccess;
 
 			default:
 				break;

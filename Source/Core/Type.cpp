@@ -180,6 +180,7 @@ namespace clear
         : m_Base(base)
     {
         Toggle(TypeFlags::Constant);
+        Toggle(base->GetFlags());
     }
 
     ClassType::ClassType(std::shared_ptr<StructType> structTy, const std::vector<std::string>& functions)

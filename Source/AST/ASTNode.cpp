@@ -132,6 +132,10 @@ namespace clear
 		if (IsLogicalOperator())
 			return HandleLogicalExpression(leftChild, rightChild, ctx);
 
+		if(m_Expression == BinaryExpressionType::MemberAccess)
+			return HandleMemberAccess(leftChild, rightChild, ctx);
+
+
 		CLEAR_UNREACHABLE("unimplmented");
 
 		return {};
@@ -808,12 +812,71 @@ namespace clear
 			CLEAR_UNREACHABLE("invalid base type ", type->GetBaseType()->GetHash());
 		}
 
-
 		if(ctx.WantAddress)
 			return {gep, ctx.Registry.GetPointerTo(baseType) };
 
         return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
     }
+
+    CodegenResult ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    {
+		auto tbl = GetSymbolTable();
+
+		CodegenResult lhs;
+
+		{
+			ValueRestoreGuard guard(ctx.WantAddress, true);
+			lhs = left->Codegen(ctx);
+		}
+
+		if(!lhs.CodegenType->IsPointer()) 
+		{
+			Allocation temp = tbl->RequestTemporary(lhs.CodegenType, ctx.Builder);
+			ctx.Builder.CreateStore(lhs.CodegenValue, temp.Alloca);
+
+			lhs.CodegenValue = temp.Alloca;
+			lhs.CodegenType = temp.Type;
+		}
+
+		CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid member");
+		auto member = std::dynamic_pointer_cast<ASTMember>(right);
+
+		llvm::Value* getElementPtr = lhs.CodegenValue; 
+		std::shared_ptr<Type> curr = lhs.CodegenType;
+
+		while(auto ty = std::dynamic_pointer_cast<PointerType>(curr)) // automatic derefencing if pointer
+		{
+			if(ty->GetBaseType()->IsCompound())
+			{
+				curr = ty;
+				break;
+			}
+
+			getElementPtr = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), getElementPtr);
+			curr = ty->GetBaseType();
+		}
+
+		std::shared_ptr<StructType> structTy;
+			
+		if(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
+			structTy = std::dynamic_pointer_cast<StructType>(ty->GetBaseType());
+		else 
+			structTy = std::dynamic_pointer_cast<StructType>(curr);
+		
+		CLEAR_VERIFY(structTy, "not a valid type ", curr->GetHash());
+
+		size_t index = structTy->GetMemberIndex(member->GetName());
+		getElementPtr = ctx.Builder.CreateStructGEP(structTy->Get(), getElementPtr, index, "gep");
+		curr = structTy->GetMemberType(member->GetName());
+
+        if(ctx.WantAddress)
+		{
+			return { getElementPtr, ctx.Registry.GetPointerTo(curr) };
+		}
+
+		return { ctx.Builder.CreateLoad(curr->Get(), getElementPtr), curr };
+    }
+
 
     ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type)
 		: m_Name(name), m_Type(type)
@@ -1364,7 +1427,7 @@ namespace clear
 			return child->GetType() == ASTNodeType::Literal || 
 				   child->GetType() == ASTNodeType::Variable ||
 				   child->GetType() == ASTNodeType::FunctionCall || 
-				   child->GetType() == ASTNodeType::MemberAccess;
+				   child->GetType() == ASTNodeType::Member;
 		};
 		
 		for (const auto& child : children)
@@ -1745,103 +1808,6 @@ namespace clear
 					ctx.Registry.RegisterType(typeName, type);
 			}
 		}
-    }
-
-    ASTMemberAccess::ASTMemberAccess()
-    {
-    }
-
-    CodegenResult ASTMemberAccess::Codegen(CodegenContext& ctx)
-    {
-		auto& builder = ctx.Builder;
-		auto& context = ctx.Context;
-		auto& children = GetChildren();
-
-		auto& typeReg = ctx.Registry;
-
-		CLEAR_VERIFY(children.size() > 1, "invalid member access");
-
-		CodegenResult parent;
-		
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			parent = children[0]->Codegen(ctx); 
-		}
-
-		
-		if(auto ty = std::dynamic_pointer_cast<PointerType>(parent.CodegenType)) 
-			return DoMemberAccessForAddress(ctx, parent);
-		
-		return DoMemberAccessForValue(ctx, parent);
-	}
-
-    CodegenResult ASTMemberAccess::DoMemberAccessForAddress(CodegenContext& ctx, CodegenResult parent)
-    {
-		auto& children = GetChildren();
-		auto& builder = ctx.Builder;
-
-        llvm::Value* getElementPtr = parent.CodegenValue; 
-		std::shared_ptr<Type> curr = parent.CodegenType;
-
-		while(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
-		{
-			if(ty->GetBaseType()->IsCompound())
-			{
-				curr = ty;
-				break;
-			}
-
-			getElementPtr = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), getElementPtr);
-			curr = ty->GetBaseType();
-		}
-
-		for(size_t i = 1; i < children.size(); i++)
-		{			
-			std::shared_ptr<StructType> structTy;
-			
-			if(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
-				structTy = std::dynamic_pointer_cast<StructType>(ty->GetBaseType());
-			else 
-				structTy = std::dynamic_pointer_cast<StructType>(curr);
-
-			CLEAR_VERIFY(structTy, "not a valid type ", curr->GetHash());
-
-			std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(children[i]);
-
-			size_t index = structTy->GetMemberIndex(member->GetName());
-			getElementPtr = builder.CreateStructGEP(structTy->Get(), getElementPtr, index, "gep");
-			curr = structTy->GetMemberType(member->GetName());
-
-			while (curr->IsPointer() && i + 1 < children.size())
-			{
-				auto pointerTy = std::dynamic_pointer_cast<PointerType>(curr);
-				CLEAR_VERIFY(pointerTy, "expected pointer type");
-			
-				getElementPtr = ctx.Builder.CreateLoad(pointerTy->Get(), getElementPtr);
-				curr = pointerTy->GetBaseType();
-			}
-		}
-
-		if(ctx.WantAddress)
-		{
-			return { getElementPtr, ctx.Registry.GetPointerTo(curr) };
-		}
-
-		return { builder.CreateLoad(curr->Get(), getElementPtr), curr };
-    }
-
-    CodegenResult ASTMemberAccess::DoMemberAccessForValue(CodegenContext& ctx, CodegenResult parent)
-    {
-		CLEAR_VERIFY(!ctx.WantAddress, "cannot get an address to a temporary!");
-
-		auto tbl = GetSymbolTable();
-		Allocation temp = tbl->RequestTemporary(parent.CodegenType, ctx.Builder);
-		ctx.Builder.CreateStore(parent.CodegenValue, temp.Alloca);
-		
-		parent.CodegenValue = temp.Alloca;
-		parent.CodegenType = temp.Type;
-
-       return DoMemberAccessForAddress(ctx, parent);
     }
 
     ASTMember::ASTMember(const std::string& name)

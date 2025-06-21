@@ -20,7 +20,7 @@ namespace clear
 		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
 		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
 		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
-		BitwiseXor, Index, And, Or, Not
+		BitwiseXor, Index, And, Or, Not, MemberAccess
 	};
 
 	enum class UnaryExpressionType : uint8_t
@@ -59,9 +59,12 @@ namespace clear
         bool IsVariadic();
         bool IsConst();
 
+        TypeFlagSet GetFlags() const { return m_Flags; }
+
     protected:
         void Toggle(TypeFlags flag);
         void Toggle(TypeFlagSet set);
+
 
     private:
         TypeFlagSet m_Flags;
