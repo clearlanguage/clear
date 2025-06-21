@@ -1,5 +1,6 @@
 #include "SymbolTable.h"
 
+#include "ASTNode.h"
 #include "Core/Log.h"
 
 namespace clear 
@@ -210,5 +211,30 @@ namespace clear
         }
 
         return false;
+    }
+
+    void SymbolTable::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic,  const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
+    {
+        m_FunctionCache.CreateTemplate(templateName, returnType, params, isVariadic, defaultArgs, root);
+    }
+
+    FunctionInstance& SymbolTable::InstantiateOrReturn(const std::string& templateName, const std::vector<Parameter>& params, std::shared_ptr<Type> returnType, CodegenContext& context)
+    {
+        return m_FunctionCache.InstantiateOrReturn(templateName, params, returnType, context);
+    }
+
+    void SymbolTable::RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate)
+    {
+        m_FunctionCache.RegisterTemplate(templateName, functionTemplate);
+    }
+
+    void SymbolTable::RegisterInstance(const FunctionInstance& instance)
+    {
+        m_FunctionCache.RegisterInstance(instance);
+    }
+
+    void SymbolTable::RegisterDecleration(const FunctionInstance& decleration, bool isVariadic)
+    {
+        m_FunctionCache.RegisterDecleration(decleration, isVariadic);
     }
 }

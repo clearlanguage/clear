@@ -90,6 +90,7 @@ namespace clear
 		    TokenType::EndIndentation, 
 		    TokenType::Comma,  
 		    TokenType::EndFunctionArguments, 
+		    TokenType::EndFunctionParameters, 
 		    TokenType::EndArray,
 		    TokenType::Assignment, 
             TokenType::MultiplyAssign, 
@@ -579,6 +580,9 @@ namespace clear
 
         Consume();
 
+        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
+
+        size_t i = 0;
         while(!Match(TokenType::EndFunctionParameters)) 
         {
             UnresolvedParameter param;
@@ -603,6 +607,15 @@ namespace clear
 
             param.Name = Consume().Data;
 
+            if(Match(TokenType::Assignment))
+            {
+                Consume();
+
+                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
+                arg->Push(ParseExpression());
+                defaultArgs.push_back(arg);
+            } 
+
             if(Match(TokenType::Ellipsis))
             {
                 param.IsVariadic = true;
@@ -621,6 +634,8 @@ namespace clear
                 Expect(TokenType::Comma);
                 Consume();
             }
+
+            i++;
         }
 
         Consume();
@@ -628,6 +643,8 @@ namespace clear
         if(Match(TokenType::EndLine) || Match(TokenType::StartIndentation)) 
         {
             std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+            func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
+
             Root()->Push(func);
             m_RootStack.push_back(func);
 
@@ -649,6 +666,8 @@ namespace clear
         returnType = { ParseVariableTypeTokens() };
 
         std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
+        func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
+
         Root()->Push(func);
         m_RootStack.push_back(func);
 

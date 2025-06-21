@@ -1052,10 +1052,8 @@ namespace clear
 
 	CodegenResult ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{
-		auto& module  = ctx.Module;
-		auto& context = ctx.Context;
-		auto& builder = ctx.Builder;
-		
+		auto& children = GetChildren();
+
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
 		CLEAR_VERIFY(prev, "prev was null");
 
@@ -1067,12 +1065,29 @@ namespace clear
 		});
 			
 		m_ResolvedReturnType = ctx.Registry.ResolveType(m_ReturnType);
+		
+		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_Parameters.size(), nullptr);
 
-		prev->GetFunctionCache().CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, shared_from_this());
+		size_t i = 0;
+		for(; i < children.size(); i++)
+		{
+			if(children[i]->GetType() != ASTNodeType::DefaultArgument) 
+				break;
+
+			auto arg = std::dynamic_pointer_cast<ASTDefaultArgument>(children[i]);
+			size_t argIndex = arg->GetIndex();
+
+			CLEAR_VERIFY(argIndex < defaultArgs.size(), "invalid arg index!");
+			defaultArgs[argIndex] = arg;
+		}
+
+		children.erase(children.begin(), children.begin() + i);
+
+		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this());
 		
 		if(m_Name == "main")
 		{
-			prev->GetFunctionCache().InstantiateOrReturn(m_Name, m_ResolvedParams, m_ResolvedReturnType, ctx);
+			prev->InstantiateOrReturn(m_Name, m_ResolvedParams, m_ResolvedReturnType, ctx);
 		}		
 		
 		return {};
@@ -1222,6 +1237,14 @@ namespace clear
 
 		FunctionTemplate& data = symbolTable->GetTemplate(m_Name, params);
 
+		for(size_t i = args.size(); i < data.DefaultArguments.size(); i++)
+		{
+			CodegenResult argument = data.DefaultArguments[i]->Codegen(ctx);
+
+			args.push_back(argument.CodegenValue);
+			params.push_back({ .Type=argument.CodegenType });
+		}
+		
 		CastArgs(ctx, args, params, data);
 
 		// again, we need a check to make sure that return type is not a generic in the future, for now this is ok.
@@ -1233,7 +1256,7 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
-		FunctionInstance& instance = symbolTable->GetPrevious()->GetFunctionCache().InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+		FunctionInstance& instance = symbolTable->GetPrevious()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
@@ -1314,7 +1337,7 @@ namespace clear
 		data.ReturnType = resolvedType;
 		data.MangledName = m_Name;
 		
-		GetSymbolTable()->GetFunctionCache().RegisterInstance(data);
+		GetSymbolTable()->RegisterInstance(data);
 
 		FunctionTemplate functionTemplate;
 		functionTemplate.IsVariadic = params.size() > 0 && !params.back().Type;
@@ -1323,7 +1346,7 @@ namespace clear
 		functionTemplate.Root = nullptr; // external function so no root
 		functionTemplate.IsExternal = true;
 
-		GetSymbolTable()->GetFunctionCache().RegisterTemplate(data.MangledName, functionTemplate);
+		GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
 
 		return { data.Function, resolvedType };	
 	}
@@ -1616,42 +1639,19 @@ namespace clear
 				registeredData.ReturnType = importedData.ReturnType;
 
 				bool isVariadic = registeredData.Parameters.size() > 0 && !registeredData.Parameters.back().Type;
-				tbl->GetFunctionCache().RegisterDecleration(registeredData, isVariadic);
+				tbl->RegisterDecleration(registeredData, isVariadic);
 			}
 			else if (rootSymbolTable->HasTemplate(fun->GetName()))
 			{
 				if(!m_Alias.empty())
-					tbl->GetFunctionCache().RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
+					tbl->RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
 				else 
-					tbl->GetFunctionCache().RegisterTemplate(fun->GetName(), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
+					tbl->RegisterTemplate(fun->GetName(), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
 			}
 			else 
 			{
 				CLEAR_UNREACHABLE("uhhh what");
 			}
-			
-
-			//for(const auto& param : importedData.Parameters)
-			//{
-			//	if(param.IsVariadic)
-			//	{
-			//		registeredData.Parameters.push_back(param);
-			//		continue;
-			//	}
-//
-			//	Parameter translated;
-			//	translated.Type = ctx.Registry.GetType(param.Type->GetHash());
-			//	translated.Name = param.Name;
-//
-			//	if(!translated.Type)
-			//	{
-			//		ctx.Registry.RegisterType(param.Type->GetHash(), param.Type);
-			//		translated.Type = param.Type;
-			//	}
-//
-			//	registeredData.Parameters.push_back(param);
-			//}
-
 		}
 
 		return {};
@@ -1673,7 +1673,7 @@ namespace clear
 			std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 
 			bool isVariadic = function.Parameters.size() > 0 && !function.Parameters.back().Type;
-			tbl->GetFunctionCache().RegisterDecleration(function, isVariadic);
+			tbl->RegisterDecleration(function, isVariadic);
 
 		}
     }
@@ -2253,5 +2253,14 @@ namespace clear
     		ctx.Builder.CreateBr(ctx.LoopEndBlock);
     	
     	return {};
+    }
+
+    CodegenResult ASTDefaultArgument::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+		CLEAR_VERIFY(children.size() == 1, "invalid argument");
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+        return children[0]->Codegen(ctx);
     }
 }

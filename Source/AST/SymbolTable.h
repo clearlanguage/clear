@@ -31,6 +31,9 @@ namespace clear
         std::string MangledName;
     };
 
+    struct CodegenResult;
+    class ASTNodeBase;
+
     class SymbolTable
     {
     public:
@@ -47,10 +50,25 @@ namespace clear
         FunctionInstance& GetInstance(const std::string& instanceName);
         FunctionInstance& GetDecleration(const std::string& decleration);
         FunctionTemplate& GetTemplate(const std::string& templateName, const std::vector<Parameter>& params);
+        
+        void CreateTemplate(const std::string& templateName, 
+                            std::shared_ptr<Type> returnType, 
+                            const std::vector<Parameter>& params, 
+                            bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs,
+                            std::shared_ptr<ASTNodeBase> root);
 
+        FunctionInstance& InstantiateOrReturn(const std::string& templateName, 
+                                              const std::vector<Parameter>& params, 
+                                              std::shared_ptr<Type> returnType, 
+                                              CodegenContext& context);
+        
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
         bool HasTemplate(const std::string& instanceName);
+
+        void RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate);
+        void RegisterInstance(const FunctionInstance& instance);
+        void RegisterDecleration(const FunctionInstance& decleration, bool isVariadic);
 
         void SetPrevious(const std::shared_ptr<SymbolTable>& previous);
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}

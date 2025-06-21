@@ -9,9 +9,9 @@
 
 namespace clear 
 {
-    void FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, std::shared_ptr<ASTNodeBase> root)
+    void FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
     {
-        m_Templates[templateName].push_back({returnType, params, root, isVariadic});
+        m_Templates[templateName].push_back({returnType, params, root, defaultArgs, isVariadic});
     }
 
     FunctionInstance& FunctionCache::InstantiateOrReturn(const std::string& templateName, std::vector<Parameter> params, std::shared_ptr<Type> returnType, CodegenContext& context)
@@ -129,16 +129,14 @@ namespace clear
                 return score;
 
             size_t paramSize = functionTemplate.IsVariadic ? functionTemplate.Parameters.size() - 1 : functionTemplate.Parameters.size();
-
-            if(params.size() < paramSize)
-                return score;
             
             if(params.size() == functionTemplate.Parameters.size())
             {
                 score = 100;
-            }
+            }  
 
-            for(size_t i = 0; i < params.size(); i++)
+            size_t i = 0;
+            for(; i < params.size(); i++)
             {
                 auto& param1 = params[i];
                 auto& param2 = i < functionTemplate.Parameters.size() ? functionTemplate.Parameters[i] : functionTemplate.Parameters.back();
@@ -163,11 +161,22 @@ namespace clear
                 }
                 else 
                 {
-                    score = 0;
+                    return size_t(0);
+                }
+            }
+
+            for(; i < paramSize; i++)
+            {
+                if(!functionTemplate.DefaultArguments[i])
+                {
                     break;
                 }
 
+                score += 10;
             }
+
+            if(i < paramSize) 
+                return size_t(0);
 
             return score;
         };
@@ -194,7 +203,6 @@ namespace clear
         }
 
         CLEAR_VERIFY(!queue.empty(), "no viable function");
-
         return candidates[queue.top().Index];
     }
 

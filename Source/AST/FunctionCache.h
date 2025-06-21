@@ -28,6 +28,7 @@ namespace clear
         std::shared_ptr<Type> ReturnType;
         std::vector<Parameter> Parameters;
         std::shared_ptr<ASTNodeBase> Root;
+        std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
         bool IsVariadic = false;
         bool IsExternal = false;
     };
@@ -43,6 +44,7 @@ namespace clear
 
 
     struct CodegenContext;
+    struct CodegenResult;
 
     class FunctionCache 
     {
@@ -53,7 +55,7 @@ namespace clear
         void CreateTemplate(const std::string& templateName,
                             std::shared_ptr<Type> returnType,
                             const std::vector<Parameter>& params,
-                            bool isVariadic,
+                            bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs,
                             std::shared_ptr<ASTNodeBase> root);
 
         FunctionInstance& InstantiateOrReturn(const std::string& templateName, 
