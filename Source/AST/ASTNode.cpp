@@ -1582,6 +1582,10 @@ namespace clear
 		{
 			DoInitForStruct(ctx, storage);
 		}
+		else if (auto baseType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType()))
+		{
+			DoInitForStruct(ctx, storage);
+		}
 		
 		return {};
 	}
@@ -1634,10 +1638,18 @@ namespace clear
     {
 		auto& children = GetChildren();
 
-		//llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
-
 		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
 		std::shared_ptr<StructType> baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType());
+
+		if(!baseType)
+		{
+			auto classType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType());
+			if(classType)
+			{
+				baseType = classType->GetBaseType();
+			}
+		}
+
 		CLEAR_VERIFY(baseType, "base type is not a struct type");
 
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
@@ -1647,7 +1659,6 @@ namespace clear
 
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
-			//std::vector<llvm::Value*> indices(m_Indices[i].size());
 			CLEAR_VERIFY(m_Indices[i].size() >= 2, "");
 
 			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.CodegenValue, m_Indices[i][1], "gep");
@@ -1705,6 +1716,14 @@ namespace clear
 			if(innerType->IsCompound())
 			{
 				auto tmp = std::dynamic_pointer_cast<StructType>(innerType);
+
+				if(!tmp)
+				{
+					auto classType = std::dynamic_pointer_cast<ClassType>(innerType);
+					CLEAR_VERIFY(classType, "invalid type");
+					tmp = classType->GetBaseType();
+				}
+
 				size_t structIndex = m_Indices[index][j] % tmp->GetMemberTypes().size();
 				elemPtr = ctx.Builder.CreateStructGEP(innerType->Get(), elemPtr, structIndex, "gep");
 				innerType = tmp->GetMemberAtIndex(structIndex);
