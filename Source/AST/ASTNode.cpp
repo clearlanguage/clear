@@ -797,8 +797,16 @@ namespace clear
 													 ctx.Builder);
 			}
 
-			// if debugging enabled will do checks in array indexing here TODO (ignore for now)
-
+			if(auto constant = llvm::dyn_cast<llvm::ConstantInt>(rhs.CodegenValue))
+			{
+				int64_t index = constant->getSExtValue();
+				CLEAR_VERIFY(index >= 0 && index < arrType->GetArraySize(), "index out of range!");
+			}
+			else 
+			{
+				//TODO: insert runtime check for index
+			}
+			
 			gep = ctx.Builder.CreateGEP(
         		arrType->Get(),
         		lhs.CodegenValue,
@@ -1792,7 +1800,9 @@ namespace clear
 					tmp = classType->GetBaseType();
 				}
 
-				size_t structIndex = m_Indices[index][j] % tmp->GetMemberTypes().size();
+				size_t structIndex = m_Indices[index][j];
+				CLEAR_VERIFY(structIndex < tmp->GetMemberTypes().size(), "struct index out of bounds");
+
 				elemPtr = ctx.Builder.CreateStructGEP(innerType->Get(), elemPtr, structIndex, "gep");
 				innerType = tmp->GetMemberAtIndex(structIndex);
 			}
@@ -1800,7 +1810,10 @@ namespace clear
 			{
 				CLEAR_VERIFY(innerType->IsArray(), "invalid type");
 				auto tmp = std::dynamic_pointer_cast<ArrayType>(innerType);
-				size_t arrayIndex = m_Indices[index][j] % tmp->GetArraySize();
+				size_t arrayIndex = m_Indices[index][j];
+
+				CLEAR_VERIFY(arrayIndex < tmp->GetArraySize(), "array index out of bounds");
+
 				elemPtr = ctx.Builder.CreateGEP(tmp->GetBaseType()->Get(), elemPtr, ctx.Builder.getInt64(arrayIndex), "gep");
 				innerType = tmp->GetBaseType();
 			}
