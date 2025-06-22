@@ -147,13 +147,15 @@ namespace clear
     }
 
 
-    size_t StructType::GetMemberIndex(const std::string &member)
+    size_t StructType::GetMemberIndex(const std::string& member)
     {
+        CLEAR_VERIFY(m_MemberIndices.contains(member), member, " is not a member of ", m_Name);
         return m_MemberIndices.at(member);
     }
 
     std::shared_ptr<Type> StructType::GetMemberType(const std::string& member)
     {
+        CLEAR_VERIFY(m_MemberTypes.contains(member), member, " is not a member of ", m_Name);
         return m_MemberTypes.at(member);
     }
 

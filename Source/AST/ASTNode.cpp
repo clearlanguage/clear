@@ -835,7 +835,7 @@ namespace clear
 			ctx.Builder.CreateStore(lhs.CodegenValue, temp.Alloca);
 
 			lhs.CodegenValue = temp.Alloca;
-			lhs.CodegenType = temp.Type;
+			lhs.CodegenType = ctx.Registry.GetPointerTo(temp.Type);
 		}
 
 		if(right->GetType() == ASTNodeType::Member)
@@ -918,6 +918,9 @@ namespace clear
 
 		if(auto pointerTy = std::dynamic_pointer_cast<PointerType>(curr))
 			return GetStruct(pointerTy->GetBaseType());
+
+		if(auto constTy = std::dynamic_pointer_cast<ConstantType>(curr))
+			return GetStruct(constTy->GetBaseType());
 
 		return nullptr;
 	}
@@ -1292,14 +1295,17 @@ namespace clear
 
 		functionData.Function->insert(functionData.Function->end(), returnBlock);
 		builder.SetInsertPoint(returnBlock);
+		
 
 		if (functionData.Function->getReturnType()->isVoidTy())
 		{
+			tbl->FlushDestructors(ctx);
 			builder.CreateRetVoid();
 		}
 		else
 		{   
 			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
+			tbl->FlushDestructors(ctx);
 			builder.CreateRet(load);
 		}
 

@@ -210,6 +210,8 @@ namespace clear
         virtual std::string GetHash() const override { return "const" + m_Base->GetHash(); };
         virtual std::string GetShortHash() const override { return "c" + m_Base->GetShortHash(); };
 
+        std::shared_ptr<Type> GetBaseType() { return m_Base; }
+
     private:
         std::shared_ptr<Type> m_Base;
     };
