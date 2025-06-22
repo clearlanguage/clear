@@ -495,11 +495,13 @@ namespace clear
 			else
 			{
 				if(!(std::isspace(current) && m_CurrentString.empty()))
+				{
 					if (current == '\n') {
 						m_CurrentString+=' ';
 					}else {
 						m_CurrentString += current;
 					}
+				}
 			}
 
 
