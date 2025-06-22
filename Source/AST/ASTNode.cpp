@@ -1362,6 +1362,8 @@ namespace clear
 			if(!value) return {};
 
 			if(m_Name == "sizeof") return { value, ctx.Registry.GetType("int64") };
+			if(m_Name == "len") return { value, ctx.Registry.GetType("int64") };
+
 
 			return { value, ctx.Registry.GetType(m_Name) };
 		}
