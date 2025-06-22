@@ -44,6 +44,7 @@ namespace clear
         {TokenType::GreaterThanEqual,   0},
         {TokenType::IsEqual,            0},
         {TokenType::NotEqual,           0},
+        {TokenType::Ellipsis,           0},
 
         {TokenType::And,               -1}, // x and y
         {TokenType::Or,                -2}, // x or y
@@ -110,7 +111,8 @@ namespace clear
             TokenType::AddressOp,	  
             TokenType::DereferenceOp,
             TokenType::Negation, 
-            TokenType::Not
+            TokenType::Not,
+            TokenType::Ellipsis
         });
 
         m_PostUnaryExpression = CreateTokenSet({
@@ -1233,7 +1235,9 @@ namespace clear
 			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
 			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
 			case TokenType::Negation:       return UnaryExpressionType::Negation; 
-			case TokenType::Not:            return UnaryExpressionType::Not; 
+			case TokenType::Not:            return UnaryExpressionType::Not;
+            case TokenType::Ellipsis:       return UnaryExpressionType::Unpack;
+
 			default:
 				break;
 		}
