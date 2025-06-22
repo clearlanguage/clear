@@ -102,6 +102,50 @@ namespace clear
         m_Previous = previous;
     }
 
+    void SymbolTable::FlushDestructors(CodegenContext& ctx)
+    {
+        for(const auto& [name, allocation] : m_Variables)
+        {
+            if(allocation.Type->IsClass())
+            {
+                auto classType = std::dynamic_pointer_cast<ClassType>(allocation.Type);
+
+                std::string mangledName = std::format("{}.{}", allocation.Type->GetHash(), "__destruct__");
+
+                if(HasTemplate(mangledName))
+                {
+                    Parameter param;
+                    param.Name = "this";
+                    param.Type = ctx.Registry.GetPointerTo(classType);
+
+                    FunctionInstance& instance = InstantiateOrReturn(mangledName, { param }, nullptr, ctx);
+                    ctx.Builder.CreateCall( instance.Function, { allocation.Alloca });
+                }
+            }
+        }
+
+        for(const auto& [type, allocation] : m_Temporaries)
+        {
+            if(allocation.Type->IsClass())
+            {
+                auto classType = std::dynamic_pointer_cast<ClassType>(allocation.Type);
+
+                std::string mangledName = std::format("{}.{}", allocation.Type->GetHash(), "__destruct__");
+
+                if(HasTemplate(mangledName))
+                {
+                    Parameter param;
+                    param.Name = "this";
+                    param.Type = ctx.Registry.GetPointerTo(classType);
+
+                    FunctionInstance& instance = InstantiateOrReturn(mangledName, { param }, nullptr, ctx);
+                    ctx.Builder.CreateCall( instance.Function, { allocation.Alloca });
+                }
+            }
+        }
+
+    }
+
     FunctionInstance& SymbolTable::GetInstance(const std::string& instanceName)
     {
         if(m_FunctionCache.HasInstance(instanceName)) return m_FunctionCache.GetInstance(instanceName);
@@ -237,6 +281,19 @@ namespace clear
 
     FunctionInstance& SymbolTable::InstantiateOrReturn(const std::string& templateName, const std::vector<Parameter>& params, std::shared_ptr<Type> returnType, CodegenContext& context)
     {
+         if(m_FunctionCache.HasTemplate(templateName)) return  m_FunctionCache.InstantiateOrReturn(templateName, params, returnType, context);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasTemplate(templateName)) 
+                return ptr->m_FunctionCache.InstantiateOrReturn(templateName, params, returnType, context);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("unable to find template ", templateName);
         return m_FunctionCache.InstantiateOrReturn(templateName, params, returnType, context);
     }
 

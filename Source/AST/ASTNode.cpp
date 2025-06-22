@@ -1386,7 +1386,7 @@ namespace clear
 		}
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
-		FunctionInstance& instance = symbolTable->GetPrevious()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+		FunctionInstance& instance = symbolTable->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
 
 		if(temporary.Alloca)
 		{
@@ -2220,8 +2220,13 @@ namespace clear
 		return {};
 	}
 
-	CodegenResult ASTWhileExpression::Codegen(CodegenContext& ctx)
-	{
+    ASTWhileExpression::ASTWhileExpression()
+    {
+		CreateSymbolTable();
+    }
+
+    CodegenResult ASTWhileExpression::Codegen(CodegenContext &ctx)
+    {
 		auto& children = GetChildren();
 
 		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
@@ -2264,11 +2269,23 @@ namespace clear
 
 		children[1]->Codegen(ctx);
 
+		bool flushed = false;
+
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+		{
+			GetSymbolTable()->FlushDestructors(ctx);
 			ctx.Builder.CreateBr(conditionBlock);
+
+			flushed = true;
+		}
 		
 		function->insert(function->end(), end);
 		ctx.Builder.SetInsertPoint(end);
+
+		if(!flushed)
+		{
+			GetSymbolTable()->FlushDestructors(ctx);
+		}
 
 		return {};
 	}

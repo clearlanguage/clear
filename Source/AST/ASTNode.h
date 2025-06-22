@@ -397,7 +397,7 @@ namespace clear
 	class ASTWhileExpression : public ASTNodeBase
 	{
 	public:
-		ASTWhileExpression() = default;
+		ASTWhileExpression();
 		virtual ~ASTWhileExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
 		virtual CodegenResult Codegen(CodegenContext&) override;

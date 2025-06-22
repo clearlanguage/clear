@@ -56,6 +56,7 @@ namespace clear
         bool IsIntegral();
         bool IsArray();
         bool IsCompound();
+        bool IsClass();
         bool IsVariadic();
         bool IsConst();
 

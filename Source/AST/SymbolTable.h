@@ -79,6 +79,8 @@ namespace clear
         FunctionCache& GetFunctionCache() { return m_FunctionCache; }
         std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }        
 
+        void FlushDestructors(CodegenContext& ctx);
+
     private:
         std::unordered_map<std::string, Allocation> m_Variables; 
         std::unordered_map<llvm::Type*, Allocation>  m_Temporaries; 

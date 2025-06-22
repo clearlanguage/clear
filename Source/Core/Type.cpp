@@ -32,6 +32,11 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Compound);
     }
 
+    bool Type::IsClass()
+    {
+        return m_Flags.test((size_t)TypeFlags::Class);
+    }
+
     bool Type::IsVariadic()
     {
         return m_Flags.test((size_t)TypeFlags::Variadic);
