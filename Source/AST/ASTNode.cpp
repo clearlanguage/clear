@@ -2269,23 +2269,16 @@ namespace clear
 
 		children[1]->Codegen(ctx);
 
-		bool flushed = false;
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 		{
 			GetSymbolTable()->FlushDestructors(ctx);
 			ctx.Builder.CreateBr(conditionBlock);
-
-			flushed = true;
 		}
 		
 		function->insert(function->end(), end);
 		ctx.Builder.SetInsertPoint(end);
-
-		if(!flushed)
-		{
-			GetSymbolTable()->FlushDestructors(ctx);
-		}
+		
 
 		return {};
 	}
@@ -2350,6 +2343,8 @@ namespace clear
 	{
     	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
 		
+		GetSymbolTable()->FlushDestructors(ctx);
+
     	if (m_JumpTy == TokenType::Continue) 
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
 		
