@@ -36,7 +36,7 @@ namespace clear
 
         void ParseStatement();
         void ParseGeneric();
-        void ParseFunctionDefinition();
+        void ParseFunctionDefinition(const std::string& className = "");
         void ParseFunctionDeclaration();        
         void ParseVariableDecleration();
         void ParseLetDecleration();
@@ -63,6 +63,7 @@ namespace clear
 
         std::vector<Token> ParseVariableTypeTokens();
 
+        std::pair<std::string, std::shared_ptr<TypeDescriptor>> ParseVariableTypeDescriptor();
 
         BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
         UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);

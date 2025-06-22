@@ -215,23 +215,22 @@ namespace clear
             return Resolve(descriptor);
         }
 
-        CLEAR_VERIFY(descriptor.Description[index].TokenType == TokenType::TypeIdentifier, "not a valid compound type ", descriptor.Description[0].Data);
-
-        std::string structName = descriptor.Description[index].Data;
-
-        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
-        m_Types[structName] = structTy;
-
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-        for(auto& [typeName, subType] : descriptor.ChildTypes)
+        const auto& desc = descriptor.Description[index];
+        
+        if(desc.TokenType == TokenType::StructName)
         {
-            std::shared_ptr<Type> type = ResolveType(*subType);
-            members.push_back({typeName, type});
+            return ResolveStruct(descriptor);
         }
-
-        structTy->SetBody(members);
-        return structTy;
+        else if (desc.TokenType == TokenType::ClassName)
+        {
+            return ResolveClass(descriptor);
+        }
+        else 
+        {
+            CLEAR_UNREACHABLE("unimplemented compound type descriptor ", desc.Data);
+        }
+    
+        return nullptr;
     }
 
     std::string TypeRegistry::GetTypeNameFromTokenType(TokenType type)
@@ -312,8 +311,60 @@ namespace clear
         return "";
     }
 
-    std::shared_ptr<Type> TypeRegistry::ResolveStruct(const TypeDescriptor &descriptor)
+    std::shared_ptr<Type> TypeRegistry::ResolveStruct(const TypeDescriptor& descriptor)
     {
-        return std::shared_ptr<Type>();
+        size_t index = 0;
+
+        if(descriptor.Description[0].TokenType == TokenType::Const)
+        {
+            index++;
+            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
+        }
+
+        std::string structName = descriptor.Description[index].Data;
+
+        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
+        m_Types[structName] = structTy;
+
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
+
+        for(auto& [typeName, subType] : descriptor.ChildTypes)
+        {
+            std::shared_ptr<Type> type = ResolveType(*subType);
+            members.push_back({typeName, type});
+        }
+
+        structTy->SetBody(members);
+        return structTy;
+    }
+
+    std::shared_ptr<Type> TypeRegistry::ResolveClass(const TypeDescriptor& descriptor)
+    {
+        size_t index = 0;
+
+        if(descriptor.Description[0].TokenType == TokenType::Const)
+        {
+            index++;
+            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
+        }
+
+        std::string className = descriptor.Description[index].Data;
+
+        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(className, *m_Context);
+        std::shared_ptr<ClassType>  classTy  = std::make_shared<ClassType>(structTy, descriptor.Functions);
+
+        m_Types[className] = classTy;
+
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
+
+        for(auto& [typeName, subType] : descriptor.ChildTypes)
+        {
+            std::shared_ptr<Type> type = ResolveType(*subType);
+            members.push_back({typeName, type});
+        }
+
+        structTy->SetBody(members);
+
+        return classTy;
     }
 }

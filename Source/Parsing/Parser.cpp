@@ -144,7 +144,8 @@ namespace clear
 
         m_VariableName = CreateTokenSet({
             TokenType::VariableName,
-            TokenType::VariableReference
+            TokenType::VariableReference,
+            TokenType::MemberName
         });
 
         while(!Match(TokenType::Eof))
@@ -224,6 +225,7 @@ namespace clear
         static std::map<TokenType, std::function<void()>> s_MappedFunctions = {
             {TokenType::Import,        [this]() { ParseImport(); }},
             {TokenType::Struct,        [this]() { ParseStruct(); }},
+            {TokenType::Class ,        [this]() { ParseClass(); }},
             {TokenType::Declaration,   [this]() { ParseFunctionDeclaration(); }},
             {TokenType::Function,      [this]() { ParseFunctionDefinition(); }},
             {TokenType::ConditionalIf, [this]() { ParseIf(); }},
@@ -235,8 +237,9 @@ namespace clear
             {TokenType::For,           [this]() { ParseFor(); }},
             {TokenType::Let,           [this]() { ParseLetDecleration(); }},
             {TokenType::Const,         [this]() { ParseConstDecleration(); }},
-            {TokenType::Continue,      [this]()  {ParseLoopControls();}},
-        {TokenType::Break,      [this]()  {ParseLoopControls();}}
+            {TokenType::Continue,      [this]() { ParseLoopControls(); }},
+            {TokenType::Break,         [this]() { ParseLoopControls(); }}
+            
 
         };
 
@@ -409,7 +412,7 @@ namespace clear
         Consume();
 
         Token token;
-        token.TokenType = TokenType::TypeIdentifier;
+        token.TokenType = TokenType::StructName;
         token.Data = structName;
 
         TypeDescriptor structTyDesc;
@@ -430,7 +433,6 @@ namespace clear
             Consume();
         }
 
-        //m_TypeRegistry.ResolveType(structTyDesc);
         Root()->Push(std::make_shared<ASTStruct>(structTyDesc));
         Consume();
     }
@@ -564,7 +566,7 @@ namespace clear
         m_RootStack.push_back(base);
     }
 
-    void Parser::ParseFunctionDefinition()
+    void Parser::ParseFunctionDefinition(const std::string& className)
     {
         Expect(TokenType::Function);
 
@@ -573,6 +575,11 @@ namespace clear
         Expect(TokenType::FunctionName);
 
         std::string name = Consume().Data;
+        if(!className.empty())
+        {
+            name = className + "." + name;
+        }
+
         TypeDescriptor returnType;
         std::vector<UnresolvedParameter> params;
 
@@ -581,8 +588,23 @@ namespace clear
         Consume();
 
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
-
         size_t i = 0;
+
+
+        if(!className.empty())
+        {
+            TypeDescriptor pClassTy;
+            pClassTy.Description = { { .TokenType=TokenType::ClassName, .Data=className }, 
+                                     { .TokenType=TokenType::PointerDef } };
+
+            UnresolvedParameter param;
+            param.Type = pClassTy;
+            param.Name = "this";
+
+            params.push_back(param);
+            i++;
+        }
+
         while(!Match(TokenType::EndFunctionParameters)) 
         {
             UnresolvedParameter param;
@@ -749,14 +771,6 @@ namespace clear
 
         std::string functionName = Consume().Data;
 
-        while(Match(TokenType::DotOp))
-        {
-            functionName += ".";
-            Consume();
-            Expect(TokenType::MemberName);
-            functionName += Consume().Data;
-        }
-
         Expect(TokenType::FunctionCall);    
         Consume();
 
@@ -806,9 +820,15 @@ namespace clear
             return std::make_shared<ASTNodeLiteral>(Consume());
 
         if(Match(TokenType::MemberName))
+        {
+            if(Next().TokenType == TokenType::FunctionCall) 
+                return ParseFunctionCall();
+            
             return std::make_shared<ASTMember>(Consume().Data);
+        }
 
-        if(Match(TokenType::FunctionCall)) Undo();
+        if(Match(TokenType::FunctionCall)) 
+            Undo();
 
         std::shared_ptr<ASTNodeBase> variableReference;
 
@@ -1084,13 +1104,23 @@ namespace clear
         return tokens;
     }
 
+    std::pair<std::string, std::shared_ptr<TypeDescriptor>> Parser::ParseVariableTypeDescriptor()
+    {
+        std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
+
+        subType->Description = ParseVariableTypeTokens(); 
+        
+        ExpectAny(m_VariableName);
+
+        std::string name = Consume().Data;
+
+        return {name, subType};
+    }
+
     void Parser::ParseIndentation()
     {
-        while(Match(TokenType::EndIndentation))
-        {
-            m_RootStack.pop_back();
-            Consume();
-        }
+        m_RootStack.pop_back();
+        Consume();
     }
 
     void Parser::ParseClass()
@@ -1102,6 +1132,55 @@ namespace clear
         std::string className = Consume().Data;
 
         SkipUntil(TokenType::StartIndentation);
+        Consume();
+
+        Token token;
+        token.TokenType = TokenType::ClassName;
+        token.Data = className;
+
+        TypeDescriptor classTy;
+        classTy.Description = { token };
+
+        std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>();
+        Root()->Push(classNode);
+
+        while(!Match(TokenType::EndIndentation))
+        {
+            if(MatchAny(m_VariableType))
+            {
+                classTy.ChildTypes.push_back(ParseVariableTypeDescriptor());
+
+                Expect(TokenType::EndLine);
+                Consume();
+                continue;
+            }
+
+            if(Match(TokenType::Function))
+            {
+                SavePosition();
+
+                SkipUntil(TokenType::FunctionName);
+                std::string name = m_Tokens[m_Position].Data;
+                RestorePosition();
+
+                size_t rootLevel = m_RootStack.size();
+
+                ParseFunctionDefinition(className);
+
+                // continue parsing as normal until end of function definition
+                while(rootLevel < m_RootStack.size())
+                {
+                    ParseStatement();
+                }
+
+                classTy.Functions.push_back(className + "." + name);
+                continue;
+            }
+
+            CLEAR_LOG_INFO("ignoring token ", TokenToString(Consume().TokenType), " in class ", className);
+        }
+
+        classNode->SetTypeDescriptor(classTy);
         Consume();
     }
 

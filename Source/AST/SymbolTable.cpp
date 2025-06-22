@@ -213,6 +213,23 @@ namespace clear
         return false;
     }
 
+    bool SymbolTable::HasAlloca(const std::string& name)
+    {
+        if(m_Variables.contains(name)) return true;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_Variables.contains(name)) 
+                return true;
+                
+            ptr = ptr->m_Previous;
+        }
+
+        return false;
+    }
+
     void SymbolTable::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic,  const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
     {
         m_FunctionCache.CreateTemplate(templateName, returnType, params, isVariadic, defaultArgs, root);

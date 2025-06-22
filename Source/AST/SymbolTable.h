@@ -9,6 +9,9 @@
 
 namespace clear 
 {
+    struct CodegenResult;
+    class ASTNodeBase;
+
     struct Allocation
     {
         llvm::Value* Alloca = nullptr;
@@ -31,8 +34,7 @@ namespace clear
         std::string MangledName;
     };
 
-    struct CodegenResult;
-    class ASTNodeBase;
+
 
     class SymbolTable
     {
@@ -65,6 +67,7 @@ namespace clear
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
         bool HasTemplate(const std::string& instanceName);
+        bool HasAlloca(const std::string& name);
 
         void RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate);
         void RegisterInstance(const FunctionInstance& instance);
@@ -74,7 +77,7 @@ namespace clear
         std::shared_ptr<SymbolTable> GetPrevious() {return m_Previous;}
 
         FunctionCache& GetFunctionCache() { return m_FunctionCache; }
-        std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }
+        std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }        
 
     private:
         std::unordered_map<std::string, Allocation> m_Variables; 

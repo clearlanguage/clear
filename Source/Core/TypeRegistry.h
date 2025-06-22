@@ -15,6 +15,9 @@ namespace clear
 
         // this is for compound types (structs/classes), that have multiple types
         std::vector<std::pair<std::string, std::shared_ptr<TypeDescriptor>>> ChildTypes;
+
+        // function names that are defined in this type, used for class methods
+        std::vector<std::string> Functions; 
     };
 
     class TypeRegistry 
@@ -43,6 +46,8 @@ namespace clear
         std::string GuessTypeNameFromNumber(const std::string& number);
 
         std::shared_ptr<Type> ResolveStruct(const TypeDescriptor& descriptor);
+        std::shared_ptr<Type> ResolveClass(const TypeDescriptor& descriptor);
+
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;

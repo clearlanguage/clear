@@ -174,6 +174,8 @@ namespace clear
         void SetMember(const std::string& member, std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
 
+        std::shared_ptr<StructType> GetBaseType() { return m_StructType; }
+
         const auto& GetMemberTypes()   const { return m_StructType->GetMemberTypes(); }
         const auto& GetMemberIndices() const {return  m_StructType->GetMemberIndices(); }
         const auto& GetFunctions()     const {return  m_Functions; }

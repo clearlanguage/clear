@@ -130,7 +130,7 @@ namespace clear
 
             size_t paramSize = functionTemplate.IsVariadic ? functionTemplate.Parameters.size() - 1 : functionTemplate.Parameters.size();
             
-            if(params.size() == functionTemplate.Parameters.size())
+            if(params.size() == paramSize)
             {
                 score = 100;
             }  
@@ -266,6 +266,12 @@ namespace clear
 
         for(const auto& param : params)
         {
+            if(param.IsVariadic)
+            {
+                mangledName += "va";
+                break;
+            }
+
             mangledName += param.Type->GetShortHash();
         }
 

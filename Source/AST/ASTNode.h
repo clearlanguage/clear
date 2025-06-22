@@ -151,6 +151,9 @@ namespace clear
 		CodegenResult HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		CodegenResult HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);	
 
+		CodegenResult HandleMember(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
+
+		std::shared_ptr<StructType> GetStruct(std::shared_ptr<Type> type);
 
 	private:
 		BinaryExpressionType m_Expression;
@@ -193,6 +196,8 @@ namespace clear
 		virtual ~ASTVariable() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		const std::string& GetName() const { return m_Name; }
 
 	private:
 		std::string m_Name;
@@ -251,12 +256,21 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 				
+		void SetName(const std::string& name) { m_Name = name; }
+		const std::string& GetName() const { return m_Name; }
+
+		void PushPrefixArgument(llvm::Value* value, std::shared_ptr<Type> type) 
+		{ 
+			m_PrefixArguments.emplace_back(value, type); 
+		}
+
 	private:
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params);
 		void CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate&);
 	
 	private:
 		std::string m_Name;
+		std::vector<std::pair<llvm::Value*, std::shared_ptr<Type>>> m_PrefixArguments; // value, type
 	};
 
 	class ASTFunctionDecleration : public ASTNodeBase
@@ -417,9 +431,16 @@ namespace clear
 	{
 	public:
 		ASTClass() = default;
+		ASTClass(const TypeDescriptor& classTy);
 		virtual ~ASTClass() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		const TypeDescriptor& GetTypeDescriptor() const { return m_ClassTy; }
+		void SetTypeDescriptor(const TypeDescriptor& ty) { m_ClassTy = ty; }
+
+	private:
+		TypeDescriptor m_ClassTy;
 	};
 	
 	class ASTLoopControlFlow : public ASTNodeBase

@@ -37,7 +37,7 @@ namespace clear
     {
     }
 
-    CodegenResult ASTNodeBase::Codegen(CodegenContext &ctx)
+    CodegenResult ASTNodeBase::Codegen(CodegenContext& ctx)
     {
         CodegenResult value;
 
@@ -58,8 +58,9 @@ namespace clear
 
     void ASTNodeBase::Remove(const std::shared_ptr<ASTNodeBase>& child)
     {
-        if(auto pos = std::find(m_Children.begin(), m_Children.end(), child) != m_Children.end())
-            m_Children.erase(m_Children.begin() + pos);
+        auto pos = std::find(m_Children.begin(), m_Children.end(), child);
+    	if(pos != m_Children.end())
+    	    m_Children.erase(pos);
     }
 
     void ASTNodeBase::PropagateSymbolTableToChildren()
@@ -823,7 +824,6 @@ namespace clear
 		auto tbl = GetSymbolTable();
 
 		CodegenResult lhs;
-
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, true);
 			lhs = left->Codegen(ctx);
@@ -838,7 +838,43 @@ namespace clear
 			lhs.CodegenType = temp.Type;
 		}
 
-		CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid member");
+		if(right->GetType() == ASTNodeType::Member)
+		{
+			return HandleMember(lhs, right, ctx);
+		}
+		else if (right->GetType() == ASTNodeType::FunctionCall)
+		{
+			auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
+			CLEAR_VERIFY(funcCall, "invalid function call");
+			
+			auto ptrType = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
+			CLEAR_VERIFY(ptrType, "invalid pointer type for function call");
+
+			while(!ptrType->GetBaseType()->IsCompound()) // automatic derefencing if pointer
+			{
+				lhs.CodegenValue = ctx.Builder.CreateLoad(ptrType->GetBaseType()->Get(), lhs.CodegenValue);
+				ptrType = std::dynamic_pointer_cast<PointerType>(ptrType->GetBaseType());
+			}
+
+			auto classType = std::dynamic_pointer_cast<ClassType>(ptrType->GetBaseType());
+			CLEAR_VERIFY(classType, "invalid class type for function call");
+
+			funcCall->PushPrefixArgument(lhs.CodegenValue, ptrType);
+			funcCall->SetName(std::format("{}.{}", classType->GetHash(), funcCall->GetName()));
+			
+			return funcCall->Codegen(ctx);
+		}
+
+
+		CLEAR_UNREACHABLE("invalid member access, expected member or function call");
+		return {};
+		
+    }
+
+    CodegenResult ASTBinaryExpression::HandleMember(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    {
+        CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid member");
+
 		auto member = std::dynamic_pointer_cast<ASTMember>(right);
 
 		llvm::Value* getElementPtr = lhs.CodegenValue; 
@@ -856,12 +892,7 @@ namespace clear
 			curr = ty->GetBaseType();
 		}
 
-		std::shared_ptr<StructType> structTy;
-			
-		if(auto ty = std::dynamic_pointer_cast<PointerType>(curr))
-			structTy = std::dynamic_pointer_cast<StructType>(ty->GetBaseType());
-		else 
-			structTy = std::dynamic_pointer_cast<StructType>(curr);
+		std::shared_ptr<StructType> structTy = GetStruct(curr);
 		
 		CLEAR_VERIFY(structTy, "not a valid type ", curr->GetHash());
 
@@ -877,6 +908,19 @@ namespace clear
 		return { ctx.Builder.CreateLoad(curr->Get(), getElementPtr), curr };
     }
 
+    std::shared_ptr<StructType> ASTBinaryExpression::GetStruct(std::shared_ptr<Type> curr)
+	{
+		if(auto structTy = std::dynamic_pointer_cast<StructType>(curr))
+			return structTy;
+		
+		if(auto classTy = std::dynamic_pointer_cast<ClassType>(curr))
+			return classTy->GetBaseType();
+
+		if(auto pointerTy = std::dynamic_pointer_cast<PointerType>(curr))
+			return GetStruct(pointerTy->GetBaseType());
+
+		return nullptr;
+	}
 
     ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type)
 		: m_Name(name), m_Type(type)
@@ -1304,6 +1348,11 @@ namespace clear
 
 		for(size_t i = args.size(); i < data.DefaultArguments.size(); i++)
 		{
+			if(!data.DefaultArguments[i]) 
+			{
+				break;
+			}
+
 			CodegenResult argument = data.DefaultArguments[i]->Codegen(ctx);
 
 			args.push_back(argument.CodegenValue);
@@ -1329,6 +1378,12 @@ namespace clear
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
     {
 		ValueRestoreGuard guard(ctx.WantAddress, false);
+		
+		for(auto& [value, type] : m_PrefixArguments)
+		{
+			args.push_back(value);
+			params.push_back({ "", type });
+		}
 
 		for (auto& child : GetChildren())	
 		{
@@ -1352,6 +1407,31 @@ namespace clear
 			{
 				args[i] = TypeCasting::Cast(args[i], param1.Type, param2.Type, ctx.Builder);
 				params[i].Type = param2.Type;
+			}
+
+			if(param1.Type->IsPointer() && param2.Type->IsPointer())
+			{
+				// if both are pointers, we need to make sure that they point to the same type
+				auto ptr1 = std::dynamic_pointer_cast<PointerType>(param1.Type);
+				auto ptr2 = std::dynamic_pointer_cast<PointerType>(param2.Type);
+
+				if(!ptr1->GetBaseType())
+				{
+					params[i].Type = param2.Type;
+					continue;
+				}
+
+				if(!ptr2->GetBaseType()) // opaque pointer (which is not allowed)
+				{
+					CLEAR_UNREACHABLE("opaque pointer in function call, this should not happen");
+					continue;
+				}
+
+				if(ptr1 && ptr2 && ptr1->GetBaseType()->Get() != ptr2->GetBaseType()->Get())
+				{
+					// no need to cast pointers just switch the underlying type
+					params[i].Type = param2.Type;
+				}
 			}
 		}
     }
@@ -1420,7 +1500,7 @@ namespace clear
 		auto& builder  = ctx.Builder;
 		auto& children = GetChildren();
 
-		std::stack<std::shared_ptr<ASTNodeBase>> stack;
+		std::vector<std::shared_ptr<ASTNodeBase>> stack;
 
 		auto IsOperand = [](const std::shared_ptr<ASTNodeBase>& child) 
 		{
@@ -1434,7 +1514,7 @@ namespace clear
 		{
 			if (IsOperand(child))
 			{
-				stack.push(child);
+				stack.push_back(child);
 				continue;
 			}
 
@@ -1442,29 +1522,29 @@ namespace clear
 			{
 				unaryExpression->GetChildren().clear();
 
-				unaryExpression->Push(stack.top());
-				stack.pop();
+				unaryExpression->Push(stack.back());
+				stack.pop_back();
 
-				stack.push(unaryExpression);
+				stack.push_back(unaryExpression);
 				continue;
 			}
 
 			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
 			binExp->GetChildren().clear();
 
-			binExp->Push(stack.top());
-			stack.pop();
+			binExp->Push(stack.back());
+			stack.pop_back();
 
-			binExp->Push(stack.top());
-			stack.pop();
+			binExp->Push(stack.back());
+			stack.pop_back();
 
-			stack.push(binExp);
+			stack.push_back(binExp);
 		}
 
 		if(stack.size() > 0)
 		{
 			CLEAR_VERIFY(stack.size() == 1, "wot");
-			return stack.top()->Codegen(ctx);
+			return stack.back()->Codegen(ctx);
 		}
 
 
@@ -1550,7 +1630,7 @@ namespace clear
 		}
     }
 
-    void ASTInitializerList::DoInitForStruct(CodegenContext &ctx, CodegenResult storage)
+    void ASTInitializerList::DoInitForStruct(CodegenContext& ctx, CodegenResult storage)
     {
 		auto& children = GetChildren();
 
@@ -2228,5 +2308,16 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
         return children[0]->Codegen(ctx);
+    }
+    
+	ASTClass::ASTClass(const TypeDescriptor& classTy)
+		: m_ClassTy(classTy)
+    {
+    }
+
+    CodegenResult ASTClass::Codegen(CodegenContext& ctx)
+    {
+		ctx.Registry.ResolveType(m_ClassTy);		
+        return {};
     }
 }
