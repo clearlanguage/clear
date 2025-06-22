@@ -2183,12 +2183,14 @@ namespace clear
 			ApplyFun(BinaryExpressionType::Sub);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
-    	else if(m_Type == UnaryExpressionType::Unpack) {
+    	else if(m_Type == UnaryExpressionType::Unpack)
+    	{
     		auto ptrTy = std::dynamic_pointer_cast<PointerType>(ty);
     		auto arrTy = std::dynamic_pointer_cast<ArrayType>(ptrTy->GetBaseType());
     		CLEAR_VERIFY(arrTy,"Unpack must have array");
 			returnValue.IsTuple = true;
-    		for (int i = 0; i < arrTy->GetArraySize(); i++) {
+    		for (int i = 0; i < arrTy->GetArraySize(); i++)
+    		{
     			auto pointer =ctx.Builder.CreateGEP(arrTy->Get(),result.CodegenValue,{ctx.Builder.getInt64(0),ctx.Builder.getInt64(i)});
     			auto loadedValue = ctx.Builder.CreateLoad(arrTy->GetBaseType()->Get(), pointer);
     			returnValue.TupleValues.push_back(loadedValue);
