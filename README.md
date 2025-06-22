@@ -1,5 +1,3 @@
-Thanks — that’s perfect! Based on everything you've shared, here’s a solid first draft of the `README.md` for your language **Clear**:
-
 ---
 
 # Clear Programming Language
