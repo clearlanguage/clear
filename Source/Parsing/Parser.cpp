@@ -810,7 +810,6 @@ namespace clear
         }
         
         std::string name = Consume().Data;
-
         return std::make_shared<ASTVariable>(name);
     }
 
@@ -839,14 +838,14 @@ namespace clear
         return variableReference;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage)
+    std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
         Expect(TokenType::StartArray);
 
         std::vector<std::vector<size_t>> indices;
         std::vector<size_t> currentIndex = { 0 };
 
-        std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>();
+        std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>(initialize);
         initializer->Push(storage);
 
         while(!Match(TokenType::EndLine))

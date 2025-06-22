@@ -1019,7 +1019,7 @@ namespace clear
 			ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
 		}
 
-		return {alloca.Alloca, ctx.Registry.GetPointerTo(alloca.Type)};
+		return {alloca.Alloca, ctx.Registry.GetPointerTo(result.CodegenType)};
 	}
 
 	ASTVariable::ASTVariable(const std::string& name)
@@ -1036,7 +1036,6 @@ namespace clear
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		Allocation alloca = registry->GetAlloca(m_Name);
 
-		
 		if(alloca.Type->IsVariadic())  // special case
 		{
 			return { nullptr, alloca.Type }; 
@@ -1599,8 +1598,8 @@ namespace clear
 		CLEAR_VERIFY(storageType, "invalid storage type");
 
 		CLEAR_VERIFY(children.size() - 1 == m_Indices.size(), "sizes don't match!");
-
 		llvm::Type* intTy = llvm::Type::getInt64Ty(context);
+
 
 		if(auto baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType()))
 		{
@@ -1613,6 +1612,35 @@ namespace clear
 		else if (auto baseType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType()))
 		{
 			DoInitForStruct(ctx, storage);
+		}
+		else if (storageType->GetBaseType()->IsConst())
+		{
+			CLEAR_VERIFY(m_FirstTimeInitialized, "cannot reinitialize constant type");
+			auto constType = std::dynamic_pointer_cast<ConstantType>(storageType->GetBaseType());
+			CLEAR_VERIFY(constType, "invalid constant type");
+
+			std::shared_ptr<Type> innerType = GetElementType(constType->GetBaseType());
+			
+			if(auto baseType = std::dynamic_pointer_cast<ArrayType>(innerType))
+			{
+				DoInitForArray(ctx, storage);
+			}
+			else if (auto baseType = std::dynamic_pointer_cast<StructType>(innerType))
+			{
+				DoInitForStruct(ctx, storage);
+			}
+			else if (auto baseType = std::dynamic_pointer_cast<ClassType>(innerType))
+			{
+				DoInitForStruct(ctx, storage);
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("invalid constant type for initializer list");
+			}
+		}
+		else 
+		{
+			CLEAR_UNREACHABLE("invalid initializer list type ", storageType->GetBaseType()->GetHash());
 		}
 		
 		return {};
@@ -1671,10 +1699,22 @@ namespace clear
 
 		if(!baseType)
 		{
-			auto classType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType());
-			if(classType)
+			if(auto classType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType()))
 			{
 				baseType = classType->GetBaseType();
+			}
+
+			if(auto constType = std::dynamic_pointer_cast<ConstantType>(storageType->GetBaseType()))
+			{
+				if(constType->IsClass())
+				{
+					auto classType = std::dynamic_pointer_cast<ClassType>(constType->GetBaseType());
+					baseType = std::dynamic_pointer_cast<StructType>(classType->GetBaseType());
+				}
+				else 
+				{
+					baseType = std::dynamic_pointer_cast<StructType>(constType->GetBaseType());
+				}
 			}
 		}
 

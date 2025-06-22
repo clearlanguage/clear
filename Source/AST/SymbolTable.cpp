@@ -53,6 +53,11 @@ namespace clear
 
     Allocation SymbolTable::CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder)
     {
+        if(name == "test")
+        {
+            
+        }
+
         llvm::BasicBlock* insertBlock = builder.GetInsertBlock();
         
         CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");

@@ -299,7 +299,7 @@ namespace clear
 	class ASTInitializerList : public ASTNodeBase
 	{
 	public:
-		ASTInitializerList() = default;
+		ASTInitializerList(bool firstTime = false) : m_FirstTimeInitialized(firstTime) {};
 		virtual ~ASTInitializerList() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::InitializerList; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -322,6 +322,7 @@ namespace clear
 
 	private:
 		std::vector<std::vector<size_t>> m_Indices;
+		bool m_FirstTimeInitialized; 
 	};
 
 	class ASTImport : public ASTNodeBase
