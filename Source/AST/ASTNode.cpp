@@ -1308,7 +1308,7 @@ namespace clear
 		s_InsertPoints.pop();
     }
 
-    ASTFunctionCall::ASTFunctionCall(const std::string &name)
+    ASTFunctionCall::ASTFunctionCall(const std::string& name)
 		: m_Name(name)
     {
     }
@@ -1320,6 +1320,15 @@ namespace clear
 		auto& context  = ctx.Context;
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
+
+		Allocation temporary;
+
+		if(auto ty = ctx.Registry.GetType(m_Name)) // if the name is a type, we construct a temporary to that type.
+		{
+			temporary = symbolTable->RequestTemporary(ty, builder);
+			m_Name = std::format("{}.{}", m_Name, "__construct__");
+			m_PrefixArguments.push_back({ temporary.Alloca, ctx.Registry.GetPointerTo(ty) });
+		}
 
 		uint32_t k = 0;
 
@@ -1366,11 +1375,24 @@ namespace clear
 		if(symbolTable->HasDecleration(m_Name))
 		{
 			FunctionInstance& instance = symbolTable->GetDecleration(m_Name);
+
+			if(temporary.Alloca)
+			{
+				ctx.Builder.CreateCall(instance.Function, args);
+				return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type };
+			}
+
 			return { ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType };
 		}
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
 		FunctionInstance& instance = symbolTable->GetPrevious()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+
+		if(temporary.Alloca)
+		{
+			ctx.Builder.CreateCall(instance.Function, args);
+			return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type };
+		}
 
 		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
 	}
