@@ -25,7 +25,7 @@ namespace clear
 		m_StateMap[LexerState::ArrowState] = [this](){ArrowState();};
 		m_StateMap[LexerState::FunctionTypeState] = [this]() {FunctionTypeState();};
 		m_StateMap[LexerState::StructName] = [this]() { StructNameState(); };
-		m_StateMap[LexerState::FunctionParamaters] = [this]()  {FunctionArgumentState(); };
+		m_StateMap[LexerState::FunctionArguments] = [this]()  {FunctionArgumentState(); };
 		m_StateMap[LexerState::Comment] = [this]() { CommentState(); };
 		m_StateMap[LexerState::MultilineComment] = [this]() { MultiLineCommentState(); };
 		m_StateMap[LexerState::IndexOperator] = [this]() { IndexOperatorState(); };
@@ -607,7 +607,7 @@ namespace clear
 				}
 
 				PushToken(TokenType::FunctionCall, m_CurrentString);
-				m_CurrentState = LexerState::FunctionParamaters;
+				m_CurrentState = LexerState::FunctionArguments;
 				Backtrack();
 
 			}else {
