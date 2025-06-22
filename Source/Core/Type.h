@@ -215,5 +215,24 @@ namespace clear
     private:
         std::shared_ptr<Type> m_Base;
     };
+
+    class SymbolTable;
+
+    class TraitType : public Type
+    {
+    public:
+        TraitType(const std::vector<std::string>& functions, const std::string& name);
+        virtual ~TraitType() = default;
+
+        virtual llvm::Type* Get() const override { return nullptr; }
+        virtual std::string GetHash() const override { return m_Name; };
+        virtual std::string GetShortHash() const override { return m_Name; };
+
+        bool DoesClassImplementTrait(const std::string& className, std::shared_ptr<SymbolTable> tbl);
+
+    private:
+        std::vector<std::string> m_Functions;
+        std::string m_Name;
+    };
 }
 

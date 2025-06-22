@@ -2,6 +2,7 @@
 
 #include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
+#include "AST/SymbolTable.h"
 
 #include <functional>
 
@@ -212,6 +213,24 @@ namespace clear
         m_StructType->SetMember(member, type);
     }
 
+    TraitType::TraitType(const std::vector<std::string>& functions, const std::string& name)
+        : m_Functions(functions), m_Name(name)
+    {
+    }
 
-}   
+    bool TraitType::DoesClassImplementTrait(const std::string& className, std::shared_ptr<SymbolTable> tbl)
+    {  
+        for(auto& function : m_Functions)
+        {
+            size_t pos = function.find_first_of('$');
+            std::string arguments = function.substr(pos);
+            std::string mangledName = std::format("_CLR{}.{}${}", className, FunctionCache::DeMangleName(function), arguments);
+
+            if(!tbl->HasTemplateMangled(mangledName))
+                return false;
+        }
+
+        return true;
+    }
+}
  

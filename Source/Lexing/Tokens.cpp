@@ -89,11 +89,12 @@ namespace clear
         {"void",{.NextState = LexerState::Default, .TokenToPush = TokenType::Void}},
         {"for", {.NextState = LexerState::Default, .TokenToPush = TokenType::For}},
         {"in",{.NextState = LexerState::Default, .TokenToPush = TokenType::In}},
-        {"try",{.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
-        {"catch", {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}},
+        {"try", {.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
+        {"catch",   {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}},
         {"inherits",{.NextState = LexerState::Default, .TokenToPush = TokenType::Inherits}},
-            {"not",{.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
-        {"and",{.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
+        {"trait",   {.NextState = LexerState::Default, .TokenToPush = TokenType::Trait}},
+        {"not",     {.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
+        {"and",     {.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
         {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}, 
         {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}}
         
@@ -234,7 +235,7 @@ namespace clear
             case TokenType::And: return "And";
             case TokenType::Or: return "Or";
             case TokenType::Const: return "Const";
-
+            case TokenType::Trait: return "Trait";
             default:
                 break;
         }

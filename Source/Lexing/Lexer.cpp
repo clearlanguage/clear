@@ -1270,7 +1270,7 @@ namespace clear
 			}
 		}
 		m_CurrentString.clear();
-		VerifyCondition(!std::isdigit(current), 11,m_CurrentTokenIndex-1);
+		VerifyCondition(!std::isdigit(current), 11, m_CurrentTokenIndex-1);
 		VerifyCondition(current != '*',26);
 		if (m_NoVariableNames)
 		{

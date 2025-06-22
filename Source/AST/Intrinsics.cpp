@@ -23,11 +23,11 @@ namespace clear
             return ctx.Builder.getInt64(ctx.Module.getDataLayout().getTypeSizeInBits(value->getType()) / 8);
         }
 
-        if (name == "len") {
+        if (name == "len") 
+        {
             CLEAR_VERIFY(type->IsArray(),"Not a valid array");
             auto x = std::dynamic_pointer_cast<ArrayType>(type);
             return ctx.Builder.getInt64(x->GetArraySize());
-
         }
 
         CLEAR_VERIFY(value && type, "value or type was invalid");

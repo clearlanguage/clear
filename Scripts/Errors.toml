@@ -5,3 +5,8 @@ Advice = ""
 [DivisionByZero]  
 Message = "Cannot divide by 0"
 Advice  = "Check denominator"
+
+[InvalidOperator]
+Message = "whatever"
+Advice = "get Good"
+

@@ -81,8 +81,8 @@ namespace clear {
                 {"error 49","",""}, //49
                 {"Cannot declare a variable with a restriction as type"}, // 50
                 {"Error 51 cannot use dot op on this"}, // 51
-            {"Error 52 did not expect trailing space in generic start"}, // 51
-            {"Expected indentation missing :"},
+            {"Error 52 did not expect trailing space in generic start"}, // 50
+            {"Expected indentation missing :"}, // 52
             {"Place holder error too lazy to write this"},
 {"The requested module '{}' could not be found in the import paths.","Ensure the module name is correct and that it exists in the import search directories.","Import not found"}, //40
 {"The import alias '{}' is already in use and cannot be reused for another module.","Use a unique alias for each imported module to avoid naming conflicts.","Import alias conflict"}, //41

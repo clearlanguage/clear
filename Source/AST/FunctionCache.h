@@ -12,6 +12,7 @@ namespace clear
 		std::string Name;
 		std::shared_ptr<Type> Type;
         bool IsVariadic = false;
+        bool IsTrait = false;
 	};
 
     struct UnresolvedParameter
@@ -29,6 +30,7 @@ namespace clear
         std::vector<Parameter> Parameters;
         std::shared_ptr<ASTNodeBase> Root;
         std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
+        std::string MangledName;
         bool IsVariadic = false;
         bool IsExternal = false;
     };
@@ -71,6 +73,7 @@ namespace clear
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
         bool HasTemplate(const std::string& instanceName);
+        bool HasTemplateMangled(const std::string& name);
 
         void RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate);
         void RegisterInstance(const FunctionInstance& instance);
@@ -79,6 +82,10 @@ namespace clear
         static std::string GetMangledName(const std::string& templateName, 
                                           const std::vector<Parameter>& params, 
                                           std::shared_ptr<Type> returnType);
+
+        static std::string DeMangleName(const std::string& name);
+
+        const auto& GetTemplates(const std::string& name);
 
     private:
         std::unordered_map<std::string, std::vector<FunctionTemplate>> m_Templates;

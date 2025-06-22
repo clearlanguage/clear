@@ -11,7 +11,7 @@ namespace clear
 {
     void FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
     {
-        m_Templates[templateName].push_back({returnType, params, root, defaultArgs, isVariadic});
+        m_Templates[templateName].push_back({returnType, params, root, defaultArgs, GetMangledName(templateName, params, returnType), isVariadic});
     }
 
     FunctionInstance& FunctionCache::InstantiateOrReturn(const std::string& templateName, std::vector<Parameter> params, std::shared_ptr<Type> returnType, CodegenContext& context)
@@ -141,6 +141,12 @@ namespace clear
                 auto& param1 = params[i];
                 auto& param2 = i < functionTemplate.Parameters.size() ? functionTemplate.Parameters[i] : functionTemplate.Parameters.back();
 
+
+                if(param2.IsTrait)
+                {
+
+                }
+
                 if(!param2.Type)  // can be any type 
                 {
                     score += 75;
@@ -221,6 +227,22 @@ namespace clear
         return m_Templates.contains(instanceName);
     }
 
+    bool FunctionCache::HasTemplateMangled(const std::string& name)
+    {
+        std::string demangledName = DeMangleName(name);
+
+        if(!m_Templates.contains(name))
+            return false;
+
+        for(const auto& templateFn : m_Templates.at(name))
+        {
+            if(templateFn.MangledName == name)
+                return true;
+        }
+
+        return false;
+    }
+
     void FunctionCache::RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate)
     {
         m_Templates[templateName].push_back(functionTemplate);
@@ -262,7 +284,7 @@ namespace clear
         if(templateName == "main") return templateName;
 
         std::string mangledName = "_CLR";
-        mangledName += templateName;
+        mangledName += templateName + "$";
 
         for(const auto& param : params)
         {
@@ -276,8 +298,20 @@ namespace clear
         }
 
         if(returnType)
-            mangledName += "rt" + returnType->GetShortHash();
+            mangledName += "%" + returnType->GetShortHash();
 
         return mangledName;
+    }
+
+    std::string FunctionCache::DeMangleName(const std::string& name)
+    {
+        CLEAR_VERIFY(name.substr(0, 4) == "_CLR", "invalid mangled name");
+        size_t nameEnd = name.find_first_of('$');
+        return name.substr(0, nameEnd);
+    }
+
+    const auto& FunctionCache::GetTemplates(const std::string& name)
+    {
+        return m_Templates[name];
     }
 }

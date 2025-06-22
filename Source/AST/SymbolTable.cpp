@@ -262,6 +262,23 @@ namespace clear
         return false;
     }
 
+    bool SymbolTable::HasTemplateMangled(const std::string& templateName)
+    {
+        if(m_FunctionCache.HasTemplateMangled(templateName)) return true;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {
+            if(ptr->m_FunctionCache.HasTemplateMangled(templateName)) 
+                return true;
+                
+            ptr = ptr->m_Previous;
+        }
+
+        return false;
+    }
+
     bool SymbolTable::HasAlloca(const std::string& name)
     {
         if(m_Variables.contains(name)) return true;

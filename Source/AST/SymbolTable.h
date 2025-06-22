@@ -67,6 +67,7 @@ namespace clear
         bool HasInstance(const std::string& instanceName);
         bool HasDecleration(const std::string& instanceName);
         bool HasTemplate(const std::string& instanceName);
+        bool HasTemplateMangled(const std::string& name);
         bool HasAlloca(const std::string& name);
 
         void RegisterTemplate(const std::string& templateName, const FunctionTemplate& functionTemplate);
