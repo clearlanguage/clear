@@ -1425,9 +1425,18 @@ namespace clear
 		for (auto& child : GetChildren())	
 		{
 			CodegenResult gen = child->Codegen(ctx);
+			if (gen.IsTuple) {
+				for (auto jj : gen.TupleValues) {
+					args.push_back(jj);
+				}
+				for (auto jt : gen.TupleTypes) {
+					params.push_back({"", jt });
+				}
 
-			args.push_back(gen.CodegenValue);
-			params.push_back({"", gen.CodegenType });
+			}else {
+				args.push_back(gen.CodegenValue);
+				params.push_back({"", gen.CodegenType });
+			}
 		}
     }
 
@@ -2174,7 +2183,22 @@ namespace clear
 			ApplyFun(BinaryExpressionType::Sub);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
-		else 
+    	else if(m_Type == UnaryExpressionType::Unpack)
+    	{
+    		auto ptrTy = std::dynamic_pointer_cast<PointerType>(ty);
+    		auto arrTy = std::dynamic_pointer_cast<ArrayType>(ptrTy->GetBaseType());
+    		CLEAR_VERIFY(arrTy,"Unpack must have array");
+			returnValue.IsTuple = true;
+    		for (int i = 0; i < arrTy->GetArraySize(); i++)
+    		{
+    			auto pointer =ctx.Builder.CreateGEP(arrTy->Get(),result.CodegenValue,{ctx.Builder.getInt64(0),ctx.Builder.getInt64(i)});
+    			auto loadedValue = ctx.Builder.CreateLoad(arrTy->GetBaseType()->Get(), pointer);
+    			returnValue.TupleValues.push_back(loadedValue);
+    			returnValue.TupleTypes.push_back(arrTy->GetBaseType());
+    		}
+    		return returnValue;
+    	}
+		else
 		{
 			CLEAR_UNREACHABLE("unimplemented");
 		}

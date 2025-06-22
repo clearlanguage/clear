@@ -29,6 +29,9 @@ namespace clear
 	{
 		llvm::Value* CodegenValue = nullptr;
 		std::shared_ptr<Type> CodegenType;
+		std::vector<std::shared_ptr<Type>> TupleTypes;
+		std::vector<llvm::Value*> TupleValues;
+		bool IsTuple = false;
 	};
 
 	class ASTNodeBase;

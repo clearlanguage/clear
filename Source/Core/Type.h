@@ -27,7 +27,7 @@ namespace clear
 	{
 		None = 0, BitwiseNot, Negation, 
         Dereference, Reference, Cast, PostIncrement, 
-        PostDecrement, PreIncrement, PreDecrement, Not
+        PostDecrement, PreIncrement, PreDecrement, Not,Unpack
 	};
 
     enum class TypeFlags
