@@ -42,9 +42,8 @@ namespace clear
             {
                 useTemplateParams = false;
                 break;
-            };
-
-            if(it2->Type->IsTrait())
+            }
+            else if(it2->Type->IsTrait())
             {
                 types.push_back(*it1);
                 useTemplateParams = false;
@@ -59,9 +58,9 @@ namespace clear
             it2++;
         }
 
-        while(it1 != params.end()) // we have variadic args
+        while(it1 != params.end())
         {              
-            if(!it2->Type)
+            if(!it2->Type || it2->Type->IsTrait())
                 types.push_back({ "", it1->Type } );
             else 
                 types.push_back({ "", it2->Type } );
@@ -194,7 +193,17 @@ namespace clear
                 }
                 else if (TypeCasting::CanBeCasted(param1.Type, param2.Type))
                 {
-                    score += 25;
+                    // scoring system to decide best candidate to cast to
+                    size_t min = std::min(param1.Type->GetSize(), param2.Type->GetSize());
+                    size_t max = std::max(param1.Type->GetSize(), param2.Type->GetSize());
+
+                    float similarity = (float)min / max;
+                    float contribution = 10.0f * similarity + 25.0f * (param1.Type->GetFlags() == param2.Type->GetFlags());
+
+                    if (contribution < 5.0f)
+                        contribution = 5.0f;
+                    
+                    score += (size_t)contribution;
                 }
                 else 
                 {
