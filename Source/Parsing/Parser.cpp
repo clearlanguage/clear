@@ -1186,6 +1186,8 @@ namespace clear
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>();
         Root()->Push(classNode);
 
+        m_RootStack.push_back(classNode);
+
         while(!Match(TokenType::EndIndentation))
         {
             if(MatchAny(m_VariableType))
@@ -1199,12 +1201,6 @@ namespace clear
 
             if(Match(TokenType::Function))
             {
-                SavePosition();
-
-                SkipUntil(TokenType::FunctionName);
-                std::string name = m_Tokens[m_Position].Data;
-                RestorePosition();
-
                 size_t rootLevel = m_RootStack.size();
 
                 ParseFunctionDefinition(className);
@@ -1215,7 +1211,6 @@ namespace clear
                     ParseStatement();
                 }
 
-                classTy.Functions.push_back(className + "." + name);
                 continue;
             }
 
@@ -1223,6 +1218,8 @@ namespace clear
         }
 
         classNode->SetTypeDescriptor(classTy);
+        m_RootStack.pop_back();
+
         Consume();
     }
 

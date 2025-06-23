@@ -2462,7 +2462,33 @@ namespace clear
 
     CodegenResult ASTClass::Codegen(CodegenContext& ctx)
     {
-		ctx.Registry.ResolveType(m_ClassTy);		
+		std::shared_ptr<ClassType> type = std::dynamic_pointer_cast<ClassType>(ctx.Registry.ResolveType(m_ClassTy));
+
+		for(const auto& definition : GetChildren())
+		{
+			CLEAR_VERIFY(definition->GetType() == ASTNodeType::FunctionDefinition, "not a valid node");
+
+			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
+		
+			std::string functionName = functionDefinition->GetName();
+
+			auto& unresolvedParams = functionDefinition->GetUnresolvedParams();
+			const auto& unresolvedReturnType = functionDefinition->GetUnresolvedReturnType();
+
+			std::vector<Parameter> params;
+			std::transform(unresolvedParams.begin(), unresolvedParams.end(), std::back_inserter(params), [&](auto& a)
+			{
+				return Parameter{ a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic };
+			});
+
+			auto returnType = ctx.Registry.ResolveType(unresolvedReturnType);
+
+			std::string mangledName = FunctionCache::GetMangledName(functionName, params, returnType);
+			type->PushFunction(mangledName);
+
+			functionDefinition->Codegen(ctx);
+		}
+
         return {};
     }
 

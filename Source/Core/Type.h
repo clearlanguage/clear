@@ -179,6 +179,8 @@ namespace clear
 
         std::shared_ptr<StructType> GetBaseType() { return m_StructType; }
 
+        void PushFunction(const std::string& name);
+
         const auto& GetMemberTypes()   const { return m_StructType->GetMemberTypes(); }
         const auto& GetMemberIndices() const {return  m_StructType->GetMemberIndices(); }
         const auto& GetFunctions()     const {return  m_Functions; }
@@ -233,7 +235,7 @@ namespace clear
         virtual std::string GetHash() const override { return m_Name; };
         virtual std::string GetShortHash() const override { return m_Name; };
 
-        bool DoesClassImplementTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<SymbolTable> tbl);
+        bool DoesClassImplementTrait(std::shared_ptr<ClassType> classTy);
 
     private:
         std::vector<std::string> m_Functions;

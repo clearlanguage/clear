@@ -184,6 +184,11 @@ namespace clear
         return nullptr;
     }
 
+    void ClassType::PushFunction(const std::string& name)
+    {
+        m_Functions.push_back(name);
+    }
+
     VariadicArgumentsHolder::VariadicArgumentsHolder()
     {
         Toggle(TypeFlags::Variadic);
@@ -224,7 +229,7 @@ namespace clear
     {
     }
 
-    bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<SymbolTable> tbl)
+    bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy)
     {  
         const auto& members = classTy->GetMemberTypes();
 
@@ -238,7 +243,7 @@ namespace clear
         }
 
         //TODO: make ClassType store functions so we can search through that instead.
-        
+
         std::string className = classTy->GetHash();
         
         for(auto& function : m_Functions)
@@ -247,8 +252,8 @@ namespace clear
             std::string arguments = function.substr(pos);
             std::string mangledName = std::format("_CLR{}.{}${}", className, FunctionCache::DeMangleName(function), arguments);
 
-            if(!tbl->HasTemplateMangled(mangledName))
-                return false;
+            //if(!tbl->HasTemplateMangled(mangledName))
+            //    return false;
         }
 
         return true;

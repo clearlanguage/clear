@@ -142,16 +142,24 @@ namespace clear
                 auto& param2 = i < functionTemplate.Parameters.size() ? functionTemplate.Parameters[i] : functionTemplate.Parameters.back();
 
 
-                if(param2.IsTrait)
-                {
-
-                }
-
                 if(!param2.Type)  // can be any type 
                 {
                     score += 75;
                     continue;
                 };
+
+                if(param2.Type->IsTrait())
+                {
+                    CLEAR_VERIFY(param1.Type->IsClass(), "parameter must be a class!");
+                    auto classTy = std::dynamic_pointer_cast<ClassType>(param1.Type);
+                    auto traitTy = std::dynamic_pointer_cast<TraitType>(param2.Type);
+
+                    if(!traitTy->DoesClassImplementTrait(classTy))
+                        return size_t(0);
+
+                    score += 100;
+                    continue;
+                }
 
                 if(param1.Type == param2.Type)
                 {

@@ -241,7 +241,11 @@ namespace clear
 
 		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
+		auto& GetUnresolvedParams() { return m_Parameters; }
+		const auto& GetUnresolvedReturnType() const { return m_ReturnType; }
+
 		const auto& GetParameters() const { return m_ResolvedParams; }
+		const auto& GetReturnType() const { return m_ResolvedReturnType; }
 
 	private:
 		std::vector<UnresolvedParameter> m_Parameters;
