@@ -867,10 +867,15 @@ namespace clear
 			auto classType = std::dynamic_pointer_cast<ClassType>(ptrType->GetBaseType());
 			CLEAR_VERIFY(classType, "invalid class type for function call");
 
+			std::string name = funcCall->GetName();
+
 			funcCall->PushPrefixArgument(lhs.CodegenValue, ptrType);
-			funcCall->SetName(std::format("{}.{}", classType->GetHash(), funcCall->GetName()));
+			funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
 			
-			return funcCall->Codegen(ctx);
+			CodegenResult result = funcCall->Codegen(ctx);
+			
+			funcCall->SetName(name);
+			return result;
 		}
 
 
@@ -1392,6 +1397,8 @@ namespace clear
 		
 		CastArgs(ctx, args, params, data);
 
+		m_PrefixArguments.clear();
+
 		// again, we need a check to make sure that return type is not a generic in the future, for now this is ok.
 
 		if(symbolTable->HasDecleration(m_Name))
@@ -1409,6 +1416,7 @@ namespace clear
 
 		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
 		FunctionInstance& instance = symbolTable->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+
 
 		if(temporary.Alloca)
 		{
@@ -1705,27 +1713,58 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-		for(size_t i = 0; i < m_Indices.size(); i++)
+		auto Store = [&](llvm::Value* value, std::shared_ptr<Type> type, size_t i)
 		{
 			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
-													 		 storage.CodegenValue, ctx.Builder.getInt64(0), 
-													 		 "gep");
+													 		     storage.CodegenValue, ctx.Builder.getInt64(0), 
+													 		     "gep");
 
 			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx);
 			elemPtr = elemPtr1;
 			
-			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
-
-			if(valueToStore.CodegenType != innerType)
+			if(type->Get() != innerType->Get())
 			{
-				valueToStore.CodegenValue = TypeCasting::Cast(
-							valueToStore.CodegenValue,
-							valueToStore.CodegenType, 
-							innerType,
-							ctx.Builder);
+				value = TypeCasting::Cast(value, type, innerType, ctx.Builder);
 			}
 
-			ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
+			ctx.Builder.CreateStore(value, elemPtr);
+		};
+
+		for(size_t i = 0; i < m_Indices.size(); i++)
+		{
+			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
+
+			if(valueToStore.IsTuple)
+			{	
+				size_t j = 0;
+				for(; j < valueToStore.TupleValues.size(); j++)
+				{
+					Store(valueToStore.TupleValues[j], valueToStore.TupleTypes[j], j + i);
+				}
+
+				i += j;
+
+				continue;
+			}
+
+			//llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
+			//										 		     storage.CodegenValue, ctx.Builder.getInt64(0), 
+			//										 		     "gep");
+//
+			//auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx);
+			//elemPtr = elemPtr1;
+			//
+			//if(valueToStore.CodegenType != innerType)
+			//{
+			//	valueToStore.CodegenValue = TypeCasting::Cast(
+			//				valueToStore.CodegenValue,
+			//				valueToStore.CodegenType, 
+			//				innerType,
+			//				ctx.Builder);
+			//}
+//
+			//ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
+			Store(valueToStore.CodegenValue, valueToStore.CodegenType, i);
 		}
     }
 
