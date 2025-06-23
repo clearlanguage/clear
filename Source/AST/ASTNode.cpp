@@ -2094,7 +2094,7 @@ namespace clear
 			return {};
 		}
 		
-		if(codegen.CodegenType != ctx.ReturnType)
+		if(codegen.CodegenType->Get() != ctx.ReturnType->Get())
 		{
 			codegen.CodegenValue = TypeCasting::Cast(codegen.CodegenValue, codegen.CodegenType, ctx.ReturnType, ctx.Builder);
 		}
