@@ -92,7 +92,7 @@ namespace clear
         {"try", {.NextState = LexerState::Default, .TokenToPush = TokenType::Try}},
         {"catch",   {.NextState = LexerState::Default, .TokenToPush = TokenType::Catch}},
         {"inherits",{.NextState = LexerState::Default, .TokenToPush = TokenType::Inherits}},
-        {"trait",   {.NextState = LexerState::Default, .TokenToPush = TokenType::Trait}},
+        {"trait",   {.NextState = LexerState::Trait, .TokenToPush = TokenType::Trait}},
         {"not",     {.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
         {"and",     {.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
         {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}, 
@@ -236,6 +236,7 @@ namespace clear
             case TokenType::Or: return "Or";
             case TokenType::Const: return "Const";
             case TokenType::Trait: return "Trait";
+            case TokenType::TraitName: return "TraitName";
             default:
                 break;
         }
