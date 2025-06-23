@@ -53,6 +53,7 @@ namespace clear
         void ParseClass();
         void ParseLoopControls();
         void ParseTrait();
+        void ParseTraitFunctionDefinition();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();

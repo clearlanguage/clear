@@ -347,11 +347,11 @@ namespace clear
 
         m_RootStack.push_back(trait);
 
-        while (Match(TokenType::Declaration) || MatchAny(m_VariableType))
+        while (Match(TokenType::Function) || MatchAny(m_VariableType))
         {
-            if(Match(TokenType::Declaration)) // parse function decleration
+            if(Match(TokenType::Function)) // parse function decleration
             {
-                ParseFunctionDeclaration();
+                ParseTraitFunctionDefinition();
             }
             else if (MatchAny(m_VariableType))
             {
@@ -740,6 +740,70 @@ namespace clear
 
         Consume();
     }
+
+    void Parser::ParseTraitFunctionDefinition() {
+        Expect(TokenType::Function);
+
+        Consume();
+        Expect(TokenType::FunctionName);
+        std::string functionName = Consume().Data;
+
+        Expect(TokenType::StartFunctionParameters);
+
+        Consume();
+
+        std::vector<UnresolvedParameter> params;
+
+        while(!MatchAny(m_Terminators))
+        {
+            UnresolvedParameter param;
+
+            if(Match(TokenType::Ellipsis))
+            {
+                Consume();
+                Expect(TokenType::EndFunctionParameters);
+                params.push_back(param);
+
+                break;
+            }
+
+            param.Type = { ParseVariableTypeTokens() };
+
+            if(MatchAny(m_VariableName))
+                Consume();
+
+            if(!Match(TokenType::EndFunctionParameters))
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+
+            params.push_back(param);
+        }
+
+        Expect(TokenType::EndFunctionParameters);
+
+        Consume();
+
+        TypeDescriptor returnType;
+
+        if(Match(TokenType::RightArrow))
+        {
+            Consume();
+
+            Expect(TokenType::FunctionType);
+
+            Consume();
+
+            returnType = { ParseVariableTypeTokens() };
+        }
+
+        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
+
+
+
+    }
+
 
     void Parser::ParseFunctionDeclaration()
     {
