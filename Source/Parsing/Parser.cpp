@@ -337,12 +337,12 @@ namespace clear
 
         std::string traitName = Consume().Data;
 
-        Expect(TokenType::StartIndentation);
-        Consume();
-        
         Expect(TokenType::EndLine);
         Consume();
 
+        Expect(TokenType::StartIndentation);
+        Consume();
+    
         std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
 
         m_RootStack.push_back(trait);

@@ -166,7 +166,7 @@ namespace clear
     class ClassType : public Type
     {
     public:
-        ClassType(std::shared_ptr<StructType> structTy, const std::vector<std::string>& functions);
+        ClassType(std::shared_ptr<StructType> structTy);
 
         virtual llvm::Type* Get() const override { return m_StructType->Get(); }
         virtual std::string GetHash() const override { return m_StructType->GetHash(); };
@@ -187,7 +187,7 @@ namespace clear
 
     private:
         std::shared_ptr<StructType> m_StructType;
-        std::vector<std::string> m_Functions;
+        std::set<std::string> m_Functions;
     };
     
     class VariadicArgumentsHolder : public Type 

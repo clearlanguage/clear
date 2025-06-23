@@ -44,7 +44,16 @@ namespace clear
                 break;
             };
 
-            types.push_back(*it2);
+            if(it2->Type->IsTrait())
+            {
+                types.push_back(*it1);
+                useTemplateParams = false;
+            }
+            else 
+            {
+                types.push_back(*it2); 
+            }
+
 
             it1++;
             it2++;
@@ -150,8 +159,11 @@ namespace clear
 
                 if(param2.Type->IsTrait())
                 {
-                    CLEAR_VERIFY(param1.Type->IsClass(), "parameter must be a class!");
-                    auto classTy = std::dynamic_pointer_cast<ClassType>(param1.Type);
+                    CLEAR_VERIFY(param1.Type->IsPointer(), "parameter must be a pointer to a class!");
+                    auto pointerTy = std::dynamic_pointer_cast<PointerType>(param1.Type);
+
+                    CLEAR_VERIFY(pointerTy->GetBaseType()->IsClass(), "parameter must be a class!");
+                    auto classTy = std::dynamic_pointer_cast<ClassType>(pointerTy->GetBaseType());
                     auto traitTy = std::dynamic_pointer_cast<TraitType>(param2.Type);
 
                     if(!traitTy->DoesClassImplementTrait(classTy))

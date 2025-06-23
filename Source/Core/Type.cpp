@@ -186,7 +186,7 @@ namespace clear
 
     void ClassType::PushFunction(const std::string& name)
     {
-        m_Functions.push_back(name);
+        m_Functions.insert(name);
     }
 
     VariadicArgumentsHolder::VariadicArgumentsHolder()
@@ -201,8 +201,8 @@ namespace clear
         Toggle(base->GetFlags());
     }
 
-    ClassType::ClassType(std::shared_ptr<StructType> structTy, const std::vector<std::string>& functions)
-        : m_Functions(functions), m_StructType(structTy)
+    ClassType::ClassType(std::shared_ptr<StructType> structTy)
+        : m_StructType(structTy)
     {
         Toggle(TypeFlags::Compound);
         Toggle(TypeFlags::Class);
@@ -227,6 +227,7 @@ namespace clear
     TraitType::TraitType(const std::vector<std::string>& functions, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, const std::string& name)
         : m_Functions(functions), m_Name(name), m_Members(members)
     {
+        Toggle(TypeFlags::Trait);
     }
 
     bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy)
@@ -242,18 +243,20 @@ namespace clear
                 return false;
         }
 
-        //TODO: make ClassType store functions so we can search through that instead.
-
         std::string className = classTy->GetHash();
+        const auto& classFunctions = classTy->GetFunctions();
         
         for(auto& function : m_Functions)
         {
-            size_t pos = function.find_first_of('$');
-            std::string arguments = function.substr(pos);
-            std::string mangledName = std::format("_CLR{}.{}${}", className, FunctionCache::DeMangleName(function), arguments);
+            size_t argBegin = function.find_first_of('$');
 
-            //if(!tbl->HasTemplateMangled(mangledName))
-            //    return false;
+            std::string name = function.substr(4, argBegin - 4);
+            std::string rest = function.substr(argBegin+1);
+
+            std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
+
+            if(!classFunctions.contains(classFunctionName))
+                return false;
         }
 
         return true;

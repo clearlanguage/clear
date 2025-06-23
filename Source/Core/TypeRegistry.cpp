@@ -351,7 +351,7 @@ namespace clear
         std::string className = descriptor.Description[index].Data;
 
         std::shared_ptr<StructType> structTy = std::make_shared<StructType>(className, *m_Context);
-        std::shared_ptr<ClassType>  classTy  = std::make_shared<ClassType>(structTy, descriptor.Functions);
+        std::shared_ptr<ClassType>  classTy  = std::make_shared<ClassType>(structTy);
 
         m_Types[className] = classTy;
 

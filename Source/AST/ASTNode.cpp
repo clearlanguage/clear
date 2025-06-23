@@ -1248,12 +1248,19 @@ namespace clear
 				break;
 			}
 
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(param.Type->Get(), nullptr, param.Name);
+			auto type = param.Type;
+
+			if(type->IsTrait())
+			{
+				type = functionData.Parameters[k].Type;
+			}
+
+			llvm::AllocaInst* argAlloc = builder.CreateAlloca(type->Get(), nullptr, param.Name);
 			builder.CreateStore(functionData.Function->getArg(k), argAlloc);
 			
 			Allocation alloca;
 			alloca.Alloca = argAlloc;
-			alloca.Type   = param.Type;
+			alloca.Type   = type;
 
 			tbl->RegisterAllocation(param.Name, alloca);
 			k++;
@@ -1458,6 +1465,12 @@ namespace clear
 
 			if(param1.Type->Get() != param2.Type->Get()) 
 			{
+				if(param2.Type->IsTrait()) 
+				{
+					params[i].Type = param1.Type;
+					continue;
+				}
+
 				args[i] = TypeCasting::Cast(args[i], param1.Type, param2.Type, ctx.Builder);
 				params[i].Type = param2.Type;
 			}
