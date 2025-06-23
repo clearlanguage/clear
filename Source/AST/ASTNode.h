@@ -22,7 +22,7 @@ namespace clear
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
-		DefaultArgument
+		DefaultArgument, Trait
 	};
 
 	struct CodegenResult
@@ -171,6 +171,7 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const auto& GetName() const { return m_Name; }
+		const auto& GetVariableType() const { return m_Type; }
 
 	private:
 		std::string m_Name;
@@ -283,6 +284,10 @@ namespace clear
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		const auto& GetParameters() { return m_Parameters; }
+		const auto& GetReturnType() { return m_ReturnType; }
+		const auto& GetName() 		{ return m_Name; }
 
 	private:
 		std::vector<UnresolvedParameter> m_Parameters;
@@ -445,6 +450,17 @@ namespace clear
 
 	private:
 		TypeDescriptor m_ClassTy;
+	};
+
+	class ASTTrait : public ASTNodeBase
+	{
+	public:
+		ASTTrait(const std::string& name);
+		virtual ~ASTTrait() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Trait; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	private:
+		std::string m_Name;
 	};
 	
 	class ASTLoopControlFlow : public ASTNodeBase

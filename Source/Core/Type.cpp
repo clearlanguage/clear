@@ -48,6 +48,11 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Constant);
     }
 
+    bool Type::IsTrait()
+    {
+        return m_Flags.test((size_t)TypeFlags::Trait);
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
         m_Flags.flip((size_t)flag);
@@ -213,13 +218,29 @@ namespace clear
         m_StructType->SetMember(member, type);
     }
 
-    TraitType::TraitType(const std::vector<std::string>& functions, const std::string& name)
-        : m_Functions(functions), m_Name(name)
+
+    TraitType::TraitType(const std::vector<std::string>& functions, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, const std::string& name)
+        : m_Functions(functions), m_Name(name), m_Members(members)
     {
     }
 
-    bool TraitType::DoesClassImplementTrait(const std::string& className, std::shared_ptr<SymbolTable> tbl)
+    bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<SymbolTable> tbl)
     {  
+        const auto& members = classTy->GetMemberTypes();
+
+        for(const auto& [name, type] : m_Members)
+        {
+            if(!members.contains(name))
+                return false;
+
+            if(type->Get() != members.at(name)->Get())
+                return false;
+        }
+
+        //TODO: make ClassType store functions so we can search through that instead.
+        
+        std::string className = classTy->GetHash();
+        
         for(auto& function : m_Functions)
         {
             size_t pos = function.find_first_of('$');

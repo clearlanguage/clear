@@ -34,7 +34,8 @@ namespace clear
     {
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
-        Void, Variadic, Constant, Class, Count
+        Void, Variadic, Constant, Class,
+        Trait, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -59,6 +60,7 @@ namespace clear
         bool IsClass();
         bool IsVariadic();
         bool IsConst();
+        bool IsTrait();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -221,17 +223,21 @@ namespace clear
     class TraitType : public Type
     {
     public:
-        TraitType(const std::vector<std::string>& functions, const std::string& name);
+        TraitType(const std::vector<std::string>& functions,
+                  const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, 
+                  const std::string& name);
+        
         virtual ~TraitType() = default;
 
         virtual llvm::Type* Get() const override { return nullptr; }
         virtual std::string GetHash() const override { return m_Name; };
         virtual std::string GetShortHash() const override { return m_Name; };
 
-        bool DoesClassImplementTrait(const std::string& className, std::shared_ptr<SymbolTable> tbl);
+        bool DoesClassImplementTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<SymbolTable> tbl);
 
     private:
         std::vector<std::string> m_Functions;
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> m_Members;
         std::string m_Name;
     };
 }

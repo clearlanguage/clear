@@ -1336,7 +1336,7 @@ namespace clear
 
 		Allocation temporary;
 
-		if(auto ty = ctx.Registry.GetType(m_Name)) // if the name is a type, we construct a temporary to that type.
+		if(auto ty = ctx.Registry.GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
 		{
 			temporary = symbolTable->RequestTemporary(ty, builder);
 			m_Name = std::format("{}.{}", m_Name, "__construct__");
@@ -1425,15 +1425,22 @@ namespace clear
 		for (auto& child : GetChildren())	
 		{
 			CodegenResult gen = child->Codegen(ctx);
-			if (gen.IsTuple) {
-				for (auto jj : gen.TupleValues) {
+
+			if (gen.IsTuple) 
+			{
+				for (auto jj : gen.TupleValues) 
+				{
 					args.push_back(jj);
 				}
-				for (auto jt : gen.TupleTypes) {
+
+				for (auto jt : gen.TupleTypes) 
+				{
 					params.push_back({"", jt });
 				}
 
-			}else {
+			}
+			else 
+			{
 				args.push_back(gen.CodegenValue);
 				params.push_back({"", gen.CodegenType });
 			}
@@ -2457,5 +2464,48 @@ namespace clear
     {
 		ctx.Registry.ResolveType(m_ClassTy);		
         return {};
+    }
+
+    ASTTrait::ASTTrait(const std::string& name)
+		: m_Name(name)
+    {
+    }
+
+    CodegenResult ASTTrait::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+
+		std::vector<std::string> functions;
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members; 
+
+		for(const auto& child : children)
+		{
+			if(child->GetType() == ASTNodeType::VariableDecleration)
+			{
+				auto decleration = std::dynamic_pointer_cast<ASTVariableDeclaration>(child);
+				members.emplace_back(decleration->GetName(), ctx.Registry.ResolveType(decleration->GetVariableType()));
+			}
+			else if(child->GetType() == ASTNodeType::FunctionDecleration)
+			{
+				auto decleration = std::dynamic_pointer_cast<ASTFunctionDecleration>(child);
+
+				std::vector<Parameter> params;
+				const auto& unresolvedParams = decleration->GetParameters();
+
+				std::transform(unresolvedParams.begin(), unresolvedParams.end(), std::back_inserter(params), [&](auto& a)
+				{
+					return Parameter{ a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic };
+				});
+
+				functions.push_back(FunctionCache::GetMangledName(decleration->GetName(), params, ctx.Registry.ResolveType(decleration->GetReturnType())));
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("unimplemented type");
+			}
+		}
+
+		ctx.Registry.CreateType<TraitType>(m_Name, functions, members, m_Name);
+        return CodegenResult();
     }
 }

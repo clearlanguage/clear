@@ -240,9 +240,8 @@ namespace clear
             {TokenType::Let,           [this]() { ParseLetDecleration(); }},
             {TokenType::Const,         [this]() { ParseConstDecleration(); }},
             {TokenType::Continue,      [this]() { ParseLoopControls(); }},
-            {TokenType::Break,         [this]() { ParseLoopControls(); }}
-            
-
+            {TokenType::Break,         [this]() { ParseLoopControls(); }},
+            {TokenType::Trait,         [this]() { ParseTrait(); }}
         };
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
@@ -329,6 +328,48 @@ namespace clear
         auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
         Consume();
         Root()->Push(node);
+    }
+
+    void Parser::ParseTrait()
+    {
+        Expect(TokenType::Trait);
+        Consume();
+
+        std::string traitName = Consume().Data;
+
+        Expect(TokenType::StartIndentation);
+        Consume();
+        
+        Expect(TokenType::EndLine);
+        Consume();
+
+        std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
+
+        m_RootStack.push_back(trait);
+
+        while (Match(TokenType::Declaration) || MatchAny(m_VariableType))
+        {
+            if(Match(TokenType::Declaration)) // parse function decleration
+            {
+                ParseFunctionDeclaration();
+            }
+            else if (MatchAny(m_VariableType))
+            {
+                ParseVariableDecleration();
+            }
+            else 
+            {
+                CLEAR_LOG_WARNING("Ignored token ", TokenToString(Peak().TokenType));
+            }
+
+            Consume();
+        }
+
+        m_RootStack.pop_back();
+        Root()->Push(trait);
+
+        if(Match(TokenType::EndIndentation))
+            Consume();
     }
 
     void Parser::ParseLetDecleration()
@@ -922,7 +963,7 @@ namespace clear
         return assign;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression()
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
     {
         struct Operator
         {

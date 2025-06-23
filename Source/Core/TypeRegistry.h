@@ -39,8 +39,13 @@ namespace clear
         std::shared_ptr<Type> ResolveType(const TypeDescriptor& descriptor);
 
         static std::string GetTypeNameFromTokenType(TokenType type);
-
         const auto& GetTypeTable() { return m_Types; }
+
+        template<typename T, typename ...Args>
+        void CreateType(const std::string& name, Args&&... args)
+        {
+            m_Types[name] = std::make_shared<T>(std::forward<Args>(args)...);
+        }
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);
