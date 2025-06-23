@@ -90,6 +90,7 @@ namespace clear
 		void RestrictionState();
 		void DotOpState();
 		void ImportState();
+		void TraitState();
 		void AsState();
 		bool IsAlias(std::string type);
 		bool IsAlias(std::string type,int n);

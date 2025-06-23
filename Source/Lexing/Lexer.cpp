@@ -39,6 +39,8 @@ namespace clear
 		m_StateMap[LexerState::ClassName] = [this]() {ClassNameState();};
 		m_StateMap[LexerState::Import] = [this]() {ImportState();};
 		m_StateMap[LexerState::As] = [this]() {AsState();};
+		m_StateMap[LexerState::Trait] = [this]() {TraitState();};
+
 
 
 	}
@@ -311,6 +313,41 @@ namespace clear
 	{
 		//VerifyCondition(IsTokenOfType(GetLastToken(1),"has_members"),51);
 		m_CurrentState = LexerState::RValue;
+	}
+
+	void Lexer::TraitState() {
+		char current = GetNextChar();
+
+		current = SkipSpaces();
+		VerifyCondition((current != ':' && current != '\n' &&current != '\0' && current != ';'),3,m_TokenIndexStart-1,m_CurrentTokenIndex-1);
+		m_TokenIndexStart = m_CurrentTokenIndex-1;
+		m_CurrentString.clear();
+		bool expectingEnd = false;
+		while (current!= '\n' && current != '\0' && current != ':')
+		{
+			VerifyCondition(!(expectingEnd&&IsSpace(current)),37,-1,m_CurrentTokenIndex-2,"trait");
+			if (IsSpace(current))
+			{
+				expectingEnd = true;
+			}
+			else
+			{
+				VerifyCondition(IsVarNameChar(current),36,Str(current),"trait");
+			}
+
+			m_CurrentString += current;
+			current = GetNextChar();
+		}
+		VerifyCondition(current == ':',53);
+		VerifyCondition(!(std::isdigit(m_CurrentString.at(0))),35,"trait");
+		VerifyCondition(!IsTypeDeclared(m_CurrentString), 4,-1,m_CurrentTokenIndex-1,m_CurrentString);
+		m_ScopeStack.back().TypeDeclarations.insert(m_CurrentString);
+
+
+		PushToken(TokenType::TraitName, m_CurrentString);
+		m_CurrentString.clear();
+		Backtrack();
+		m_CurrentState = LexerState::Default;
 	}
 
 
