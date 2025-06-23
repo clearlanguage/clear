@@ -159,18 +159,23 @@ namespace clear
 
                 if(param2.Type->IsTrait())
                 {
-                    auto baseTy = param1.Type;
+                    auto baseTy1 = param1.Type;
+                    auto baseTy2 = param2.Type;
 
-                    while(baseTy->IsPointer())
+                    while(baseTy1->IsPointer() && baseTy2->IsPointer())
                     {
-                        auto pointerTy = std::dynamic_pointer_cast<PointerType>(baseTy);
-                        baseTy = pointerTy->GetBaseType();
+                        std::shared_ptr<PointerType> pointerTy = std::dynamic_pointer_cast<PointerType>(baseTy1);
+                        baseTy1 = pointerTy->GetBaseType();
+
+                        pointerTy = std::dynamic_pointer_cast<PointerType>(baseTy2);
+                        baseTy2 = pointerTy->GetBaseType();
                     }
 
-                    CLEAR_VERIFY(baseTy->IsClass(), "parameter must be a class!");
-                    
-                    auto classTy = std::dynamic_pointer_cast<ClassType>(baseTy);
-                    auto traitTy = std::dynamic_pointer_cast<TraitType>(param2.Type);
+                    CLEAR_VERIFY(baseTy1->IsClass(), "parameter must be a class!");
+                    CLEAR_VERIFY(baseTy2->IsTrait(), "not a valid pointer to a trait!");
+
+                    auto classTy = std::dynamic_pointer_cast<ClassType>(baseTy1);
+                    auto traitTy = std::dynamic_pointer_cast<TraitType>(baseTy2);
 
                     if(!traitTy->DoesClassImplementTrait(classTy))
                         return size_t(0);

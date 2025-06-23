@@ -83,6 +83,9 @@ namespace clear
     {
         m_LLVMType = llvm::PointerType::get(context , 0);
         Toggle(TypeFlags::Pointer);
+
+        if(baseType && baseType->IsTrait())
+            Toggle(TypeFlags::Trait);
     }
 
     void PointerType::SetBaseType(std::shared_ptr<Type> type)
@@ -95,6 +98,9 @@ namespace clear
           m_Count(count)
     {
         Toggle(TypeFlags::Array);
+
+        if(baseType->IsTrait())
+            Toggle(TypeFlags::Trait);
     }
 
     std::string ArrayType::GetHash() const

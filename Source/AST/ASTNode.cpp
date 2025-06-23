@@ -1463,7 +1463,7 @@ namespace clear
 
 			if(!param2.Type) continue;
 
-			if(param1.Type->Get() != param2.Type->Get()) 
+			if((param1.Type->Get() != param2.Type->Get()) || param2.Type->IsTrait()) 
 			{
 				if(param2.Type->IsTrait()) 
 				{
