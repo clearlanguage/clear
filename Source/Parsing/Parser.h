@@ -57,6 +57,7 @@ namespace clear
         void ParseRaise();
         void ParseTry();
         void ParseCatch();
+        void ParseEnum();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();

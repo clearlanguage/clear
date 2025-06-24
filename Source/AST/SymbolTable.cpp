@@ -418,15 +418,30 @@ namespace clear
 
     bool SymbolTable::HasAlloca(const std::string& name)
     {
-        if(m_Variables.contains(name)) return true;
+        if(m_Variables.contains(name)) 
+        {
+            return true;
+        }
+
+        if(m_TrackedAllocations.contains(name))
+        {
+            return true;
+        }
 
         std::shared_ptr<SymbolTable> ptr = m_Previous;
 
         while(ptr)
         {
             if(ptr->m_Variables.contains(name)) 
+            {
                 return true;
-                
+            }
+
+            if(ptr->m_TrackedAllocations.contains(name))
+            {
+                return true;
+            }
+
             ptr = ptr->m_Previous;
         }
 

@@ -89,7 +89,8 @@ namespace clear
 
 		for(auto& child : m_Children)
 		{
-			child->PropagateSymbolTable(m_SymbolTable);
+			if(child)
+				child->PropagateSymbolTable(m_SymbolTable);
 		}
     }
 
@@ -832,7 +833,7 @@ namespace clear
         return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
     }
 
-    CodegenResult ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    CodegenResult ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		auto tbl = GetSymbolTable();
 
@@ -840,6 +841,21 @@ namespace clear
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, true);
 			lhs = left->Codegen(ctx);
+		}
+
+		if(!lhs.CodegenValue) // enum
+		{
+			CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid enum access");
+
+			auto member = std::dynamic_pointer_cast<ASTMember>(right);
+			auto enumTy = dyn_cast<EnumType>(ctx.Registry.GetType(lhs.Data));
+			CLEAR_VERIFY(enumTy, "not a valid enum");
+
+			CodegenResult result;
+			result.CodegenValue = ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName()));
+			result.CodegenType = ctx.Registry.GetType("int64");
+			
+			return result;
 		}
 
 		if(!lhs.CodegenType->IsPointer()) 
@@ -1023,6 +1039,13 @@ namespace clear
 		CodegenResult result;
 
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+
+		if(!registry->HasAlloca(m_Name))
+		{
+			result.Data = m_Name;
+			return result;
+		}
+
 		Allocation alloca = registry->GetAlloca(m_Name);
 
 		if(alloca.Type->IsVariadic())  // special case
@@ -2831,5 +2854,39 @@ namespace clear
 		}
     }
 
-    
+    ASTEnum::ASTEnum(const std::string& enumName, const std::vector<std::string>& names)
+		: m_Names(names), m_EnumName(enumName)
+    {
+    }
+
+    CodegenResult ASTEnum::Codegen(CodegenContext& ctx)
+    {
+		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(ctx.Registry.GetType("int64"), m_EnumName);
+
+		auto& children = GetChildren();
+
+		int64_t previous = 0;
+
+		for(size_t i = 0; i < m_Names.size(); i++)
+		{
+			CLEAR_VERIFY(i < children.size(), "invalid enum node");
+
+			if(!children[i])
+			{
+				type->InsertEnumValue(m_Names[i], ++previous);
+				continue;
+			}
+
+			CodegenResult result = children[i]->Codegen(ctx);
+
+			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.CodegenValue);
+			CLEAR_VERIFY(casted, "not a valid enum value!");
+
+			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
+			previous = casted->getSExtValue();
+		}
+
+		ctx.Registry.RegisterType(m_EnumName, type);
+        return CodegenResult();
+    }
 }

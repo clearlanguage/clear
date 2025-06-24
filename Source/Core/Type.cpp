@@ -53,6 +53,11 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Trait);
     }
 
+    bool Type::IsEnum()
+    {
+        return m_Flags.test((size_t)TypeFlags::Enum);
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
         m_Flags.flip((size_t)flag);
@@ -300,6 +305,24 @@ namespace clear
         }
 
         return true;
+    }
+
+    EnumType::EnumType(std::shared_ptr<Type> integerType, const std::string& name)
+        : m_Type(integerType), m_Name(name)
+    {
+        Toggle(TypeFlags::Enum);
+        Toggle(integerType->GetFlags());
+    }
+
+    void EnumType::InsertEnumValue(const std::string& name, int64_t value)
+    {
+        m_EnumValues[name] = value;
+    }
+
+    int64_t EnumType::GetEnumValue(const std::string& name)
+    {
+        CLEAR_VERIFY(m_EnumValues.contains(name), "invalid enum value ", "name");
+        return m_EnumValues.at(name);
     }
 }
  

@@ -22,7 +22,8 @@ namespace clear
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
-		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer
+		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
+		Enum
 	};
 
 	struct CodegenResult
@@ -32,6 +33,7 @@ namespace clear
 		std::vector<std::shared_ptr<Type>> TupleTypes;
 		std::vector<llvm::Value*> TupleValues;
 		bool IsTuple = false;
+		std::string Data; // used for accessing enums currently 
 	};
 
 	class ASTNodeBase;
@@ -523,4 +525,22 @@ namespace clear
 		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal = false);
 
 	};
+
+	class ASTEnum : public ASTNodeBase
+	{
+	public:
+		ASTEnum(const std::string& enumName, const std::vector<std::string>& names = {});
+		virtual ~ASTEnum() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Enum; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		void AddEnumName(const std::string& name)
+		{
+			m_Names.push_back(name);
+		}
+
+	private:
+		std::string m_EnumName;
+		std::vector<std::string> m_Names;
+	};	
 }

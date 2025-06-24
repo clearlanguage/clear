@@ -98,7 +98,9 @@ namespace clear
         {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}, 
         {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}},
         {"raise",{.NextState = LexerState::Default, .TokenToPush = TokenType::Raise}},
-        {"pass", {.NextState = LexerState::Default, .TokenToPush = TokenType::Pass}}        
+        {"pass", {.NextState = LexerState::Default, .TokenToPush = TokenType::Pass}}, 
+        {"enum", {.NextState = LexerState::Default, .TokenToPush = TokenType::Enum}}, 
+
         
     };
 
@@ -242,6 +244,7 @@ namespace clear
             case TokenType::Try:        return "Try";
             case TokenType::Catch:      return "Catch";
             case TokenType::Raise:      return "Raise";
+            case TokenType::Enum:       return "Enum";
             default:
                 break;
         }

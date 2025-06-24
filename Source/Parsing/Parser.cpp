@@ -247,7 +247,8 @@ namespace clear
             {TokenType::Const,         [this]() { ParseConstDecleration(); }},
             {TokenType::Continue,      [this]() { ParseLoopControls(); }},
             {TokenType::Break,         [this]() { ParseLoopControls(); }},
-            {TokenType::Trait,         [this]() { ParseTrait(); }}
+            {TokenType::Trait,         [this]() { ParseTrait(); }}, 
+            {TokenType::Enum,          [this]() { ParseEnum(); }}
         };
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
@@ -870,6 +871,81 @@ namespace clear
         tryCatch->Push(base);
 
         m_RootStack.push_back(base);
+    }
+
+    void Parser::ParseEnum()
+    {
+        Expect(TokenType::Enum);
+        Consume();
+
+        std::string enumName = Consume().Data;
+
+        Expect(TokenType::EndLine);
+        Consume();
+
+        Expect(TokenType::StartIndentation);
+        Consume();
+
+        std::vector<std::string> names;
+
+        std::shared_ptr<ASTEnum> enum_ = std::make_shared<ASTEnum>(enumName);
+
+        Expect(TokenType::VariableReference);
+        enum_->AddEnumName(Consume().Data);
+
+        Token zero;
+        zero.Data = "0";
+        zero.TokenType = TokenType::RValueNumber;
+
+        if(Match(TokenType::Comma))
+        {
+            enum_->Push(std::make_shared<ASTNodeLiteral>(zero));
+        }
+        else 
+        {
+            Consume();
+            enum_->Push(ParseExpression());
+        }
+
+        if(Match(TokenType::Comma)) 
+            Consume();
+        
+        Consume();
+
+        while(Match(TokenType::VariableReference))
+        {
+            enum_->AddEnumName(Consume().Data);
+
+            if(Match(TokenType::Comma))
+            {
+                Consume();
+                enum_->Push(nullptr); // nullptr indicates use 1 + previous
+                Consume();
+                continue;
+            }
+
+            if(Match(TokenType::EndLine))
+            {
+                enum_->Push(nullptr); 
+                Consume();
+                break;
+            }
+
+            Expect(TokenType::Assignment);
+            Consume();
+
+            enum_->Push(ParseExpression());
+            
+            if(Match(TokenType::Comma))
+                Consume();
+
+            Consume();
+        }
+
+        Expect(TokenType::EndIndentation);
+        Consume();
+
+        Root()->Push(enum_);
     }
 
     void Parser::ParseFunctionDeclaration()

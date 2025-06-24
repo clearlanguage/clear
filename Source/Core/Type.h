@@ -27,7 +27,7 @@ namespace clear
 	{
 		None = 0, BitwiseNot, Negation, 
         Dereference, Reference, Cast, PostIncrement, 
-        PostDecrement, PreIncrement, PreDecrement, Not,Unpack
+        PostDecrement, PreIncrement, PreDecrement, Not, Unpack
 	};
 
     enum class TypeFlags
@@ -35,7 +35,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Trait, Count
+        Trait, Enum, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -61,6 +61,7 @@ namespace clear
         bool IsVariadic();
         bool IsConst();
         bool IsTrait();
+        bool IsEnum();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -223,8 +224,6 @@ namespace clear
         std::shared_ptr<Type> m_Base;
     };
 
-    class SymbolTable;
-
     class TraitType : public Type
     {
     public:
@@ -244,6 +243,27 @@ namespace clear
         std::vector<std::string> m_Functions;
         std::vector<std::pair<std::string, std::shared_ptr<Type>>> m_Members;
         std::string m_Name;
+    };
+
+    class EnumType : public Type 
+    {
+    public:
+        EnumType(std::shared_ptr<Type> integerType, const std::string& name);
+        virtual ~EnumType() = default;
+
+        void InsertEnumValue(const std::string& name, int64_t value);
+
+        int64_t GetEnumValue(const std::string& name);
+
+        virtual size_t GetSize() const override { return m_Type->GetSize(); }
+        virtual llvm::Type* Get() const override { return m_Type->Get(); }
+        virtual std::string GetHash() const override { return m_Type->GetHash(); };
+        virtual std::string GetShortHash() const override { return m_Type->GetHash(); };
+        
+    private:
+        std::string m_Name;
+        std::shared_ptr<Type> m_Type;
+        std::unordered_map<std::string, int64_t> m_EnumValues;
     };
 
     template <typename To, typename From>
