@@ -247,7 +247,7 @@ namespace clear
     };
 
     template <typename To, typename From>
-    std::shared_ptr<To> dyn_cast(std::shared_ptr<From>& val) requires std::is_base_of_v<Type, From>
+    std::shared_ptr<To> dyn_cast(std::shared_ptr<From> val) requires std::is_base_of_v<Type, From>
     {
         if(auto constTy = std::dynamic_pointer_cast<ConstantType>(val))
         {

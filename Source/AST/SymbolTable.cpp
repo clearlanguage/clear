@@ -223,12 +223,14 @@ namespace clear
 
         if(type->IsClass())
 		{
+            auto classTy = dyn_cast<ClassType>(type);
+
 			Parameter param;
 
 			param.Name = "this";
-			param.Type = ctx.Registry.GetPointerTo(type);
+			param.Type = ctx.Registry.GetPointerTo(classTy);
 
-			std::string name = type->GetHash() + "." + "__destruct__";
+			std::string name = classTy->GetHash() + "." + "__destruct__";
 
 			auto function = InstantiateOrReturn(name, { param }, nullptr, ctx);
 

@@ -173,8 +173,8 @@ namespace clear
                     CLEAR_VERIFY(baseTy1->IsClass(), "parameter must be a class!");
                     CLEAR_VERIFY(baseTy2->IsTrait(), "not a valid pointer to a trait!");
 
-                    auto classTy = std::dynamic_pointer_cast<ClassType>(baseTy1);
-                    auto traitTy = std::dynamic_pointer_cast<TraitType>(baseTy2);
+                    auto classTy = dyn_cast<ClassType>(baseTy1);
+                    auto traitTy = dyn_cast<TraitType>(baseTy2);
 
                     if(!traitTy->DoesClassImplementTrait(classTy))
                         return size_t(0);

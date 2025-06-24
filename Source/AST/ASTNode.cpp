@@ -869,7 +869,7 @@ namespace clear
 				ptrType = std::dynamic_pointer_cast<PointerType>(ptrType->GetBaseType());
 			}
 
-			auto classType = std::dynamic_pointer_cast<ClassType>(ptrType->GetBaseType());
+			auto classType = dyn_cast<ClassType>(ptrType->GetBaseType());
 			CLEAR_VERIFY(classType, "invalid class type for function call");
 
 			std::string name = funcCall->GetName();
@@ -2805,11 +2805,13 @@ namespace clear
 
 		if(type->IsClass())
 		{
+			auto classTy = dyn_cast<ClassType>(type);
+
 			Parameter param;
 			param.Name = "this";
-			param.Type = ctx.Registry.GetPointerTo(type);
+			param.Type = ctx.Registry.GetPointerTo(classTy);
 
-			std::string name = type->GetHash() + "." + "__construct__";
+			std::string name = classTy->GetHash() + "." + "__construct__";
 
 			auto function = tbl->InstantiateOrReturn(name, { param }, nullptr, ctx);
 
