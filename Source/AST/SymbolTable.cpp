@@ -12,9 +12,10 @@ namespace clear
 
     Allocation SymbolTable::RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder)
     {
-        auto [it, inserted] = m_Temporaries.try_emplace(type->Get(), Allocation{});
+        auto [it, inserted] = m_Temporaries.try_emplace(type->Get(), size_t{});
+
         if (!inserted)
-           return it->second;
+           return m_Allocations[it->second];
 
         llvm::BasicBlock* insertBlock = builder.GetInsertBlock();
         
@@ -27,12 +28,14 @@ namespace clear
         allocation.Alloca = builder.CreateAlloca(type->Get(), nullptr, std::format("{}.{}", "tmp", type->GetHash()));
         allocation.Type = type; 
 	    builder.restoreIP(ip);  
-        m_Temporaries[type->Get()] = allocation;
+        
+        it->second = m_Allocations.size();
+        m_Allocations.push_back(allocation);
 
         return allocation;
     }
 
-    Allocation SymbolTable::CreateGlobal(const std::string &name, std::shared_ptr<Type> type, llvm::Module &module, llvm::Value *value)
+    Allocation SymbolTable::CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value)
     {
         Allocation alloca;
 
@@ -46,18 +49,16 @@ namespace clear
         );
         
         alloca.Type = type;
-        m_Variables[name] = alloca;
+        alloca.IsGlobal = true;
+
+        m_Variables[name] = m_Allocations.size();
+        m_Allocations.push_back(alloca);
 
         return alloca;
     }
 
     Allocation SymbolTable::CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder)
     {
-        if(name == "test")
-        {
-            
-        }
-
         llvm::BasicBlock* insertBlock = builder.GetInsertBlock();
         
         CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");
@@ -74,31 +75,56 @@ namespace clear
 
 		builder.restoreIP(ip);
 
-        m_Variables[name] = allocation;
+        m_Variables[name] = m_Allocations.size();
+        m_Allocations.push_back(allocation);
+
         return allocation;
     }
 
-
-    void SymbolTable::RegisterAllocation(const std::string& name, Allocation allocation)
+    void SymbolTable::TrackAllocation(const std::string& name, Allocation allocation)
     {
-        m_Variables[name] = allocation;
+        m_TrackedAllocations[name] = allocation;
+    }
+
+    void SymbolTable::OwnAllocation(const std::string& name, Allocation allocation)
+    {
+        m_Variables[name] = m_Allocations.size();
+        m_Allocations.push_back(allocation);
     }
 
     Allocation SymbolTable::GetAlloca(const std::string& name)
     {
-        if(m_Variables.contains(name)) return m_Variables.at(name);
+        if(m_Variables.contains(name)) 
+        {
+            size_t pos = m_Variables.at(name);
+            return m_Allocations[pos];
+        }
+
+        if(m_TrackedAllocations.contains(name))
+        {
+            return m_TrackedAllocations[name];
+        }
 
         std::shared_ptr<SymbolTable> ptr = m_Previous;
 
         while(ptr)
         {
             if(ptr->m_Variables.contains(name)) 
-                return ptr->m_Variables.at(name);
+            {
+                size_t pos = ptr->m_Variables.at(name);
+                return ptr->m_Allocations[pos];
+            }
+
+            if(ptr->m_TrackedAllocations.contains(name))
+            {
+                return ptr->m_TrackedAllocations[name];
+            }
                 
             ptr = ptr->m_Previous;
         }
 
         CLEAR_UNREACHABLE("unable to find variable ", name);
+
         return {};
     }
 
@@ -109,46 +135,155 @@ namespace clear
 
     void SymbolTable::FlushDestructors(CodegenContext& ctx)
     {
-        for(const auto& [name, allocation] : m_Variables)
+        for(int64_t i = (int64_t)m_Allocations.size() - 1; i >= 0; i--)
         {
-            if(allocation.Type->IsClass())
+            if(m_Allocations[i].Type->IsArray() || m_Allocations[i].Type->IsCompound())
             {
-                auto classType = std::dynamic_pointer_cast<ClassType>(allocation.Type);
-
-                std::string mangledName = std::format("{}.{}", allocation.Type->GetHash(), "__destruct__");
-
-                if(HasTemplate(mangledName))
-                {
-                    Parameter param;
-                    param.Name = "this";
-                    param.Type = ctx.Registry.GetPointerTo(classType);
-
-                    FunctionInstance& instance = InstantiateOrReturn(mangledName, { param }, nullptr, ctx);
-                    ctx.Builder.CreateCall( instance.Function, { allocation.Alloca });
-                }
+                RecursiveCallDestructors(m_Allocations[i].Alloca, m_Allocations[i].Type, ctx, m_Allocations[i].IsGlobal);
             }
         }
-
-        for(const auto& [type, allocation] : m_Temporaries)
+        
+        for(int64_t i = (int64_t)m_VariadicArguments.size() - 1; i >= 0; i--)
         {
-            if(allocation.Type->IsClass())
+            if(m_VariadicArguments[i].Type->IsArray() || m_VariadicArguments[i].Type->IsCompound())
             {
-                auto classType = std::dynamic_pointer_cast<ClassType>(allocation.Type);
-
-                std::string mangledName = std::format("{}.{}", allocation.Type->GetHash(), "__destruct__");
-
-                if(HasTemplate(mangledName))
-                {
-                    Parameter param;
-                    param.Name = "this";
-                    param.Type = ctx.Registry.GetPointerTo(classType);
-
-                    FunctionInstance& instance = InstantiateOrReturn(mangledName, { param }, nullptr, ctx);
-                    ctx.Builder.CreateCall( instance.Function, { allocation.Alloca });
-                }
+                RecursiveCallDestructors(m_VariadicArguments[i].Alloca, m_VariadicArguments[i].Type, ctx, m_VariadicArguments[i].IsGlobal);
             }
         }
+    }
 
+    void SymbolTable::RecursiveCallDestructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, bool isGlobal)
+    {
+        if(type->IsArray())
+		{
+			auto arrayTy = dyn_cast<ArrayType>(type);
+			auto baseTy  = arrayTy->GetBaseType();
+
+			if(!baseTy->IsCompound())
+				return;
+
+			for(size_t i = 0; i < arrayTy->GetArraySize(); i++)
+			{
+				llvm::Value* gep = nullptr;
+
+				std::vector<llvm::Value*> indices = {
+				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
+				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), i) 
+				};
+
+				if (isGlobal)
+				{
+					CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
+
+				    gep = llvm::ConstantExpr::getGetElementPtr(
+				        arrayTy->Get(),                           
+				        llvm::cast<llvm::Constant>(value),         
+				        indices
+				    );
+				}
+				else 
+				{
+				    gep = ctx.Builder.CreateGEP(
+				        arrayTy->Get(),  
+				        value,            
+				        indices             
+				    );
+				}
+
+				RecursiveCallDestructors(gep, baseTy, ctx, isGlobal);
+			}
+			
+			return;
+		}
+
+
+		std::shared_ptr<StructType> structTy = nullptr;
+		std::string functionName;  
+
+        CLEAR_VERIFY(type->IsCompound(), "compound type");
+
+		if(type->IsClass())
+		{
+			auto classTy = dyn_cast<ClassType>(type);
+			structTy = classTy->GetBaseType();
+
+			functionName = classTy->ConvertFunctionToClassFunction("_CLR__destruct__$%");
+
+			if(!HasTemplateMangled(functionName))
+			{
+				return;
+			}
+		}
+		else 
+		{
+			structTy = dyn_cast<StructType>(type);
+		}
+
+		CLEAR_VERIFY(structTy, "not a valid type");
+
+        if(type->IsClass())
+		{
+			Parameter param;
+
+			param.Name = "this";
+			param.Type = ctx.Registry.GetPointerTo(type);
+
+			std::string name = type->GetHash() + "." + "__destruct__";
+
+			auto function = InstantiateOrReturn(name, { param }, nullptr, ctx);
+
+            static thread_local int32_t s_Index = INT32_MAX;
+
+			if(isGlobal)
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+                CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "value not a constant");
+				llvm::appendToGlobalDtors(ctx.Module, function.Function, s_Index--, llvm::cast<llvm::Constant>(value));
+			}
+			else 
+			{
+				ctx.Builder.CreateCall(function.Function, { value });
+			}
+
+		}
+
+		const auto& memberIndices = structTy->GetMemberIndices();
+		const auto& memberTypes   = structTy->GetMemberTypes();
+
+		for(const auto& [name, subType] : memberTypes)
+		{
+			if(!subType->IsCompound()) 
+				continue;
+
+			size_t index = memberIndices.at(name);
+			llvm::Value* gep = nullptr;
+
+			if (isGlobal)
+			{
+			    std::vector<llvm::Constant*> indices = {
+			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
+			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), index) 
+				};
+				
+				CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
+
+			    gep = llvm::ConstantExpr::getGetElementPtr(
+			        structTy->Get(),                           
+			        llvm::cast<llvm::Constant>(value),         
+			        indices
+			    );
+			}
+			else 
+			{
+			    gep = ctx.Builder.CreateStructGEP(
+			        structTy->Get(),  
+			        value,            
+			        index             
+			    );
+			}
+
+			RecursiveCallDestructors(gep, subType, ctx, isGlobal);
+		}
     }
 
     FunctionInstance& SymbolTable::GetInstance(const std::string& instanceName)

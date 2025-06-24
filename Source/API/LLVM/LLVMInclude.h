@@ -25,6 +25,7 @@
 #include <llvm/TargetParser/Host.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h> 
 
 
 

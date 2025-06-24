@@ -48,6 +48,7 @@ namespace clear
 			if(isContinue) break;
 		}
 
+		GetSymbolTable()->FlushDestructors(ctx);
 		return value;
     }
 
@@ -1072,6 +1073,8 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
+			
+
 			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
 			result.CodegenType = storage.CodegenType;
 			return result;
@@ -1244,7 +1247,7 @@ namespace clear
 			alloca.Alloca = argAlloc;
 			alloca.Type   = type;
 
-			tbl->RegisterAllocation(param.Name, alloca);
+			tbl->OwnAllocation(param.Name, alloca);
 			k++;
 		}
 
@@ -1268,7 +1271,7 @@ namespace clear
 			dummy.Alloca = nullptr;
 			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); 
 
-			tbl->RegisterAllocation(m_Parameters[k].Name, dummy);
+			tbl->TrackAllocation(m_Parameters[k].Name, dummy);
 		}
 
 		functionData.Function->insert(functionData.Function->end(), body);
@@ -1409,7 +1412,7 @@ namespace clear
 		}
 
 		// instantiate and call
-		
+
 		FunctionInstance& instance = symbolTable->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
 
 		if(temporary.Alloca)
@@ -2452,14 +2455,12 @@ namespace clear
 
 			for(size_t i = 0; i < args.size(); i++)
 			{
-				tbl->RegisterAllocation(m_Name, args[i]);
-
+				tbl->TrackAllocation(m_Name, args[i]);
 				children[1]->Codegen(ctx);
 			}
 
 			return {};
 		}
-
 
 		CLEAR_UNREACHABLE("unimplemented");
 
@@ -2610,47 +2611,132 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 		CodegenResult variable = children[0]->Codegen(ctx);
 		
-		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to pointer");
+		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to a value");
 		
 		auto pointerTy = dyn_cast<PointerType>(variable.CodegenType);
 		auto baseTy = pointerTy->GetBaseType();
+
+		bool isGlobal = llvm::isa<llvm::GlobalVariable>(variable.CodegenValue);
 
 		if (baseTy->IsPointer()) 
 		{
 		    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(
 		        llvm::cast<llvm::PointerType>(baseTy->Get())
 		    );
-
-		    ctx.Builder.CreateStore(nullPtr, variable.CodegenValue);
+		
+		    if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(nullPtr);
+		    }
+		    else
+		    {
+		        ctx.Builder.CreateStore(nullPtr, variable.CodegenValue);
+		    }
 		}
 		else if (baseTy->IsCompound())
 		{
 		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
-		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		
+		    if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    }
+		    else
+		    {
+		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    }
 
-			RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl);
+		    RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
 		}
 		else if (baseTy->IsArray())
 		{
 		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
-		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		
+		    if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    }
+		    else
+		    {
+		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    }
+
+
 		}
 		else if (baseTy->IsIntegral())
 		{
 		    llvm::Constant* zero = llvm::ConstantInt::get(baseTy->Get(), 0);
-		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		
+		    if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    }
+		    else
+		    {
+		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    }
 		}
 		else if (baseTy->IsFloatingPoint())
 		{
 		    llvm::Constant* zero = llvm::ConstantFP::get(baseTy->Get(), 0.0);
-		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		
+		    if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    }
+		    else
+		    {
+		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    }
 		}
 
         return CodegenResult();
     }
 
-    void ASTDefaultInitializer::RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
+    void ASTDefaultInitializer::RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal)
     {
+		if(type->IsArray())
+		{
+			auto arrayTy = dyn_cast<ArrayType>(type);
+			auto baseTy  = arrayTy->GetBaseType();
+
+			if(!baseTy->IsCompound())
+				return;
+
+			for(size_t i = 0; i < arrayTy->GetArraySize(); i++)
+			{
+				llvm::Value* gep = nullptr;
+
+				std::vector<llvm::Value*> indices = {
+				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
+				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), i) 
+				};
+
+				if (isGlobal)
+				{
+					CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
+
+				    gep = llvm::ConstantExpr::getGetElementPtr(
+				        arrayTy->Get(),                           
+				        llvm::cast<llvm::Constant>(value),         
+				        indices
+				    );
+				}
+				else 
+				{
+				    gep = ctx.Builder.CreateGEP(
+				        arrayTy->Get(),  
+				        value,            
+				        indices             
+				    );
+				}
+
+				RecursiveCallConstructors(gep, baseTy, ctx, tbl, isGlobal);
+			}
+			
+			return;
+		}
+
 		CLEAR_VERIFY(type->IsCompound(), "compound type");
 
 		std::shared_ptr<StructType> structTy = nullptr;
@@ -2684,9 +2770,33 @@ namespace clear
 				continue;
 
 			size_t index = memberIndices.at(name);
-			llvm::Value* gep = ctx.Builder.CreateStructGEP(structTy->Get(), value, index);
+			llvm::Value* gep = nullptr;
 
-			RecursiveCallConstructors(gep, subType, ctx, tbl);
+			if (isGlobal)
+			{
+			    std::vector<llvm::Constant*> indices = {
+			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
+			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), index) 
+				};
+				
+				CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
+
+			    gep = llvm::ConstantExpr::getGetElementPtr(
+			        structTy->Get(),                           
+			        llvm::cast<llvm::Constant>(value),         
+			        indices
+			    );
+			}
+			else 
+			{
+			    gep = ctx.Builder.CreateStructGEP(
+			        structTy->Get(),  
+			        value,            
+			        index             
+			    );
+			}
+
+			RecursiveCallConstructors(gep, subType, ctx, tbl, isGlobal);
 		}
 
 		if(type->IsClass())
@@ -2698,7 +2808,20 @@ namespace clear
 			std::string name = type->GetHash() + "." + "__construct__";
 
 			auto function = tbl->InstantiateOrReturn(name, { param }, nullptr, ctx);
-			ctx.Builder.CreateCall(function.Function, { value });
+
+			if(isGlobal)
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+				static thread_local int32_t s_Index = 0;
+
+				CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "value not a constant");
+				llvm::appendToGlobalCtors(ctx.Module, function.Function, s_Index++, llvm::cast<llvm::Constant>(value));
+			}
+			else 
+			{
+				ctx.Builder.CreateCall(function.Function, { value });
+			}
+
 		}
     }
 

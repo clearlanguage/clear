@@ -519,7 +519,7 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::DefaultInitializer; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl);
+		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal = false);
 
 	};
 }

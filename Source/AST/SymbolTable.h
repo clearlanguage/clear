@@ -17,6 +17,7 @@ namespace clear
         llvm::Value* Alloca = nullptr;
         std::shared_ptr<Type> Type;
         bool IsVariadicList = false;
+        bool IsGlobal = false;
     };
 
     struct Member
@@ -47,7 +48,9 @@ namespace clear
         Allocation  CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value = nullptr); //TODO: add linkage and threading options
         Allocation  CreateAlloca(const std::string& name, std::shared_ptr<Type> type, llvm::IRBuilder<>& builder);
         Allocation  GetAlloca(const std::string& name);
-        void        RegisterAllocation(const std::string& name, Allocation allocation);
+
+        void        TrackAllocation(const std::string& name, Allocation allocation);
+        void        OwnAllocation(const std::string& name, Allocation allocation);
 
         FunctionInstance& GetInstance(const std::string& instanceName);
         FunctionInstance& GetDecleration(const std::string& decleration);
@@ -81,13 +84,17 @@ namespace clear
         std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }        
 
         void FlushDestructors(CodegenContext& ctx);
+        void RecursiveCallDestructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, bool isGlobal = false);    
 
     private:
-        std::unordered_map<std::string, Allocation> m_Variables; 
-        std::unordered_map<llvm::Type*, Allocation>  m_Temporaries; 
+        std::vector<Allocation> m_Allocations;
+
+        std::unordered_map<std::string, size_t>  m_Variables;  // key to index in allocation vector
+        std::unordered_map<llvm::Type*, size_t>  m_Temporaries; 
+
+        std::unordered_map<std::string, Allocation> m_TrackedAllocations;
 
         std::vector<Allocation> m_VariadicArguments;
-
         FunctionCache m_FunctionCache;
 
         std::shared_ptr<SymbolTable> m_Previous;
