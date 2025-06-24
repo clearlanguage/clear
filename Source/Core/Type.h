@@ -179,7 +179,10 @@ namespace clear
 
         std::shared_ptr<StructType> GetBaseType() { return m_StructType; }
 
+        std::string ConvertFunctionToClassFunction(const std::string& name);
+
         void PushFunction(const std::string& name);
+        bool HasFunctionMangled(const std::string& name);
 
         const auto& GetMemberTypes()   const { return m_StructType->GetMemberTypes(); }
         const auto& GetMemberIndices() const {return  m_StructType->GetMemberIndices(); }
@@ -211,8 +214,8 @@ namespace clear
         virtual ~ConstantType() = default;
 
         virtual llvm::Type* Get() const override { return m_Base->Get(); }
-        virtual std::string GetHash() const override { return "const" + m_Base->GetHash(); };
-        virtual std::string GetShortHash() const override { return "c" + m_Base->GetShortHash(); };
+        virtual std::string GetHash() const override { return m_Base->GetHash() + "const"; };
+        virtual std::string GetShortHash() const override { return m_Base->GetShortHash() + "c"; };
 
         std::shared_ptr<Type> GetBaseType() { return m_Base; }
 
@@ -242,5 +245,19 @@ namespace clear
         std::vector<std::pair<std::string, std::shared_ptr<Type>>> m_Members;
         std::string m_Name;
     };
+
+    template <typename To, typename From>
+    std::shared_ptr<To> dyn_cast(std::shared_ptr<From>& val) requires std::is_base_of_v<Type, From>
+    {
+        if(auto constTy = std::dynamic_pointer_cast<ConstantType>(val))
+        {
+            if constexpr (std::is_same_v<To, ConstantType>)
+                return constTy;
+
+            return std::dynamic_pointer_cast<To>(constTy->GetBaseType());
+        }
+
+        return std::dynamic_pointer_cast<To>(val);
+    }
 }
 

@@ -967,35 +967,6 @@ namespace clear
 		codegenResult.CodegenValue = alloca.Alloca;
 		codegenResult.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
 
-		if (alloca.Type->IsPointer()) 
-		{
-		    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(
-		        llvm::cast<llvm::PointerType>(alloca.Type->Get())
-		    );
-
-		    ctx.Builder.CreateStore(nullPtr, codegenResult.CodegenValue);
-		}
-		else if (alloca.Type->IsCompound())
-		{
-		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(alloca.Type->Get());
-		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
-		}
-		else if (alloca.Type->IsArray())
-		{
-		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(alloca.Type->Get());
-		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
-		}
-		else if (alloca.Type->IsIntegral())
-		{
-		    llvm::Constant* zero = llvm::ConstantInt::get(alloca.Type->Get(), 0);
-		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
-		}
-		else if (alloca.Type->IsFloatingPoint())
-		{
-		    llvm::Constant* zero = llvm::ConstantFP::get(alloca.Type->Get(), 0.0);
-		    ctx.Builder.CreateStore(zero, codegenResult.CodegenValue);
-		}
-
 		return codegenResult;
     }
 
@@ -1149,8 +1120,14 @@ namespace clear
     {
 		auto& builder = ctx.Builder;
 		
+		if(storage.CodegenType->IsConst())
+		{
+			auto constTy = std::dynamic_pointer_cast<ConstantType>(storage.CodegenType);
+			storage.CodegenType = constTy->GetBaseType();
+		}
+
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
-		CLEAR_VERIFY(ptrType, "storage must have pointer type");
+		CLEAR_VERIFY(ptrType, "storage must have pointer type not ", storage.CodegenType->GetHash());
 
 		if(m_Type != AssignmentOperatorType::Initialize)
 			CLEAR_VERIFY(!ptrType->GetBaseType()->IsConst(), "cannot assign to constant!");
@@ -1236,10 +1213,10 @@ namespace clear
 		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : ctx.Registry.GetType("void"));
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
+		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
+
 
 		uint32_t k = 0;
-
-		llvm::AllocaInst* vaList = nullptr;
 
 		bool hasVaArgs = false;
 
@@ -1343,6 +1320,7 @@ namespace clear
 		auto& builder  = ctx.Builder;
 		auto& module   = ctx.Module;
 		auto& context  = ctx.Context;
+		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 
@@ -1350,7 +1328,20 @@ namespace clear
 
 		if(auto ty = ctx.Registry.GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
 		{
+			CLEAR_VERIFY(ctx.WantAddress == false, "cannot get an address to a temporary!");
+
 			temporary = symbolTable->RequestTemporary(ty, builder);
+
+			if(children.size() == 0) // empty constructor so construct all children
+			{
+				llvm::Constant* zero = llvm::ConstantAggregateZero::get(ty->Get()); // zero initalize all elements.
+		    	ctx.Builder.CreateStore(zero, temporary.Alloca);
+
+				ASTDefaultInitializer::RecursiveCallConstructors(temporary.Alloca, ty, ctx, GetSymbolTable()); // call constructors recursively.
+
+				return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type }; // return value of temporary
+			}
+
 			m_Name = std::format("{}.{}", m_Name, "__construct__");
 			m_PrefixArguments.push_back({ temporary.Alloca, ctx.Registry.GetPointerTo(ty) });
 		}
@@ -1362,7 +1353,7 @@ namespace clear
 
 		BuildArgs(ctx, args, params);
 
-		if(Intrinsics::IsIntrinsic(m_Name))
+		if(Intrinsics::IsIntrinsic(m_Name)) // if its an intrinsic then dispatch correct function and return correct type
 		{
 			llvm::Value* value = nullptr;
 
@@ -1380,8 +1371,10 @@ namespace clear
 			return { value, ctx.Registry.GetType(m_Name) };
 		}
 
+		// find most suitable template to arguments and name
 		FunctionTemplate& data = symbolTable->GetTemplate(m_Name, params);
 
+		// add any default arguments
 		for(size_t i = args.size(); i < data.DefaultArguments.size(); i++)
 		{
 			if(!data.DefaultArguments[i]) 
@@ -1395,11 +1388,12 @@ namespace clear
 			params.push_back({ .Type=argument.CodegenType });
 		}
 		
+		// cast
 		CastArgs(ctx, args, params, data);
 
 		m_PrefixArguments.clear();
 
-		// again, we need a check to make sure that return type is not a generic in the future, for now this is ok.
+		// if we already have a decleration then call (external/extern function)
 
 		if(symbolTable->HasDecleration(m_Name))
 		{
@@ -1414,9 +1408,9 @@ namespace clear
 			return { ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType };
 		}
 
-		CLEAR_VERIFY(symbolTable->GetPrevious(), "has no previous");
+		// instantiate and call
+		
 		FunctionInstance& instance = symbolTable->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
-
 
 		if(temporary.Alloca)
 		{
@@ -2137,6 +2131,12 @@ namespace clear
 
 			if(ctx.WantAddress)
 				return result;
+
+			if(result.CodegenType->IsConst())
+			{
+				auto constTy = std::dynamic_pointer_cast<ConstantType>(result.CodegenType);
+				result.CodegenType = constTy->GetBaseType();
+			}
 			
 			std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
 
@@ -2586,4 +2586,121 @@ namespace clear
 		ctx.Registry.CreateType<TraitType>(m_Name, functions, members, m_Name);
         return CodegenResult();
     }
+
+    CodegenResult ASTRaise::Codegen(CodegenContext& ctx)
+    {
+		CLEAR_UNREACHABLE("unimplemented");
+		ctx.Thrown = true;
+
+        return CodegenResult();
+    }
+
+    CodegenResult ASTTryCatch::Codegen(CodegenContext &)
+    {
+		CLEAR_UNREACHABLE("unimplemented");
+        return CodegenResult();
+    }
+
+    CodegenResult ASTDefaultInitializer::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+		auto tbl = GetSymbolTable();
+		CLEAR_VERIFY(children.size() == 1, "invalid node");
+
+		ValueRestoreGuard guard(ctx.WantAddress, true);
+		CodegenResult variable = children[0]->Codegen(ctx);
+		
+		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to pointer");
+		
+		auto pointerTy = dyn_cast<PointerType>(variable.CodegenType);
+		auto baseTy = pointerTy->GetBaseType();
+
+		if (baseTy->IsPointer()) 
+		{
+		    llvm::Constant* nullPtr = llvm::ConstantPointerNull::get(
+		        llvm::cast<llvm::PointerType>(baseTy->Get())
+		    );
+
+		    ctx.Builder.CreateStore(nullPtr, variable.CodegenValue);
+		}
+		else if (baseTy->IsCompound())
+		{
+		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
+		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+
+			RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl);
+		}
+		else if (baseTy->IsArray())
+		{
+		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
+		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		}
+		else if (baseTy->IsIntegral())
+		{
+		    llvm::Constant* zero = llvm::ConstantInt::get(baseTy->Get(), 0);
+		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		}
+		else if (baseTy->IsFloatingPoint())
+		{
+		    llvm::Constant* zero = llvm::ConstantFP::get(baseTy->Get(), 0.0);
+		    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		}
+
+        return CodegenResult();
+    }
+
+    void ASTDefaultInitializer::RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
+    {
+		CLEAR_VERIFY(type->IsCompound(), "compound type");
+
+		std::shared_ptr<StructType> structTy = nullptr;
+		std::string functionName;  
+
+		if(type->IsClass())
+		{
+			auto classTy = dyn_cast<ClassType>(type);
+			structTy = classTy->GetBaseType();
+
+			functionName = classTy->ConvertFunctionToClassFunction("_CLR__construct__$%");
+
+			if(!tbl->HasTemplateMangled(functionName))
+			{
+				return;
+			}
+		}
+		else 
+		{
+			structTy = dyn_cast<StructType>(type);
+		}
+
+		CLEAR_VERIFY(structTy, "not a valid type");
+
+		const auto& memberIndices = structTy->GetMemberIndices();
+		const auto& memberTypes   = structTy->GetMemberTypes();
+
+		for(const auto& [name, subType] : memberTypes)
+		{
+			if(!subType->IsCompound()) 
+				continue;
+
+			size_t index = memberIndices.at(name);
+			llvm::Value* gep = ctx.Builder.CreateStructGEP(structTy->Get(), value, index);
+
+			RecursiveCallConstructors(gep, subType, ctx, tbl);
+		}
+
+		if(type->IsClass())
+		{
+			Parameter param;
+			param.Name = "this";
+			param.Type = ctx.Registry.GetPointerTo(type);
+
+			std::string name = type->GetHash() + "." + "__construct__";
+
+			auto function = tbl->InstantiateOrReturn(name, { param }, nullptr, ctx);
+			ctx.Builder.CreateCall(function.Function, { value });
+		}
+    }
+
+    
 }

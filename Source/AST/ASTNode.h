@@ -22,7 +22,7 @@ namespace clear
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
-		DefaultArgument, Trait
+		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer
 	};
 
 	struct CodegenResult
@@ -50,7 +50,6 @@ namespace clear
 	{
     	LookupAstTable& LookupTable;
 
-
 		std::filesystem::path CurrentDirectory;
 		std::filesystem::path StdLibraryDirectory;
 
@@ -68,6 +67,7 @@ namespace clear
 
 
 		bool WantAddress;
+		bool Thrown = false;
 
     	CodegenContext(LookupAstTable& map, const std::filesystem::path& path, llvm::LLVMContext& context, 
 					   llvm::IRBuilder<>& builder, llvm::Module& module, TypeRegistry& registry) 
@@ -491,5 +491,35 @@ namespace clear
 
 	private:
 		size_t m_Index;
+	};
+
+	class ASTRaise : public ASTNodeBase
+	{
+	public:
+		ASTRaise() = default;
+		virtual ~ASTRaise() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Raise; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
+
+	class ASTTryCatch : public ASTNodeBase
+	{
+	public:
+		ASTTryCatch() = default;
+		virtual ~ASTTryCatch() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TryCatch; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
+
+	class ASTDefaultInitializer : public ASTNodeBase
+	{
+	public:
+		ASTDefaultInitializer() = default;
+		virtual ~ASTDefaultInitializer() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::DefaultInitializer; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl);
+
 	};
 }

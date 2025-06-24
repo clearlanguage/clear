@@ -190,9 +190,43 @@ namespace clear
         return nullptr;
     }
 
-    void ClassType::PushFunction(const std::string& name)
+    std::string ClassType::ConvertFunctionToClassFunction(const std::string& name)
+    {
+        //_CLRfunction_name$args%rt -> _CLRClassName.function_name$ClassNamePargs%rt
+    
+        CLEAR_VERIFY(name.starts_with("_CLR"), "Not a valid mangled name");
+    
+        size_t startArgs = name.find_first_of('$');
+        size_t endArgs   = name.find_last_of('%');
+    
+        CLEAR_VERIFY(startArgs != std::string::npos && endArgs != std::string::npos && startArgs < endArgs,
+                     "Invalid mangled name structure");
+        
+        std::string functionName = name.substr(4, startArgs - 4);
+        std::string args         = name.substr(startArgs + 1, endArgs - startArgs - 1);
+        std::string returnType   = name.substr(endArgs);
+        
+        std::string classPrefix    = std::format("_CLR{}.{}", m_StructType->GetHash(), functionName);
+        std::string classArgsAndRt = std::format("${}P{}{}", m_StructType->GetHash(), args, returnType);
+        
+        return classPrefix + classArgsAndRt;
+    }
+
+    void ClassType::PushFunction(const std::string &name)
     {
         m_Functions.insert(name);
+    }
+
+    bool ClassType::HasFunctionMangled(const std::string& name)
+    {
+        CLEAR_VERIFY(name.starts_with("_CLR"), "not a valid mangled name");
+
+        //_CLRfunction_name$args%rt
+        std::string classPrefix = std::format("_CLR{}.", m_StructType->GetHash());
+        std::string classFunction = name;
+        classFunction.replace(0, 4, classPrefix);
+
+        return m_Functions.contains(classFunction);
     }
 
     VariadicArgumentsHolder::VariadicArgumentsHolder()

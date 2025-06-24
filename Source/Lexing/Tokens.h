@@ -19,7 +19,7 @@ namespace clear {
         Lambda,Struct,StructName,FunctionCall,Comma,RValueChar,IndexOperator,DeclarationOperator,Return,AddressOp,DynamicArrayDef,StaticArrayDef,PointerDef,DereferenceOp,CharType,Declaration,Defer,
         BitwiseXor,BitwiseOr,BitwiseNot,LeftShift,RightShift,MultiplyAssign,DivideAssign,ModuloAssign,PlusAssign,MinusAssign,LeftArrow,Else,BitwiseAnd,
         ElseIf,StartArray, EndArray, While, Increment, Decrement,Negation,Power, Break, Continue,EndFunctionArguments,TypeIdentifier,GenericDeclarationStart,GenericDeclarationEnd,MemberName,When,Switch,Case,Default,Restriction,RestrictionName,RestrictionTypeName,
-        Eof, Import,Class,ClassName,Inherits, As,Void, For,In,Try, Catch, And, Or, Let, Const, Trait, TraitName,Count
+        Eof, Import,Class,ClassName,Inherits, As,Void, For,In,Try, Catch, And, Or, Let, Const, Trait, TraitName, Raise, Pass, Count
     };
 
     enum class LexerSecondaryState 

@@ -271,10 +271,10 @@ namespace clear
     {
         std::string demangledName = DeMangleName(name);
 
-        if(!m_Templates.contains(name))
+        if(!m_Templates.contains(demangledName))
             return false;
 
-        for(const auto& templateFn : m_Templates.at(name))
+        for(const auto& templateFn : m_Templates.at(demangledName))
         {
             if(templateFn.MangledName == name)
                 return true;
@@ -335,10 +335,12 @@ namespace clear
             }
 
             mangledName += param.Type->GetShortHash();
-        }
+        }   
+
+        mangledName += "%";
 
         if(returnType)
-            mangledName += "%" + returnType->GetShortHash();
+            mangledName += returnType->GetShortHash();
 
         return mangledName;
     }
@@ -347,7 +349,7 @@ namespace clear
     {
         CLEAR_VERIFY(name.substr(0, 4) == "_CLR", "invalid mangled name");
         size_t nameEnd = name.find_first_of('$');
-        return name.substr(0, nameEnd);
+        return name.substr(4, nameEnd - 4);
     }
 
     const auto& FunctionCache::GetTemplates(const std::string& name)

@@ -124,13 +124,15 @@ namespace clear
             TokenType::RValueNumber,
 		    TokenType::RValueString,
 		    TokenType::BooleanData,
-		    TokenType::Null
+		    TokenType::Null,
+            TokenType::RValueChar
         });
 
         m_IgnoredTokens = CreateTokenSet({
             TokenType::StartIndentation,
             TokenType::EndLine, 
-            TokenType::Comma
+            TokenType::Comma,
+            TokenType::Pass
         });
 
         m_TypeIndirection = CreateTokenSet({
@@ -168,21 +170,25 @@ namespace clear
 
     Token Parser::Consume()
     {
+        CLEAR_VERIFY(m_Position + 1 < m_Tokens.size(), "what are you doing?");
         return m_Tokens[m_Position++];
     }
 
     Token Parser::Peak()
     {
+        CLEAR_VERIFY(m_Position < m_Tokens.size(), "what are you doing?");
         return m_Tokens[m_Position];
     }
 
     Token Parser::Next()
     {
+        CLEAR_VERIFY(m_Position + 1 < m_Tokens.size(), "what are you doing?");
         return m_Tokens[m_Position + 1];
     }
 
     Token Parser::Prev()
     {
+        CLEAR_VERIFY(m_Position > 0, "what are you doing?");
         return m_Tokens[m_Position - 1];
     }
 
@@ -246,7 +252,7 @@ namespace clear
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
         {
-            ParseVariableDecleration();
+            ParseVariableDecleration(true);
             return;
         }
 
@@ -273,7 +279,7 @@ namespace clear
         Root()->Push(expression);
     }
 
-    void Parser::ParseVariableDecleration()
+    void Parser::ParseVariableDecleration(bool defaultInitialize)
     {
         TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
@@ -301,23 +307,38 @@ namespace clear
         };
 
         if(Match(TokenType::EndLine))
-        {
-           Flush();
-           Consume();
-           return; 
+        {  
+            if(defaultInitialize)
+            {
+                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
+            }
+
+            Flush();
+            Consume();
+            return; 
         }
+
+        bool assigned = false;
 
         while(Match(TokenType::Comma) || MatchAny(m_AssignmentOperators))
         {
             if(MatchAny(m_AssignmentOperators))
             {
                 assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName(), true));
+                assigned = true;
                 continue;
             }
 
             Consume();
             ExpectAny(m_VariableName);
             variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(Consume().Data, variableType));
+
+            if(!assigned && defaultInitialize)
+            {
+                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
+            }
+
+            assigned = false;
         }
 
         Flush();
@@ -406,10 +427,10 @@ namespace clear
 
         TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
-        if(variableType.Description.size() == 2 && variableType.Description.back().TokenType != TokenType::VariableReference)
+        if(variableType.Description.size() >= 2 && variableType.Description.back().TokenType != TokenType::VariableReference)
         {
             RestorePosition();
-            ParseVariableDecleration();
+            ParseVariableDecleration(true);
             return;
         }
 
@@ -741,7 +762,8 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseTraitFunctionDefinition() {
+    void Parser::ParseTraitFunctionDefinition() 
+    {
         Expect(TokenType::Function);
 
         Consume();
@@ -799,11 +821,50 @@ namespace clear
         }
 
         Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
-
-
-
     }
 
+    void Parser::ParseRaise()
+    {
+        Expect(TokenType::Raise);
+
+        std::shared_ptr<ASTRaise> raise = std::make_shared<ASTRaise>();
+        raise->Push(ParseExpression());
+
+        Root()->Push(raise);
+    }
+
+    void Parser::ParseTry()
+    {
+        Expect(TokenType::Try);
+        Consume();
+
+        std::shared_ptr<ASTTryCatch> tryCatch = std::make_shared<ASTTryCatch>();
+        std::shared_ptr<ASTNodeBase> tryBlock = std::make_shared<ASTNodeBase>();
+
+        tryCatch->Push(tryBlock);
+
+        Root()->Push(tryCatch);
+        m_RootStack.push_back(tryBlock);
+    }
+
+    void Parser::ParseCatch()
+    {
+        Expect(TokenType::Catch);
+        Consume();
+
+        auto& last = Root()->GetChildren().back();
+        auto tryCatch = std::dynamic_pointer_cast<ASTTryCatch>(last);
+        CLEAR_VERIFY(tryCatch, "invalid node");
+
+        m_RootStack.push_back(tryCatch);
+        ParseVariableDecleration();
+        m_RootStack.pop_back();
+
+        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        tryCatch->Push(base);
+
+        m_RootStack.push_back(base);
+    }
 
     void Parser::ParseFunctionDeclaration()
     {
@@ -922,6 +983,8 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
+
+
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
@@ -1025,6 +1088,15 @@ namespace clear
         assign->Push(ParseExpression()); 
 
         return assign;
+    }
+
+    std::shared_ptr<ASTNodeBase> Parser::CreateDefaultInitializerFromName(const std::string& name)
+    {
+        auto variable = std::make_shared<ASTVariable>(name);
+        auto defaultInit = std::make_shared<ASTDefaultInitializer>();
+        defaultInit->Push(variable);
+
+        return defaultInit;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes

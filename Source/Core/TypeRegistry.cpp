@@ -132,6 +132,11 @@ namespace clear
             return GetPointerTo(GetType("int8"));
         }
 
+        if(token.TokenType == TokenType::RValueChar)
+        {
+            return GetType("int8");
+        }
+
         if(token.TokenType == TokenType::BooleanData)
         {
             return GetType("bool");

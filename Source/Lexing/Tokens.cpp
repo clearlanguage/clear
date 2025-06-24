@@ -96,7 +96,9 @@ namespace clear
         {"not",     {.NextState = LexerState::Default, .TokenToPush = TokenType::Not}},
         {"and",     {.NextState = LexerState::Default, .TokenToPush = TokenType::And}},
         {"or",{.NextState = LexerState::Default, .TokenToPush = TokenType::Or}}, 
-        {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}}
+        {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}},
+        {"raise",{.NextState = LexerState::Default, .TokenToPush = TokenType::Raise}},
+        {"pass", {.NextState = LexerState::Default, .TokenToPush = TokenType::Pass}}        
         
     };
 
@@ -237,6 +239,9 @@ namespace clear
             case TokenType::Const: return "Const";
             case TokenType::Trait: return "Trait";
             case TokenType::TraitName: return "TraitName";
+            case TokenType::Try:        return "Try";
+            case TokenType::Catch:      return "Catch";
+            case TokenType::Raise:      return "Raise";
             default:
                 break;
         }

@@ -14,10 +14,9 @@ namespace clear
             llvm::Function* trapFunc = llvm::Intrinsic::getDeclaration(&ctx.Module, llvm::Intrinsic::trap);
             ctx.Builder.CreateCall(trapFunc);
             ctx.Builder.CreateUnreachable();
-
             return nullptr;
         }
-
+        
         if(name == "sizeof")
         {
             return ctx.Builder.getInt64(ctx.Module.getDataLayout().getTypeSizeInBits(value->getType()) / 8);
