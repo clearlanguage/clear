@@ -49,6 +49,7 @@ namespace clear
 		}
 
 		GetSymbolTable()->FlushDestructors(ctx);
+
 		return value;
     }
 

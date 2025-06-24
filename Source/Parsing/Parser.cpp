@@ -550,6 +550,7 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        base->CreateSymbolTable();
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
@@ -566,6 +567,7 @@ namespace clear
         CLEAR_VERIFY(ifExpr, "invalid node");
         
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        base->CreateSymbolTable();
         ifExpr->Push(base);
             
         m_RootStack.push_back(base);
@@ -608,6 +610,8 @@ namespace clear
         Root()->Push(forLoop);
 
         auto body = std::make_shared<ASTNodeBase>();
+        body->CreateSymbolTable();
+        
         forLoop->Push(body);
 
         m_RootStack.push_back(body);
@@ -625,6 +629,8 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        base->CreateSymbolTable();
+
         ifExpr->Push(base);
 
         m_RootStack.push_back(base);
