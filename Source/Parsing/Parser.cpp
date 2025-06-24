@@ -910,7 +910,8 @@ namespace clear
         if(Match(TokenType::Comma)) 
             Consume();
         
-        Consume();
+        if(Match(TokenType::EndLine))
+            Consume();
 
         while(Match(TokenType::VariableReference))
         {
@@ -920,7 +921,10 @@ namespace clear
             {
                 Consume();
                 enum_->Push(nullptr); // nullptr indicates use 1 + previous
-                Consume();
+                
+                if(Match(TokenType::EndLine))
+                    Consume();
+                
                 continue;
             }
 
@@ -939,7 +943,8 @@ namespace clear
             if(Match(TokenType::Comma))
                 Consume();
 
-            Consume();
+            if(Match(TokenType::EndLine))
+                Consume();
         }
 
         Expect(TokenType::EndIndentation);
