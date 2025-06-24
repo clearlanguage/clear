@@ -114,6 +114,7 @@ namespace clear
 
 	private:
 		Token m_Token;
+		std::optional<Value> m_Value;
 	};
 
 	class ASTBinaryExpression : public ASTNodeBase

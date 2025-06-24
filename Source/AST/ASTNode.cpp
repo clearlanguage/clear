@@ -99,8 +99,11 @@ namespace clear
 
 	CodegenResult ASTNodeLiteral::Codegen(CodegenContext& ctx)
 	{
-		Value value(m_Token, ctx.Registry, ctx.Context, ctx.Module);
-		return {value.Get(), value.GetType()};
+		if(m_Value.has_value())
+			return { m_Value.value().Get(), m_Value.value().GetType() };
+
+		m_Value = Value(m_Token, ctx.Registry, ctx.Context, ctx.Module);
+		return { m_Value.value().Get(), m_Value.value().GetType() };
 	}
 
     ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
@@ -1073,7 +1076,7 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
-			
+
 
 			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
 			result.CodegenType = storage.CodegenType;
