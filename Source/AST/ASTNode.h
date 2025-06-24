@@ -333,7 +333,8 @@ namespace clear
 																	  llvm::Value* elemPtr, 
 																	  std::shared_ptr<Type> innerType,
 																	  size_t startingIndex, 
-																	  CodegenContext& ctx);
+																	  CodegenContext& ctx, 
+																	  size_t offset = 0);
 
 	private:
 		std::vector<std::vector<size_t>> m_Indices;

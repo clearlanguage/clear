@@ -1737,13 +1737,13 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-		auto Store = [&](llvm::Value* value, std::shared_ptr<Type> type, size_t i)
+		auto Store = [&](llvm::Value* value, std::shared_ptr<Type> type, size_t i, size_t offset)
 		{
 			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
 													 		     storage.CodegenValue, ctx.Builder.getInt64(0), 
 													 		     "gep");
 
-			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx);
+			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx, offset);
 			elemPtr = elemPtr1;
 			
 			if(type->Get() != innerType->Get())
@@ -1754,41 +1754,29 @@ namespace clear
 			ctx.Builder.CreateStore(value, elemPtr);
 		};
 
+		size_t k = 1;
+		size_t offset = 0;
 		for(size_t i = 0; i < m_Indices.size(); i++)
 		{
-			CodegenResult valueToStore = children[i + 1]->Codegen(ctx);
+			CodegenResult valueToStore = children[k++]->Codegen(ctx);
 
 			if(valueToStore.IsTuple)
 			{	
 				size_t j = 0;
+
 				for(; j < valueToStore.TupleValues.size(); j++)
 				{
-					Store(valueToStore.TupleValues[j], valueToStore.TupleTypes[j], j + i);
+					Store(valueToStore.TupleValues[j], valueToStore.TupleTypes[j], i, offset);
+					offset++;
 				}
 
-				i += j;
+				if(offset > 0) 
+					offset--;
 
 				continue;
 			}
 
-			//llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
-			//										 		     storage.CodegenValue, ctx.Builder.getInt64(0), 
-			//										 		     "gep");
-//
-			//auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx);
-			//elemPtr = elemPtr1;
-			//
-			//if(valueToStore.CodegenType != innerType)
-			//{
-			//	valueToStore.CodegenValue = TypeCasting::Cast(
-			//				valueToStore.CodegenValue,
-			//				valueToStore.CodegenType, 
-			//				innerType,
-			//				ctx.Builder);
-			//}
-//
-			//ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
-			Store(valueToStore.CodegenValue, valueToStore.CodegenType, i);
+			Store(valueToStore.CodegenValue, valueToStore.CodegenType, i, offset);
 		}
     }
 
@@ -1879,7 +1867,7 @@ namespace clear
         return type;
     }
 
-    std::pair<llvm::Value*, std::shared_ptr<Type>> ASTInitializerList::GetBasePointer(size_t index, llvm::Value* elemPtr, std::shared_ptr<Type> innerType, size_t startingIndex, CodegenContext& ctx)
+    std::pair<llvm::Value*, std::shared_ptr<Type>> ASTInitializerList::GetBasePointer(size_t index, llvm::Value* elemPtr, std::shared_ptr<Type> innerType, size_t startingIndex, CodegenContext& ctx, size_t offset)
     {	
 		for(size_t j = startingIndex; j < m_Indices[index].size(); j++)
 		{
@@ -1895,6 +1883,12 @@ namespace clear
 				}
 
 				size_t structIndex = m_Indices[index][j];
+
+				if(j + 1 == m_Indices[index].size())
+				{
+					structIndex += offset;
+				}
+
 				CLEAR_VERIFY(structIndex < tmp->GetMemberTypes().size(), "struct index out of bounds");
 
 				elemPtr = ctx.Builder.CreateStructGEP(innerType->Get(), elemPtr, structIndex, "gep");
@@ -1904,7 +1898,13 @@ namespace clear
 			{
 				CLEAR_VERIFY(innerType->IsArray(), "invalid type");
 				auto tmp = std::dynamic_pointer_cast<ArrayType>(innerType);
+
 				size_t arrayIndex = m_Indices[index][j];
+
+				if(j + 1 == m_Indices[index].size())
+				{
+					arrayIndex += offset;
+				}
 
 				CLEAR_VERIFY(arrayIndex < tmp->GetArraySize(), "array index out of bounds");
 
