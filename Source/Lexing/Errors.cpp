@@ -8,27 +8,35 @@ namespace clear {
     {
         int from =err.from;
         int to = err.to;
-         std::cout<<"Line number: " << err.line<<'\n';
+
+        std::cout<<"Line number: " << err.line<<'\n';
 
         std::cout <<  err.ErrorCause<<'\n';
-        for (int i = 0; i <from; i++) {
-            std::cout<<" ";
+
+        for (int i = 0; i < from; i++) 
+        {
+            std::cout << " ";
         }
-        if (to == from) {
-            std::cout<<"^";
-        }else {
-            for (int i = -1; i <to-from; i++) {
+        if (to == from) 
+        {
+            std::cout << "^";
+        }
+        else 
+        {
+            for (int i = -1; i < to - from; i++) 
+            {
                 std::cout<<"^";
             }
         }
-        std::cout<<std::endl;
-        std::cout<<"ErrorMessage: " <<err.ErrorMessage<<'\n';
-        std::cout<<"Advice: " << err.Advice <<'\n';
-        std::cout<<"ErrorType: " <<err.ErrorType<<'\n';
+
+        std::cout << std::endl;
+        std::cout << "ErrorMessage: " << err.ErrorMessage <<'\n';
+        std::cout << "Advice: " << err.Advice << '\n';
+        std::cout << "ErrorType: " << err.ErrorType << '\n';
 
     }
 
-
+    // TODO: going to be moved into toml file with actual names.
     const std::vector<ErrorReference> g_ErrorsReference = {
             {"Unclosed brackets","close your brackets brackets","Unclosed brackets"},
             {"Cannot perform operator on a type reference","idk man fix your code","Operator on type"},
