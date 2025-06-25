@@ -2507,7 +2507,32 @@ namespace clear
 
 	CodegenResult ASTStruct::Codegen(CodegenContext& ctx)
 	{
-		ctx.Registry.ResolveType(m_StructTy);
+		auto& children = GetChildren();
+
+		auto structTy = dyn_cast<StructType>(ctx.Registry.ResolveType(m_StructTy));
+		CLEAR_VERIFY(structTy, "failed to create type");
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+		size_t k = 0;
+
+		for(const auto& [memberName, _] : m_StructTy.ChildTypes)
+		{
+			auto memberType = structTy->GetMemberType(memberName);
+
+			if(!children[k])
+			{
+				k++;
+				structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
+
+				continue;
+			}
+
+			CodegenResult result = 	children[k++]->Codegen(ctx);
+			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
+
+			structTy->AddDefaultValue(memberName, result.CodegenValue);
+		}
+
 		return {};
 	}
 
@@ -2542,11 +2567,43 @@ namespace clear
 
     CodegenResult ASTClass::Codegen(CodegenContext& ctx)
     {
+		auto& children = GetChildren();
+
 		std::shared_ptr<ClassType> type = std::dynamic_pointer_cast<ClassType>(ctx.Registry.ResolveType(m_ClassTy));
 
+		// handle all default values for members
+		size_t k = 0;
+
+		for(const auto& [memberName, _] : m_ClassTy.ChildTypes)
+		{
+			while(k < children.size() && children[k] && children[k]->GetType() != ASTNodeType::Expression)
+			{
+				k++;
+			}
+
+			auto memberType = type->GetMemberType(memberName);
+
+			if(!children[k])
+			{
+				k++;
+				type->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
+
+				continue;
+			}
+
+			ValueRestoreGuard guard(ctx.WantAddress, false);
+
+			CodegenResult result = 	children[k++]->Codegen(ctx);
+			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
+
+			type->AddDefaultValue(memberName, result.CodegenValue);
+		}
+
+		// handle all function definitions
 		for(const auto& definition : GetChildren())
 		{
-			CLEAR_VERIFY(definition->GetType() == ASTNodeType::FunctionDefinition, "not a valid node");
+			if(!definition || definition->GetType() != ASTNodeType::FunctionDefinition)
+				continue;
 
 			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
 		
@@ -2662,17 +2719,6 @@ namespace clear
 		}
 		else if (baseTy->IsCompound())
 		{
-		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
-		
-		    if (isGlobal)
-		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
-		    }
-		    else
-		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
-		    }
-
 		    RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
 		}
 		else if (baseTy->IsArray())
@@ -2793,9 +2839,6 @@ namespace clear
 
 		for(const auto& [name, subType] : memberTypes)
 		{
-			if(!subType->IsCompound()) 
-				continue;
-
 			size_t index = memberIndices.at(name);
 			llvm::Value* gep = nullptr;
 
@@ -2821,6 +2864,12 @@ namespace clear
 			        value,            
 			        index             
 			    );
+			}
+
+			if(!subType->IsCompound()) 
+			{
+				ctx.Builder.CreateStore(structTy->GetDefaultValue(name), gep);
+				continue;
 			}
 
 			RecursiveCallConstructors(gep, subType, ctx, tbl, isGlobal);

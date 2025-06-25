@@ -153,6 +153,9 @@ namespace clear
         void SetMember(const std::string& member, std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
 
+        void AddDefaultValue(const std::string& member, llvm::Value* value); // assumes value is of correct type already
+        llvm::Value* GetDefaultValue(const std::string& member);
+
         const auto& GetMemberTypes()   const { return m_MemberTypes; }
         const auto& GetMemberIndices() const {return m_MemberIndices; }
 
@@ -160,6 +163,7 @@ namespace clear
         llvm::StructType* m_LLVMType;
         std::unordered_map<std::string, std::shared_ptr<Type>> m_MemberTypes;
         std::unordered_map<std::string, size_t> m_MemberIndices;
+        std::unordered_map<std::string, llvm::Value*> m_DefaultValues;
 
         std::string m_Name;
     };
@@ -177,6 +181,9 @@ namespace clear
         std::shared_ptr<Type> GetMemberType(const std::string& member);
         void SetMember(const std::string& member, std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
+
+        void AddDefaultValue(const std::string& member, llvm::Value* value);
+        llvm::Value* GetDefaultValue(const std::string& member);
 
         std::shared_ptr<StructType> GetBaseType() { return m_StructType; }
 

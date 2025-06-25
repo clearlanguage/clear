@@ -188,11 +188,32 @@ namespace clear
     {
         for(const auto& [member, mIndex] : m_MemberIndices)
         {
-            if(index == mIndex) return m_MemberTypes[member];
+            if(index == mIndex) 
+                return m_MemberTypes[member];
         }
 
         CLEAR_UNREACHABLE("unable to find index", index);
         return nullptr;
+    }
+
+    void StructType::AddDefaultValue(const std::string& member, llvm::Value* value)
+    {
+        m_DefaultValues[member] = value;
+    }
+
+    llvm::Value* StructType::GetDefaultValue(const std::string& member)
+    {
+        return m_DefaultValues[member];
+    }
+
+    void ClassType::AddDefaultValue(const std::string& member, llvm::Value* value)
+    {
+        m_StructType->AddDefaultValue(member, value);
+    }
+
+    llvm::Value* ClassType::GetDefaultValue(const std::string& member)
+    {
+        return m_StructType->GetDefaultValue(member);
     }
 
     std::string ClassType::ConvertFunctionToClassFunction(const std::string& name)
@@ -299,7 +320,6 @@ namespace clear
             std::string rest = function.substr(argBegin+1);
 
             std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
-
             if(!classFunctions.contains(classFunctionName))
                 return false;
         }

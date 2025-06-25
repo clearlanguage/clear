@@ -483,6 +483,8 @@ namespace clear
         TypeDescriptor structTyDesc;
         structTyDesc.Description = { token };
 
+        auto struct_ = std::make_shared<ASTStruct>();
+
         while(!Match(TokenType::EndIndentation))
         {
             std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
@@ -494,11 +496,26 @@ namespace clear
             std::string name = Consume().Data;
             structTyDesc.ChildTypes.push_back({name, subType});
 
+            if(Match(TokenType::Assignment))
+            {
+                Consume();
+                struct_->Push(ParseExpression());
+            }
+            else 
+            {
+                struct_->Push(nullptr);
+            }
+
+            if(Match(TokenType::Comma))
+                Consume();
+
             Expect(TokenType::EndLine);
             Consume();
         }
 
-        Root()->Push(std::make_shared<ASTStruct>(structTyDesc));
+        struct_->SetTypeDesc(structTyDesc);
+        Root()->Push(struct_);
+
         Consume();
     }
 
@@ -1417,8 +1434,22 @@ namespace clear
             {
                 classTy.ChildTypes.push_back(ParseVariableTypeDescriptor());
 
+                if(Match(TokenType::Assignment))
+                {
+                    Consume();
+                    classNode->Push(ParseExpression());
+                }
+                else 
+                {
+                    classNode->Push(nullptr);
+                }
+
+                if(Match(TokenType::Comma))
+                    Consume();
+
                 Expect(TokenType::EndLine);
                 Consume();
+                
                 continue;
             }
 

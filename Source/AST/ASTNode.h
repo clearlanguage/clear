@@ -435,10 +435,15 @@ namespace clear
 	class ASTStruct : public ASTNodeBase
 	{
 	public:
-		ASTStruct(const TypeDescriptor& structTy);
+		ASTStruct(const TypeDescriptor& structTy = {});
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+
+		void SetTypeDesc(const TypeDescriptor& other)
+		{
+			m_StructTy = other;
+		}
 
 	private:
 		TypeDescriptor m_StructTy;
