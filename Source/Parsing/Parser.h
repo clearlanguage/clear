@@ -35,7 +35,7 @@ namespace clear
         void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
-        void ParseGeneric();
+        void ParseGeneral();
         void ParseFunctionDefinition(const std::string& className = "");
         void ParseFunctionDeclaration();        
         void ParseVariableDecleration(bool defaultInitialize = false);
@@ -58,6 +58,7 @@ namespace clear
         void ParseTry();
         void ParseCatch();
         void ParseEnum();
+        void ParseDefer();
 
         std::shared_ptr<ASTNodeBase> ParseExpression();
         std::shared_ptr<ASTNodeBase> ParseVariableReference();

@@ -133,8 +133,18 @@ namespace clear
         m_Previous = previous;
     }
 
-    void SymbolTable::FlushDestructors(CodegenContext& ctx)
+    void SymbolTable::FlushScope(CodegenContext& ctx)
     {
+        while(!ctx.DeferredCalls.empty() && ctx.DeferredCalls.back())
+        {
+            auto call = ctx.DeferredCalls.back();
+            call->Codegen(ctx);
+            ctx.DeferredCalls.pop_back();
+        }
+
+        if(!ctx.DeferredCalls.empty()) // remove dummy node
+            ctx.DeferredCalls.pop_back();
+
         for(int64_t i = (int64_t)m_Allocations.size() - 1; i >= 0; i--)
         {
             if(m_Allocations[i].Type->IsArray() || m_Allocations[i].Type->IsCompound())

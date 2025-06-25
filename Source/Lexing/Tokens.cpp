@@ -99,7 +99,8 @@ namespace clear
         {"const",{.NextState = LexerState::Default, .TokenToPush = TokenType::Const}},
         {"raise",{.NextState = LexerState::Default, .TokenToPush = TokenType::Raise}},
         {"pass", {.NextState = LexerState::Default, .TokenToPush = TokenType::Pass}}, 
-        {"enum", {.NextState = LexerState::Default, .TokenToPush = TokenType::Enum}}, 
+        {"enum", {.NextState = LexerState::Default, .TokenToPush = TokenType::Enum}}
+
 
         
     };

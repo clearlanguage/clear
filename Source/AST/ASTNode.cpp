@@ -33,12 +33,19 @@ namespace clear
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 
+	static void PushScopeMarker(CodegenContext& ctx)
+	{
+		ctx.DeferredCalls.push_back(nullptr);
+	}
+
     ASTNodeBase::ASTNodeBase()
     {
     }
 
     CodegenResult ASTNodeBase::Codegen(CodegenContext& ctx)
     {
+		PushScopeMarker(ctx);
+
         CodegenResult value;
 
 		for (auto& child : GetChildren())
@@ -48,7 +55,7 @@ namespace clear
 			if(isContinue) break;
 		}
 
-		GetSymbolTable()->FlushDestructors(ctx);
+		GetSymbolTable()->FlushScope(ctx);
 
 		return value;
     }
@@ -1182,7 +1189,7 @@ namespace clear
 	}
 
 	CodegenResult ASTFunctionDefinition::Codegen(CodegenContext& ctx)
-	{
+	{		
 		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
@@ -1226,6 +1233,8 @@ namespace clear
 
     void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
     {
+		PushScopeMarker(ctx);
+
 		auto& module  = ctx.Module;
 		auto& context = ctx.Context;
 		auto& builder = ctx.Builder;
@@ -1325,13 +1334,13 @@ namespace clear
 
 		if (functionData.Function->getReturnType()->isVoidTy())
 		{
-			tbl->FlushDestructors(ctx);
+			tbl->FlushScope(ctx);
 			builder.CreateRetVoid();
 		}
 		else
 		{   
 			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
-			tbl->FlushDestructors(ctx);
+			tbl->FlushScope(ctx);
 			builder.CreateRet(load);
 		}
 
@@ -2401,6 +2410,8 @@ namespace clear
 
     CodegenResult ASTWhileExpression::Codegen(CodegenContext &ctx)
     {
+		PushScopeMarker(ctx);
+
 		auto& children = GetChildren();
 
 		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
@@ -2446,7 +2457,7 @@ namespace clear
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 		{
-			GetSymbolTable()->FlushDestructors(ctx);
+			GetSymbolTable()->FlushScope(ctx);
 			ctx.Builder.CreateBr(conditionBlock);
 		}
 		
@@ -2540,7 +2551,7 @@ namespace clear
 	{
     	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
 		
-		GetSymbolTable()->FlushDestructors(ctx);
+		GetSymbolTable()->FlushScope(ctx);
 
     	if (m_JumpTy == TokenType::Continue) 
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
@@ -2936,6 +2947,15 @@ namespace clear
 		}
 
 		ctx.Registry.RegisterType(m_EnumName, type);
+        return CodegenResult();
+    }
+
+    CodegenResult ASTDefer::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+		CLEAR_VERIFY(children.size() == 1, "cannot have defer node with more than one child");
+
+		ctx.DeferredCalls.push_back(children[0]);
         return CodegenResult();
     }
 }

@@ -248,7 +248,9 @@ namespace clear
             {TokenType::Continue,      [this]() { ParseLoopControls(); }},
             {TokenType::Break,         [this]() { ParseLoopControls(); }},
             {TokenType::Trait,         [this]() { ParseTrait(); }}, 
-            {TokenType::Enum,          [this]() { ParseEnum(); }}
+            {TokenType::Enum,          [this]() { ParseEnum(); }}, 
+            {TokenType::Defer,         [this]() { ParseDefer(); }}
+
         };
 
         if(MatchAny(m_VariableType) && !Match(TokenType::Const))
@@ -263,11 +265,11 @@ namespace clear
         }
         else 
         {
-            ParseGeneric();
+            ParseGeneral();
         }
     }
 
-    void Parser::ParseGeneric()
+    void Parser::ParseGeneral()
     {
         std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
@@ -968,6 +970,20 @@ namespace clear
         Consume();
 
         Root()->Push(enum_);
+    }
+
+    void Parser::ParseDefer()
+    {
+        Expect(TokenType::Defer);
+        Consume();
+
+        auto defer = std::make_shared<ASTDefer>();
+
+        m_RootStack.push_back(defer);
+        ParseGeneral();
+        m_RootStack.pop_back();
+
+        Root()->Push(defer);
     }
 
     void Parser::ParseFunctionDeclaration()

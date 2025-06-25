@@ -23,7 +23,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum
+		Enum, Defer
 	};
 
 	struct CodegenResult
@@ -70,6 +70,8 @@ namespace clear
 
 		bool WantAddress;
 		bool Thrown = false;
+
+		std::vector<std::shared_ptr<ASTNodeBase>> DeferredCalls;
 
     	CodegenContext(LookupAstTable& map, const std::filesystem::path& path, llvm::LLVMContext& context, 
 					   llvm::IRBuilder<>& builder, llvm::Module& module, TypeRegistry& registry) 
@@ -549,4 +551,13 @@ namespace clear
 		std::string m_EnumName;
 		std::vector<std::string> m_Names;
 	};	
+
+	class ASTDefer : public ASTNodeBase 
+	{
+	public:
+		ASTDefer() = default;
+		virtual ~ASTDefer() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Defer; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
 }

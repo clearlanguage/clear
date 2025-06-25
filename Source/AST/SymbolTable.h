@@ -83,7 +83,7 @@ namespace clear
         FunctionCache& GetFunctionCache() { return m_FunctionCache; }
         std::vector<Allocation>& GetVariadicArguments() { return m_VariadicArguments; }        
 
-        void FlushDestructors(CodegenContext& ctx);
+        void FlushScope(CodegenContext& ctx);
         void RecursiveCallDestructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, bool isGlobal = false);    
 
     private:
