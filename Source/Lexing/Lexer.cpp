@@ -133,8 +133,6 @@ namespace clear
 
     }
 
-
-
     void Lexer::EatWord()
     {
         auto ShouldContinue = [&]()
@@ -414,28 +412,32 @@ namespace clear
 
         m_Position++;
 
-        if (m_Position >= m_Contents.size()) {
+        if (m_Position >= m_Contents.size()) 
+        {
             CLEAR_LOG_ERROR("char error");
             return;
         }
 
         char value;
 
-        if (m_Contents[m_Position] == '\\') {
+        if (m_Contents[m_Position] == '\\') 
+        {
             m_Position++;
-            if (m_Position >= m_Contents.size()) {
+            if (m_Position >= m_Contents.size()) 
+            {
                 CLEAR_LOG_ERROR("Unterminated escape sequence");
                 return;
             }
 
             char esc = m_Contents[m_Position];
-            switch (esc) {
+            switch (esc) 
+            {
                 case 'n':  value = '\n'; break;
                 case 't':  value = '\t'; break;
                 case 'r':  value = '\r'; break;
                 case 'a':  value = '\a'; break;
                 case 'v':  value = '\v'; break;
-                case 'f':  value =  '\f'; break;
+                case 'f':  value = '\f'; break;
                 case '\\': value = '\\'; break;
                 case '\'': value = '\''; break;
                 case '0':  value = '\0'; break;
@@ -443,14 +445,17 @@ namespace clear
                     value = esc;
                 break;
             }
-        } else {
+
+        } 
+        else 
+        {
             value = m_Contents[m_Position];
         }
 
         m_Position++;
 
-        if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') {
-
+        if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
+        {
             CLEAR_LOG_ERROR("Missing closing quote");
             return;
         }
