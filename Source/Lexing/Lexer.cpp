@@ -73,6 +73,10 @@ namespace clear
         {
             EatString();
         }
+        else if (top == "'")
+        {
+            EatChar();
+        }
         else if (std::isspace(m_Contents[m_Position]))
         {
             m_Position++;
@@ -355,6 +359,57 @@ namespace clear
         }
 
         m_Tokens.emplace_back(TokenType::Number, std::to_string(num));
+    }
+    void Lexer::EatChar()
+    {
+        size_t start = m_Position;
+
+        m_Position++;
+
+        if (m_Position >= m_Contents.size()) {
+            CLEAR_LOG_ERROR("char error");
+            return;
+        }
+
+        char value;
+
+        if (m_Contents[m_Position] == '\\') {
+            m_Position++;
+            if (m_Position >= m_Contents.size()) {
+                CLEAR_LOG_ERROR("Unterminated escape sequence");
+                return;
+            }
+
+            char esc = m_Contents[m_Position];
+            switch (esc) {
+                case 'n':  value = '\n'; break;
+                case 't':  value = '\t'; break;
+                case 'r':  value = '\r'; break;
+                case 'a':  value = '\a'; break;
+                case 'v':  value = '\v'; break;
+                case 'f':  value =  '\f'; break;
+                case '\\': value = '\\'; break;
+                case '\'': value = '\''; break;
+                case '0':  value = '\0'; break;
+                default:
+                    value = esc;
+                break;
+            }
+        } else {
+            value = m_Contents[m_Position];
+        }
+
+        m_Position++;
+
+        if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') {
+
+            CLEAR_LOG_ERROR("Missing closing quote");
+            return;
+        }
+
+        m_Position++;
+
+        m_Tokens.emplace_back(TokenType::Char, std::string(1, value));
     }
 
     bool Lexer::IsLineOnlyWhitespace()

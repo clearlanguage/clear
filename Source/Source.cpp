@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
         return 0;
     } */
     //else if(std::string(argv[1]) == "build")
-    if (false) {
+    if (true) {
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 
@@ -31,7 +31,7 @@ int main(int argc, char* argv[])
         
         for(const auto& token : parser.GetTokens())
         {
-            CLEAR_LOG_INFO("TYPE: ", token.GetTypeAsString(), " DATA: ", token.GetData());
+            std::cout<< "TYPE: " << token.GetTypeAsString() <<  " DATA: " << token.GetData() << std::endl;
         }
     }
     else {
