@@ -363,11 +363,11 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
 
         size_t k = 0;
-        size_t num = 0;
+        uint64_t num = 0;
 
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
-            size_t digit = 0;
+            uint64_t digit = 0;
 
             if(std::isdigit(*it)) 
             {
@@ -396,16 +396,17 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
 
         size_t k = 0;
-        size_t num = 0;
+        uint64_t num = 0;
 
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
-            size_t digit = *it - '0';
+            uint64_t digit = *it - '0';
             num += digit * std::pow(2, k++);
         }
 
         m_Tokens.emplace_back(TokenType::Number, std::to_string(num));
     }
+
     void Lexer::EatChar()
     {
         size_t start = m_Position;
