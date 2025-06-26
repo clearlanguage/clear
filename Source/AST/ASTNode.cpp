@@ -1184,8 +1184,8 @@ namespace clear
 		data.CodegenType = underlyingStorageType; 
     }
 
-	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType, const std::vector<UnresolvedParameter>& paramaters)
-		: m_ReturnType(returnType), m_Name(name), m_Parameters(paramaters)
+	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name)
+		: m_Name(name)
 	{
 		CreateSymbolTable();
 	}
@@ -3028,4 +3028,14 @@ namespace clear
 		result.CodegenType = type;
         return result;
     }
+
+	CodegenResult ASTFunctionParameter::Codegen(CodegenContext &) {
+
+	}
+
+	ASTFunctionParameter::ASTFunctionParameter(const std::string &name) :m_Name(name){
+
+	}
+
+
 }

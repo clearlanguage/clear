@@ -25,7 +25,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer, TypeResolver
+		Enum, Defer, TypeResolver,FunctionParameter
 	};
 
 	struct CodegenResult
@@ -237,7 +237,7 @@ namespace clear
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType = {}, const std::vector<UnresolvedParameter>& parameters = {});
+		ASTFunctionDefinition(const std::string& name);
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -421,6 +421,22 @@ namespace clear
 		virtual ~ASTWhileExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
+	};
+
+	class ASTFunctionParameter : public ASTNodeBase
+	{
+	public:
+		bool IsVariadic;
+
+	public:
+		ASTFunctionParameter(const std::string& name);
+		virtual ~ASTFunctionParameter() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionParameter; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+
+	private:
+		std::string m_Name;
 	};
 
 	class ASTForExpression : public ASTNodeBase 
