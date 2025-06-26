@@ -29,6 +29,7 @@ namespace clear
         void EatComment();
         void EatChar();
         void EatNumber();
+        void EatMultiLineComment();
         void FlushScopes();
         void EatHex();
         void EatBin();

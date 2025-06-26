@@ -66,6 +66,9 @@ namespace clear
             if (m_Contents[m_Position+1] == '/')
             {
                 EatComment();
+            }else if (m_Contents[m_Position+1] == '*')
+            {
+                EatMultiLineComment();
             }
             else
             {
@@ -109,6 +112,27 @@ namespace clear
 
         GetWord(IsCommentContinue);
     }
+
+    void Lexer::EatMultiLineComment()
+    {
+        m_Position += 2;
+        while (m_Position < m_Contents.size())
+        {
+            if (m_Contents[m_Position] == '*' && m_Contents[m_Position + 1] == '\\')
+            {
+                m_Position += 2;
+                break;
+            }
+            m_Position++;
+        }
+
+        if (m_Position >= m_Contents.size())
+        {
+            CLEAR_LOG_ERROR("Unterminated comment (reached EOF before '*/')");
+        }
+
+    }
+
 
 
     void Lexer::EatWord()
