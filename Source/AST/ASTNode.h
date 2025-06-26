@@ -7,6 +7,7 @@
 #include "SymbolTable.h"
 #include "Linker/LibraryLinker.h"
 #include "Core/Log.h"
+#include "Core/Operator.h"
 
 #include <memory>
 #include <string>
@@ -125,19 +126,19 @@ namespace clear
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type);
+		ASTBinaryExpression(OperatorType type);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
+		inline const OperatorType GetExpression() const { return m_Expression; }
 
 		CodegenResult HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
 
 
 	private:
@@ -165,7 +166,7 @@ namespace clear
 		std::shared_ptr<StructType> GetStruct(std::shared_ptr<Type> type);
 
 	private:
-		BinaryExpressionType m_Expression;
+		OperatorType m_Expression;
 	};
 
 	class ASTVariableDeclaration : public ASTNodeBase
@@ -236,7 +237,7 @@ namespace clear
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType, const std::vector<UnresolvedParameter>& parameters);
+		ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType = {}, const std::vector<UnresolvedParameter>& parameters = {});
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -395,13 +396,13 @@ namespace clear
 	class ASTUnaryExpression : public ASTNodeBase 
 	{
 	public:
-		ASTUnaryExpression(UnaryExpressionType type);
+		ASTUnaryExpression(OperatorType type);
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 	private: 
-		UnaryExpressionType m_Type;
+		OperatorType m_Type;
 	};
 
 	class ASTIfExpression : public ASTNodeBase 

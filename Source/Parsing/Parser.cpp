@@ -10,53 +10,17 @@
 
 namespace clear 
 {
-
-   /*  static std::map<TokenType, int32_t> s_Precedence = {
-        {TokenType::IndexOperator,      7}, // x[y]
-        {TokenType::DotOp,              7}, // x.y
-
-        {TokenType::Negation,           6}, // -x
-        {TokenType::Increment,          6}, // ++x
-        {TokenType::Decrement,          6}, // --x
-        {TokenType::BitwiseNot,         6}, // ~x
-        {TokenType::AddressOp,          6}, // &x
-        {TokenType::DereferenceOp,      6}, // *x
-        {TokenType::Not,                6}, // not x
-
-        {TokenType::Power,              5}, // x ** y
-
-        {TokenType::MulOp,              4}, // x * y
-        {TokenType::DivOp,              4}, // x / y
-        {TokenType::ModOp,              4}, // x % y
-
-        {TokenType::AddOp,              3}, // x + y
-        {TokenType::SubOp,              3}, // x - y
-
-        {TokenType::LeftShift,          2}, // x << y
-        {TokenType::RightShift,         2}, // x >> y
-
-        {TokenType::BitwiseAnd,         1}, // x & y
-        {TokenType::BitwiseXor,         1}, // x ^ y
-        {TokenType::BitwiseOr,          1}, // x | y
-
-        {TokenType::LessThan,           0},
-        {TokenType::GreaterThan,        0},
-        {TokenType::LessThanEqual,      0},
-        {TokenType::GreaterThanEqual,   0},
-        {TokenType::IsEqual,            0},
-        {TokenType::NotEqual,           0},
-        {TokenType::Ellipsis,           0},
-
-        {TokenType::And,               -1}, // x and y
-        {TokenType::Or,                -2}, // x or y
-    }; */
-
     Parser::Parser(const std::vector<Token>& tokens)
         : m_Tokens(tokens)
     {
-        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); //TODO: change back to this once function definitions are implemented
+        std::shared_ptr<ASTFunctionDefinition> main = std::make_shared<ASTFunctionDefinition>("main");
+
         root->CreateSymbolTable();
+        root->Push(main);
+
         m_RootStack.push_back(root);
+        m_RootStack.push_back(main);
 
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
@@ -72,6 +36,22 @@ namespace clear
             TokenType::EndOfFile
         });
 
+         m_AssignmentOperators = CreateTokenSet({
+            TokenType::Equals, 
+            TokenType::StarEquals,
+            TokenType::SlashEquals, 
+            TokenType::PlusEquals,
+            TokenType::MinusEquals,
+            TokenType::PercentEquals
+        });
+
+
+        m_Literals = CreateTokenSet({
+            TokenType::Number,
+		    TokenType::String,
+            TokenType::Char, 
+            TokenType::Keyword
+        });
 
         /* m_VariableType = CreateTokenSet({
             TokenType::Int8Type, 
@@ -222,6 +202,13 @@ namespace clear
         CLEAR_UNREACHABLE("TODO: add errors here");
     }
 
+    void Parser::ExpectAny(TokenSet tokenSet)
+    {
+        if(MatchAny(tokenSet)) return;
+
+        CLEAR_UNREACHABLE("TODO: add errors here");
+    }
+
    /*  void Parser::ExpectAny(TokenSet tokenSet)
     {
         if(MatchAny(tokenSet)) return;
@@ -324,22 +311,31 @@ namespace clear
         static constexpr std::array<TokenType, s_MaxMatchSize> s_KeywordIdentifier = 
                 {TokenType::Keyword, TokenType::Identifier, TokenType::None};
         
-        // string var
+        // Foo var
         static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
                 {TokenType::Identifier, TokenType::Identifier, TokenType::None};
 
-        if(LookAheadMatches(terminator, s_KeywordIdentifier))
+        
+        if(LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier))
         {
-            ParseVariableDecleration(true);
-        }
-        else if (LookAheadMatches(terminator, s_IdentifierIdentifier))
-        {
-            ParseVariableDecleration(true);
+            auto decleration = ParseVariableDeclerationN(true);
+
+            if(MatchAny(m_AssignmentOperators))
+            {
+                Root()->Push(ParseAssignment(decleration, true));
+                return;
+            }
+            
+            Root()->Push(decleration);
+
+            return;
         }
         else 
         {
             CLEAR_UNREACHABLE("unimplemented match");
         }
+
+        Root()->Push(ParseExpression());
 
         /* std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
@@ -1240,6 +1236,12 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
+        if(MatchAny(m_Literals)) 
+            return std::make_shared<ASTNodeLiteral>(Consume());
+
+        if(Match(TokenType::Identifier))
+            return std::make_shared<ASTVariable>(Consume().GetData());
+
         CLEAR_UNREACHABLE("unimplemented");
         return {};
 /*  
@@ -1324,8 +1326,31 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
+        ExpectAny(m_AssignmentOperators);
+
+        Token assignmentToken = Consume();
+
+        // TODO: array initializer 
+
+        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.GetType());
+        
+        std::shared_ptr<ASTAssignmentOperator> assign;
+
+        if(initialize)
+        {
+            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid initializer");
+            assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Initialize);
+        }
+        else 
+        {
+            assign = std::make_shared<ASTAssignmentOperator>(assignType);
+        }
+
+        assign->Push(storage);            
+        assign->Push(ParseExpression()); 
+
+        return assign;
+
        /*  ExpectAny(m_AssignmentOperators);
 
         Token assignmentToken = Consume();
@@ -1369,10 +1394,287 @@ namespace clear
         return defaultInit; */
     }
 
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDeclerationN(bool initialize)
+    {
+        auto type = ParseTypeResolver();
+
+        Expect(TokenType::Identifier);
+        
+        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
+        variableDecleration->Push(type);
+
+        return variableDecleration;
+    }
+
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
+        std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
+        std::stack<Operator> operators;
+
+        auto PopOperatorsUntil = [&](auto condition) 
+        {
+            while (!operators.empty() && !condition(operators.top())) 
+            {
+                const auto& currentOperator = operators.top();
+
+                if (currentOperator.IsBinary)
+                    expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.OperatorExpr));
+                else 
+                    expression->Push(std::make_shared<ASTUnaryExpression>(currentOperator.OperatorExpr));
+                
+                operators.pop();
+            }
+        };
+
+        auto IsTokenOperand = [&](const Token& token)
+        {
+            return  token.IsType(TokenType::Identifier) || token.IsType(TokenType::Number) || token.IsType(TokenType::String) || 
+                   (token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false"));
+        };
+
+        auto IsTokenBoundary = [&](const Token& token)
+        {
+            return GetBinaryExpressionFromTokenType(token.GetType()) != BinaryExpressionType::None ||
+                   token.IsType(TokenType::RightBracket) ||
+                   m_Terminators.test((size_t)token.GetType());
+        };
+
+        auto IsOperand = [&]()
+        {
+            return IsTokenOperand(Peak());
+        };
+
+        auto HandleOpenBracket = [&]() 
+        {
+            operators.push({ .IsOpenBracket=true });
+            Consume();
+        };
+
+        auto HandleCloseBracket = [&]() 
+        {
+            PopOperatorsUntil([](const Operator& op) { return op.IsOpenBracket; });
+            
+            if (!operators.empty()) 
+                operators.pop(); // remove the open bracket
+
+            Consume();
+        };
+
+        auto GetOperatorTypeFromContext = [&]()
+        {
+            Token current = Peak();
+
+            // unambiguous cases 
+
+            switch (current.GetType()) 
+            {
+                case TokenType::Plus:               return OperatorType::Add;
+                case TokenType::ForwardSlash:       return OperatorType::Div;
+                case TokenType::Percent:            return OperatorType::Mod;
+                                
+                case TokenType::Pipe:               return OperatorType::BitwiseOr;
+                case TokenType::Hat:                return OperatorType::BitwiseXor;
+                case TokenType::LeftShift:          return OperatorType::LeftShift;
+                case TokenType::RightShift:         return OperatorType::RightShift;
+                case TokenType::Telda:              return OperatorType::BitwiseNot;
+                
+                case TokenType::LogicalAnd:         return OperatorType::And;
+                case TokenType::LogicalOr:          return OperatorType::Or;
+                case TokenType::Bang:               return OperatorType::Not;
+                
+                case TokenType::EqualsEquals:       return OperatorType::IsEqual;
+                case TokenType::BangEquals:         return OperatorType::NotEqual;
+                case TokenType::LessThan:           return OperatorType::LessThan;
+                case TokenType::LessThanEquals:     return OperatorType::LessThanEqual;
+                case TokenType::GreaterThan:        return OperatorType::GreaterThan;
+                case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
+            
+                default:
+                    break;
+            }
+
+            // ambiguous cases
+            switch (current.GetType())
+            {
+                case TokenType::Star:
+                {
+                    if (IsTokenOperand(Prev())) 
+                        return OperatorType::Mul;
+                
+                    return OperatorType::Dereference;
+                }
+            
+                case TokenType::Ampersand:
+                {
+                    if (IsTokenOperand(Prev())) 
+                        return OperatorType::BitwiseAnd;
+                
+                    return OperatorType::Address;
+                }
+            
+                case TokenType::Minus:
+                {
+                    if (IsTokenOperand(Prev()))
+                        return OperatorType::Sub;
+                
+                    return OperatorType::Negation;
+                }
+            
+                case TokenType::Decrement:
+                {
+                    bool prev = IsTokenOperand(Prev());
+                    bool next = IsTokenOperand(Next());
+                
+                    if (prev || next)
+                    {
+                        CLEAR_VERIFY(!(prev && next), "ambiguous decrement");
+
+                        if(next) 
+                            return OperatorType::Decrement;
+
+                        return OperatorType::PostDecrement;
+                    }
+                
+                    return OperatorType::None; // -- double negate does nothing so we can ignore
+                }
+
+                case TokenType::Increment:
+                {
+                    bool prev = IsTokenOperand(Prev());
+                    bool next = IsTokenOperand(Next());
+                
+                    if (prev || next)
+                    {
+                        CLEAR_VERIFY(!(prev && next), "ambiguous increment");
+
+                        if(next) 
+                            return OperatorType::Increment;
+
+                        return OperatorType::PostIncrement;
+                    }
+                    
+                    CLEAR_UNREACHABLE("invalid increment");
+                    return OperatorType::None;
+                }
+
+                default: 
+                {
+                    break;
+                }
+            }
+
+            return OperatorType::None;
+        };
+
+        auto HandleOperator = [&]() 
+        {
+            OperatorType operatorType = GetOperatorTypeFromContext();
+
+            if(operatorType == OperatorType::None)
+            {
+                Consume();
+                return;
+            }
+
+            int precedence = g_Precedence.at(operatorType);
+
+            PopOperatorsUntil([&](const Operator& op) 
+            {
+                return op.IsOpenBracket || precedence > op.Precedence;
+            });
+
+            operators.push({
+                .OperatorExpr = operatorType,
+                .IsBinary = true,
+                .Precedence = precedence
+            });
+
+            Consume();
+        };
+
+        auto HandlePreUnaryOperators = [&]() 
+        {
+            OperatorType operatorType = GetOperatorTypeFromContext();
+
+            while(g_PreUnaryOperators.test((size_t)operatorType))
+            {
+                Consume();
+
+                int precedence = g_Precedence.at(operatorType);
+
+                PopOperatorsUntil([&](const Operator& op) 
+                {
+                    return op.IsOpenBracket || precedence >= op.Precedence;
+                });
+
+                operators.push({
+                    .OperatorExpr = operatorType, 
+                    .IsUnary = true,
+                    .Precedence = precedence
+                });
+
+                operatorType = GetOperatorTypeFromContext();
+            }
+        };
+
+        auto HandlePostUnaryOperators = [&]() 
+        {
+            OperatorType operatorType = GetOperatorTypeFromContext();
+
+            while(g_PostUnaryOperators.test((size_t)operatorType))
+            {
+                Consume();
+
+                int precedence = g_Precedence.at(operatorType);
+
+                PopOperatorsUntil([&](const Operator& op) 
+                {
+                    return op.IsOpenBracket || precedence > op.Precedence;
+                });
+
+                operators.push({
+                    .OperatorExpr = operatorType, 
+                    .IsUnary = true,
+                    .Precedence = precedence
+                });
+
+                operatorType = GetOperatorTypeFromContext();
+            }
+        };
+
+        while (!MatchAny(m_Terminators)) 
+        {
+            HandlePreUnaryOperators();
+
+            OperatorType operatorType = GetOperatorTypeFromContext();
+
+            if (IsOperand()) 
+            {
+                expression->Push(ParseOperand());
+            }
+            else if (Match(TokenType::LeftBracket)) 
+            {
+                HandleOpenBracket();
+            }
+            else if (Match(TokenType::RightBracket)) 
+            {
+                HandleCloseBracket();
+            }
+            else if (operatorType != OperatorType::None) 
+            {
+                HandleOperator();
+            }
+            else 
+            {
+                CLEAR_LOG_WARNING("ignore token ", Consume().GetData());
+            }
+
+            HandlePostUnaryOperators();
+        }
+
+        PopOperatorsUntil([](const Operator&) { return false; });
+        return expression;
+
        /*  struct Operator
         {
             BinaryExpressionType BinaryExpression;
@@ -1757,24 +2059,20 @@ namespace clear
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
-/* 
         switch (type)
         {
-            case TokenType::Assignment:      return AssignmentOperatorType::Normal;
-            case TokenType::PlusAssign:      return AssignmentOperatorType::Add;
-            case TokenType::MinusAssign:     return AssignmentOperatorType::Sub;
-            case TokenType::MultiplyAssign:  return AssignmentOperatorType::Mul;
-            case TokenType::DivideAssign:    return AssignmentOperatorType::Div;    
-            case TokenType::ModuloAssign:    return AssignmentOperatorType::Mod;    
+            case TokenType::Equals:          return AssignmentOperatorType::Normal;
+            case TokenType::PlusEquals:      return AssignmentOperatorType::Add;
+            case TokenType::MinusEquals:     return AssignmentOperatorType::Sub;
+            case TokenType::StarEquals:      return AssignmentOperatorType::Mul;
+            case TokenType::SlashEquals:     return AssignmentOperatorType::Div;    
+            case TokenType::PercentEquals:   return AssignmentOperatorType::Mod;    
             default:
                 break;
         }
 
-        CLEAR_UNREACHABLE("invalid token type for assignment");
-
-        return AssignmentOperatorType(); */
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
     }
 
     void Parser::SavePosition()

@@ -3,6 +3,7 @@
 #include "Lexing/Lexer.h"
 #include "AST/ASTNode.h"
 #include "Core/Type.h"
+#include "Core/Operator.h"
 
 #include <memory>
 #include <vector>
@@ -38,7 +39,7 @@ namespace clear
         void Expect(TokenType tokenType);
         void Expect(const std::string& data);
 
-        //void ExpectAny(TokenSet tokenSet);
+        void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
         void ParseGeneral();
@@ -75,6 +76,8 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> CreateDefaultInitializerFromName(const std::string& name);
 
+        std::shared_ptr<ASTNodeBase> ParseVariableDeclerationN(bool initialize = false);
+
         std::shared_ptr<ASTNodeBase> ParseTypeResolver();
 
         std::vector<Token> ParseVariableTypeTokens();
@@ -106,6 +109,8 @@ namespace clear
         std::vector<size_t> m_RestorePoints;
 
         TokenSet m_Terminators;
+        TokenSet m_AssignmentOperators;
+        TokenSet m_Literals;
 
        /*  TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;

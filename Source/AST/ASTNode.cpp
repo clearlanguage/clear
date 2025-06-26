@@ -115,7 +115,7 @@ namespace clear
 		return { m_Value.value().Get(), m_Value.value().GetType() };
 	}
 
-    ASTBinaryExpression::ASTBinaryExpression(BinaryExpressionType type)
+    ASTBinaryExpression::ASTBinaryExpression(OperatorType type)
 		: m_Expression(type)
 	{
 	}
@@ -137,7 +137,7 @@ namespace clear
 		if(IsCmpExpression())
 			return HandleCmpExpression(leftChild, rightChild, ctx);
 
-		if(m_Expression == BinaryExpressionType::Index)
+		if(m_Expression == OperatorType::Index)
 			return HandleArrayIndex(leftChild, rightChild, ctx);
 
     	if (IsBitwiseExpression())
@@ -146,7 +146,7 @@ namespace clear
 		if (IsLogicalOperator())
 			return HandleLogicalExpression(leftChild, rightChild, ctx);
 
-		if(m_Expression == BinaryExpressionType::MemberAccess)
+		if(m_Expression == OperatorType::Dot)
 			return HandleMemberAccess(leftChild, rightChild, ctx);
 
 
@@ -239,12 +239,12 @@ namespace clear
     {
         switch (m_Expression)
 		{
-			case BinaryExpressionType::Add:
-            case BinaryExpressionType::Sub:
-			case BinaryExpressionType::Mul:
-			case BinaryExpressionType::Div:
-			case BinaryExpressionType::Mod:
-			case BinaryExpressionType::Pow:
+			case OperatorType::Add:
+            case OperatorType::Sub:
+			case OperatorType::Mul:
+			case OperatorType::Div:
+			case OperatorType::Mod:
+			//case OperatorType::Pow:
 				return true;
 			default:
 				break;
@@ -257,12 +257,12 @@ namespace clear
     {
         switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:
-			case BinaryExpressionType::LessEq:
-			case BinaryExpressionType::Greater:
-            case BinaryExpressionType::GreaterEq:
-			case BinaryExpressionType::Eq:
-			case BinaryExpressionType::NotEq:
+			case OperatorType::LessThan:
+			case OperatorType::LessThanEqual:
+			case OperatorType::GreaterThan:
+            case OperatorType::GreaterThanEqual:
+			case OperatorType::IsEqual:
+			case OperatorType::NotEqual:
 				return true;
 			default:
 				break;
@@ -275,12 +275,12 @@ namespace clear
     {
         switch (m_Expression)
 		{
-			case BinaryExpressionType::BitwiseLeftShift:
-			case BinaryExpressionType::BitwiseRightShift:
-			case BinaryExpressionType::BitwiseNot:
-			case BinaryExpressionType::BitwiseAnd:
-			case BinaryExpressionType::BitwiseOr:
-			case BinaryExpressionType::BitwiseXor:
+			case OperatorType::LeftShift:
+			case OperatorType::RightShift:
+			case OperatorType::BitwiseNot:
+			case OperatorType::BitwiseAnd:
+			case OperatorType::BitwiseOr:
+			case OperatorType::BitwiseXor:
 				return true;
 			default:
 				break;
@@ -293,8 +293,8 @@ namespace clear
     {
 		switch(m_Expression)
 		{
-			case BinaryExpressionType::And:
-			case BinaryExpressionType::Or:
+			case OperatorType::And:
+			case OperatorType::Or:
 				return true;
 			default:
 				break;
@@ -303,7 +303,7 @@ namespace clear
         return false;
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx)
     {
 		if(lhs.CodegenType != rhs.CodegenType)
 			HandleTypePromotion(lhs, rhs, ctx);
@@ -336,35 +336,35 @@ namespace clear
         return HandleMathExpression(lhs, rhs, m_Expression, ctx);
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, BinaryExpressionType binExpressionType, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, OperatorType binExpressionType, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
 
 		switch (binExpressionType)
 		{
-			case BinaryExpressionType::Add:
+			case OperatorType::Add:
 			{
                 return { builder.CreateFAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Sub:
+			case OperatorType::Sub:
 			{
                 return { builder.CreateFSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Mul:
+			case OperatorType::Mul:
 			{
                 return { builder.CreateFMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Div:
+			case OperatorType::Div:
 			{
                 return { builder.CreateFDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Mod:
+			case OperatorType::Mod:
 			{
 				CLEAR_UNREACHABLE("cannot do mod on floating type");
 				break;
 			}
-			case BinaryExpressionType::Pow:
+			/* case OperatorType::Pow:
 			{
 				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
@@ -373,7 +373,7 @@ namespace clear
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
 					     ctx.Registry.GetType("float64")  };
-			}
+			} */
 			default:
 				break;
 		}
@@ -381,7 +381,7 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType binExpressionType, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType binExpressionType, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
@@ -390,28 +390,28 @@ namespace clear
 
 		switch (binExpressionType)
 		{
-			case BinaryExpressionType::Add:
+			case OperatorType::Add:
 			{
                 return { builder.CreateAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), type };
 			}
-			case BinaryExpressionType::Sub:
+			case OperatorType::Sub:
 			{
                 return { builder.CreateSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), type };
 			}
-			case BinaryExpressionType::Mul:
+			case OperatorType::Mul:
 			{
                 return { builder.CreateMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), type };
 			}
-			case BinaryExpressionType::Div:
+			case OperatorType::Div:
 			{
                 return { builder.CreateSDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), type };
 			}
-			case BinaryExpressionType::Mod:
+			case OperatorType::Mod:
 			{
                 return { builder.CreateSRem(lhs.CodegenValue, rhs.CodegenValue, "modtmp"), type };
 				break;
 			}
-			case BinaryExpressionType::Pow:
+			case OperatorType::Pow:
 			{
 				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
@@ -427,35 +427,35 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
 
 		switch (type)
 		{
-			case BinaryExpressionType::Add:
+			case OperatorType::Add:
 			{
                 return { builder.CreateAdd(lhs.CodegenValue, rhs.CodegenValue, "faddtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Sub:
+			case OperatorType::Sub:
 			{
                 return { builder.CreateSub(lhs.CodegenValue, rhs.CodegenValue, "fsubtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Mul:
+			case OperatorType::Mul:
 			{
                 return { builder.CreateMul(lhs.CodegenValue, rhs.CodegenValue, "fmultmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Div:
+			case OperatorType::Div:
 			{
                 return { builder.CreateUDiv(lhs.CodegenValue, rhs.CodegenValue, "fdivtmp"), lhs.CodegenType };
 			}
-			case BinaryExpressionType::Mod:
+			case OperatorType::Mod:
 			{
                 return { builder.CreateURem(lhs.CodegenValue, rhs.CodegenValue, "modtmp"), lhs.CodegenType };				
 				break;
 			}
-			case BinaryExpressionType::Pow:
+			case OperatorType::Pow:
 			{
 				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
 				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
@@ -503,28 +503,28 @@ namespace clear
 
 		switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:
+			case OperatorType::LessThan:
             {
                 return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::LessEq:
+			case OperatorType::LessThanEqual:
             {
                 return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::Greater:
+			case OperatorType::GreaterThan:
             {
                 return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::GreaterEq:
+			case OperatorType::GreaterThanEqual:
 			{
                 return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 
 			}
-			case BinaryExpressionType::Eq:
+			case OperatorType::IsEqual:
 			{
                 return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
-			case BinaryExpressionType::NotEq:
+			case OperatorType::NotEqual:
 			{
                 return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
@@ -541,28 +541,28 @@ namespace clear
 
 		switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:
+			case OperatorType::LessThan:
             {
                 return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::LessEq:
+			case OperatorType::LessThanEqual:
             {
                 return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::Greater:
+			case OperatorType::GreaterThan:
             {
                 return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::GreaterEq:
+			case OperatorType::GreaterThanEqual:
 			{
                 return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 
 			}
-			case BinaryExpressionType::Eq:
+			case OperatorType::IsEqual:
 			{
                 return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
-			case BinaryExpressionType::NotEq:
+			case OperatorType::NotEqual:
 			{
                 return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
@@ -579,28 +579,28 @@ namespace clear
 
 		switch (m_Expression)
 		{
-			case BinaryExpressionType::Less:
+			case OperatorType::LessThan:
             {
                 return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::LessEq:
+			case OperatorType::LessThanEqual:
             {
                 return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::Greater:
+			case OperatorType::GreaterThan:
             {
                 return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
             }
-			case BinaryExpressionType::GreaterEq:
+			case OperatorType::GreaterThanEqual:
 			{
                 return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 
 			}
-			case BinaryExpressionType::Eq:
+			case OperatorType::IsEqual:
 			{
                 return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
-			case BinaryExpressionType::NotEq:
+			case OperatorType::NotEqual:
 			{
                 return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
 			}
@@ -629,17 +629,17 @@ namespace clear
     	CLEAR_VERIFY(lhs.CodegenType->IsIntegral(),"LHS must be an int")
     	switch (m_Expression) 
 		{
-    		case BinaryExpressionType::BitwiseAnd:
+    		case OperatorType::BitwiseAnd:
     			return { builder.CreateAnd(lhs.CodegenValue, rhs.CodegenValue, "andtmp"), lhs.CodegenType };
-    		case BinaryExpressionType::BitwiseOr:
+    		case OperatorType::BitwiseOr:
     			return { builder.CreateOr(lhs.CodegenValue, rhs.CodegenValue, "ortmp"), lhs.CodegenType };
-    		case BinaryExpressionType::BitwiseXor:
+    		case OperatorType::BitwiseXor:
     			return { builder.CreateXor(lhs.CodegenValue, rhs.CodegenValue, "xortmp"), lhs.CodegenType };
-    		case BinaryExpressionType::BitwiseLeftShift:
+    		case OperatorType::LeftShift:
     			return { builder.CreateShl(lhs.CodegenValue, rhs.CodegenValue, "shltmp"), lhs.CodegenType };
-    		case BinaryExpressionType::BitwiseRightShift:
+    		case OperatorType::RightShift:
     			return { builder.CreateLShr(lhs.CodegenValue, rhs.CodegenValue, "lshrtmp"), lhs.CodegenType };
-    		case BinaryExpressionType::BitwiseNot:
+    		case OperatorType::BitwiseNot:
     			return { builder.CreateNot(lhs.CodegenValue, "nottmp"), lhs.CodegenType };
     		default:
     			// Error handling or fallback
@@ -669,7 +669,7 @@ namespace clear
 		llvm::BasicBlock* falseResult  = llvm::BasicBlock::Create(ctx.Context, "false_value");
 		llvm::BasicBlock* merge  	   = llvm::BasicBlock::Create(ctx.Context, "merge");
 
-		if(m_Expression == BinaryExpressionType::And)
+		if(m_Expression == OperatorType::And)
 			ctx.Builder.CreateCondBr(lhs.CodegenValue, checkSecond, falseResult);
 		else 
 			ctx.Builder.CreateCondBr(lhs.CodegenValue, trueResult, checkSecond);
@@ -707,7 +707,7 @@ namespace clear
         return result;
     }
 
-    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx)
     {
 		CLEAR_VERIFY(lhs.CodegenType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhs.CodegenType->IsIntegral(), "invalid pointer arithmetic");
@@ -722,12 +722,12 @@ namespace clear
 		
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhs.CodegenType);
 
-		if(type == BinaryExpressionType::Add)
+		if(type == OperatorType::Add)
 		{
 			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
 		}
 
-		if(type == BinaryExpressionType::Sub)
+		if(type == OperatorType::Sub)
 		{
 			rhs.CodegenValue = ctx.Builder.CreateNeg(rhs.CodegenValue);
 			return { ctx.Builder.CreateGEP(ptrType->GetBaseType()->Get(), lhs.CodegenValue, rhs.CodegenValue), ptrType };
@@ -1126,23 +1126,23 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Add)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Add, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Add, ctx);
 		}
 		else if (m_Type == AssignmentOperatorType::Sub)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Sub, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Sub, ctx);
 		}
 		else if (m_Type == AssignmentOperatorType::Mul)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mul, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mul, ctx);
 		}
 		else if (m_Type == AssignmentOperatorType::Div)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Div, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Div, ctx);
 		}
 		else if (m_Type == AssignmentOperatorType::Mod)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, BinaryExpressionType::Mod, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mod, ctx);
 		}
 		else 
 		{
@@ -2148,7 +2148,7 @@ namespace clear
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
 
-    ASTUnaryExpression::ASTUnaryExpression(UnaryExpressionType type)
+    ASTUnaryExpression::ASTUnaryExpression(OperatorType type)
 		: m_Type(type)
     {
     }
@@ -2159,7 +2159,7 @@ namespace clear
 
 		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
 
-		if(m_Type == UnaryExpressionType::Dereference)
+		if(m_Type == OperatorType::Dereference)
 		{
 			CodegenResult result;
 
@@ -2187,7 +2187,7 @@ namespace clear
 
 		CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of unary expression");
 
-		if(m_Type == UnaryExpressionType::Reference)
+		if(m_Type == OperatorType::Address)
 		{		
 			ValueRestoreGuard guard(ctx.WantAddress, true);
 			CodegenResult result = children[0]->Codegen(ctx);
@@ -2195,7 +2195,7 @@ namespace clear
 			return result;
 		}
 
-		if(m_Type == UnaryExpressionType::Negation)
+		if(m_Type == OperatorType::Negation)
 		{			
 			CodegenResult result = children[0]->Codegen(ctx);
 
@@ -2214,13 +2214,13 @@ namespace clear
 			return { negated, result.CodegenType };
 		}
 
-		if(m_Type == UnaryExpressionType::BitwiseNot)
+		if(m_Type == OperatorType::BitwiseNot)
 		{
 			CodegenResult result = children[0]->Codegen(ctx);
 			return { ctx.Builder.CreateNot(result.CodegenValue), result.CodegenType };
 		}	
 
-		if(m_Type == UnaryExpressionType::Not)
+		if(m_Type == OperatorType::Not)
 		{
 			CodegenResult result = children[0]->Codegen(ctx);
 			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
@@ -2245,7 +2245,7 @@ namespace clear
 		CodegenResult valueToStore;
 		CodegenResult returnValue;
 
-		auto ApplyFun = [&](BinaryExpressionType type)
+		auto ApplyFun = [&](OperatorType type)
 		{
 			if(ty->GetBaseType()->IsPointer())
 				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
@@ -2253,42 +2253,43 @@ namespace clear
 				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
 		};
 
-		if(m_Type == UnaryExpressionType::PostIncrement)
+		if(m_Type == OperatorType::PostIncrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			ApplyFun(BinaryExpressionType::Add);
+			ApplyFun(OperatorType::Add);
 		}
-		else if (m_Type == UnaryExpressionType::PostDecrement)
+		else if (m_Type == OperatorType::PostDecrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			ApplyFun(BinaryExpressionType::Sub);
+			ApplyFun(OperatorType::Sub);
 		}
-		else if (m_Type == UnaryExpressionType::PreIncrement)
+		else if (m_Type == OperatorType::Increment)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			ApplyFun(BinaryExpressionType::Add);
+			ApplyFun(OperatorType::Add);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
-		else if (m_Type == UnaryExpressionType::PreDecrement)
+		else if (m_Type == OperatorType::Decrement)
 		{
 			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
 			returnValue.CodegenType = ty->GetBaseType();
 
-			ApplyFun(BinaryExpressionType::Sub);
+			ApplyFun(OperatorType::Sub);
 			returnValue.CodegenValue = valueToStore.CodegenValue;
 		}
-    	else if(m_Type == UnaryExpressionType::Unpack)
+    	else if(m_Type == OperatorType::Ellipsis)
     	{
     		auto ptrTy = std::dynamic_pointer_cast<PointerType>(ty);
     		auto arrTy = std::dynamic_pointer_cast<ArrayType>(ptrTy->GetBaseType());
     		CLEAR_VERIFY(arrTy,"Unpack must have array");
 			returnValue.IsTuple = true;
+
     		for (int i = 0; i < arrTy->GetArraySize(); i++)
     		{
     			auto pointer =ctx.Builder.CreateGEP(arrTy->Get(),result.CodegenValue,{ctx.Builder.getInt64(0),ctx.Builder.getInt64(i)});
