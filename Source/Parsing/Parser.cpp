@@ -233,10 +233,10 @@ namespace clear
 
         static std::map<std::string, std::function<void()>> s_MappedKeywordsToFunctions = {
             {"function",  [this]() { ParseFunctionDefinition(); }},
-            {"while",[this]() { ParseWhile(); }},
-            {"for",[this]() { ParseFor(); }},
-            {"let", [this]() {ParseLetDecleration();}}
-
+            {"while",     [this]() { ParseWhile(); }},
+            {"for",       [this]() { ParseFor(); }},
+            {"let",       [this]() { ParseLetDecleration(); }},
+            {"declare",   [this]() { ParseFunctionDeclaration(); }}
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -254,7 +254,7 @@ namespace clear
         }
         else 
         {
-            CLEAR_UNREACHABLE("unimplemented");
+             Root()->Push(ParseExpression());
         }
         
 
@@ -1073,7 +1073,11 @@ namespace clear
             {
                 Consume();
                 Expect(TokenType::RightParen);
-                decleration->Push(std::make_shared<ASTFunctionParameter>(""));
+
+                auto param = std::make_shared<ASTFunctionParameter>("");
+                param->IsVariadic = true;
+
+                decleration->Push(param);
 
                 break;
             }
@@ -1107,9 +1111,6 @@ namespace clear
             decleration->Push(ParseTypeResolver());
         }
 
-        Expect(TokenType::Colon);
-        Consume();
-
         Root()->Push(decleration);
     }
 
@@ -1126,7 +1127,7 @@ namespace clear
 
         auto call = std::make_shared<ASTFunctionCall>(functionName);
 
-        while(!MatchAny(m_Terminators))
+        while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
             call->Push(ParseExpression(terminationIndex));
 
@@ -1850,8 +1851,8 @@ namespace clear
 
         while(bracketCount)
         {
-            if(Match(TokenType::LeftBracket))  bracketCount++;
-            if(Match(TokenType::RightBracket)) bracketCount--;
+            if(Match(openBracket))  bracketCount++;
+            if(Match(closeBracket)) bracketCount--;
 
             m_Position++;
         }
