@@ -28,7 +28,7 @@ namespace clear
         const std::string& GetData() const { return m_Data; }
         TokenType GetType()          const { return m_Type; }
         
-        std::string GetTypeAsString() const
+        std::string_view GetTypeAsString() const
         {
             switch (m_Type)
             {
@@ -77,7 +77,7 @@ namespace clear
                 case TokenType::GreaterThanEquals:  return "GreaterThanEquals";
                 case TokenType::AmpersandEquals:    return "AmpersandEquals";
                 case TokenType::PipeEquals:         return "PipeEquals";
-                case TokenType::HatEquals:           return "HatEquals";
+                case TokenType::HatEquals:          return "HatEquals";
                 case TokenType::LeftShift:          return "LeftShift";
                 case TokenType::RightShift:         return "RightShift";
                 case TokenType::LeftShiftEquals:    return "LeftShiftEquals";

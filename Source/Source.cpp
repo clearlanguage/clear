@@ -27,13 +27,11 @@ int main(int argc, char* argv[])
         std::filesystem::current_path(current.parent_path());
 
         std::cout << "------PARSER TESTS--------" << std::endl;
-        Lexer parser;
-        ProgramInfo info = parser.CreateTokensFromFile("Tests/test.cl");
-        for (size_t i = 0; i < info.Tokens.size(); i++)
+        Lexer parser("Tests/test.cl");
+        
+        for(const auto& token : parser.GetTokens())
         {
-            std::cout << "Token Type: " << TokenToString(info.Tokens[i].TokenType);
-            std::cout << ", Data: " << info.Tokens[i].Data;
-            std::cout << std::endl;
+            CLEAR_LOG_INFO("TYPE: ", token.GetTypeAsString(), " DATA: ", token.GetData());
         }
     }
     else {

@@ -3,7 +3,7 @@
 #include "Core/Type.h"
 #include "Core/Value.h"
 
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 #include "SymbolTable.h"
 #include "Linker/LibraryLinker.h"
 
@@ -343,7 +343,7 @@ namespace clear
 		bool m_FirstTimeInitialized; 
 	};
 
-	class ASTImport : public ASTNodeBase
+	/* class ASTImport : public ASTNodeBase
 	{
 	public:
 		ASTImport(const std::filesystem::path& filepath, const std::string& alias = "");
@@ -364,7 +364,7 @@ namespace clear
 	private:
 		std::filesystem::path m_Filepath;
 		std::string m_Alias;
-	};
+	}; */
 
 	class ASTMember : public ASTNodeBase
 	{

@@ -14,7 +14,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const ProgramInfo& info);
+        Parser(const std::vector<Token>& tokens);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -29,10 +29,10 @@ namespace clear
         void Undo();
 
         bool Match(TokenType tokenType);
-        bool MatchAny(TokenSet tokenSet);
+        //bool MatchAny(TokenSet tokenSet);
 
         void Expect(TokenType tokenType);
-        void ExpectAny(TokenSet tokenSet);
+        //void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
         void ParseGeneral();
@@ -82,7 +82,7 @@ namespace clear
         void SavePosition();
         void RestorePosition();
         void SkipUntil(TokenType type);
-        void SkipUntil(TokenSet set);
+        //void SkipUntil(TokenSet set);
 
     private:    
         std::vector<Token> m_Tokens;
@@ -92,7 +92,7 @@ namespace clear
         std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
         std::vector<size_t> m_RestorePoints;
 
-        TokenSet m_VariableType;
+       /*  TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
         TokenSet m_Terminators;
         TokenSet m_PreUnaryExpression;
@@ -101,6 +101,6 @@ namespace clear
         TokenSet m_IgnoredTokens;
         TokenSet m_TypeIndirection;
         TokenSet m_ValueReferences;
-        TokenSet m_VariableName;
+        TokenSet m_VariableName; */
     };
 }

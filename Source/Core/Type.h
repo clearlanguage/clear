@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"

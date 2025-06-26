@@ -1,10 +1,10 @@
 #pragma once 
 
 #include "Type.h"
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 #include "API/LLVM/LLVMInclude.h"
 
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 
 namespace clear 
 {
@@ -38,7 +38,6 @@ namespace clear
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
         std::shared_ptr<Type> ResolveType(const TypeDescriptor& descriptor);
 
-        static std::string GetTypeNameFromTokenType(TokenType type);
         const auto& GetTypeTable() { return m_Types; }
 
         template<typename T, typename ...Args>

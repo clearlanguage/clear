@@ -14,6 +14,7 @@ namespace clear
         Keyword,
         Number,
         String,
+        Char,
 
         Colon,           // :
         Semicolon,       // ;

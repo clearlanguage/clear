@@ -3,14 +3,15 @@
 #include "Core/Log.h"
 #include "Core/TypeRegistry.h"
 #include "Core/Utils.h"
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 
 #include <stack>
 
 
 namespace clear 
 {
-    static std::map<TokenType, int32_t> s_Precedence = {
+
+   /*  static std::map<TokenType, int32_t> s_Precedence = {
         {TokenType::IndexOperator,      7}, // x[y]
         {TokenType::DotOp,              7}, // x.y
 
@@ -48,18 +49,16 @@ namespace clear
 
         {TokenType::And,               -1}, // x and y
         {TokenType::Or,                -2}, // x or y
-    };
+    }; */
 
-    Parser::Parser(const ProgramInfo& info)
-        : m_Tokens(info.Tokens)
+    Parser::Parser(const std::vector<Token>& tokens)
+        : m_Tokens(tokens)
     {
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
         root->CreateSymbolTable();
         m_RootStack.push_back(root);
 
-        m_Tokens.push_back({TokenType::Eof});
-
-        m_VariableType = CreateTokenSet({
+        /* m_VariableType = CreateTokenSet({
             TokenType::Int8Type, 
             TokenType::Int16Type, 
             TokenType::Int32Type, 
@@ -150,9 +149,11 @@ namespace clear
             TokenType::VariableName,
             TokenType::VariableReference,
             TokenType::MemberName
-        });
+        }); */
 
-        while(!Match(TokenType::Eof))
+        CLEAR_UNREACHABLE("unimplemented");
+
+        while(!Match(TokenType::EndOfFile))
         {
             ParseStatement();
         }
@@ -199,32 +200,35 @@ namespace clear
 
     bool Parser::Match(TokenType token)
     {
-        return Peak().TokenType == token;
+        return Peak().IsType(token);
     }
 
-    bool Parser::MatchAny(TokenSet tokenSet)
+    /* bool Parser::MatchAny(TokenSet tokenSet)
     {
         return tokenSet.test((size_t)Peak().TokenType);
-    }
+    } */
 
     void Parser::Expect(TokenType tokenType)
     {
+        CLEAR_UNREACHABLE("unimplemented");
         if(Match(tokenType)) return;
         
-        CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
+        //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
     }
 
-    void Parser::ExpectAny(TokenSet tokenSet)
+   /*  void Parser::ExpectAny(TokenSet tokenSet)
     {
         if(MatchAny(tokenSet)) return;
         
         CLEAR_LOG_ERROR("missing expected token from token set");    
         CLEAR_UNREACHABLE("TODO");
-    }
+    } */
 
     void Parser::ParseStatement()
     {
-        if(MatchAny(m_IgnoredTokens))
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  if(MatchAny(m_IgnoredTokens))
         {
             CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
             return;
@@ -266,12 +270,14 @@ namespace clear
         else 
         {
             ParseGeneral();
-        }
+        } */
     }
 
     void Parser::ParseGeneral()
     {
-        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
+        CLEAR_UNREACHABLE("unimplemented");
+
+        /* std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
         if(MatchAny(m_AssignmentOperators))
         {
@@ -279,12 +285,14 @@ namespace clear
             return;
         }
 
-        Root()->Push(expression);
+        Root()->Push(expression); */
     }
 
     void Parser::ParseVariableDecleration(bool defaultInitialize)
     {
-        TypeDescriptor variableType = { ParseVariableTypeTokens() };
+        CLEAR_UNREACHABLE("unimplemented");
+
+      /*   TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
         //ExpectAny(m_VariableName);
         ExpectAny(m_VariableName);
@@ -344,18 +352,21 @@ namespace clear
             assigned = false;
         }
 
-        Flush();
+        Flush(); */
     }
 
     void Parser::ParseLoopControls() 
     {
-        auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
+        CLEAR_UNREACHABLE("unimplemented");
+       /*  auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
         Consume();
-        Root()->Push(node);
+        Root()->Push(node); */
     }
 
     void Parser::ParseTrait()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        /* 
         Expect(TokenType::Trait);
         Consume();
 
@@ -393,12 +404,14 @@ namespace clear
         Root()->Push(trait);
 
         if(Match(TokenType::EndIndentation))
-            Consume();
+            Consume(); */
     }
 
     void Parser::ParseLetDecleration()
     {
-        Expect(TokenType::Let);
+        CLEAR_UNREACHABLE("unimplemented");
+
+/*         Expect(TokenType::Let);
         Consume();
 
         ExpectAny(m_VariableName);
@@ -421,11 +434,12 @@ namespace clear
                 ExpectAny(m_VariableName);
             }
         }
-    }
+ */    }
 
     void Parser::ParseConstDecleration()
     {
-        Expect(TokenType::Const);
+        CLEAR_UNREACHABLE("unimplemented");
+       /*  Expect(TokenType::Const);
         SavePosition();
 
         TypeDescriptor variableType = { ParseVariableTypeTokens() };
@@ -459,12 +473,14 @@ namespace clear
                 Consume();
                 ExpectAny(m_VariableName);
             }
-        }
+        } */
     }
 
     void Parser::ParseStruct()
     {
-        Expect(TokenType::Struct);
+        CLEAR_UNREACHABLE("unimplemented");
+
+    /*     Expect(TokenType::Struct);
 
         Consume();
 
@@ -518,12 +534,13 @@ namespace clear
         struct_->SetTypeDesc(structTyDesc);
         Root()->Push(struct_);
 
-        Consume();
+        Consume(); */
     }
 
     void Parser::ParseImport()
     {
-        Expect(TokenType::Import);
+        CLEAR_UNREACHABLE("unimplemented");
+       /*  Expect(TokenType::Import);
 
         Consume();
 
@@ -546,24 +563,27 @@ namespace clear
         std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(path, alias);
 
         Expect(TokenType::EndLine);
-        Root()->Push(import);
+        Root()->Push(import); */
     }
 
     void Parser::ParseReturn()
     {
-        Expect(TokenType::Return);
+        CLEAR_UNREACHABLE("unimplemented");
+        /* Expect(TokenType::Return);
 
         Consume();
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
         returnStatement->Push(ParseExpression());
 
-        Root()->Push(returnStatement);
+        Root()->Push(returnStatement); */
     }
 
     void Parser::ParseIf()
     {
-        Expect(TokenType::ConditionalIf);
+        CLEAR_UNREACHABLE("unimplemented");
+
+        /* Expect(TokenType::ConditionalIf);
         Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
@@ -574,12 +594,14 @@ namespace clear
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseElse()
     {
-        Expect(TokenType::Else);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::Else);
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -590,12 +612,14 @@ namespace clear
         base->CreateSymbolTable();
         ifExpr->Push(base);
             
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseWhile()
     {
-        Expect(TokenType::While);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::While);
         Consume();
 
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
@@ -605,12 +629,14 @@ namespace clear
         whileExp->Push(base);
 
         Root()->Push(whileExp);
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseFor()
     {
-        Expect(TokenType::For);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::For);
         Consume();
 
         ExpectAny(m_VariableName);
@@ -634,12 +660,14 @@ namespace clear
         
         forLoop->Push(body);
 
-        m_RootStack.push_back(body);
+        m_RootStack.push_back(body); */
     }
 
     void Parser::ParseElseIf()
     {
-        Expect(TokenType::ElseIf);
+        CLEAR_UNREACHABLE("unimplemented");
+
+        /* Expect(TokenType::ElseIf);
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -653,12 +681,14 @@ namespace clear
 
         ifExpr->Push(base);
 
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseFunctionDefinition(const std::string& className)
     {
-        Expect(TokenType::Function);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::Function);
 
         Consume();
 
@@ -785,12 +815,14 @@ namespace clear
 
         Expect(TokenType::EndLine);
 
-        Consume();
+        Consume(); */
     }
 
     void Parser::ParseTraitFunctionDefinition() 
     {
-        Expect(TokenType::Function);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::Function);
 
         Consume();
         Expect(TokenType::FunctionName);
@@ -846,22 +878,26 @@ namespace clear
             returnType = { ParseVariableTypeTokens() };
         }
 
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
+        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params)); */
     }
 
     void Parser::ParseRaise()
     {
-        Expect(TokenType::Raise);
+        CLEAR_UNREACHABLE("unimplemented");
+
+        /* Expect(TokenType::Raise);
 
         std::shared_ptr<ASTRaise> raise = std::make_shared<ASTRaise>();
         raise->Push(ParseExpression());
 
-        Root()->Push(raise);
+        Root()->Push(raise); */
     }
 
     void Parser::ParseTry()
     {
-        Expect(TokenType::Try);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  Expect(TokenType::Try);
         Consume();
 
         std::shared_ptr<ASTTryCatch> tryCatch = std::make_shared<ASTTryCatch>();
@@ -870,12 +906,14 @@ namespace clear
         tryCatch->Push(tryBlock);
 
         Root()->Push(tryCatch);
-        m_RootStack.push_back(tryBlock);
+        m_RootStack.push_back(tryBlock); */
     }
 
     void Parser::ParseCatch()
     {
-        Expect(TokenType::Catch);
+        CLEAR_UNREACHABLE("unimplemented");
+
+        /* Expect(TokenType::Catch);
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -889,12 +927,15 @@ namespace clear
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         tryCatch->Push(base);
 
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseEnum()
     {
-        Expect(TokenType::Enum);
+        CLEAR_UNREACHABLE("unimplemented");
+
+
+       /*  Expect(TokenType::Enum);
         Consume();
 
         std::string enumName = Consume().Data;
@@ -969,12 +1010,15 @@ namespace clear
         Expect(TokenType::EndIndentation);
         Consume();
 
-        Root()->Push(enum_);
+        Root()->Push(enum_); */
     }
 
     void Parser::ParseDefer()
     {
-        Expect(TokenType::Defer);
+        CLEAR_UNREACHABLE("unimplemented");
+
+
+        /* Expect(TokenType::Defer);
         Consume();
 
         auto defer = std::make_shared<ASTDefer>();
@@ -983,11 +1027,13 @@ namespace clear
         ParseGeneral();
         m_RootStack.pop_back();
 
-        Root()->Push(defer);
+        Root()->Push(defer); */
     }
 
     void Parser::ParseFunctionDeclaration()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+/* 
         Expect(TokenType::Declaration);
 
         Consume();
@@ -1050,12 +1096,14 @@ namespace clear
             returnType = { ParseVariableTypeTokens() };
         }
 
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
+        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params)); */
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        ExpectAny(m_VariableName);
+        CLEAR_UNREACHABLE("unimplemented");
+
+       /*  ExpectAny(m_VariableName);
 
         std::string functionName = Consume().Data;
 
@@ -1082,11 +1130,15 @@ namespace clear
         Expect(TokenType::EndFunctionArguments);
         Consume();
 
-        return call;
+        return call; */
+
+        return {};
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+      /*   
         ExpectAny(m_VariableName);
 
         if(Next().TokenType == TokenType::FunctionCall) 
@@ -1098,13 +1150,16 @@ namespace clear
         }
         
         std::string name = Consume().Data;
-        return std::make_shared<ASTVariable>(name);
+        return std::make_shared<ASTVariable>(name); */
+
+        return {};
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
-
-
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+/*  
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
@@ -1125,11 +1180,15 @@ namespace clear
 
         variableReference = ParseVariableReference();
 
-        return variableReference;
+        return variableReference; */
+
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+/*  
         Expect(TokenType::StartArray);
 
         std::vector<std::vector<size_t>> indices;
@@ -1168,17 +1227,23 @@ namespace clear
         initializer->SetIndices(indices);
         Consume();
 
-        return initializer;
+        return initializer; */
+
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName, bool initialize)
     {
-        return ParseAssignment(std::make_shared<ASTVariable>(variableName), initialize);
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+
+        //return ParseAssignment(std::make_shared<ASTVariable>(variableName), initialize);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
-        ExpectAny(m_AssignmentOperators);
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+       /*  ExpectAny(m_AssignmentOperators);
 
         Token assignmentToken = Consume();
 
@@ -1207,21 +1272,25 @@ namespace clear
         assign->Push(storage);            
         assign->Push(ParseExpression()); 
 
-        return assign;
+        return assign; */
     }
 
     std::shared_ptr<ASTNodeBase> Parser::CreateDefaultInitializerFromName(const std::string& name)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+/* 
         auto variable = std::make_shared<ASTVariable>(name);
         auto defaultInit = std::make_shared<ASTDefaultInitializer>();
         defaultInit->Push(variable);
 
-        return defaultInit;
+        return defaultInit; */
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
     {
-        struct Operator
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+       /*  struct Operator
         {
             BinaryExpressionType BinaryExpression;
             UnaryExpressionType UnaryExpression;
@@ -1382,11 +1451,14 @@ namespace clear
 
         PopOperatorsUntil([](const Operator&) { return false; });
 
-        return expression;
+        return expression; */
     }
 
     std::vector<Token> Parser::ParseVariableTypeTokens()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+        /* 
         std::vector<Token> tokens;
 
         if(Match(TokenType::Const))
@@ -1399,11 +1471,14 @@ namespace clear
             tokens.push_back(Consume());
         }
 
-        return tokens;
+        return tokens; */
     }
 
     std::pair<std::string, std::shared_ptr<TypeDescriptor>> Parser::ParseVariableTypeDescriptor()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+        /* 
         std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
 
         subType->Description = ParseVariableTypeTokens(); 
@@ -1412,7 +1487,7 @@ namespace clear
 
         std::string name = Consume().Data;
 
-        return {name, subType};
+        return {name, subType}; */
     }
 
     void Parser::ParseIndentation()
@@ -1423,6 +1498,8 @@ namespace clear
 
     void Parser::ParseClass()
     {
+        CLEAR_UNREACHABLE("unimplemented");
+/* 
         Expect(TokenType::Class);
         Consume();
 
@@ -1490,11 +1567,15 @@ namespace clear
         classNode->SetTypeDescriptor(classTy);
         m_RootStack.pop_back();
 
-        Consume();
+        Consume(); */
     }
 
     BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return BinaryExpressionType::None;
+
+/* 
         switch (type)
 	    {
 			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
@@ -1530,11 +1611,14 @@ namespace clear
 				break;
 		}
 
-		return BinaryExpressionType::None;
+		return BinaryExpressionType::None; */
     }
 
     UnaryExpressionType Parser::GetPreUnaryExpressionTypeFromTokenType(TokenType type)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return UnaryExpressionType::None;
+/*  
         switch (type)
         {
 			case TokenType::Increment:      return UnaryExpressionType::PreIncrement;
@@ -1551,11 +1635,14 @@ namespace clear
 		}
 
 
-		return UnaryExpressionType::None;
+		return UnaryExpressionType::None; */
     }
 
     UnaryExpressionType Parser::GetPostUnaryExpressionTypeFromTokenType(TokenType type)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return UnaryExpressionType::None;
+/* 
         switch (type)
 		{
 			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
@@ -1564,11 +1651,14 @@ namespace clear
 				break;
 		}
 
-		return UnaryExpressionType::None;
+		return UnaryExpressionType::None; */
     }
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
     {
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
+/* 
         switch (type)
         {
             case TokenType::Assignment:      return AssignmentOperatorType::Normal;
@@ -1583,7 +1673,7 @@ namespace clear
 
         CLEAR_UNREACHABLE("invalid token type for assignment");
 
-        return AssignmentOperatorType();
+        return AssignmentOperatorType(); */
     }
 
     void Parser::SavePosition()
@@ -1600,17 +1690,17 @@ namespace clear
 
     void Parser::SkipUntil(TokenType type)
     {
-        while(!Match(type) && !Match(TokenType::Eof))
+        while(!Match(type) && !Match(TokenType::EndOfFile))
         {
             Consume();
         }
     }
 
-    void Parser::SkipUntil(TokenSet set)
+   /*  void Parser::SkipUntil(TokenSet set)
     {
         while(!MatchAny(set) && !Match(TokenType::Eof))
         {
             Consume();
         }
-    }
+    } */
 }

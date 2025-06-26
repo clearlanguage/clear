@@ -1925,7 +1925,7 @@ namespace clear
         return std::make_pair(elemPtr, innerType);
     }
 
-    ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
+  /*   ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
 		: m_Filepath(filepath), m_Alias(alias)
     {
     }
@@ -2054,7 +2054,7 @@ namespace clear
 		Parameter param;
 		param.Name = "__unamed_c_parm";
 
-		if(arg[0].TokenType == TokenType::Ellipsis)
+		if(arg[0].IsType(TokenType::Ellipses))
 		{
 			return param;
 		}
@@ -2091,7 +2091,7 @@ namespace clear
 					ctx.Registry.RegisterType(typeName, type);
 			}
 		}
-    }
+    } */
 
     ASTMember::ASTMember(const std::string& name)
 		: m_MemberName(name)
@@ -2553,12 +2553,13 @@ namespace clear
 		
 		GetSymbolTable()->FlushScope(ctx);
 
-    	if (m_JumpTy == TokenType::Continue) 
-			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
+    	//if (m_JumpTy == TokenType::Continue) 
+		//	ctx.Builder.CreateBr(ctx.LoopConditionBlock);
+		//
+    	//else if(m_JumpTy == TokenType::Break) 
+    	//	ctx.Builder.CreateBr(ctx.LoopEndBlock);
+    	//
 		
-    	else if(m_JumpTy == TokenType::Break) 
-    		ctx.Builder.CreateBr(ctx.LoopEndBlock);
-    	
     	return {};
     }
 
