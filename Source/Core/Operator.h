@@ -35,7 +35,7 @@ namespace clear
 
     using OperatorSet = std::bitset<(size_t)OperatorType::Count>;
 
-    static constexpr OperatorSet CreateOperatorSet(std::initializer_list<OperatorType> operatorTypes)
+    inline constexpr OperatorSet CreateOperatorSet(std::initializer_list<OperatorType> operatorTypes)
     {
         OperatorSet operatorSet;
 

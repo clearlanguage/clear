@@ -85,17 +85,15 @@ namespace clear
 
         std::pair<std::string, std::shared_ptr<TypeDescriptor>> ParseVariableTypeDescriptor();
 
-        BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
-        UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);
-        UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
         void SavePosition();
         void RestorePosition();
         void SkipUntil(TokenType type);
         //void SkipUntil(TokenSet set);
-        
+
         size_t FindLastOf(TokenType type); // relative to end line
+        size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
 
     private:
         static constexpr size_t s_MaxMatchSize = 15;

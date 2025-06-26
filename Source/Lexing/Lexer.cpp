@@ -343,7 +343,7 @@ namespace clear
             m_Tokens.emplace_back(TokenType::EndScope, "");
 			m_Indents--;
 		}
-
+        
         m_Indents = localIndents;
     }
 
