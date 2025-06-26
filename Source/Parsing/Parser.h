@@ -33,7 +33,7 @@ namespace clear
         bool Match(TokenType tokenType);
         bool Match(const std::string& data);
 
-        //bool MatchAny(TokenSet tokenSet);
+        bool MatchAny(TokenSet tokenSet);
 
         void Expect(TokenType tokenType);
         void Expect(const std::string& data);
@@ -75,8 +75,10 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> CreateDefaultInitializerFromName(const std::string& name);
 
+        std::shared_ptr<ASTNodeBase> ParseTypeResolver();
 
         std::vector<Token> ParseVariableTypeTokens();
+
 
         std::pair<std::string, std::shared_ptr<TypeDescriptor>> ParseVariableTypeDescriptor();
 
@@ -90,6 +92,10 @@ namespace clear
         void SkipUntil(TokenType type);
         //void SkipUntil(TokenSet set);
 
+
+    private:
+        static constexpr size_t s_MaxMatchSize = 15;
+        bool LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match);
 
     private:    
         std::vector<Token> m_Tokens;
@@ -107,10 +113,8 @@ namespace clear
         TokenSet m_PostUnaryExpression;
         TokenSet m_Literals;
         TokenSet m_IgnoredTokens;
-        TokenSet m_TypeIndirection;
+        
         TokenSet m_ValueReferences;
         TokenSet m_VariableName; */
-
-        std::array<TokenType, 30> m_LookAheadBuffer;
     };
 }

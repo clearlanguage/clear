@@ -6,6 +6,7 @@
 #include "Lexing/Token.h"
 #include "SymbolTable.h"
 #include "Linker/LibraryLinker.h"
+#include "Core/Log.h"
 
 #include <memory>
 #include <string>
@@ -170,17 +171,16 @@ namespace clear
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type);
+		ASTVariableDeclaration(const std::string& name);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const auto& GetName() const { return m_Name; }
-		const auto& GetVariableType() const { return m_Type; }
+		const TypeDescriptor GetVariableType() const { CLEAR_UNREACHABLE("depricated"); return {}; }
 
 	private:
 		std::string m_Name;
-		TypeDescriptor m_Type;
 	};
 
 	class ASTInferredDecleration : public ASTNodeBase 
@@ -564,11 +564,16 @@ namespace clear
 	class ASTTypeResolver : public ASTNodeBase 
 	{
 	public:
-		ASTTypeResolver(const std::vector<Token>& tokens);
+		ASTTypeResolver(const std::vector<Token>& tokens = {});
 		virtual ~ASTTypeResolver() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
 		virtual CodegenResult Codegen(CodegenContext&) override; // goal is to return a type
 
+		void PushToken(const Token& token)
+		{
+			m_Tokens.push_back(token);
+		}
+			
 	private:
 		std::vector<Token> m_Tokens;
 	};	

@@ -72,6 +72,7 @@ namespace clear
             TokenType::EndOfFile
         });
 
+
         /* m_VariableType = CreateTokenSet({
             TokenType::Int8Type, 
             TokenType::Int16Type, 
@@ -196,6 +197,11 @@ namespace clear
         return Peak().GetData() == data;
     }
 
+    bool Parser::MatchAny(TokenSet tokenSet)
+    {
+        return tokenSet.test((size_t)Peak().GetType());
+    }
+
     /* bool Parser::MatchAny(TokenSet tokenSet)
     {
         return tokenSet.test((size_t)Peak().TokenType);
@@ -304,9 +310,36 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
-        // first we need to classify whether there is a type or not
+        // first we need to determine how to parse
 
+        auto terminator = [&](const Token& token)
+        {
+            return token.IsType(TokenType::EndOfFile) || 
+                   token.IsType(TokenType::EndLine)   || 
+                   token.IsType(TokenType::EqualsEquals);
+        };
+
+
+        // int var
+        static constexpr std::array<TokenType, s_MaxMatchSize> s_KeywordIdentifier = 
+                {TokenType::Keyword, TokenType::Identifier, TokenType::None};
         
+        // string var
+        static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
+                {TokenType::Identifier, TokenType::Identifier, TokenType::None};
+
+        if(LookAheadMatches(terminator, s_KeywordIdentifier))
+        {
+            ParseVariableDecleration(true);
+        }
+        else if (LookAheadMatches(terminator, s_IdentifierIdentifier))
+        {
+            ParseVariableDecleration(true);
+        }
+        else 
+        {
+            CLEAR_UNREACHABLE("unimplemented match");
+        }
 
         /* std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
@@ -321,7 +354,14 @@ namespace clear
 
     void Parser::ParseVariableDecleration(bool defaultInitialize)
     {
-        CLEAR_UNREACHABLE("unimplemented");
+        auto type = ParseTypeResolver();
+
+        Expect(TokenType::Identifier);
+        
+        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
+        variableDecleration->Push(type);
+
+        Root()->Push(variableDecleration);
 
       /*   TypeDescriptor variableType = { ParseVariableTypeTokens() };
 
@@ -1497,14 +1537,32 @@ namespace clear
         return expression; */
     }
 
+    std::shared_ptr<ASTNodeBase> Parser::ParseTypeResolver()
+    {
+        std::shared_ptr<ASTTypeResolver> resolver = std::make_shared<ASTTypeResolver>();
+
+        if(Match("const"))
+            resolver->PushToken(Consume());
+        
+        resolver->PushToken(Consume());
+
+        while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
+        {
+            resolver->PushToken(Consume());
+
+            if(Prev().IsType(TokenType::LeftBracket))
+                resolver->Push(ParseExpression());
+        }
+
+        return resolver;
+    }
+
     std::vector<Token> Parser::ParseVariableTypeTokens()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
-        /* 
+         
         std::vector<Token> tokens;
 
-        if(Match(TokenType::Const))
+        /* if(Match("const"))
             tokens.push_back(Consume());
         
         tokens.push_back(Consume());
@@ -1512,9 +1570,9 @@ namespace clear
         while(MatchAny(m_TypeIndirection))
         {
             tokens.push_back(Consume());
-        }
+        } */
 
-        return tokens; */
+        return tokens; 
     }
 
     std::pair<std::string, std::shared_ptr<TypeDescriptor>> Parser::ParseVariableTypeDescriptor()
@@ -1737,6 +1795,23 @@ namespace clear
         {
             Consume();
         }
+    }
+
+    bool Parser::LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match)
+    {
+        size_t pos = m_Position; 
+        size_t k = 0;
+
+        while (pos < m_Tokens.size() && !terminator(m_Tokens[pos]) && k < s_MaxMatchSize && match[k] != TokenType::None)
+        {
+            if (m_Tokens[pos].IsType(match[k]))
+                k++; 
+
+            pos++;
+        }
+
+        // if we matched all tokens in match (until None), return true
+        return k == s_MaxMatchSize || match[k] == TokenType::None;
     }
 
    /*  void Parser::SkipUntil(TokenSet set)

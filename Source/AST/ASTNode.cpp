@@ -966,8 +966,8 @@ namespace clear
 		return nullptr;
 	}
 
-    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type)
-		: m_Name(name), m_Type(type)
+    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name)
+		: m_Name(name)
     {
     }
 
@@ -977,7 +977,9 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		
-		std::shared_ptr<Type> resolvedType = ctx.Registry.ResolveType(m_Type);
+		auto& typeResolver = GetChildren()[0];
+
+		std::shared_ptr<Type> resolvedType = typeResolver->Codegen(ctx).CodegenType;
 
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 
@@ -2984,7 +2986,10 @@ namespace clear
 		if(i == 1)
 			type = ctx.Registry.GetConstFrom(type);
 
+		i++;
+		
 		size_t k = 0;
+
 
 		for(; i < m_Tokens.size(); i++)
 		{

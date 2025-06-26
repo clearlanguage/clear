@@ -66,7 +66,6 @@ namespace clear
             if (m_Contents[m_Position+1] == '/')
             {
                 EatComment();
-
             }
             else
             {
@@ -100,12 +99,14 @@ namespace clear
         }
     }
 
-    void Lexer::EatComment() {
+    void Lexer::EatComment() 
+    {
         auto IsCommentContinue = [&]()
         {
             return m_Position < m_Contents.size() &&
                    m_Contents[m_Position] != '\n';
         };
+
         GetWord(IsCommentContinue);
     }
 

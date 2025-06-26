@@ -43,8 +43,8 @@ namespace clear
         Bang,            // !
         RightThinArrow,       // ->
         RightFatArrow,        // =>
-        LeftFatArrow,
-        LeftThinArrow,
+        LeftFatArrow,         // <=
+        LeftThinArrow,        // <-
 
         PlusEquals,          // +=
         MinusEquals,         // -=
@@ -168,8 +168,8 @@ namespace clear
 
             {"->",   TokenType::RightThinArrow},
             {"=>",   TokenType::RightFatArrow},
-            {"<-",TokenType::LeftThinArrow},
-            {"<=",TokenType::LeftFatArrow}
+            {"<-",   TokenType::LeftThinArrow},
+            {"<=",   TokenType::LeftFatArrow}
     };
 
     inline const size_t g_MaxOperatorSize = 3;
