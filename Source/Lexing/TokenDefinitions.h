@@ -1,11 +1,11 @@
-#pragma once 
+#pragma once
 
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
 #include <bitset>
 
-namespace clear 
+namespace clear
 {
     enum class TokenType
     {
@@ -41,8 +41,10 @@ namespace clear
         LessThan,        // <
         GreaterThan,     // >
         Bang,            // !
-        ThinArrow,       // ->
-        FatArrow,        // =>
+        RightThinArrow,       // ->
+        RightFatArrow,        // =>
+        LeftFatArrow,
+        LeftThinArrow,
 
         PlusEquals,          // +=
         MinusEquals,         // -=
@@ -65,7 +67,7 @@ namespace clear
         Increment,           // ++
         Decrement,           // --
         Ellipses,            // ...
-        
+
         EndLine,
         EndScope,
         EndOfFile,
@@ -104,20 +106,25 @@ namespace clear
         "float",
 
         "if", "else", "while", "for", "return", "break", "continue",
-        "true", "false", "null", "in", "and", "or",
+        "true", "false", "null", "in", "and", "or","elseif","defer",
+        "switch","case","default","import","as"
 
-        "struct", "function", "const", "class", "restriction", 
-        "trait", "property", "declare", "block", "enum"
+        "struct", "function", "class", "restriction",
+        "trait", "property", "declare", "block", "enum",
+
+        "not","and","or",
+
+        "let","const",
     };
 
     inline set<std::string> g_Punctuators = {
-        ";", ",", ":", "(", ")", 
-        "{", "}", "[", "]", "->"
+        ";", ",", ":", "(", ")",
+        "{", "}", "[", "]",
     };
 
     inline set<std::string> g_Operators = {
         "+", "-", "*", "/", "%",
-        "=", "<", ">", 
+        "=", "<", ">",
         "!", "&", "|",
         "^", "~",
         "."
@@ -159,8 +166,10 @@ namespace clear
             {"<<=",  TokenType::LeftShiftEquals},
             {">>=",  TokenType::RightShiftEquals},
 
-            {"->",   TokenType::ThinArrow},
-            {"=>",   TokenType::FatArrow}
+            {"->",   TokenType::RightThinArrow},
+            {"=>",   TokenType::RightFatArrow},
+            {"<-",TokenType::LeftThinArrow},
+            {"<=",TokenType::LeftFatArrow}
     };
 
     inline const size_t g_MaxOperatorSize = 3;
@@ -177,5 +186,5 @@ namespace clear
             {"]",  TokenType::RightBracket}
     };
 
-    
+
 }

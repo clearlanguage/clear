@@ -63,8 +63,11 @@ namespace clear
                 case TokenType::LessThan:           return "LessThan";
                 case TokenType::GreaterThan:        return "GreaterThan";
                 case TokenType::Bang:               return "Bang";
-                case TokenType::ThinArrow:          return "ThinArrow";
-                case TokenType::FatArrow:           return "FatArrow";
+                case TokenType::RightFatArrow:      return "RightFatArrow";
+                case TokenType::RightThinArrow:     return "RightThinArrow";
+                case TokenType::LeftThinArrow:      return "LeftThinArrow";
+                case TokenType::LeftFatArrow:       return "LeftFatArrow";
+
             
                 case TokenType::PlusEquals:         return "PlusEquals";
                 case TokenType::MinusEquals:        return "MinusEquals";
