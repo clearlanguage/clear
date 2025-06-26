@@ -290,7 +290,7 @@ namespace clear
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, const TypeDescriptor& expectedReturnType, const std::vector<UnresolvedParameter>& types);
+		ASTFunctionDecleration(const std::string& name);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;

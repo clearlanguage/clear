@@ -1063,77 +1063,53 @@ namespace clear
         Consume();
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
+        auto decleration = std::make_shared<ASTFunctionDecleration>(functionName);
 
+        // params
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
-            
-        }
-
-        CLEAR_UNREACHABLE("unimplemented");
-/* 
-        Expect(TokenType::Declaration);
-
-        Consume();
-
-        ExpectAny(m_VariableName);
-
-        Consume();
-
-        Expect(TokenType::FunctionCall);
-
-        std::string functionName = Consume().Data;
-
-        Expect(TokenType::OpenBracket);
-
-        Consume();
-
-        std::vector<UnresolvedParameter> params;
-
-        while(!MatchAny(m_Terminators))
-        {
-            UnresolvedParameter param;
-            
-            if(Match(TokenType::Ellipsis))
+            if(Match(TokenType::Ellipses))
             {
                 Consume();
-                Expect(TokenType::EndFunctionArguments);
-                params.push_back(param);
+                Expect(TokenType::RightParen);
+                decleration->Push(std::make_shared<ASTFunctionParameter>(""));
 
                 break;
             }
-            
-            param.Type = { ParseVariableTypeTokens() };
 
-            if(MatchAny(m_VariableName)) 
+            auto type = ParseTypeResolver();
+
+            if(Match(TokenType::Identifier)) 
                 Consume();
             
-            if(!Match(TokenType::EndFunctionArguments))
+            if(!Match(TokenType::RightParen))
             {
                 Expect(TokenType::Comma);
                 Consume();
             }
 
-            params.push_back(param);
+            auto param = std::make_shared<ASTFunctionParameter>("");
+            param->Push(type);
+
+            decleration->Push(param);
         }
 
-        Expect(TokenType::EndFunctionArguments);
+        Expect(TokenType::RightParen);
+        CLEAR_VERIFY(m_Position == terminationIndex, "invalid function decleration");
 
         Consume();
 
-        TypeDescriptor returnType;
-
-        if(Match(TokenType::RightArrow))
+        // return type
+        if(Match(TokenType::RightThinArrow))
         {
             Consume();
-
-            Expect(TokenType::FunctionType);
-
-            Consume();
-
-            returnType = { ParseVariableTypeTokens() };
+            decleration->Push(ParseTypeResolver());
         }
 
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params)); */
+        Expect(TokenType::Colon);
+        Consume();
+
+        Root()->Push(decleration);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()

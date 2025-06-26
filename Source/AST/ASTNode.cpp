@@ -1256,7 +1256,6 @@ namespace clear
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
 
-
 		uint32_t k = 0;
 
 		bool hasVaArgs = false;
@@ -1545,22 +1544,33 @@ namespace clear
 		}
     }
 
-    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name, const TypeDescriptor& expectedReturnType, const std::vector<UnresolvedParameter>& types)
-		: m_Name(name), m_Parameters(types), m_ReturnType(expectedReturnType)
+    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name)
+		: m_Name(name)
     {
     }
 
 	CodegenResult ASTFunctionDecleration::Codegen(CodegenContext& ctx)
 	{
+		auto& children = GetChildren();
 		auto& module = ctx.Module;
 
 		std::vector<llvm::Type*> types;
 		std::vector<Parameter> params;
 
-		std::transform(m_Parameters.begin(), m_Parameters.end(), std::back_inserter(params), [&](auto& a)
+		size_t i = 0;
+		for(; i < children.size(); i++)
 		{
-			return Parameter{a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic};
-		});
+			auto& child = children[i];
+
+			if(child->GetType() != ASTNodeType::FunctionParameter)
+				break; 
+			
+			auto fnParam = std::dynamic_pointer_cast<ASTFunctionParameter>(child);
+
+			CodegenResult param = fnParam->Codegen(ctx);
+
+			params.push_back({ .Name = param.Data, .Type = param.CodegenType, .IsVariadic = fnParam->IsVariadic });
+		} 
 
 		bool isVariadic = false;
 
@@ -1577,8 +1587,11 @@ namespace clear
 
 		std::shared_ptr<Type> resolvedType = ctx.Registry.GetType("void");
 
-		if (!m_ReturnType.Description.empty())
-			resolvedType = ctx.Registry.ResolveType(m_ReturnType);
+		if (i < children.size())
+		{
+			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::TypeResolver, "not a valid return type node");
+			resolvedType = children[i]->Codegen(ctx).CodegenType;
+		}
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(resolvedType->Get(), types, isVariadic);
 		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
@@ -3029,13 +3042,23 @@ namespace clear
         return result;
     }
 
-	CodegenResult ASTFunctionParameter::Codegen(CodegenContext &) {
+	CodegenResult ASTFunctionParameter::Codegen(CodegenContext& ctx) 
+	{
+		auto& children = GetChildren();
 
+		if(children.empty())
+		{
+			return { .CodegenType = nullptr, .Data = m_Name };
+		}
+
+		CLEAR_VERIFY(children.size() == 1, "invalid parameter node");
+
+		CodegenResult type = children[0]->Codegen(ctx);
+		return { .CodegenType = type.CodegenType, .Data = m_Name };
 	}
 
-	ASTFunctionParameter::ASTFunctionParameter(const std::string &name) :m_Name(name){
-
+	ASTFunctionParameter::ASTFunctionParameter(const std::string& name)
+		 : m_Name(name)
+	{
 	}
-
-
 }
