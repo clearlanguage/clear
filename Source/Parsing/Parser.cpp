@@ -1122,6 +1122,10 @@ namespace clear
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
 
+        while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
+        {
+            
+        }
 
         CLEAR_UNREACHABLE("unimplemented");
 /* 
