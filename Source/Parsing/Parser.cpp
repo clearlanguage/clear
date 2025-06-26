@@ -1406,7 +1406,7 @@ namespace clear
         return variableDecleration;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(uint64_t terminationIndex) // infix to RPN and creates nodes
     {
         std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
         std::stack<Operator> operators;
@@ -1642,7 +1642,7 @@ namespace clear
             }
         };
 
-        while (!MatchAny(m_Terminators)) 
+        while (!MatchAny(m_Terminators) && m_Position < terminationIndex) 
         {
             HandlePreUnaryOperators();
 
@@ -1652,11 +1652,11 @@ namespace clear
             {
                 expression->Push(ParseOperand());
             }
-            else if (Match(TokenType::LeftBracket)) 
+            else if (Match(TokenType::LeftParen)) 
             {
                 HandleOpenBracket();
             }
-            else if (Match(TokenType::RightBracket)) 
+            else if (Match(TokenType::RightParen)) 
             {
                 HandleCloseBracket();
             }
@@ -1690,7 +1690,30 @@ namespace clear
             resolver->PushToken(Consume());
 
             if(Prev().IsType(TokenType::LeftBracket))
-                resolver->Push(ParseExpression());
+            {
+                size_t terminationIndex = 0;
+
+                // we need to find the right termination index
+
+                SavePosition();
+
+                size_t bracketCount = 1;
+
+                while(bracketCount)
+                {
+                    if(Match(TokenType::LeftBracket))  bracketCount++;
+                    if(Match(TokenType::RightBracket)) bracketCount--;
+
+                    m_Position++;
+                }
+
+                terminationIndex = m_Position - 1;
+
+                RestorePosition();
+
+                resolver->Push(ParseExpression(terminationIndex));
+                resolver->PushToken(Consume());
+            }
         }
 
         return resolver;
@@ -1930,6 +1953,28 @@ namespace clear
         {
             Consume();
         }
+    }
+
+    size_t Parser::FindLastOf(TokenType type)
+    {
+        size_t current = m_Position;
+
+        SkipUntil(TokenType::EndLine);
+
+        while((size_t)m_Position-- > current)
+        {
+            if(Match(type))
+            {
+                size_t result = m_Position;
+                m_Position = current;
+                return result;
+            }
+        }
+
+        CLEAR_UNREACHABLE("couldn't find expected token");
+        
+        m_Position = current;
+        return current; 
     }
 
     bool Parser::LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match)
