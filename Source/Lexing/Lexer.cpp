@@ -61,6 +61,19 @@ namespace clear
         {
             EatWord();
         }
+        else if(top == "/")
+        {
+            if (m_Contents[m_Position+1] == '/')
+            {
+                EatComment();
+
+            }
+            else
+            {
+                EatOperator();
+            }
+
+        }
         else if (g_Operators.contains(top))
         {
             EatOperator();
@@ -86,6 +99,16 @@ namespace clear
             CLEAR_UNREACHABLE("unexpected token ", m_Contents[m_Position]);
         }
     }
+
+    void Lexer::EatComment() {
+        auto IsCommentContinue = [&]()
+        {
+            return m_Position < m_Contents.size() &&
+                   m_Contents[m_Position] != '\n';
+        };
+        GetWord(IsCommentContinue);
+    }
+
 
     void Lexer::EatWord()
     {

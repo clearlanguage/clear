@@ -26,6 +26,7 @@ namespace clear
         void EatOperator();
         void EatPunctuator();
         void EatString();
+        void EatComment();
         void EatChar();
         void EatNumber();
         void FlushScopes();
