@@ -232,7 +232,11 @@ namespace clear
         }
 
         static std::map<std::string, std::function<void()>> s_MappedKeywordsToFunctions = {
-            {"function",  [this]() { ParseFunctionDefinition(); }}
+            {"function",  [this]() { ParseFunctionDefinition(); }},
+            {"while",[this]() { ParseWhile(); }},
+            {"for",[this]() { ParseFor(); }},
+            {"let", [this]() {ParseLetDecleration();}}
+
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -476,32 +480,30 @@ namespace clear
 
     void Parser::ParseLetDecleration()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-/*         Expect(TokenType::Let);
+        Expect("let");
         Consume();
 
-        ExpectAny(m_VariableName);
+        Expect(TokenType::Identifier);
 
-        while(MatchAny(m_VariableName))
+        while(Match(TokenType::Identifier))
         {
-            std::string variableName = Consume().Data;
+            std::string variableName = Consume().GetData();
 
-            Expect(TokenType::Assignment);
+            Expect(TokenType::Equals);
             Consume();
 
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
             inferredType->Push(ParseExpression());
-            
+
             Root()->Push(inferredType);
-            
+
             if(Match(TokenType::Comma))
             {
                 Consume();
-                ExpectAny(m_VariableName);
+                Expect(TokenType::Identifier);
             }
         }
- */    }
+     }
 
     void Parser::ParseConstDecleration()
     {
@@ -684,9 +686,8 @@ namespace clear
 
     void Parser::ParseWhile()
     {
-        CLEAR_UNREACHABLE("unimplemented");
 
-       /*  Expect(TokenType::While);
+        Expect("while");
         Consume();
 
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
@@ -696,26 +697,25 @@ namespace clear
         whileExp->Push(base);
 
         Root()->Push(whileExp);
-        m_RootStack.push_back(base); */
+        m_RootStack.push_back(base);
     }
 
     void Parser::ParseFor()
     {
-        CLEAR_UNREACHABLE("unimplemented");
 
-       /*  Expect(TokenType::For);
+        Expect("for");
         Consume();
 
-        ExpectAny(m_VariableName);
-        std::string name = Consume().Data;
+        Expect(TokenType::Identifier);
+        std::string name = Consume().GetData();
 
-        Expect(TokenType::In);
+        Expect("in");
         Consume();
 
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
 
-        ExpectAny(m_VariableName);
-        auto var = std::make_shared<ASTVariable>(Consume().Data);
+        Expect(TokenType::Identifier);
+        auto var = std::make_shared<ASTVariable>(Consume().GetData());
 
         auto forLoop = std::make_shared<ASTForExpression>(name);
         forLoop->Push(var);
@@ -727,7 +727,7 @@ namespace clear
         
         forLoop->Push(body);
 
-        m_RootStack.push_back(body); */
+        m_RootStack.push_back(body);
     }
 
     void Parser::ParseElseIf()
@@ -782,10 +782,9 @@ namespace clear
 
        while (!Match(TokenType::RightParen))
        {
-           if (Match(TokenType::Identifier))
+           if (Match(TokenType::Identifier) and Next().IsType(TokenType::Ellipses))
            {
                auto x = std::make_shared<ASTFunctionParameter>(Consume().GetData());
-               Expect(TokenType::Ellipses);
                x->IsVariadic = true;
                funcNode->Push(x);
                Consume();
@@ -836,6 +835,8 @@ namespace clear
         Consume();
         auto returnType = ParseTypeResolver();
         funcNode->Push(returnType);
+        Root()->Push(funcNode);
+        m_RootStack.push_back(funcNode);
 
     }
 
