@@ -67,7 +67,7 @@ namespace clear
         void ParseEnum();
         void ParseDefer();
 
-        std::shared_ptr<ASTNodeBase> ParseExpression();
+        std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
         std::shared_ptr<ASTNodeBase> ParseVariableReference();
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
@@ -85,9 +85,6 @@ namespace clear
 
         std::pair<std::string, std::shared_ptr<TypeDescriptor>> ParseVariableTypeDescriptor();
 
-        BinaryExpressionType GetBinaryExpressionFromTokenType(TokenType type);
-        UnaryExpressionType GetPreUnaryExpressionTypeFromTokenType(TokenType type);
-        UnaryExpressionType GetPostUnaryExpressionTypeFromTokenType(TokenType type);
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
         void SavePosition();
@@ -95,6 +92,8 @@ namespace clear
         void SkipUntil(TokenType type);
         //void SkipUntil(TokenSet set);
 
+        size_t FindLastOf(TokenType type); // relative to end line
+        size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
 
     private:
         static constexpr size_t s_MaxMatchSize = 15;

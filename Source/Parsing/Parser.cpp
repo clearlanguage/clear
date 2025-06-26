@@ -1053,6 +1053,18 @@ namespace clear
 
     void Parser::ParseFunctionDeclaration()
     {
+        Expect("declare");
+        Consume();
+
+        Expect(TokenType::Identifier);
+        std::string functionName = Consume().GetData();
+
+        Expect(TokenType::LeftParen);
+        Consume();
+
+        size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
+
+
         CLEAR_UNREACHABLE("unimplemented");
 /* 
         Expect(TokenType::Declaration);
@@ -1122,7 +1134,32 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        CLEAR_UNREACHABLE("unimplemented");
+        Expect(TokenType::Identifier);
+
+        std::string functionName = Consume().GetData();
+
+        Expect(TokenType::LeftParen);
+        Consume();
+
+        size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
+
+        auto call = std::make_shared<ASTFunctionCall>(functionName);
+
+        while(!MatchAny(m_Terminators))
+        {
+            call->Push(ParseExpression(terminationIndex));
+
+            if(m_Position < terminationIndex)
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+        }
+
+        Expect(TokenType::RightParen);
+        Consume();
+
+        return call;
 
        /*  ExpectAny(m_VariableName);
 
@@ -1182,7 +1219,20 @@ namespace clear
             return std::make_shared<ASTNodeLiteral>(Consume());
 
         if(Match(TokenType::Identifier))
+        {
+            if(Next().IsType(TokenType::LeftParen))
+            {
+                return ParseFunctionCall();
+            }
+
+            if(Prev().IsType(TokenType::Dot))
+            {
+                return std::make_shared<ASTMember>(Consume().GetData());
+            }
+
             return std::make_shared<ASTVariable>(Consume().GetData());
+        }
+
 
         CLEAR_UNREACHABLE("unimplemented");
         return {};
@@ -1348,7 +1398,7 @@ namespace clear
         return variableDecleration;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(uint64_t terminationIndex) // infix to RPN and creates nodes
     {
         std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
         std::stack<Operator> operators;
@@ -1372,13 +1422,6 @@ namespace clear
         {
             return  token.IsType(TokenType::Identifier) || token.IsType(TokenType::Number) || token.IsType(TokenType::String) || 
                    (token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false"));
-        };
-
-        auto IsTokenBoundary = [&](const Token& token)
-        {
-            return GetBinaryExpressionFromTokenType(token.GetType()) != BinaryExpressionType::None ||
-                   token.IsType(TokenType::RightBracket) ||
-                   m_Terminators.test((size_t)token.GetType());
         };
 
         auto IsOperand = [&]()
@@ -1407,7 +1450,6 @@ namespace clear
             Token current = Peak();
 
             // unambiguous cases 
-
             switch (current.GetType()) 
             {
                 case TokenType::Plus:               return OperatorType::Add;
@@ -1584,7 +1626,7 @@ namespace clear
             }
         };
 
-        while (!MatchAny(m_Terminators)) 
+        while (!MatchAny(m_Terminators) && m_Position < terminationIndex) 
         {
             HandlePreUnaryOperators();
 
@@ -1594,11 +1636,11 @@ namespace clear
             {
                 expression->Push(ParseOperand());
             }
-            else if (Match(TokenType::LeftBracket)) 
+            else if (Match(TokenType::LeftParen)) 
             {
                 HandleOpenBracket();
             }
-            else if (Match(TokenType::RightBracket)) 
+            else if (Match(TokenType::RightParen)) 
             {
                 HandleCloseBracket();
             }
@@ -1632,7 +1674,12 @@ namespace clear
             resolver->PushToken(Consume());
 
             if(Prev().IsType(TokenType::LeftBracket))
-                resolver->Push(ParseExpression());
+            {
+                size_t terminationIndex = GetLastBracket(TokenType::LeftBracket, TokenType::RightBracket);
+                
+                resolver->Push(ParseExpression(terminationIndex));
+                resolver->PushToken(Consume());
+            }
         }
 
         return resolver;
@@ -1752,90 +1799,6 @@ namespace clear
         Consume(); */
     }
 
-    BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        return BinaryExpressionType::None;
-
-/* 
-        switch (type)
-	    {
-			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
-			case TokenType::MultiplyAssign:
-			case TokenType::MulOp:				return BinaryExpressionType::Mul;
-			case TokenType::PlusAssign:
-			case TokenType::AddOp:				return BinaryExpressionType::Add;
-			case TokenType::DivideAssign:
-			case TokenType::DivOp:				return BinaryExpressionType::Div;
-			case TokenType::MinusAssign:
-			case TokenType::SubOp:				return BinaryExpressionType::Sub;
-			case TokenType::ModuloAssign:
-			case TokenType::ModOp:				return BinaryExpressionType::Mod;
-			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
-			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
-			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
-			case TokenType::LessThan:			return BinaryExpressionType::Less;
-			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
-			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
-			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
-			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
-			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
-			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
-			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
-			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
-			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
-            case TokenType::Power:              return BinaryExpressionType::Pow;
-            case TokenType::And:                return BinaryExpressionType::And;
-            case TokenType::Or:                 return BinaryExpressionType::Or;
-            case TokenType::DotOp:              return BinaryExpressionType::MemberAccess;
-
-			default:
-				break;
-		}
-
-		return BinaryExpressionType::None; */
-    }
-
-    UnaryExpressionType Parser::GetPreUnaryExpressionTypeFromTokenType(TokenType type)
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        return UnaryExpressionType::None;
-/*  
-        switch (type)
-        {
-			case TokenType::Increment:      return UnaryExpressionType::PreIncrement;
-			case TokenType::Decrement:      return UnaryExpressionType::PreDecrement;
-			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
-			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
-			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
-			case TokenType::Negation:       return UnaryExpressionType::Negation; 
-			case TokenType::Not:            return UnaryExpressionType::Not;
-            case TokenType::Ellipsis:       return UnaryExpressionType::Unpack;
-
-			default:
-				break;
-		}
-
-
-		return UnaryExpressionType::None; */
-    }
-
-    UnaryExpressionType Parser::GetPostUnaryExpressionTypeFromTokenType(TokenType type)
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        return UnaryExpressionType::None;
-/* 
-        switch (type)
-		{
-			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
-			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
-			default:
-				break;
-		}
-
-		return UnaryExpressionType::None; */
-    }
-
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
     {
         switch (type)
@@ -1872,6 +1835,51 @@ namespace clear
         {
             Consume();
         }
+    }
+
+    size_t Parser::FindLastOf(TokenType type)
+    {
+        size_t current = m_Position;
+
+        SkipUntil(TokenType::EndLine);
+
+        while((size_t)m_Position-- > current)
+        {
+            if(Match(type))
+            {
+                size_t result = m_Position;
+                m_Position = current;
+                return result;
+            }
+        }
+
+        CLEAR_UNREACHABLE("couldn't find expected token");
+        
+        m_Position = current;
+        return current; 
+    }
+
+    size_t Parser::GetLastBracket(TokenType openBracket, TokenType closeBracket)
+    {
+        size_t terminationIndex = 0;
+
+        SavePosition();
+
+        size_t bracketCount = 1;
+
+        while(bracketCount)
+        {
+            if(Match(TokenType::LeftBracket))  bracketCount++;
+            if(Match(TokenType::RightBracket)) bracketCount--;
+
+            m_Position++;
+        }
+
+        terminationIndex = m_Position - 1;
+
+        RestorePosition();
+
+        return terminationIndex;
     }
 
     bool Parser::LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match)

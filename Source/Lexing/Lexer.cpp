@@ -133,8 +133,6 @@ namespace clear
 
     }
 
-
-
     void Lexer::EatWord()
     {
         auto ShouldContinue = [&]()
@@ -345,7 +343,7 @@ namespace clear
             m_Tokens.emplace_back(TokenType::EndScope, "");
 			m_Indents--;
 		}
-
+        
         m_Indents = localIndents;
     }
 
@@ -365,11 +363,11 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
 
         size_t k = 0;
-        size_t num = 0;
+        uint64_t num = 0;
 
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
-            size_t digit = 0;
+            uint64_t digit = 0;
 
             if(std::isdigit(*it)) 
             {
@@ -398,44 +396,49 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
 
         size_t k = 0;
-        size_t num = 0;
+        uint64_t num = 0;
 
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
-            size_t digit = *it - '0';
+            uint64_t digit = *it - '0';
             num += digit * std::pow(2, k++);
         }
 
         m_Tokens.emplace_back(TokenType::Number, std::to_string(num));
     }
+
     void Lexer::EatChar()
     {
         size_t start = m_Position;
 
         m_Position++;
 
-        if (m_Position >= m_Contents.size()) {
+        if (m_Position >= m_Contents.size()) 
+        {
             CLEAR_LOG_ERROR("char error");
             return;
         }
 
         char value;
 
-        if (m_Contents[m_Position] == '\\') {
+        if (m_Contents[m_Position] == '\\') 
+        {
             m_Position++;
-            if (m_Position >= m_Contents.size()) {
+            if (m_Position >= m_Contents.size()) 
+            {
                 CLEAR_LOG_ERROR("Unterminated escape sequence");
                 return;
             }
 
             char esc = m_Contents[m_Position];
-            switch (esc) {
+            switch (esc) 
+            {
                 case 'n':  value = '\n'; break;
                 case 't':  value = '\t'; break;
                 case 'r':  value = '\r'; break;
                 case 'a':  value = '\a'; break;
                 case 'v':  value = '\v'; break;
-                case 'f':  value =  '\f'; break;
+                case 'f':  value = '\f'; break;
                 case '\\': value = '\\'; break;
                 case '\'': value = '\''; break;
                 case '0':  value = '\0'; break;
@@ -443,14 +446,17 @@ namespace clear
                     value = esc;
                 break;
             }
-        } else {
+
+        } 
+        else 
+        {
             value = m_Contents[m_Position];
         }
 
         m_Position++;
 
-        if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') {
-
+        if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
+        {
             CLEAR_LOG_ERROR("Missing closing quote");
             return;
         }
