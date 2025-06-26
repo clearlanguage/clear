@@ -753,7 +753,6 @@ namespace clear
 
     void Parser::ParseFunctionDefinition(const std::string& className)
     {
-        CLEAR_UNREACHABLE("unimplemented");
 
         Expect("function");
         Consume();
@@ -766,135 +765,78 @@ namespace clear
             name = className + "." + name;
         }
 
+        auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
 
-       /*  Expect(TokenType::Function);
-
-        Consume();
-
-        Expect(TokenType::FunctionName);
-
-        std::string name = Consume().Data;
-        if(!className.empty())
-        {
-            name = className + "." + name;
-        }
-
-        TypeDescriptor returnType;
-        std::vector<UnresolvedParameter> params;
-
-        Expect(TokenType::StartFunctionParameters);
+        Expect(TokenType::LeftParen);
 
         Consume();
 
-        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         size_t i = 0;
 
 
         if(!className.empty())
         {
-            TypeDescriptor pClassTy;
-            pClassTy.Description = { { .TokenType=TokenType::ClassName, .Data=className }, 
-                                     { .TokenType=TokenType::PointerDef } };
-
-            UnresolvedParameter param;
-            param.Type = pClassTy;
-            param.Name = "this";
-
-            params.push_back(param);
-            i++;
+            // TODO: Add this argument
         }
 
-        while(!Match(TokenType::EndFunctionParameters)) 
-        {
-            UnresolvedParameter param;
 
-            if(MatchAny(m_VariableName))
-            {
-                param.IsVariadic = true;
-                param.Name = Consume().Data;
-                Expect(TokenType::Ellipsis);
+       while (!Match(TokenType::RightParen))
+       {
+           if (Match(TokenType::Identifier))
+           {
+               auto x = std::make_shared<ASTFunctionParameter>(Consume().GetData());
+               Expect(TokenType::Ellipses);
+               x->IsVariadic = true;
+               funcNode->Push(x);
+               Consume();
+               Expect(TokenType::RightParen);
+               break;
+           }
+           auto type = ParseTypeResolver();
+           Expect(TokenType::Identifier);
+           std::string name = Consume().GetData();
 
-                params.push_back(param);
+           if(Match(TokenType::Equals)) {
+               Consume();
+               std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
+               arg->Push(type);
+               arg->Push(ParseExpression());
+               funcNode->Push(arg);
+           }
+           if(Match(TokenType::Ellipses))
+           {
+               auto x = std::make_shared<ASTFunctionParameter>(name);
+               x->IsVariadic = true;
+               x->Push(type);
+               funcNode->Push(x);
+               Consume();
+               Expect(TokenType::RightParen);
+               break;
+           }
 
-                Consume();
-                Expect(TokenType::EndFunctionParameters);
+           if(!Match(TokenType::RightParen))
+           {
+               Expect(TokenType::Comma);
+               Consume();
+           }
+           auto x = std::make_shared<ASTFunctionParameter>(name);
+           x->Push(type);
+           i++;
 
-                break;
-            }
-
-            param.Type = { ParseVariableTypeTokens() };  
-            
-            ExpectAny(m_VariableName);
-
-            param.Name = Consume().Data;
-
-            if(Match(TokenType::Assignment))
-            {
-                Consume();
-
-                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
-                arg->Push(ParseExpression());
-                defaultArgs.push_back(arg);
-            } 
-
-            if(Match(TokenType::Ellipsis))
-            {
-                param.IsVariadic = true;
-                params.push_back(param);
-
-                Consume();
-
-                Expect(TokenType::EndFunctionParameters);
-                break;
-            }
-
-            params.push_back(param);
-
-            if(!Match(TokenType::EndFunctionParameters)) 
-            {
-                Expect(TokenType::Comma);
-                Consume();
-            }
-
-            i++;
-        }
-
+       }
         Consume();
-
-        if(Match(TokenType::EndLine) || Match(TokenType::StartIndentation)) 
-        {
-            std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
-            func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
-
-            Root()->Push(func);
-            m_RootStack.push_back(func);
-
+        if (Match(TokenType::Colon)) {
+            Root()->Push(funcNode);
+            m_RootStack.push_back(funcNode);
             Consume();
-
             return;
         }
 
-        Expect(TokenType::RightArrow);
-
+        Expect(TokenType::RightThinArrow);
         Consume();
+        auto returnType = ParseTypeResolver();
+        funcNode->Push(returnType);
 
-        Expect(TokenType::FunctionType);
-
-        Consume();
-
-        ExpectAny(m_VariableType);
-
-        returnType = { ParseVariableTypeTokens() };
-
-        std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
-        func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
-
-        Root()->Push(func);
-        m_RootStack.push_back(func);
-
-        Expect(TokenType::EndLine);
-
-        Consume(); */
     }
 
     void Parser::ParseTraitFunctionDefinition() 
