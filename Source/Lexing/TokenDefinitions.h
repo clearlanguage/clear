@@ -40,8 +40,10 @@ namespace clear
         LessThan,        // <
         GreaterThan,     // >
         Bang,            // !
-        ThinArrow,       // ->
-        FatArrow,        // =>
+        RightThinArrow,       // ->
+        RightFatArrow,        // =>
+        LeftFatArrow,
+        LeftThinArrow,
 
         PlusEquals,          // +=
         MinusEquals,         // -=
@@ -102,7 +104,7 @@ namespace clear
 
     inline set<std::string> g_Punctuators = {
         ";", ",", ":", "(", ")",
-        "{", "}", "[", "]", "->"
+        "{", "}", "[", "]",
     };
 
     inline set<std::string> g_Operators = {
@@ -149,8 +151,10 @@ namespace clear
             {"<<=",  TokenType::LeftShiftEquals},
             {">>=",  TokenType::RightShiftEquals},
 
-            {"->",   TokenType::ThinArrow},
-            {"=>",   TokenType::FatArrow}
+            {"->",   TokenType::RightThinArrow},
+            {"=>",   TokenType::RightFatArrow},
+            {"<-",TokenType::LeftThinArrow},
+            {"<=",TokenType::LeftFatArrow}
     };
 
     inline const size_t g_MaxOperatorSize = 3;
