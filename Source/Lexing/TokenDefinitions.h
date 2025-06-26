@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
+#include <bitset>
 
 namespace clear 
 {
@@ -67,8 +68,22 @@ namespace clear
         
         EndLine,
         EndScope,
-        EndOfFile
+        EndOfFile,
+
+        Count
     };
+
+    using TokenSet = std::bitset<(size_t)TokenType::Count>;
+
+    inline constexpr TokenSet CreateTokenSet(std::initializer_list<TokenType> tokenTypes)
+    {
+        TokenSet tokenSet;
+
+        for(auto type : tokenTypes)
+            tokenSet.set((size_t)type);
+
+        return tokenSet;
+    }
 
     template<typename T>
     using set = std::unordered_set<T>;

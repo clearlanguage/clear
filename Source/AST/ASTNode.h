@@ -23,7 +23,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer
+		Enum, Defer, TypeResolver
 	};
 
 	struct CodegenResult
@@ -560,4 +560,16 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Defer; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
+
+	class ASTTypeResolver : public ASTNodeBase 
+	{
+	public:
+		ASTTypeResolver(const std::vector<Token>& tokens);
+		virtual ~ASTTypeResolver() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
+		virtual CodegenResult Codegen(CodegenContext&) override; // goal is to return a type
+
+	private:
+		std::vector<Token> m_Tokens;
+	};	
 }

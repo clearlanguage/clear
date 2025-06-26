@@ -7,9 +7,11 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <bitset>
 
 namespace clear  
 {
+
     class Parser 
     {        
     public:
@@ -29,9 +31,13 @@ namespace clear
         void Undo();
 
         bool Match(TokenType tokenType);
+        bool Match(const std::string& data);
+
         //bool MatchAny(TokenSet tokenSet);
 
         void Expect(TokenType tokenType);
+        void Expect(const std::string& data);
+
         //void ExpectAny(TokenSet tokenSet);
 
         void ParseStatement();
@@ -84,6 +90,7 @@ namespace clear
         void SkipUntil(TokenType type);
         //void SkipUntil(TokenSet set);
 
+
     private:    
         std::vector<Token> m_Tokens;
         std::set<std::string> m_Aliases;
@@ -92,9 +99,10 @@ namespace clear
         std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
         std::vector<size_t> m_RestorePoints;
 
+        TokenSet m_Terminators;
+
        /*  TokenSet m_VariableType;
         TokenSet m_AssignmentOperators;
-        TokenSet m_Terminators;
         TokenSet m_PreUnaryExpression;
         TokenSet m_PostUnaryExpression;
         TokenSet m_Literals;
@@ -102,5 +110,7 @@ namespace clear
         TokenSet m_TypeIndirection;
         TokenSet m_ValueReferences;
         TokenSet m_VariableName; */
+
+        std::array<TokenType, 30> m_LookAheadBuffer;
     };
 }

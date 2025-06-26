@@ -58,6 +58,20 @@ namespace clear
         root->CreateSymbolTable();
         m_RootStack.push_back(root);
 
+        m_Terminators = CreateTokenSet({
+            TokenType::EndLine, 
+		    TokenType::EndScope, 
+		    TokenType::Comma,  
+		    TokenType::Equals, 
+            TokenType::StarEquals, 
+            TokenType::SlashEquals, 
+            TokenType::PlusEquals, 
+            TokenType::MinusEquals, 
+            TokenType::PercentEquals, 
+            TokenType::Colon,
+            TokenType::EndOfFile
+        });
+
         /* m_VariableType = CreateTokenSet({
             TokenType::Int8Type, 
             TokenType::Int16Type, 
@@ -86,23 +100,6 @@ namespace clear
             TokenType::ModuloAssign
         });
 
-        m_Terminators = CreateTokenSet({
-            TokenType::EndLine, 
-		    TokenType::EndIndentation, 
-		    TokenType::Comma,  
-		    TokenType::EndFunctionArguments, 
-		    TokenType::EndFunctionParameters, 
-		    TokenType::EndArray,
-		    TokenType::Assignment, 
-            TokenType::MultiplyAssign, 
-            TokenType::DivideAssign, 
-            TokenType::PlusAssign, 
-            TokenType::MinusAssign, 
-            TokenType::ModuloAssign, 
-            TokenType::StartIndentation,
-            TokenType::Eof
-        });
-
         m_PreUnaryExpression = CreateTokenSet({
             TokenType::Increment,    
             TokenType::Decrement,    
@@ -127,13 +124,6 @@ namespace clear
             TokenType::RValueChar
         });
 
-        m_IgnoredTokens = CreateTokenSet({
-            TokenType::StartIndentation,
-            TokenType::EndLine, 
-            TokenType::Comma,
-            TokenType::Pass
-        });
-
         m_TypeIndirection = CreateTokenSet({
             TokenType::PointerDef,
             TokenType::StaticArrayDef,
@@ -150,8 +140,6 @@ namespace clear
             TokenType::VariableReference,
             TokenType::MemberName
         }); */
-
-        CLEAR_UNREACHABLE("unimplemented");
 
         while(!Match(TokenType::EndOfFile))
         {
@@ -203,6 +191,11 @@ namespace clear
         return Peak().IsType(token);
     }
 
+    bool Parser::Match(const std::string& data)
+    {
+        return Peak().GetData() == data;
+    }
+
     /* bool Parser::MatchAny(TokenSet tokenSet)
     {
         return tokenSet.test((size_t)Peak().TokenType);
@@ -210,10 +203,17 @@ namespace clear
 
     void Parser::Expect(TokenType tokenType)
     {
-        CLEAR_UNREACHABLE("unimplemented");
         if(Match(tokenType)) return;
         
         //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
+        CLEAR_UNREACHABLE("TODO: add errors here");
+    }
+
+    void Parser::Expect(const std::string& data)
+    {
+        if(Match(data)) return;
+
+        CLEAR_UNREACHABLE("TODO: add errors here");
     }
 
    /*  void Parser::ExpectAny(TokenSet tokenSet)
@@ -226,13 +226,42 @@ namespace clear
 
     void Parser::ParseStatement()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-       /*  if(MatchAny(m_IgnoredTokens))
+        if(Match(TokenType::EndLine))
         {
-            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
+            Consume();
             return;
         }
+
+        if(Match("pass"))
+        {
+            Consume();
+            return;
+        }
+
+        static std::map<std::string, std::function<void()>> s_MappedKeywordsToFunctions = {
+            {"function",  [this]() { ParseFunctionDefinition(); }}
+        };
+        
+        static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
+            {TokenType::EndScope,   [this]() { ParseIndentation(); }}, 
+            {TokenType::Keyword,    [this]() { ParseGeneral(); }}
+        };  
+
+        if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
+        {
+            s_MappedKeywordsToFunctions.at(Peak().GetData())();
+        }
+        else if (s_MappedTokenTypeToFunctions.contains(Peak().GetType()))
+        {
+            s_MappedTokenTypeToFunctions.at(Peak().GetType())();
+        }
+        else 
+        {
+            CLEAR_UNREACHABLE("unimplemented");
+        }
+        
+
+       /*  
 
         static std::map<TokenType, std::function<void()>> s_MappedFunctions = {
             {TokenType::Import,        [this]() { ParseImport(); }},
@@ -275,7 +304,9 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
-        CLEAR_UNREACHABLE("unimplemented");
+        // first we need to classify whether there is a type or not
+
+        
 
         /* std::shared_ptr<ASTNodeBase> expression = ParseExpression();
 
@@ -687,6 +718,18 @@ namespace clear
     void Parser::ParseFunctionDefinition(const std::string& className)
     {
         CLEAR_UNREACHABLE("unimplemented");
+
+        Expect("function");
+        Consume();
+
+        Expect(TokenType::Identifier);
+        std::string name = Consume().GetData();
+
+        if(!className.empty())
+        {
+            name = className + "." + name;
+        }
+
 
        /*  Expect(TokenType::Function);
 

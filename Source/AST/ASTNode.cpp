@@ -2959,4 +2959,67 @@ namespace clear
 		ctx.DeferredCalls.push_back(children[0]);
         return CodegenResult();
     }
+
+    ASTTypeResolver::ASTTypeResolver(const std::vector<Token>& tokens)
+		: m_Tokens(tokens)
+    {
+    }
+
+    CodegenResult ASTTypeResolver::Codegen(CodegenContext& ctx)
+    {
+		auto& children = GetChildren();
+
+		std::shared_ptr<Type> type;
+
+		// deal with first few tokens to get the base type
+
+		size_t i = 0;
+
+		if(m_Tokens[i].GetData() == "const")
+			i++;
+
+		type = ctx.Registry.GetTypeFromToken(m_Tokens[i]);
+		CLEAR_VERIFY(type, "not a valid type name ", m_Tokens[i].GetData());
+
+		if(i == 1)
+			type = ctx.Registry.GetConstFrom(type);
+
+		size_t k = 0;
+
+		for(; i < m_Tokens.size(); i++)
+		{
+			if(m_Tokens[i].IsType(TokenType::Star))
+			{
+				type = ctx.Registry.GetPointerTo(type);
+			}
+			else if (m_Tokens[i].IsType(TokenType::LeftBracket))
+			{
+				CLEAR_VERIFY(k < children.size(), "k is out of bounds");
+
+				CodegenResult arraySizeRes = children[k++]->Codegen(ctx); // expression stored in children
+
+				i++; // skip the Right Bracket as expression is stored in child
+
+				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.CodegenValue);
+				CLEAR_VERIFY(constant, "array expression must be a constant int");
+
+				int64_t arraySize = constant->getSExtValue();
+				CLEAR_VERIFY(arraySize > 0, "cannot have an array size with negative value ", arraySize);
+
+				type = ctx.Registry.GetArrayFrom(type, arraySize);
+			}
+			else if (m_Tokens[i].GetData() == "const")
+			{
+				type = ctx.Registry.GetConstFrom(type);
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("invalid token in type ", m_Tokens[i].GetData());
+			}
+		}
+
+		CodegenResult result;
+		result.CodegenType = type;
+        return result;
+    }
 }
