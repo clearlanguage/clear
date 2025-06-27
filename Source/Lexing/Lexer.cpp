@@ -120,17 +120,19 @@ namespace clear
     void Lexer::EatMultiLineComment()
     {
         m_Position += 2;
+        bool valid = false;
         while (m_Position < m_Contents.size())
         {
-            if (m_Contents[m_Position] == '*' && m_Contents[m_Position + 1] == '\\')
+            if (m_Contents[m_Position] == '*' && m_Contents[m_Position + 1] == '/')
             {
                 m_Position += 2;
+                valid = true;
                 break;
             }
             m_Position++;
         }
 
-        if (m_Position >= m_Contents.size())
+        if (m_Position >= m_Contents.size() and !valid)
         {
             CLEAR_LOG_ERROR("Unterminated comment (reached EOF before '*/')");
         }
