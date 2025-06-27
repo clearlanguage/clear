@@ -1072,10 +1072,7 @@ namespace clear
 
     void Parser::ParseDefer()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-
-        /* Expect(TokenType::Defer);
+        Expect("defer");
         Consume();
 
         auto defer = std::make_shared<ASTDefer>();
@@ -1084,7 +1081,7 @@ namespace clear
         ParseGeneral();
         m_RootStack.pop_back();
 
-        Root()->Push(defer); */
+        Root()->Push(defer);
     }
 
     void Parser::ParseFunctionDeclaration()
