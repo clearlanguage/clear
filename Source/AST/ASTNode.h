@@ -426,7 +426,7 @@ namespace clear
 	class ASTFunctionParameter : public ASTNodeBase
 	{
 	public:
-		bool IsVariadic;
+		bool IsVariadic = false;
 
 	public:
 		ASTFunctionParameter(const std::string& name);

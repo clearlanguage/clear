@@ -13,14 +13,10 @@ namespace clear
     Parser::Parser(const std::vector<Token>& tokens)
         : m_Tokens(tokens)
     {
-        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); //TODO: change back to this once function definitions are implemented
-        std::shared_ptr<ASTFunctionDefinition> main = std::make_shared<ASTFunctionDefinition>("main");
-
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); 
         root->CreateSymbolTable();
-        root->Push(main);
 
         m_RootStack.push_back(root);
-        m_RootStack.push_back(main);
 
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
@@ -728,6 +724,9 @@ namespace clear
         forLoop->Push(body);
 
         m_RootStack.push_back(body);
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseElseIf()
@@ -753,7 +752,6 @@ namespace clear
 
     void Parser::ParseFunctionDefinition(const std::string& className)
     {
-
         Expect("function");
         Consume();
 
@@ -779,66 +777,101 @@ namespace clear
             // TODO: Add this argument
         }
 
+        std::vector<std::shared_ptr<ASTFunctionParameter>> params;
+        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
+        std::shared_ptr<ASTNodeBase> returnType;
+        
+        auto Flush = [&]()
+        {
+            for(const auto& param : params)
+            {
+                funcNode->Push(param);
+            }
 
-       while (!Match(TokenType::RightParen))
-       {
-           if (Match(TokenType::Identifier) and Next().IsType(TokenType::Ellipses))
-           {
-               auto x = std::make_shared<ASTFunctionParameter>(Consume().GetData());
-               x->IsVariadic = true;
-               funcNode->Push(x);
-               Consume();
-               Expect(TokenType::RightParen);
-               break;
-           }
-           auto type = ParseTypeResolver();
-           Expect(TokenType::Identifier);
-           std::string name = Consume().GetData();
+            funcNode->Push(returnType);
 
-           if(Match(TokenType::Equals)) {
-               Consume();
-               std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
-               arg->Push(type);
-               arg->Push(ParseExpression());
-               funcNode->Push(arg);
-           }
-           if(Match(TokenType::Ellipses))
-           {
-               auto x = std::make_shared<ASTFunctionParameter>(name);
-               x->IsVariadic = true;
-               x->Push(type);
-               funcNode->Push(x);
-               Consume();
-               Expect(TokenType::RightParen);
-               break;
-           }
+            for(const auto& arg : defaultArgs)
+            {
+                funcNode->Push(arg);
+            }
 
-           if(!Match(TokenType::RightParen))
-           {
-               Expect(TokenType::Comma);
-               Consume();
-           }
-           auto x = std::make_shared<ASTFunctionParameter>(name);
-           x->Push(type);
-           funcNode->Push(x);
-           i++;
-
-       }
-        Consume();
-        if (Match(TokenType::Colon)) {
             Root()->Push(funcNode);
             m_RootStack.push_back(funcNode);
             Consume();
+        };
+
+        while (!Match(TokenType::RightParen))
+        {
+            if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
+            {
+                auto x = std::make_shared<ASTFunctionParameter>(Consume().GetData());
+                x->IsVariadic = true;
+
+                params.push_back(x);
+                Consume();
+            
+                Expect(TokenType::RightParen);
+            
+                break;
+            }
+           
+            auto type = ParseTypeResolver();
+            Expect(TokenType::Identifier);
+            std::string name = Consume().GetData();
+           
+            if(Match(TokenType::Equals)) 
+            {
+                Consume();
+            
+                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
+                arg->Push(type);
+                arg->Push(ParseExpression());
+            
+                defaultArgs.push_back(arg);
+            }
+           
+            if(Match(TokenType::Ellipses))
+            {
+                auto x = std::make_shared<ASTFunctionParameter>(name);
+                x->IsVariadic = true;
+                x->Push(type);
+
+                params.push_back(x);
+
+                Consume();
+                Expect(TokenType::RightParen);
+
+                break;
+            }
+           
+            if(!Match(TokenType::RightParen))
+            {
+                Expect(TokenType::Comma);
+                Consume();
+            }
+           
+            auto x = std::make_shared<ASTFunctionParameter>(name);
+            x->Push(type);
+
+            params.push_back(x);
+
+            i++;
+        }
+       
+        Consume();
+
+        if (Match(TokenType::Colon)) 
+        {
+            Flush();
             return;
         }
 
         Expect(TokenType::RightThinArrow);
         Consume();
-        auto returnType = ParseTypeResolver();
-        funcNode->Push(returnType);
-        Root()->Push(funcNode);
-        m_RootStack.push_back(funcNode);
+        
+        returnType = ParseTypeResolver();
 
+        Flush();
     }
 
     void Parser::ParseTraitFunctionDefinition() 

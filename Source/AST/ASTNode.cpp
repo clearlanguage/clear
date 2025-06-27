@@ -1197,18 +1197,41 @@ namespace clear
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
 		CLEAR_VERIFY(prev, "prev was null");
 
-		bool isVariadic = m_Parameters.size() > 0 && m_Parameters.back().IsVariadic;
+		bool isVariadic = false;
 
-		std::transform(m_Parameters.begin(), m_Parameters.end(), std::back_inserter(m_ResolvedParams), [&](auto& a)
-		{
-			return Parameter{ a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic };
-		});
-			
-		m_ResolvedReturnType = ctx.Registry.ResolveType(m_ReturnType);
-		
-		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_Parameters.size(), nullptr);
-
+		// resolve parameters
 		size_t i = 0;
+		for(; i < children.size(); i++)
+		{
+			if(!children[i])
+				break;
+
+			if(children[i]->GetType() != ASTNodeType::FunctionParameter)
+				break;
+
+			auto fnParam = std::dynamic_pointer_cast<ASTFunctionParameter>(children[i]);
+
+			CodegenResult result = fnParam->Codegen(ctx);
+			isVariadic = fnParam->IsVariadic;
+			m_ResolvedParams.push_back({ result.Data, result.CodegenType, fnParam->IsVariadic });
+		}
+
+		if(!children[i])
+			i++;
+
+		// resolve return type
+		if(children[i]->GetType() == ASTNodeType::TypeResolver)
+		{
+			if(children[i])
+				m_ResolvedReturnType = children[i]->Codegen(ctx).CodegenType;
+		
+			i++;
+		}
+
+		
+		// resolve default arguments
+		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_ResolvedParams.size(), nullptr);
+
 		for(; i < children.size(); i++)
 		{
 			if(children[i]->GetType() != ASTNodeType::DefaultArgument) 
@@ -1221,10 +1244,13 @@ namespace clear
 			defaultArgs[argIndex] = arg;
 		}
 
+		// erase no longer needed children (params, return type and default args)
 		children.erase(children.begin(), children.begin() + i);
+
 
 		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this());
 		
+		// main needs to be instantiated immedietly as nothing calls it.
 		if(m_Name == "main")
 		{
 			prev->InstantiateOrReturn(m_Name, m_ResolvedParams, m_ResolvedReturnType, ctx);
@@ -1295,7 +1321,7 @@ namespace clear
 		{
 			for(size_t i = k; i < functionData.Parameters.size(); i++)
 			{
-				llvm::AllocaInst* argAlloc = builder.CreateAlloca(functionData.Parameters[i].Type->Get(), nullptr, m_Parameters[k].Name);
+				llvm::AllocaInst* argAlloc = builder.CreateAlloca(functionData.Parameters[i].Type->Get(), nullptr, m_ResolvedParams[k].Name);
 				builder.CreateStore(functionData.Function->getArg(i), argAlloc);
 
 				Allocation alloca;
@@ -1308,7 +1334,7 @@ namespace clear
 			dummy.Alloca = nullptr;
 			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); 
 
-			tbl->TrackAllocation(m_Parameters[k].Name, dummy);
+			tbl->TrackAllocation(m_ResolvedParams[k].Name, dummy);
 		}
 
 		functionData.Function->insert(functionData.Function->end(), body);
