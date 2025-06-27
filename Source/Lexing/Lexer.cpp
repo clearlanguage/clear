@@ -51,6 +51,9 @@ namespace clear
             FlushScopes();
         }
 
+        if(m_Position >= m_Contents.size())
+            return;
+
         std::string top(1, m_Contents[m_Position]);
 
         if (std::isdigit(m_Contents[m_Position]))
@@ -66,7 +69,8 @@ namespace clear
             if (m_Contents[m_Position+1] == '/')
             {
                 EatComment();
-            }else if (m_Contents[m_Position+1] == '*')
+            }
+            else if (m_Contents[m_Position+1] == '*')
             {
                 EatMultiLineComment();
             }

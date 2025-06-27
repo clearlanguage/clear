@@ -2477,8 +2477,6 @@ namespace clear
 			condition = children[0]->Codegen(ctx);
 		}
 
-
-
 		if (condition.CodegenType->IsIntegral())
 			condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
 			

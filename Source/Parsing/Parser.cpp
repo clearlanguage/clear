@@ -682,7 +682,6 @@ namespace clear
 
     void Parser::ParseWhile()
     {
-
         Expect("while");
         Consume();
 
@@ -694,11 +693,13 @@ namespace clear
 
         Root()->Push(whileExp);
         m_RootStack.push_back(base);
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseFor()
     {
-
         Expect("for");
         Consume();
 
