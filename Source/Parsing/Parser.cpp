@@ -820,6 +820,7 @@ namespace clear
            }
            auto x = std::make_shared<ASTFunctionParameter>(name);
            x->Push(type);
+           funcNode->Push(x);
            i++;
 
        }
