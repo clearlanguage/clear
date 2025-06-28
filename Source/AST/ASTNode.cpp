@@ -2793,18 +2793,25 @@ namespace clear
 		}
 		else if (baseTy->IsArray())
 		{
-		    llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
+			auto arrayTy = dyn_cast<ArrayType>(baseTy);
+
+			if(arrayTy->GetBaseType()->IsCompound())
+			{
+				RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
+			}
+			else 
+			{
+				llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
 		
-		    if (isGlobal)
-		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
-		    }
-		    else
-		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
-		    }
-
-
+		    	if (isGlobal)
+		    	{
+		    	    llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    	}
+		    	else
+		    	{
+		    	    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    	}
+			}
 		}
 		else if (baseTy->IsIntegral())
 		{
