@@ -1066,10 +1066,18 @@ namespace clear
 
         auto IsTokenOperand = [&](const Token& token)
         {
-            return  token.IsType(TokenType::Identifier) || token.IsType(TokenType::Number) || token.IsType(TokenType::String) || 
-                   (token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false"));
+            bool isBasicType = token.IsType(TokenType::Identifier) ||
+                               token.IsType(TokenType::Number) ||
+                               token.IsType(TokenType::String);
+        
+            bool isSpecialKeyword = token.IsType(TokenType::Keyword) &&
+                                    (token.GetData() == "true" ||
+                                     token.GetData() == "false" ||
+                                     token.GetData() == "null");
+        
+            return isBasicType || isSpecialKeyword;
         };
-
+        
         auto IsOperand = [&]()
         {
             return IsTokenOperand(Peak());
@@ -1530,6 +1538,8 @@ namespace clear
             if(Match(closeBracket)) bracketCount--;
 
             m_Position++;
+
+            CLEAR_VERIFY(m_Position < m_Tokens.size(), "mismatched brackets");
         }
 
         terminationIndex = m_Position - 1;
