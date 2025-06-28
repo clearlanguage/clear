@@ -240,6 +240,7 @@ namespace clear
             {"if",        [this]() { ParseIf(); }},
             {"else",      [this]() { ParseElse(); }},
             {"elseif",    [this]() { ParseElseIf(); }},
+            {"defer",     [this]() { ParseDefer(); }},
 
         };
         
@@ -307,11 +308,12 @@ namespace clear
 
         auto terminator = [](const Token& token)
         {
-            return token.IsType(TokenType::EndOfFile) || 
-                   token.IsType(TokenType::EndLine)   || 
-                   token.IsType(TokenType::Equals)    ||
-                   token.IsType(TokenType::LeftParen) || 
-                   token.IsType(TokenType::Comma)     || 
+            return token.IsType(TokenType::EndOfFile)  || 
+                   token.IsType(TokenType::EndLine)    || 
+                   token.IsType(TokenType::Equals)     ||
+                   token.IsType(TokenType::PlusEquals) ||
+                   token.IsType(TokenType::LeftParen)  || 
+                   token.IsType(TokenType::Comma)      || 
                    token.IsType(TokenType::Dot);
         };
 
@@ -351,7 +353,7 @@ namespace clear
 
         while(isDecleration)
         {
-            auto decleration = ParseVariableDecleration(true);
+            auto decleration = ParseVariableDecleration();
 
             if(MatchAny(m_AssignmentOperators))
             {
@@ -1274,7 +1276,7 @@ namespace clear
         return assign; */
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration(bool initialize)
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration()
     {
         auto type = ParseTypeResolver();
 
