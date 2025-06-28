@@ -70,7 +70,6 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
-        std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName, bool initialize = false);
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> ParseVariableDecleration();
         std::shared_ptr<ASTNodeBase> ParseTypeResolver();

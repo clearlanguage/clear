@@ -243,6 +243,8 @@ namespace clear
             {"elseif",    [this]() { ParseElseIf(); }},
             {"defer",     [this]() { ParseDefer(); }},
             {"class",     [this]() { ParseClass(); }},
+            {"enum",      [this]() { ParseEnum(); }},
+
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -261,46 +263,6 @@ namespace clear
         {
             ParseGeneral();
         }
-
-       /*  
-
-        static std::map<TokenType, std::function<void()>> s_MappedFunctions = {
-            {TokenType::Import,        [this]() { ParseImport(); }},
-            {TokenType::Struct,        [this]() { ParseStruct(); }},
-            {TokenType::Class ,        [this]() { ParseClass(); }},
-            {TokenType::Declaration,   [this]() { ParseFunctionDeclaration(); }},
-            {TokenType::Function,      [this]() { ParseFunctionDefinition(); }},
-            {TokenType::ConditionalIf, [this]() { ParseIf(); }},
-            {TokenType::ElseIf,        [this]() { ParseElseIf(); }},
-            {TokenType::Else,          [this]() { ParseElse(); }},
-            {TokenType::EndIndentation,[this]() { ParseIndentation(); }},
-            {TokenType::Return,        [this]() { ParseReturn(); }},
-            {TokenType::While,         [this]() { ParseWhile(); }},
-            {TokenType::For,           [this]() { ParseFor(); }},
-            {TokenType::Let,           [this]() { ParseLetDecleration(); }},
-            {TokenType::Const,         [this]() { ParseConstDecleration(); }},
-            {TokenType::Continue,      [this]() { ParseLoopControls(); }},
-            {TokenType::Break,         [this]() { ParseLoopControls(); }},
-            {TokenType::Trait,         [this]() { ParseTrait(); }}, 
-            {TokenType::Enum,          [this]() { ParseEnum(); }}, 
-            {TokenType::Defer,         [this]() { ParseDefer(); }}
-
-        };
-
-        if(MatchAny(m_VariableType) && !Match(TokenType::Const))
-        {
-            ParseVariableDecleration(true);
-            return;
-        }
-
-        if(s_MappedFunctions.contains(Peak().TokenType))
-        {
-            s_MappedFunctions.at(Peak().TokenType)();
-        }
-        else 
-        {
-            ParseGeneral();
-        } */
     }
 
     void Parser::ParseGeneral()
@@ -962,30 +924,25 @@ namespace clear
 
     void Parser::ParseEnum()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-
-       /*  Expect(TokenType::Enum);
+        Expect("enum");
         Consume();
 
-        std::string enumName = Consume().Data;
+        std::string enumName = Consume().GetData();
+
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
-        Consume();
-
-        Expect(TokenType::StartIndentation);
         Consume();
 
         std::vector<std::string> names;
 
         std::shared_ptr<ASTEnum> enum_ = std::make_shared<ASTEnum>(enumName);
 
-        Expect(TokenType::VariableReference);
-        enum_->AddEnumName(Consume().Data);
+        Expect(TokenType::Identifier);
+        enum_->AddEnumName(Consume().GetData());
 
-        Token zero;
-        zero.Data = "0";
-        zero.TokenType = TokenType::RValueNumber;
+        Token zero(TokenType::Number, "0");
 
         if(Match(TokenType::Comma))
         {
@@ -1003,9 +960,9 @@ namespace clear
         if(Match(TokenType::EndLine))
             Consume();
 
-        while(Match(TokenType::VariableReference))
+        while(Match(TokenType::Identifier))
         {
-            enum_->AddEnumName(Consume().Data);
+            enum_->AddEnumName(Consume().GetData());
 
             if(Match(TokenType::Comma))
             {
@@ -1025,7 +982,7 @@ namespace clear
                 break;
             }
 
-            Expect(TokenType::Assignment);
+            Expect(TokenType::Equals);
             Consume();
 
             enum_->Push(ParseExpression());
@@ -1037,10 +994,13 @@ namespace clear
                 Consume();
         }
 
-        Expect(TokenType::EndIndentation);
+        while(Match(TokenType::EndLine))
+            Consume();
+
+        Expect(TokenType::EndScope);
         Consume();
 
-        Root()->Push(enum_); */
+        Root()->Push(enum_); 
     }
 
     void Parser::ParseDefer()
@@ -1218,14 +1178,6 @@ namespace clear
 
         return initializer;
 
-    }
-
-    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName, bool initialize)
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
-
-        //return ParseAssignment(std::make_shared<ASTVariable>(variableName), initialize);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
@@ -1783,11 +1735,4 @@ namespace clear
         return k == s_MaxMatchSize || match[k] == TokenType::None;
     }
 
-   /*  void Parser::SkipUntil(TokenSet set)
-    {
-        while(!MatchAny(set) && !Match(TokenType::Eof))
-        {
-            Consume();
-        }
-    } */
 }
