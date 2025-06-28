@@ -232,12 +232,13 @@ namespace clear
             {"while",     [this]() { ParseWhile(); }},
             {"for",       [this]() { ParseFor(); }},
             {"let",       [this]() { ParseLetDecleration(); }},
-            {"declare",   [this]() { ParseFunctionDeclaration(); }}
+            {"declare",   [this]() { ParseFunctionDeclaration(); }}, 
+            {"const",     [this]() { ParseConstDecleration(); }}, 
+            {"struct",    [this]() { ParseStruct(); }}
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
-            {TokenType::EndScope,   [this]() { ParseIndentation(); }}, 
-            {TokenType::Keyword,    [this]() { ParseGeneral(); }}
+            {TokenType::EndScope,   [this]() { ParseIndentation(); }}
         };  
 
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
@@ -250,9 +251,8 @@ namespace clear
         }
         else 
         {
-             Root()->Push(ParseExpression());
+            ParseGeneral();
         }
-        
 
        /*  
 
@@ -303,7 +303,8 @@ namespace clear
         {
             return token.IsType(TokenType::EndOfFile) || 
                    token.IsType(TokenType::EndLine)   || 
-                   token.IsType(TokenType::EqualsEquals);
+                   token.IsType(TokenType::Equals)    ||
+                   token.IsType(TokenType::LeftParen);
         };
 
 
@@ -315,7 +316,7 @@ namespace clear
         static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
                 {TokenType::Identifier, TokenType::Identifier, TokenType::None};
 
-        
+
         if(LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier))
         {
             auto decleration = ParseVariableDeclerationN(true);
@@ -330,22 +331,16 @@ namespace clear
             
             return;
         }
-        else 
-        {
-            CLEAR_UNREACHABLE("unimplemented match");
-        }
 
-        Root()->Push(ParseExpression());
-
-        /* std::shared_ptr<ASTNodeBase> expression = ParseExpression();
+        auto expr = ParseExpression();
 
         if(MatchAny(m_AssignmentOperators))
         {
-            Root()->Push(ParseAssignment(expression));
+            Root()->Push(ParseAssignment(expr));
             return;
         }
 
-        Root()->Push(expression); */
+        Root()->Push(expr);
     }
 
     void Parser::ParseVariableDecleration(bool defaultInitialize)
@@ -502,104 +497,110 @@ namespace clear
      }
 
     void Parser::ParseConstDecleration()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-       /*  Expect(TokenType::Const);
-        SavePosition();
+    {       
+        Expect("const");
+        Consume();
 
-        TypeDescriptor variableType = { ParseVariableTypeTokens() };
-
-        if(variableType.Description.size() >= 2 && variableType.Description.back().TokenType != TokenType::VariableReference)
+        if(!Match(TokenType::Identifier))
         {
-            RestorePosition();
-            ParseVariableDecleration(true);
+            Undo();
+            Root()->Push(ParseVariableDeclerationN(true));
+
             return;
         }
 
-        variableType.Description.pop_back(); // remove the variable reference
-        Undo();
-
-        ExpectAny(m_VariableName);
-
-        while(MatchAny(m_VariableName))
+        while(Match(TokenType::Identifier))
         {
-            std::string variableName = Consume().Data;
-
-            Expect(TokenType::Assignment);
+            std::string variableName = Consume().GetData();
+        
+            Expect(TokenType::Equals);
             Consume();
-
+        
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName, true);
             inferredType->Push(ParseExpression());
-            
+        
             Root()->Push(inferredType);
-            
+        
             if(Match(TokenType::Comma))
             {
                 Consume();
-                ExpectAny(m_VariableName);
+                Expect(TokenType::Identifier);
             }
-        } */
+        }
     }
 
     void Parser::ParseStruct()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-    /*     Expect(TokenType::Struct);
-
+        Expect("struct");
         Consume();
 
-        Expect(TokenType::StructName);
+        Expect(TokenType::Identifier);
+        std::string structName = Consume().GetData();
 
-        std::string structName = Consume().Data;
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
         Consume();
 
-        Expect(TokenType::StartIndentation);
-        Consume();
+        auto struct_ = std::make_shared<ASTStruct>(structName);
 
-        Token token;
-        token.TokenType = TokenType::StructName;
-        token.Data = structName;
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> typeSpecifiers;
+        std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs;
 
-        TypeDescriptor structTyDesc;
-        structTyDesc.Description = { token };
-
-        auto struct_ = std::make_shared<ASTStruct>();
-
-        while(!Match(TokenType::EndIndentation))
+        auto Flush = [&]()
         {
-            std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
+            for(const auto& type : typeSpecifiers)
+            {
+                struct_->Push(type);
+            }
 
-            subType->Description = ParseVariableTypeTokens(); 
-            
-            ExpectAny(m_VariableName);
+            for(const auto& defaultArg : defaultArgs)
+            {
+                struct_->Push(defaultArg);
+            }
 
-            std::string name = Consume().Data;
-            structTyDesc.ChildTypes.push_back({name, subType});
+            Root()->Push(struct_);
+            Consume();
+        };
 
-            if(Match(TokenType::Assignment))
+        auto ConstructType = [&](const std::shared_ptr<ASTNodeBase>& type)
+        {   
+            Expect(TokenType::Identifier);
+            std::string memberName = Consume().GetData();
+
+            auto member = std::make_shared<ASTTypeSpecifier>(memberName);
+            member->Push(type);
+
+            typeSpecifiers.push_back(member);
+
+            if(Match(TokenType::Equals))
             {
                 Consume();
-                struct_->Push(ParseExpression());
+                defaultArgs.push_back(ParseExpression());
             }
             else 
             {
-                struct_->Push(nullptr);
+                defaultArgs.push_back(nullptr);
             }
+        };
 
-            if(Match(TokenType::Comma))
+        while(!Match(TokenType::EndScope))
+        {
+            auto type = ParseTypeResolver();
+            ConstructType(type);
+
+            while(Match(TokenType::Comma))
+            {
                 Consume();
-
-            Expect(TokenType::EndLine);
-            Consume();
+                ConstructType(type);
+            }
+            
+            while(Match(TokenType::EndLine))
+                Consume();
         }
 
-        struct_->SetTypeDesc(structTyDesc);
-        Root()->Push(struct_);
-
-        Consume(); */
+        Flush();
     }
 
     void Parser::ParseImport()
@@ -778,7 +779,7 @@ namespace clear
             // TODO: Add this argument
         }
 
-        std::vector<std::shared_ptr<ASTFunctionParameter>> params;
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         std::shared_ptr<ASTNodeBase> returnType;
         
@@ -805,7 +806,7 @@ namespace clear
         {
             if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
             {
-                auto x = std::make_shared<ASTFunctionParameter>(Consume().GetData());
+                auto x = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
                 x->IsVariadic = true;
 
                 params.push_back(x);
@@ -833,7 +834,7 @@ namespace clear
            
             if(Match(TokenType::Ellipses))
             {
-                auto x = std::make_shared<ASTFunctionParameter>(name);
+                auto x = std::make_shared<ASTTypeSpecifier>(name);
                 x->IsVariadic = true;
                 x->Push(type);
 
@@ -851,7 +852,7 @@ namespace clear
                 Consume();
             }
            
-            auto x = std::make_shared<ASTFunctionParameter>(name);
+            auto x = std::make_shared<ASTTypeSpecifier>(name);
             x->Push(type);
 
             params.push_back(x);
@@ -885,7 +886,7 @@ namespace clear
         Expect(TokenType::FunctionName);
         std::string functionName = Consume().Data;
 
-        Expect(TokenType::StartFunctionParameters);
+        Expect(TokenType::StartTypeSpecifiers);
 
         Consume();
 
@@ -898,7 +899,7 @@ namespace clear
             if(Match(TokenType::Ellipsis))
             {
                 Consume();
-                Expect(TokenType::EndFunctionParameters);
+                Expect(TokenType::EndTypeSpecifiers);
                 params.push_back(param);
 
                 break;
@@ -909,7 +910,7 @@ namespace clear
             if(MatchAny(m_VariableName))
                 Consume();
 
-            if(!Match(TokenType::EndFunctionParameters))
+            if(!Match(TokenType::EndTypeSpecifiers))
             {
                 Expect(TokenType::Comma);
                 Consume();
@@ -918,7 +919,7 @@ namespace clear
             params.push_back(param);
         }
 
-        Expect(TokenType::EndFunctionParameters);
+        Expect(TokenType::EndTypeSpecifiers);
 
         Consume();
 
@@ -1106,7 +1107,7 @@ namespace clear
                 Consume();
                 Expect(TokenType::RightParen);
 
-                auto param = std::make_shared<ASTFunctionParameter>("");
+                auto param = std::make_shared<ASTTypeSpecifier>("");
                 param->IsVariadic = true;
 
                 decleration->Push(param);
@@ -1125,7 +1126,7 @@ namespace clear
                 Consume();
             }
 
-            auto param = std::make_shared<ASTFunctionParameter>("");
+            auto param = std::make_shared<ASTTypeSpecifier>("");
             param->Push(type);
 
             decleration->Push(param);
@@ -1532,8 +1533,10 @@ namespace clear
 
                         return OperatorType::PostDecrement;
                     }
-                
-                    return OperatorType::None; // -- double negate does nothing so we can ignore
+
+
+                    CLEAR_UNREACHABLE("invalid decrement");
+                    return OperatorType::None;
                 }
 
                 case TokenType::Increment:
@@ -1580,6 +1583,7 @@ namespace clear
             {
                 return op.IsOpenBracket || precedence > op.Precedence;
             });
+
 
             operators.push({
                 .OperatorExpr = operatorType,

@@ -1206,10 +1206,10 @@ namespace clear
 			if(!children[i])
 				break;
 
-			if(children[i]->GetType() != ASTNodeType::FunctionParameter)
+			if(children[i]->GetType() != ASTNodeType::TypeSpecifier)
 				break;
 
-			auto fnParam = std::dynamic_pointer_cast<ASTFunctionParameter>(children[i]);
+			auto fnParam = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 
 			CodegenResult result = fnParam->Codegen(ctx);
 			isVariadic = fnParam->IsVariadic;
@@ -1588,10 +1588,10 @@ namespace clear
 		{
 			auto& child = children[i];
 
-			if(child->GetType() != ASTNodeType::FunctionParameter)
+			if(child->GetType() != ASTNodeType::TypeSpecifier)
 				break; 
 			
-			auto fnParam = std::dynamic_pointer_cast<ASTFunctionParameter>(child);
+			auto fnParam = std::dynamic_pointer_cast<ASTTypeSpecifier>(child);
 
 			CodegenResult param = fnParam->Codegen(ctx);
 
@@ -2545,42 +2545,55 @@ namespace clear
 		return {};
 	}
 
-	ASTStruct::ASTStruct(const TypeDescriptor& structTy)
-		: m_StructTy(structTy)
-    {
-    }
-
 	ASTLoopControlFlow::ASTLoopControlFlow(TokenType jumpTy) 
 		: m_JumpTy(jumpTy)
 	{
 	}
 
+    ASTStruct::ASTStruct(const std::string& name)
+		: m_Name(name)
+    {
+    }
 
-	CodegenResult ASTStruct::Codegen(CodegenContext& ctx)
-	{
+    CodegenResult ASTStruct::Codegen(CodegenContext& ctx)
+    {
 		auto& children = GetChildren();
 
-		auto structTy = dyn_cast<StructType>(ctx.Registry.ResolveType(m_StructTy));
-		CLEAR_VERIFY(structTy, "failed to create type");
+		// create the struct type
+		auto structTy = ctx.Registry.CreateType<StructType>(m_Name, m_Name, ctx.Context);
+		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
+
+		size_t i = 0;
+		for(; i < children.size(); i++)
+		{
+			if(!children[i]) break;
+			if(children[i]->GetType() != ASTNodeType::TypeSpecifier) break;
+
+			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
+			CodegenResult result = typeSpec->Codegen(ctx);
+
+			members.emplace_back(result.Data, result.CodegenType);
+		}
+
+		structTy->SetBody(members);
+
+		// set its default values
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
-		size_t k = 0;
 
-		for(const auto& [memberName, _] : m_StructTy.ChildTypes)
+		for(const auto& [memberName, memberType] : members)
 		{
-			auto memberType = structTy->GetMemberType(memberName);
+			CLEAR_VERIFY(i < children.size(), "haven't added all the default values");
 
-			if(!children[k])
+			if(!children[i])
 			{
-				k++;
+				i++;
 				structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
-
 				continue;
 			}
 
-			CodegenResult result = 	children[k++]->Codegen(ctx);
+			CodegenResult result = 	children[i++]->Codegen(ctx);
 			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
-
 			structTy->AddDefaultValue(memberName, result.CodegenValue);
 		}
 
@@ -3066,7 +3079,7 @@ namespace clear
         return result;
     }
 
-	CodegenResult ASTFunctionParameter::Codegen(CodegenContext& ctx) 
+	CodegenResult ASTTypeSpecifier::Codegen(CodegenContext& ctx) 
 	{
 		auto& children = GetChildren();
 
@@ -3081,7 +3094,7 @@ namespace clear
 		return { .CodegenType = type.CodegenType, .Data = m_Name };
 	}
 
-	ASTFunctionParameter::ASTFunctionParameter(const std::string& name)
+	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)
 		 : m_Name(name)
 	{
 	}

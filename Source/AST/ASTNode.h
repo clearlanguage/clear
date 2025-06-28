@@ -25,7 +25,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer, TypeResolver,FunctionParameter
+		Enum, Defer, TypeResolver,TypeSpecifier
 	};
 
 	struct CodegenResult
@@ -423,15 +423,15 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
 
-	class ASTFunctionParameter : public ASTNodeBase
+	class ASTTypeSpecifier : public ASTNodeBase
 	{
 	public:
 		bool IsVariadic = false;
 
 	public:
-		ASTFunctionParameter(const std::string& name);
-		virtual ~ASTFunctionParameter() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionParameter; }
+		ASTTypeSpecifier(const std::string& name);
+		virtual ~ASTTypeSpecifier() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 
@@ -454,18 +454,13 @@ namespace clear
 	class ASTStruct : public ASTNodeBase
 	{
 	public:
-		ASTStruct(const TypeDescriptor& structTy = {});
+		ASTStruct(const std::string& name);
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		void SetTypeDesc(const TypeDescriptor& other)
-		{
-			m_StructTy = other;
-		}
-
 	private:
-		TypeDescriptor m_StructTy;
+		std::string m_Name;
 	};
 
 	class ASTClass : public ASTNodeBase

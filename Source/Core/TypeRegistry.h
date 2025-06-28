@@ -5,6 +5,7 @@
 #include "API/LLVM/LLVMInclude.h"
 
 #include "Lexing/Token.h"
+#include "Log.h"
 
 namespace clear 
 {
@@ -41,9 +42,11 @@ namespace clear
         const auto& GetTypeTable() { return m_Types; }
 
         template<typename T, typename ...Args>
-        void CreateType(const std::string& name, Args&&... args)
+        std::shared_ptr<T> CreateType(const std::string& name, Args&&... args)
         {
-            m_Types[name] = std::make_shared<T>(std::forward<Args>(args)...);
+            auto [it, success] = m_Types.try_emplace(name, std::make_shared<T>(std::forward<Args>(args)...));
+            CLEAR_VERIFY(success, "failed to emplace type ", name);
+            return std::dynamic_pointer_cast<T>(it->second);
         }
 
     private:
