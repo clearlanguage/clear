@@ -43,8 +43,8 @@ namespace clear
 
         void ParseStatement();
         void ParseGeneral();
-        void ParseFunctionDefinition(const std::string& className = "");
-        void ParseFunctionDeclaration();        
+        void ParseFunctionDefinition(const std::string& className = "", bool descriptionOnly = false);
+        void ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
         void ParseLetDecleration();
         void ParseConstDecleration();
         void ParseStruct();
@@ -59,10 +59,6 @@ namespace clear
         void ParseClass();
         void ParseLoopControls();
         void ParseTrait();
-        void ParseTraitFunctionDefinition();
-        void ParseRaise();
-        void ParseTry();
-        void ParseCatch();
         void ParseEnum();
         void ParseDefer();
 
@@ -79,7 +75,6 @@ namespace clear
         void SavePosition();
         void RestorePosition();
         void SkipUntil(TokenType type);
-        //void SkipUntil(TokenSet set);
 
         size_t FindLastOf(TokenType type); // relative to end line
         size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
@@ -99,15 +94,5 @@ namespace clear
         TokenSet m_Terminators;
         TokenSet m_AssignmentOperators;
         TokenSet m_Literals;
-
-       /*  TokenSet m_VariableType;
-        TokenSet m_AssignmentOperators;
-        TokenSet m_PreUnaryExpression;
-        TokenSet m_PostUnaryExpression;
-        TokenSet m_Literals;
-        TokenSet m_IgnoredTokens;
-        
-        TokenSet m_ValueReferences;
-        TokenSet m_VariableName; */
     };
 }

@@ -290,6 +290,9 @@ namespace clear
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
+		bool InsertDecleration = true;
+
+	public:
 		ASTFunctionDecleration(const std::string& name);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
@@ -300,8 +303,8 @@ namespace clear
 		const auto& GetName() 		{ return m_Name; }
 
 	private:
-		std::vector<UnresolvedParameter> m_Parameters;
-		TypeDescriptor m_ReturnType;
+		std::vector<Parameter> m_Parameters;
+		std::shared_ptr<Type> m_ReturnType;
 		std::string m_Name;
 	};
 

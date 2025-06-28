@@ -51,75 +51,6 @@ namespace clear
             TokenType::Keyword
         });
 
-        /* m_VariableType = CreateTokenSet({
-            TokenType::Int8Type, 
-            TokenType::Int16Type, 
-            TokenType::Int32Type, 
-            TokenType::Int64Type, 
-            TokenType::UInt8Type,
-            TokenType::UInt16Type,
-            TokenType::UInt32Type,
-            TokenType::UInt64Type,
-            TokenType::Float32Type,
-            TokenType::Float64Type,
-            TokenType::Bool,
-            TokenType::StructName,
-            TokenType::StringType, 
-            TokenType::CharType, 
-            TokenType::TypeIdentifier, 
-            TokenType::Const
-        });
-
-        m_AssignmentOperators = CreateTokenSet({
-            TokenType::Assignment, 
-            TokenType::MultiplyAssign,
-            TokenType::DivideAssign, 
-            TokenType::PlusAssign,
-            TokenType::MinusAssign,
-            TokenType::ModuloAssign
-        });
-
-        m_PreUnaryExpression = CreateTokenSet({
-            TokenType::Increment,    
-            TokenType::Decrement,    
-            TokenType::BitwiseNot,   
-            TokenType::AddressOp,	  
-            TokenType::DereferenceOp,
-            TokenType::Negation, 
-            TokenType::Not,
-            TokenType::Ellipsis
-        });
-
-        m_PostUnaryExpression = CreateTokenSet({
-            TokenType::Increment,    
-            TokenType::Decrement
-        });
-
-        m_Literals = CreateTokenSet({
-            TokenType::RValueNumber,
-		    TokenType::RValueString,
-		    TokenType::BooleanData,
-		    TokenType::Null,
-            TokenType::RValueChar
-        });
-
-        m_TypeIndirection = CreateTokenSet({
-            TokenType::PointerDef,
-            TokenType::StaticArrayDef,
-            TokenType::Const
-        });
-
-        m_ValueReferences = CreateTokenSet({
-            TokenType::VariableReference, 
-            TokenType::DereferenceOp,
-        });
-
-        m_VariableName = CreateTokenSet({
-            TokenType::VariableName,
-            TokenType::VariableReference,
-            TokenType::MemberName
-        }); */
-
         while(!Match(TokenType::EndOfFile))
         {
             ParseStatement();
@@ -244,7 +175,7 @@ namespace clear
             {"defer",     [this]() { ParseDefer(); }},
             {"class",     [this]() { ParseClass(); }},
             {"enum",      [this]() { ParseEnum(); }},
-
+            {"trait",     [this]() { ParseTrait(); }},
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -268,7 +199,6 @@ namespace clear
     void Parser::ParseGeneral()
     {
         // first we need to determine how to parse
-
         auto terminator = [](const Token& token)
         {
             return token.IsType(TokenType::EndOfFile)  || 
@@ -346,47 +276,42 @@ namespace clear
     }
 
     void Parser::ParseTrait()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        /* 
-        Expect(TokenType::Trait);
+    { 
+        Expect("trait");
         Consume();
 
-        std::string traitName = Consume().Data;
+        std::string traitName = Consume().GetData();
+
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
-        Consume();
-
-        Expect(TokenType::StartIndentation);
         Consume();
     
         std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
 
         m_RootStack.push_back(trait);
 
-        while (Match(TokenType::Function) || MatchAny(m_VariableType))
+        while (Match("function") || Match(TokenType::Keyword) || Match(TokenType::Identifier))
         {
-            if(Match(TokenType::Function)) // parse function decleration
+            if(Match("function")) // parse function decleration
             {
-                ParseTraitFunctionDefinition();
-            }
-            else if (MatchAny(m_VariableType))
-            {
-                ParseVariableDecleration();
+                ParseFunctionDeclaration("function");
             }
             else 
             {
-                CLEAR_LOG_WARNING("Ignored token ", TokenToString(Peak().TokenType));
+                ParseVariableDecleration();
             }
 
-            Consume();
+            while(Match(TokenType::EndLine))
+                Consume();
         }
 
         m_RootStack.pop_back();
         Root()->Push(trait);
 
-        if(Match(TokenType::EndIndentation))
-            Consume(); */
+        if(Match(TokenType::EndScope))
+            Consume(); 
     }
 
     void Parser::ParseLetDecleration()
@@ -673,7 +598,7 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseFunctionDefinition(const std::string& className)
+    void Parser::ParseFunctionDefinition(const std::string& className,  bool descriptionOnly)
     {
         Expect("function");
         Consume();
@@ -731,7 +656,9 @@ namespace clear
             }
 
             Root()->Push(funcNode);
-            m_RootStack.push_back(funcNode);
+
+            if(!descriptionOnly)
+                m_RootStack.push_back(funcNode);
 
             Consume();
         };
@@ -802,124 +729,18 @@ namespace clear
             return;
         }
 
+        if(Match(TokenType::EndLine) && descriptionOnly)
+        {
+            Flush();
+            return;
+        }
+
         Expect(TokenType::RightThinArrow);
         Consume();
         
         returnType = ParseTypeResolver();
 
         Flush();
-    }
-
-    void Parser::ParseTraitFunctionDefinition() 
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-
-       /*  Expect(TokenType::Function);
-
-        Consume();
-        Expect(TokenType::FunctionName);
-        std::string functionName = Consume().Data;
-
-        Expect(TokenType::StartTypeSpecifiers);
-
-        Consume();
-
-        std::vector<UnresolvedParameter> params;
-
-        while(!MatchAny(m_Terminators))
-        {
-            UnresolvedParameter param;
-
-            if(Match(TokenType::Ellipsis))
-            {
-                Consume();
-                Expect(TokenType::EndTypeSpecifiers);
-                params.push_back(param);
-
-                break;
-            }
-
-            param.Type = { ParseVariableTypeTokens() };
-
-            if(MatchAny(m_VariableName))
-                Consume();
-
-            if(!Match(TokenType::EndTypeSpecifiers))
-            {
-                Expect(TokenType::Comma);
-                Consume();
-            }
-
-            params.push_back(param);
-        }
-
-        Expect(TokenType::EndTypeSpecifiers);
-
-        Consume();
-
-        TypeDescriptor returnType;
-
-        if(Match(TokenType::RightArrow))
-        {
-            Consume();
-
-            Expect(TokenType::FunctionType);
-
-            Consume();
-
-            returnType = { ParseVariableTypeTokens() };
-        }
-
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params)); */
-    }
-
-    void Parser::ParseRaise()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-
-        /* Expect(TokenType::Raise);
-
-        std::shared_ptr<ASTRaise> raise = std::make_shared<ASTRaise>();
-        raise->Push(ParseExpression());
-
-        Root()->Push(raise); */
-    }
-
-    void Parser::ParseTry()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-
-       /*  Expect(TokenType::Try);
-        Consume();
-
-        std::shared_ptr<ASTTryCatch> tryCatch = std::make_shared<ASTTryCatch>();
-        std::shared_ptr<ASTNodeBase> tryBlock = std::make_shared<ASTNodeBase>();
-
-        tryCatch->Push(tryBlock);
-
-        Root()->Push(tryCatch);
-        m_RootStack.push_back(tryBlock); */
-    }
-
-    void Parser::ParseCatch()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-
-        /* Expect(TokenType::Catch);
-        Consume();
-
-        auto& last = Root()->GetChildren().back();
-        auto tryCatch = std::dynamic_pointer_cast<ASTTryCatch>(last);
-        CLEAR_VERIFY(tryCatch, "invalid node");
-
-        m_RootStack.push_back(tryCatch);
-        ParseVariableDecleration();
-        m_RootStack.pop_back();
-
-        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        tryCatch->Push(base);
-
-        m_RootStack.push_back(base); */
     }
 
     void Parser::ParseEnum()
@@ -1017,9 +838,9 @@ namespace clear
         Root()->Push(defer);
     }
 
-    void Parser::ParseFunctionDeclaration()
+    void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
     {
-        Expect("declare");
+        Expect(declareKeyword);
         Consume();
 
         Expect(TokenType::Identifier);

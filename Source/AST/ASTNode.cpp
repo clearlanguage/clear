@@ -1586,7 +1586,6 @@ namespace clear
 		auto& module = ctx.Module;
 
 		std::vector<llvm::Type*> types;
-		std::vector<Parameter> params;
 
 		size_t i = 0;
 		for(; i < children.size(); i++)
@@ -1600,12 +1599,12 @@ namespace clear
 
 			CodegenResult param = fnParam->Codegen(ctx);
 
-			params.push_back({ .Name = param.Data, .Type = param.CodegenType, .IsVariadic = fnParam->IsVariadic });
+			m_Parameters.push_back({ .Name = param.Data, .Type = param.CodegenType, .IsVariadic = fnParam->IsVariadic });
 		} 
 
 		bool isVariadic = false;
 
-		for (auto& param : params)
+		for (auto& param : m_Parameters)
 		{
 			if (!param.Type)
 			{
@@ -1616,37 +1615,42 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		std::shared_ptr<Type> resolvedType = ctx.Registry.GetType("void");
+		m_ReturnType = ctx.Registry.GetType("void");
 
 		if (i < children.size())
 		{
 			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::TypeResolver, "not a valid return type node");
-			resolvedType = children[i]->Codegen(ctx).CodegenType;
+			m_ReturnType = children[i]->Codegen(ctx).CodegenType;
 		}
 
-		llvm::FunctionType* functionType = llvm::FunctionType::get(resolvedType->Get(), types, isVariadic);
-		llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
+		if(InsertDecleration)
+		{
+			llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
+			llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 
-		FunctionInstance data;
-		data.FunctionType = functionType;
-		data.Function = llvm::cast<llvm::Function>(callee.getCallee());
-		data.Parameters = params;
-		data.ReturnType = resolvedType;
-		data.MangledName = m_Name;
-		
-		GetSymbolTable()->RegisterInstance(data);
+			FunctionInstance data;
+			data.FunctionType = functionType;
+			data.Function = llvm::cast<llvm::Function>(callee.getCallee());
+			data.Parameters = m_Parameters;
+			data.ReturnType = m_ReturnType;
+			data.MangledName = m_Name;
+			
+			GetSymbolTable()->RegisterInstance(data);
 
-		FunctionTemplate functionTemplate;
-		functionTemplate.IsVariadic = params.size() > 0 && !params.back().Type;
-		functionTemplate.Parameters = params;
-		functionTemplate.ReturnType = resolvedType;
-		functionTemplate.Root = nullptr; // external function so no root
-		functionTemplate.IsExternal = true;
+			FunctionTemplate functionTemplate;
+			functionTemplate.IsVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
+			functionTemplate.Parameters = m_Parameters;
+			functionTemplate.ReturnType = m_ReturnType;
+			functionTemplate.Root = nullptr; // external function so no root
+			functionTemplate.IsExternal = true;
 
-		GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
+			GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
 
-		return { data.Function, resolvedType };	
-	}
+			return { data.Function, m_ReturnType };	
+		}
+
+		return {};
+	}	
 
     CodegenResult ASTExpression::Codegen(CodegenContext& ctx)
 	{
@@ -2727,16 +2731,12 @@ namespace clear
 			else if(child->GetType() == ASTNodeType::FunctionDecleration)
 			{
 				auto decleration = std::dynamic_pointer_cast<ASTFunctionDecleration>(child);
+				decleration->InsertDecleration = false;
 
-				std::vector<Parameter> params;
-				const auto& unresolvedParams = decleration->GetParameters();
-
-				std::transform(unresolvedParams.begin(), unresolvedParams.end(), std::back_inserter(params), [&](auto& a)
-				{
-					return Parameter{ a.Name, ctx.Registry.ResolveType(a.Type), a.IsVariadic };
-				});
-
-				functions.push_back(FunctionCache::GetMangledName(decleration->GetName(), params, ctx.Registry.ResolveType(decleration->GetReturnType())));
+				decleration->Codegen(ctx);
+				functions.push_back(FunctionCache::GetMangledName(decleration->GetName(), 
+																  decleration->GetParameters(), 
+																  decleration->GetReturnType()));
 			}
 			else 
 			{
