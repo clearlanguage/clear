@@ -467,16 +467,13 @@ namespace clear
 	{
 	public:
 		ASTClass() = default;
-		ASTClass(const TypeDescriptor& classTy);
+		ASTClass(const std::string& name);
 		virtual ~ASTClass() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		const TypeDescriptor& GetTypeDescriptor() const { return m_ClassTy; }
-		void SetTypeDescriptor(const TypeDescriptor& ty) { m_ClassTy = ty; }
-
 	private:
-		TypeDescriptor m_ClassTy;
+		std::string m_Name;
 	};
 
 	class ASTTrait : public ASTNodeBase

@@ -242,7 +242,7 @@ namespace clear
             {"else",      [this]() { ParseElse(); }},
             {"elseif",    [this]() { ParseElseIf(); }},
             {"defer",     [this]() { ParseDefer(); }},
-
+            {"class",     [this]() { ParseClass(); }},
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -1134,6 +1134,7 @@ namespace clear
 
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
+
             call->Push(ParseExpression(terminationIndex));
 
             if(m_Position < terminationIndex)
@@ -1256,37 +1257,6 @@ namespace clear
         assign->Push(ParseExpression()); 
 
         return assign;
-
-       /*  ExpectAny(m_AssignmentOperators);
-
-        Token assignmentToken = Consume();
-
-        if(Match(TokenType::StartArray))
-        {
-            CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
-
-            auto initializer = ParseInitializer(storage);
-            return initializer;
-        }
-
-        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.TokenType);
-
-        std::shared_ptr<ASTAssignmentOperator> assign;
-
-        if(initialize)
-        {
-            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid initializer");
-            assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Initialize);
-        }
-        else 
-        {
-            assign = std::make_shared<ASTAssignmentOperator>(assignType);
-        }
-
-        assign->Push(storage);            
-        assign->Push(ParseExpression()); 
-
-        return assign; */
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration()
@@ -1628,55 +1598,42 @@ namespace clear
 
     void Parser::ParseClass()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-/* 
-        Expect(TokenType::Class);
+        Expect("class");
         Consume();
 
-        Expect(TokenType::ClassName);
-        std::string className = Consume().Data;
+        Expect(TokenType::Identifier);
+        std::string className = Consume().GetData();
 
-        SkipUntil(TokenType::StartIndentation);
+        Expect(TokenType::Colon);
         Consume();
 
-        Token token;
-        token.TokenType = TokenType::ClassName;
-        token.Data = className;
-
-        TypeDescriptor classTy;
-        classTy.Description = { token };
-
-        std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>();
+        std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
         Root()->Push(classNode);
 
         m_RootStack.push_back(classNode);
 
-        while(!Match(TokenType::EndIndentation))
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> types;
+        std::vector<std::shared_ptr<ASTNodeBase>> defaultValues;
+
+        auto Flush = [&]()
         {
-            if(MatchAny(m_VariableType))
+            for(const auto& defaultValue : defaultValues)
             {
-                classTy.ChildTypes.push_back(ParseVariableTypeDescriptor());
-
-                if(Match(TokenType::Assignment))
-                {
-                    Consume();
-                    classNode->Push(ParseExpression());
-                }
-                else 
-                {
-                    classNode->Push(nullptr);
-                }
-
-                if(Match(TokenType::Comma))
-                    Consume();
-
-                Expect(TokenType::EndLine);
-                Consume();
-                
-                continue;
+                classNode->Push(defaultValue);
             }
 
-            if(Match(TokenType::Function))
+            for(const auto& type : types)
+            {
+                classNode->Push(type);
+            }
+
+            m_RootStack.pop_back();
+            Consume(); 
+        };
+
+        while(!Match(TokenType::EndScope))
+        {
+            if(Match("function"))
             {
                 size_t rootLevel = m_RootStack.size();
 
@@ -1691,13 +1648,39 @@ namespace clear
                 continue;
             }
 
-            CLEAR_LOG_INFO("ignoring token ", TokenToString(Consume().TokenType), " in class ", className);
+            if(Match(TokenType::Keyword) || Match(TokenType::Identifier))
+            {
+                auto type = ParseTypeResolver();
+
+                Expect(TokenType::Identifier);
+
+                auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
+                typeSpec->Push(type);
+
+                if(Match(TokenType::Equals))
+                {
+                    Consume();
+                    defaultValues.push_back(ParseExpression());
+                }
+                else 
+                {
+                    defaultValues.push_back(nullptr);
+                }
+
+                types.push_back(typeSpec);
+
+                if(Match(TokenType::Comma))
+                    Consume();
+
+                Expect(TokenType::EndLine);
+                Consume();
+                continue;
+            }           
+
+            CLEAR_LOG_WARNING("ignoring token ", Consume().GetData(), " in class ", className);
         }
 
-        classNode->SetTypeDescriptor(classTy);
-        m_RootStack.pop_back();
-
-        Consume(); */
+        Flush();
     }
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
