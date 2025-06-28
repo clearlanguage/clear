@@ -1286,17 +1286,6 @@ namespace clear
         return assign; */
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::CreateDefaultInitializerFromName(const std::string& name)
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-/* 
-        auto variable = std::make_shared<ASTVariable>(name);
-        auto defaultInit = std::make_shared<ASTDefaultInitializer>();
-        defaultInit->Push(variable);
-
-        return defaultInit; */
-    }
-
     std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration(bool initialize)
     {
         auto type = ParseTypeResolver();
@@ -1530,6 +1519,9 @@ namespace clear
 
                 PopOperatorsUntil([&](const Operator& op) 
                 {
+                    if(op.OperatorExpr == OperatorType::Power)
+                        return op.IsOpenBracket || precedence >= op.Precedence;
+                    
                     return op.IsOpenBracket || precedence > op.Precedence;
                 });
 
@@ -1624,39 +1616,6 @@ namespace clear
         return resolver;
     }
 
-    std::vector<Token> Parser::ParseVariableTypeTokens()
-    {
-         
-        std::vector<Token> tokens;
-
-        /* if(Match("const"))
-            tokens.push_back(Consume());
-        
-        tokens.push_back(Consume());
-
-        while(MatchAny(m_TypeIndirection))
-        {
-            tokens.push_back(Consume());
-        } */
-
-        return tokens; 
-    }
-
-    std::pair<std::string, std::shared_ptr<TypeDescriptor>> Parser::ParseVariableTypeDescriptor()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
-        /* 
-        std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
-
-        subType->Description = ParseVariableTypeTokens(); 
-        
-        ExpectAny(m_VariableName);
-
-        std::string name = Consume().Data;
-
-        return {name, subType}; */
-    }
 
     void Parser::ParseIndentation()
     {

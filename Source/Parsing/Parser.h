@@ -73,16 +73,8 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> ParseAssignment(const std::string& variableName, bool initialize = false);
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
-        std::shared_ptr<ASTNodeBase> CreateDefaultInitializerFromName(const std::string& name);
-
         std::shared_ptr<ASTNodeBase> ParseVariableDecleration(bool initialize = false);
-
         std::shared_ptr<ASTNodeBase> ParseTypeResolver();
-
-        std::vector<Token> ParseVariableTypeTokens();
-
-
-        std::pair<std::string, std::shared_ptr<TypeDescriptor>> ParseVariableTypeDescriptor();
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
