@@ -38,14 +38,13 @@ namespace clear
         }
         
 
-        Lexer lexer;
-        ProgramInfo info = lexer.CreateTokensFromFile(path.string());
+        Lexer lexer(path);
 
         CLEAR_LOG_INFO("Tokens For ", path);
 
-        for(auto& token : info.Tokens)
+        for(auto& token : lexer.GetTokens())
         {
-            CLEAR_LOG_INFO("TOKEN: ", TokenToString(token.TokenType), " DATA: ", token.Data,  " Line Number: ", token.Location.line);
+            CLEAR_LOG_INFO("TOKEN: ", token.GetTypeAsString(), " DATA: ", token.GetData()); // " Line Number: ", token.Location.line);
         }
 
         CLEAR_LOG_INFO("End of tokens for ", path);
@@ -53,10 +52,11 @@ namespace clear
         auto& lookup = m_LookupTable.emplace(path, AstLookupInfo(m_Context)).first->second;
         lookup.Registry.RegisterBuiltinTypes();
 
-        Parser parser(info);
+        Parser parser(lexer.GetTokens());
         lookup.Node = parser.GetResult();
         
-        for(const auto& node : lookup.Node->GetChildren())
+
+       /*  for(const auto& node : lookup.Node->GetChildren())
         {
             if(node->GetType() == ASTNodeType::Import)
             {
@@ -74,7 +74,7 @@ namespace clear
                     LoadSourceFile(stdLib);
                 }
             }
-        }
+        } */
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -354,7 +354,7 @@ namespace clear
 
         auto& [rootNode, reg] = m_LookupTable.at(path);
 
-        for(const auto& node : rootNode->GetChildren())
+       /*  for(const auto& node : rootNode->GetChildren())
         {
             if(node->GetType() == ASTNodeType::Import)
             {
@@ -362,7 +362,7 @@ namespace clear
                 std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
                 CodegenModule(fullQualifiedPath);
             }
-        }
+        } */
 
         CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *m_MainModule, reg);
         context.StdLibraryDirectory = m_Config.StandardLibrary;

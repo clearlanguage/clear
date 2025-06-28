@@ -29,7 +29,7 @@ namespace clear
         m_Types["uint16"] = std::make_shared<PrimitiveType>(llvm::Type::getInt16Ty(*m_Context), integerFlags, "uint16");
         m_Types["uint32"] = std::make_shared<PrimitiveType>(llvm::Type::getInt32Ty(*m_Context), integerFlags, "uint32");
         m_Types["uint64"] = std::make_shared<PrimitiveType>(llvm::Type::getInt64Ty(*m_Context), integerFlags, "uint64");
-        m_Types["bool"]   = std::make_shared<PrimitiveType>(llvm::Type::getInt8Ty(*m_Context),  integerFlags, "bool");
+        m_Types["bool"]   = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(*m_Context),  integerFlags, "bool");
 
         m_Types["int"]  = m_Types["int32"];
         m_Types["uint"] = m_Types["uint32"];
@@ -125,34 +125,34 @@ namespace clear
 
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
-        if(token.Data == "null") return m_Types["opaque_ptr"];
+        if(token.GetData() == "null") return m_Types["opaque_ptr"];
 
-        if(token.TokenType == TokenType::RValueString || token.TokenType == TokenType::StringType)
+        if(token.IsType(TokenType::String))
         {
             return GetPointerTo(GetType("int8"));
         }
 
-        if(token.TokenType == TokenType::RValueChar)
+        if(token.IsType(TokenType::Char))
         {
             return GetType("int8");
         }
 
-        if(token.TokenType == TokenType::BooleanData)
+        if(token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false") )
         {
             return GetType("bool");
         }
 
-        if(token.TokenType == TokenType::RValueNumber)
+        if(token.IsType(TokenType::Number))
         {
-            return GetType(GuessTypeNameFromNumber(token.Data));
+            return GetType(GuessTypeNameFromNumber(token.GetData()));
         }
 
-        if(token.TokenType == TokenType::TypeIdentifier)
+        if(token.IsType(TokenType::Identifier))
         {
-            return GetType(token.Data);
+            return GetType(token.GetData());
         }
 
-        return GetType(GetTypeNameFromTokenType(token.TokenType));
+        return GetType(token.GetData());
     }
 
     std::shared_ptr<Type> TypeRegistry::CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
@@ -171,36 +171,36 @@ namespace clear
             std::shared_ptr<Type> baseType;
             size_t start = 1;
 
-            if(desc.Description[0].TokenType == TokenType::Const)
+            if(desc.Description[0].GetData() == "const")
             {
-                baseType = GetConstFrom(m_Types[desc.Description[1].Data]);
+                baseType = GetConstFrom(m_Types[desc.Description[1].GetData()]);
                 start++;
             }
             else 
             {
-                baseType = m_Types[desc.Description[0].Data];
+                baseType = m_Types[desc.Description[0].GetData()];
             }
 
             for(size_t i = start; i < desc.Description.size(); i++)
             {
                 Token token = desc.Description[i];
 
-                if(token.TokenType == TokenType::PointerDef)
+                if(token.IsType(TokenType::Star))
                 {
                     baseType = GetPointerTo(baseType); 
                 }
-                else if (token.TokenType == TokenType::StaticArrayDef)
-                {
-                    baseType = GetArrayFrom(baseType, std::stoll(token.Data));
-                }
-                else if (token.TokenType == TokenType::Const)
+                //else if (token.TokenType == TokenType::StaticArrayDef)
+                //{
+                  //  baseType = GetArrayFrom(baseType, std::stoll(token.Data));
+                //}
+                else if (token.GetData() == "const")
                 {
                     CLEAR_VERIFY(!baseType->IsConst(), "cannot have a const of a constant!");
                     baseType = GetConstFrom(baseType);
                 }
                 else 
                 {
-                    CLEAR_UNREACHABLE("unimplemented type ", token.Data);
+                    CLEAR_UNREACHABLE("unimplemented type ", token.GetData());
                 }
             }
 
@@ -209,63 +209,34 @@ namespace clear
 
         size_t index = 0;
 
-        if(descriptor.Description[0].TokenType == TokenType::Const)
+        if(descriptor.Description[0].GetData() == "const")
         {
             index++;
             CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
         }
 
-        if(m_Types.contains(descriptor.Description[index].Data)) // type we already have just have to retrieve
+        if(m_Types.contains(descriptor.Description[index].GetData())) // type we already have just have to retrieve
         {
             return Resolve(descriptor);
         }
 
         const auto& desc = descriptor.Description[index];
         
-        if(desc.TokenType == TokenType::StructName)
+        if(desc.GetData() == "struct")
         {
             return ResolveStruct(descriptor);
         }
-        else if (desc.TokenType == TokenType::ClassName)
+        else if (desc.GetData() == "class")
         {
             return ResolveClass(descriptor);
         }
         else 
         {
-            CLEAR_UNREACHABLE("unimplemented compound type descriptor ", desc.Data);
+            CLEAR_UNREACHABLE("unimplemented compound type descriptor ", desc.GetData());
         }
     
         return nullptr;
     }
-
-    std::string TypeRegistry::GetTypeNameFromTokenType(TokenType type)
-    {
-        switch (type)
-		{
-			case TokenType::CharType:		return "int8";
-			case TokenType::Int8Type:		return "int8";
-			case TokenType::Int16Type:		return "int16";
-			case TokenType::Int32Type:		return "int32";
-			case TokenType::Int64Type:		return "int64";
-			case TokenType::UInt8Type:		return "uint8";
-			case TokenType::UInt16Type:		return "uint16";
-			case TokenType::UInt32Type:		return "uint32";
-			case TokenType::UInt64Type:		return "uint64";
-			case TokenType::Float32Type:	return "float32";
-			case TokenType::Float64Type:	return "float64";
-			case TokenType::Bool:			return "bool";
-			case TokenType::StringType:		return "int8*";
-        	case TokenType::Void:           return "void";
-            case TokenType::RValueNumber:   
-			case TokenType::None:
-			default:
-				break;
-		}
-
-		return "";
-    }
-
-
 
     std::string TypeRegistry::GuessTypeNameFromNumber(const std::string& number)
     {
@@ -320,13 +291,13 @@ namespace clear
     {
         size_t index = 0;
 
-        if(descriptor.Description[0].TokenType == TokenType::Const)
+        if(descriptor.Description[0].GetData() == "const")
         {
             index++;
             CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
         }
 
-        std::string structName = descriptor.Description[index].Data;
+        std::string structName = descriptor.Description[index].GetData();
 
         std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
         m_Types[structName] = structTy;
@@ -347,13 +318,13 @@ namespace clear
     {
         size_t index = 0;
 
-        if(descriptor.Description[0].TokenType == TokenType::Const)
+        if(descriptor.Description[0].GetData() == "const")
         {
             index++;
             CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
         }
 
-        std::string className = descriptor.Description[index].Data;
+        std::string className = descriptor.Description[index].GetData();
 
         std::shared_ptr<StructType> structTy = std::make_shared<StructType>(className, *m_Context);
         std::shared_ptr<ClassType>  classTy  = std::make_shared<ClassType>(structTy);

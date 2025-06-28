@@ -3,9 +3,11 @@
 #include "Core/Type.h"
 #include "Core/Value.h"
 
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 #include "SymbolTable.h"
 #include "Linker/LibraryLinker.h"
+#include "Core/Log.h"
+#include "Core/Operator.h"
 
 #include <memory>
 #include <string>
@@ -23,7 +25,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer
+		Enum, Defer, TypeResolver,TypeSpecifier
 	};
 
 	struct CodegenResult
@@ -124,19 +126,19 @@ namespace clear
 	class ASTBinaryExpression : public ASTNodeBase
 	{
 	public:
-		ASTBinaryExpression(BinaryExpressionType type);
+		ASTBinaryExpression(OperatorType type);
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		inline const BinaryExpressionType GetExpression() const { return m_Expression; }
+		inline const OperatorType GetExpression() const { return m_Expression; }
 
 		CodegenResult HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
-		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, BinaryExpressionType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
 
 
 	private:
@@ -164,23 +166,22 @@ namespace clear
 		std::shared_ptr<StructType> GetStruct(std::shared_ptr<Type> type);
 
 	private:
-		BinaryExpressionType m_Expression;
+		OperatorType m_Expression;
 	};
 
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name, const TypeDescriptor& type);
+		ASTVariableDeclaration(const std::string& name);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const auto& GetName() const { return m_Name; }
-		const auto& GetVariableType() const { return m_Type; }
+		const TypeDescriptor GetVariableType() const { CLEAR_UNREACHABLE("depricated"); return {}; }
 
 	private:
 		std::string m_Name;
-		TypeDescriptor m_Type;
 	};
 
 	class ASTInferredDecleration : public ASTNodeBase 
@@ -236,7 +237,7 @@ namespace clear
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDefinition(const std::string& name, const TypeDescriptor& returnType, const std::vector<UnresolvedParameter>& parameters);
+		ASTFunctionDefinition(const std::string& name);
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -289,7 +290,10 @@ namespace clear
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		ASTFunctionDecleration(const std::string& name, const TypeDescriptor& expectedReturnType, const std::vector<UnresolvedParameter>& types);
+		bool InsertDecleration = true;
+
+	public:
+		ASTFunctionDecleration(const std::string& name);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
@@ -299,8 +303,8 @@ namespace clear
 		const auto& GetName() 		{ return m_Name; }
 
 	private:
-		std::vector<UnresolvedParameter> m_Parameters;
-		TypeDescriptor m_ReturnType;
+		std::vector<Parameter> m_Parameters;
+		std::shared_ptr<Type> m_ReturnType;
 		std::string m_Name;
 	};
 
@@ -343,7 +347,7 @@ namespace clear
 		bool m_FirstTimeInitialized; 
 	};
 
-	class ASTImport : public ASTNodeBase
+	/* class ASTImport : public ASTNodeBase
 	{
 	public:
 		ASTImport(const std::filesystem::path& filepath, const std::string& alias = "");
@@ -364,7 +368,7 @@ namespace clear
 	private:
 		std::filesystem::path m_Filepath;
 		std::string m_Alias;
-	};
+	}; */
 
 	class ASTMember : public ASTNodeBase
 	{
@@ -395,13 +399,13 @@ namespace clear
 	class ASTUnaryExpression : public ASTNodeBase 
 	{
 	public:
-		ASTUnaryExpression(UnaryExpressionType type);
+		ASTUnaryExpression(OperatorType type);
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 	private: 
-		UnaryExpressionType m_Type;
+		OperatorType m_Type;
 	};
 
 	class ASTIfExpression : public ASTNodeBase 
@@ -422,6 +426,22 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
 
+	class ASTTypeSpecifier : public ASTNodeBase
+	{
+	public:
+		bool IsVariadic = false;
+
+	public:
+		ASTTypeSpecifier(const std::string& name);
+		virtual ~ASTTypeSpecifier() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
+		virtual CodegenResult Codegen(CodegenContext&) override;
+
+
+	private:
+		std::string m_Name;
+	};
+
 	class ASTForExpression : public ASTNodeBase 
 	{
 	public:
@@ -437,34 +457,26 @@ namespace clear
 	class ASTStruct : public ASTNodeBase
 	{
 	public:
-		ASTStruct(const TypeDescriptor& structTy = {});
+		ASTStruct(const std::string& name);
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		void SetTypeDesc(const TypeDescriptor& other)
-		{
-			m_StructTy = other;
-		}
-
 	private:
-		TypeDescriptor m_StructTy;
+		std::string m_Name;
 	};
 
 	class ASTClass : public ASTNodeBase
 	{
 	public:
 		ASTClass() = default;
-		ASTClass(const TypeDescriptor& classTy);
+		ASTClass(const std::string& name);
 		virtual ~ASTClass() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
-		const TypeDescriptor& GetTypeDescriptor() const { return m_ClassTy; }
-		void SetTypeDescriptor(const TypeDescriptor& ty) { m_ClassTy = ty; }
-
 	private:
-		TypeDescriptor m_ClassTy;
+		std::string m_Name;
 	};
 
 	class ASTTrait : public ASTNodeBase
@@ -560,4 +572,21 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Defer; }
 		virtual CodegenResult Codegen(CodegenContext&) override;
 	};
+
+	class ASTTypeResolver : public ASTNodeBase 
+	{
+	public:
+		ASTTypeResolver(const std::vector<Token>& tokens = {});
+		virtual ~ASTTypeResolver() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
+		virtual CodegenResult Codegen(CodegenContext&) override; // goal is to return a type
+
+		void PushToken(const Token& token)
+		{
+			m_Tokens.push_back(token);
+		}
+			
+	private:
+		std::vector<Token> m_Tokens;
+	};	
 }

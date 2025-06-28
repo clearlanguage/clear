@@ -2,7 +2,8 @@
 include(FetchContent)
 
 project(clear)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -12,9 +13,7 @@ endif()
 set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
-add_executable(clear "${MY_SOURCES}"
-        Source/Linker/LibraryLinker.cpp
-        Source/Lexing/LexerUtils.cpp)
+add_executable(clear "${MY_SOURCES}")
 
 find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)

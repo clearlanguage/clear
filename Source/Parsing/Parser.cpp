@@ -3,156 +3,55 @@
 #include "Core/Log.h"
 #include "Core/TypeRegistry.h"
 #include "Core/Utils.h"
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 
 #include <stack>
+#include <print>
 
 
 namespace clear 
 {
-    static std::map<TokenType, int32_t> s_Precedence = {
-        {TokenType::IndexOperator,      7}, // x[y]
-        {TokenType::DotOp,              7}, // x.y
-
-        {TokenType::Negation,           6}, // -x
-        {TokenType::Increment,          6}, // ++x
-        {TokenType::Decrement,          6}, // --x
-        {TokenType::BitwiseNot,         6}, // ~x
-        {TokenType::AddressOp,          6}, // &x
-        {TokenType::DereferenceOp,      6}, // *x
-        {TokenType::Not,                6}, // not x
-
-        {TokenType::Power,              5}, // x ** y
-
-        {TokenType::MulOp,              4}, // x * y
-        {TokenType::DivOp,              4}, // x / y
-        {TokenType::ModOp,              4}, // x % y
-
-        {TokenType::AddOp,              3}, // x + y
-        {TokenType::SubOp,              3}, // x - y
-
-        {TokenType::LeftShift,          2}, // x << y
-        {TokenType::RightShift,         2}, // x >> y
-
-        {TokenType::BitwiseAnd,         1}, // x & y
-        {TokenType::BitwiseXor,         1}, // x ^ y
-        {TokenType::BitwiseOr,          1}, // x | y
-
-        {TokenType::LessThan,           0},
-        {TokenType::GreaterThan,        0},
-        {TokenType::LessThanEqual,      0},
-        {TokenType::GreaterThanEqual,   0},
-        {TokenType::IsEqual,            0},
-        {TokenType::NotEqual,           0},
-        {TokenType::Ellipsis,           0},
-
-        {TokenType::And,               -1}, // x and y
-        {TokenType::Or,                -2}, // x or y
-    };
-
-    Parser::Parser(const ProgramInfo& info)
-        : m_Tokens(info.Tokens)
+    Parser::Parser(const std::vector<Token>& tokens)
+        : m_Tokens(tokens)
     {
-        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>();
+        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); 
         root->CreateSymbolTable();
+
         m_RootStack.push_back(root);
-
-        m_Tokens.push_back({TokenType::Eof});
-
-        m_VariableType = CreateTokenSet({
-            TokenType::Int8Type, 
-            TokenType::Int16Type, 
-            TokenType::Int32Type, 
-            TokenType::Int64Type, 
-            TokenType::UInt8Type,
-            TokenType::UInt16Type,
-            TokenType::UInt32Type,
-            TokenType::UInt64Type,
-            TokenType::Float32Type,
-            TokenType::Float64Type,
-            TokenType::Bool,
-            TokenType::StructName,
-            TokenType::StringType, 
-            TokenType::CharType, 
-            TokenType::TypeIdentifier, 
-            TokenType::Const
-        });
-
-        m_AssignmentOperators = CreateTokenSet({
-            TokenType::Assignment, 
-            TokenType::MultiplyAssign,
-            TokenType::DivideAssign, 
-            TokenType::PlusAssign,
-            TokenType::MinusAssign,
-            TokenType::ModuloAssign
-        });
 
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
-		    TokenType::EndIndentation, 
+		    TokenType::EndScope, 
 		    TokenType::Comma,  
-		    TokenType::EndFunctionArguments, 
-		    TokenType::EndFunctionParameters, 
-		    TokenType::EndArray,
-		    TokenType::Assignment, 
-            TokenType::MultiplyAssign, 
-            TokenType::DivideAssign, 
-            TokenType::PlusAssign, 
-            TokenType::MinusAssign, 
-            TokenType::ModuloAssign, 
-            TokenType::StartIndentation,
-            TokenType::Eof
+		    TokenType::Equals, 
+            TokenType::StarEquals, 
+            TokenType::SlashEquals, 
+            TokenType::PlusEquals, 
+            TokenType::MinusEquals, 
+            TokenType::PercentEquals, 
+            TokenType::Colon,
+            TokenType::RightBrace,
+            TokenType::EndOfFile
         });
 
-        m_PreUnaryExpression = CreateTokenSet({
-            TokenType::Increment,    
-            TokenType::Decrement,    
-            TokenType::BitwiseNot,   
-            TokenType::AddressOp,	  
-            TokenType::DereferenceOp,
-            TokenType::Negation, 
-            TokenType::Not,
-            TokenType::Ellipsis
+         m_AssignmentOperators = CreateTokenSet({
+            TokenType::Equals, 
+            TokenType::StarEquals,
+            TokenType::SlashEquals, 
+            TokenType::PlusEquals,
+            TokenType::MinusEquals,
+            TokenType::PercentEquals
         });
 
-        m_PostUnaryExpression = CreateTokenSet({
-            TokenType::Increment,    
-            TokenType::Decrement
-        });
 
         m_Literals = CreateTokenSet({
-            TokenType::RValueNumber,
-		    TokenType::RValueString,
-		    TokenType::BooleanData,
-		    TokenType::Null,
-            TokenType::RValueChar
+            TokenType::Number,
+		    TokenType::String,
+            TokenType::Char, 
+            TokenType::Keyword
         });
 
-        m_IgnoredTokens = CreateTokenSet({
-            TokenType::StartIndentation,
-            TokenType::EndLine, 
-            TokenType::Comma,
-            TokenType::Pass
-        });
-
-        m_TypeIndirection = CreateTokenSet({
-            TokenType::PointerDef,
-            TokenType::StaticArrayDef,
-            TokenType::Const
-        });
-
-        m_ValueReferences = CreateTokenSet({
-            TokenType::VariableReference, 
-            TokenType::DereferenceOp,
-        });
-
-        m_VariableName = CreateTokenSet({
-            TokenType::VariableName,
-            TokenType::VariableReference,
-            TokenType::MemberName
-        });
-
-        while(!Match(TokenType::Eof))
+        while(!Match(TokenType::EndOfFile))
         {
             ParseStatement();
         }
@@ -199,69 +98,97 @@ namespace clear
 
     bool Parser::Match(TokenType token)
     {
-        return Peak().TokenType == token;
+        return Peak().IsType(token);
+    }
+
+    bool Parser::Match(const std::string& data)
+    {
+        return Peak().GetData() == data;
     }
 
     bool Parser::MatchAny(TokenSet tokenSet)
     {
-        return tokenSet.test((size_t)Peak().TokenType);
+        return tokenSet.test((size_t)Peak().GetType());
     }
+
+    /* bool Parser::MatchAny(TokenSet tokenSet)
+    {
+        return tokenSet.test((size_t)Peak().TokenType);
+    } */
 
     void Parser::Expect(TokenType tokenType)
     {
         if(Match(tokenType)) return;
         
-        CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
+        //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
+        CLEAR_UNREACHABLE("TODO: add errors here");
+    }
+
+    void Parser::Expect(const std::string& data)
+    {
+        if(Match(data)) return;
+
+        CLEAR_UNREACHABLE("TODO: add errors here");
     }
 
     void Parser::ExpectAny(TokenSet tokenSet)
     {
         if(MatchAny(tokenSet)) return;
+
+        CLEAR_UNREACHABLE("TODO: add errors here");
+    }
+
+   /*  void Parser::ExpectAny(TokenSet tokenSet)
+    {
+        if(MatchAny(tokenSet)) return;
         
         CLEAR_LOG_ERROR("missing expected token from token set");    
         CLEAR_UNREACHABLE("TODO");
-    }
+    } */
 
     void Parser::ParseStatement()
     {
-        if(MatchAny(m_IgnoredTokens))
+        if(Match(TokenType::EndLine))
         {
-            CLEAR_LOG_WARNING("ignoring token ", TokenToString(Consume().TokenType));
+            Consume();
             return;
         }
 
-        static std::map<TokenType, std::function<void()>> s_MappedFunctions = {
-            {TokenType::Import,        [this]() { ParseImport(); }},
-            {TokenType::Struct,        [this]() { ParseStruct(); }},
-            {TokenType::Class ,        [this]() { ParseClass(); }},
-            {TokenType::Declaration,   [this]() { ParseFunctionDeclaration(); }},
-            {TokenType::Function,      [this]() { ParseFunctionDefinition(); }},
-            {TokenType::ConditionalIf, [this]() { ParseIf(); }},
-            {TokenType::ElseIf,        [this]() { ParseElseIf(); }},
-            {TokenType::Else,          [this]() { ParseElse(); }},
-            {TokenType::EndIndentation,[this]() { ParseIndentation(); }},
-            {TokenType::Return,        [this]() { ParseReturn(); }},
-            {TokenType::While,         [this]() { ParseWhile(); }},
-            {TokenType::For,           [this]() { ParseFor(); }},
-            {TokenType::Let,           [this]() { ParseLetDecleration(); }},
-            {TokenType::Const,         [this]() { ParseConstDecleration(); }},
-            {TokenType::Continue,      [this]() { ParseLoopControls(); }},
-            {TokenType::Break,         [this]() { ParseLoopControls(); }},
-            {TokenType::Trait,         [this]() { ParseTrait(); }}, 
-            {TokenType::Enum,          [this]() { ParseEnum(); }}, 
-            {TokenType::Defer,         [this]() { ParseDefer(); }}
+        if(Match("pass"))
+        {
+            Consume();
+            return;
+        }
 
+        static std::map<std::string, std::function<void()>> s_MappedKeywordsToFunctions = {
+            {"function",  [this]() { ParseFunctionDefinition(); }},
+            {"while",     [this]() { ParseWhile(); }},
+            {"for",       [this]() { ParseFor(); }},
+            {"let",       [this]() { ParseLetDecleration(); }},
+            {"declare",   [this]() { ParseFunctionDeclaration(); }}, 
+            {"const",     [this]() { ParseConstDecleration(); }}, 
+            {"struct",    [this]() { ParseStruct(); }}, 
+            {"return",    [this]() { ParseReturn(); }}, 
+            {"if",        [this]() { ParseIf(); }},
+            {"else",      [this]() { ParseElse(); }},
+            {"elseif",    [this]() { ParseElseIf(); }},
+            {"defer",     [this]() { ParseDefer(); }},
+            {"class",     [this]() { ParseClass(); }},
+            {"enum",      [this]() { ParseEnum(); }},
+            {"trait",     [this]() { ParseTrait(); }},
         };
+        
+        static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
+            {TokenType::EndScope,   [this]() { ParseIndentation(); }}
+        };  
 
-        if(MatchAny(m_VariableType) && !Match(TokenType::Const))
+        if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
         {
-            ParseVariableDecleration(true);
-            return;
+            s_MappedKeywordsToFunctions.at(Peak().GetData())();
         }
-
-        if(s_MappedFunctions.contains(Peak().TokenType))
+        else if (s_MappedTokenTypeToFunctions.contains(Peak().GetType()))
         {
-            s_MappedFunctions.at(Peak().TokenType)();
+            s_MappedTokenTypeToFunctions.at(Peak().GetType())();
         }
         else 
         {
@@ -271,259 +198,260 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
-        std::shared_ptr<ASTNodeBase> expression = ParseExpression();
-
-        if(MatchAny(m_AssignmentOperators))
+        // first we need to determine how to parse
+        auto terminator = [](const Token& token)
         {
-            Root()->Push(ParseAssignment(expression));
-            return;
-        }
-
-        Root()->Push(expression);
-    }
-
-    void Parser::ParseVariableDecleration(bool defaultInitialize)
-    {
-        TypeDescriptor variableType = { ParseVariableTypeTokens() };
-
-        //ExpectAny(m_VariableName);
-        ExpectAny(m_VariableName);
-
-        std::string variableName = Consume().Data;
-
-        std::vector<std::shared_ptr<ASTVariableDeclaration>> variableDeclerations;
-        std::vector<std::shared_ptr<ASTNodeBase>> assignmentOperators;
-
-        variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
-
-        auto Flush = [&]()
-        {   
-            for(auto dec : variableDeclerations)
-            {
-                Root()->Push(dec);
-            }
-
-            for(auto assignment : assignmentOperators)
-            {
-                Root()->Push(assignment);
-            }
+            return token.IsType(TokenType::EndOfFile)  || 
+                   token.IsType(TokenType::EndLine)    || 
+                   token.IsType(TokenType::Equals)     ||
+                   token.IsType(TokenType::PlusEquals) ||
+                   token.IsType(TokenType::LeftParen)  || 
+                   token.IsType(TokenType::Comma)      || 
+                   token.IsType(TokenType::Dot);
         };
 
-        if(Match(TokenType::EndLine))
-        {  
-            if(defaultInitialize)
-            {
-                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
-            }
 
-            Flush();
-            Consume();
-            return; 
+        // int var
+        static constexpr std::array<TokenType, s_MaxMatchSize> s_KeywordIdentifier = 
+                {TokenType::Keyword, TokenType::Identifier, TokenType::None};
+        
+        // Foo var
+        static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
+                {TokenType::Identifier, TokenType::Identifier, TokenType::None};
+
+        bool isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
+
+        // parse either expression or declerations, allowing for multiple on the same line seperated by commas
+
+        if(!isDecleration)
+        {
+            while(!(Match(TokenType::EndLine) || Match(TokenType::EndScope) || Match(TokenType::EndOfFile)))
+            {
+                auto expr = ParseExpression();
+
+                if(MatchAny(m_AssignmentOperators))
+                {
+                    Root()->Push(ParseAssignment(expr));
+                    return;
+                }
+                else 
+                {
+                    Root()->Push(expr);
+                }
+
+                if(Match(TokenType::Comma))
+                    Consume();
+            }
         }
 
-        bool assigned = false;
-
-        while(Match(TokenType::Comma) || MatchAny(m_AssignmentOperators))
+        while(isDecleration)
         {
+            auto decleration = ParseVariableDecleration();
+
             if(MatchAny(m_AssignmentOperators))
             {
-                assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName(), true));
-                assigned = true;
-                continue;
+                Root()->Push(ParseAssignment(decleration, true));
             }
-
-            Consume();
-            ExpectAny(m_VariableName);
-            variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(Consume().Data, variableType));
-
-            if(!assigned && defaultInitialize)
+            else 
             {
-                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
+                auto initializer = std::make_shared<ASTDefaultInitializer>();
+                initializer->Push(decleration);
+
+                Root()->Push(initializer);
             }
 
-            assigned = false;
-        }
+            if(Match(TokenType::Comma))
+                Consume();
 
-        Flush();
+            isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
+        }
     }
 
     void Parser::ParseLoopControls() 
     {
-        auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
+        CLEAR_UNREACHABLE("unimplemented");
+        /* auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
         Consume();
-        Root()->Push(node);
+        Root()->Push(node);  */
     }
 
     void Parser::ParseTrait()
-    {
-        Expect(TokenType::Trait);
+    { 
+        Expect("trait");
         Consume();
 
-        std::string traitName = Consume().Data;
+        std::string traitName = Consume().GetData();
+
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
-        Consume();
-
-        Expect(TokenType::StartIndentation);
         Consume();
     
         std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
 
         m_RootStack.push_back(trait);
 
-        while (Match(TokenType::Function) || MatchAny(m_VariableType))
+        while (Match("function") || Match(TokenType::Keyword) || Match(TokenType::Identifier))
         {
-            if(Match(TokenType::Function)) // parse function decleration
+            if(Match("function")) // parse function decleration
             {
-                ParseTraitFunctionDefinition();
-            }
-            else if (MatchAny(m_VariableType))
-            {
-                ParseVariableDecleration();
+                ParseFunctionDeclaration("function");
             }
             else 
             {
-                CLEAR_LOG_WARNING("Ignored token ", TokenToString(Peak().TokenType));
+                ParseVariableDecleration();
             }
 
-            Consume();
+            while(Match(TokenType::EndLine))
+                Consume();
         }
 
         m_RootStack.pop_back();
         Root()->Push(trait);
 
-        if(Match(TokenType::EndIndentation))
-            Consume();
+        if(Match(TokenType::EndScope))
+            Consume(); 
     }
 
     void Parser::ParseLetDecleration()
     {
-        Expect(TokenType::Let);
+        Expect("let");
         Consume();
 
-        ExpectAny(m_VariableName);
+        Expect(TokenType::Identifier);
 
-        while(MatchAny(m_VariableName))
+        while(Match(TokenType::Identifier))
         {
-            std::string variableName = Consume().Data;
+            std::string variableName = Consume().GetData();
 
-            Expect(TokenType::Assignment);
+            Expect(TokenType::Equals);
             Consume();
 
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
             inferredType->Push(ParseExpression());
-            
+
             Root()->Push(inferredType);
-            
+
             if(Match(TokenType::Comma))
             {
                 Consume();
-                ExpectAny(m_VariableName);
+                Expect(TokenType::Identifier);
             }
         }
-    }
+     }
 
     void Parser::ParseConstDecleration()
-    {
-        Expect(TokenType::Const);
-        SavePosition();
+    {       
+        Expect("const");
+        Consume();
 
-        TypeDescriptor variableType = { ParseVariableTypeTokens() };
-
-        if(variableType.Description.size() >= 2 && variableType.Description.back().TokenType != TokenType::VariableReference)
+        if(!Match(TokenType::Identifier))
         {
-            RestorePosition();
-            ParseVariableDecleration(true);
+            Undo();
+            Root()->Push(ParseVariableDecleration());
+
             return;
         }
 
-        variableType.Description.pop_back(); // remove the variable reference
-        Undo();
-
-        ExpectAny(m_VariableName);
-
-        while(MatchAny(m_VariableName))
+        while(Match(TokenType::Identifier))
         {
-            std::string variableName = Consume().Data;
-
-            Expect(TokenType::Assignment);
+            std::string variableName = Consume().GetData();
+        
+            Expect(TokenType::Equals);
             Consume();
-
+        
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName, true);
             inferredType->Push(ParseExpression());
-            
+        
             Root()->Push(inferredType);
-            
+        
             if(Match(TokenType::Comma))
             {
                 Consume();
-                ExpectAny(m_VariableName);
+                Expect(TokenType::Identifier);
             }
         }
     }
 
     void Parser::ParseStruct()
     {
-        Expect(TokenType::Struct);
-
+        Expect("struct");
         Consume();
 
-        Expect(TokenType::StructName);
+        Expect(TokenType::Identifier);
+        std::string structName = Consume().GetData();
 
-        std::string structName = Consume().Data;
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
         Consume();
 
-        Expect(TokenType::StartIndentation);
-        Consume();
+        auto struct_ = std::make_shared<ASTStruct>(structName);
 
-        Token token;
-        token.TokenType = TokenType::StructName;
-        token.Data = structName;
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> typeSpecifiers;
+        std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs;
 
-        TypeDescriptor structTyDesc;
-        structTyDesc.Description = { token };
-
-        auto struct_ = std::make_shared<ASTStruct>();
-
-        while(!Match(TokenType::EndIndentation))
+        auto Flush = [&]()
         {
-            std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
+            for(const auto& type : typeSpecifiers)
+            {
+                struct_->Push(type);
+            }
 
-            subType->Description = ParseVariableTypeTokens(); 
-            
-            ExpectAny(m_VariableName);
+            for(const auto& defaultArg : defaultArgs)
+            {
+                struct_->Push(defaultArg);
+            }
 
-            std::string name = Consume().Data;
-            structTyDesc.ChildTypes.push_back({name, subType});
+            Root()->Push(struct_);
+            Consume();
+        };
 
-            if(Match(TokenType::Assignment))
+        auto ConstructType = [&](const std::shared_ptr<ASTNodeBase>& type)
+        {   
+            Expect(TokenType::Identifier);
+            std::string memberName = Consume().GetData();
+
+            auto member = std::make_shared<ASTTypeSpecifier>(memberName);
+            member->Push(type);
+
+            typeSpecifiers.push_back(member);
+
+            if(Match(TokenType::Equals))
             {
                 Consume();
-                struct_->Push(ParseExpression());
+                defaultArgs.push_back(ParseExpression());
             }
             else 
             {
-                struct_->Push(nullptr);
+                defaultArgs.push_back(nullptr);
             }
+        };
 
-            if(Match(TokenType::Comma))
+        while(!Match(TokenType::EndScope))
+        {
+            auto type = ParseTypeResolver();
+            ConstructType(type);
+
+            while(Match(TokenType::Comma))
+            {
                 Consume();
-
-            Expect(TokenType::EndLine);
-            Consume();
+                ConstructType(type);
+            }
+            
+            while(Match(TokenType::EndLine))
+                Consume();
         }
 
-        struct_->SetTypeDesc(structTyDesc);
-        Root()->Push(struct_);
-
-        Consume();
+        Flush();
     }
 
     void Parser::ParseImport()
     {
-        Expect(TokenType::Import);
+        CLEAR_UNREACHABLE("unimplemented");
+       /*  Expect(TokenType::Import);
 
         Consume();
 
@@ -546,24 +474,23 @@ namespace clear
         std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(path, alias);
 
         Expect(TokenType::EndLine);
-        Root()->Push(import);
+        Root()->Push(import); */
     }
 
     void Parser::ParseReturn()
     {
-        Expect(TokenType::Return);
-
+        Expect("return");
         Consume();
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
         returnStatement->Push(ParseExpression());
 
-        Root()->Push(returnStatement);
+        Root()->Push(returnStatement); 
     }
 
     void Parser::ParseIf()
     {
-        Expect(TokenType::ConditionalIf);
+        Expect("if");
         Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
@@ -574,12 +501,15 @@ namespace clear
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseElse()
     {
-        Expect(TokenType::Else);
+        Expect("else");
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -590,12 +520,15 @@ namespace clear
         base->CreateSymbolTable();
         ifExpr->Push(base);
             
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseWhile()
     {
-        Expect(TokenType::While);
+        Expect("while");
         Consume();
 
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
@@ -606,23 +539,26 @@ namespace clear
 
         Root()->Push(whileExp);
         m_RootStack.push_back(base);
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseFor()
     {
-        Expect(TokenType::For);
+        Expect("for");
         Consume();
 
-        ExpectAny(m_VariableName);
-        std::string name = Consume().Data;
+        Expect(TokenType::Identifier);
+        std::string name = Consume().GetData();
 
-        Expect(TokenType::In);
+        Expect("in");
         Consume();
 
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
 
-        ExpectAny(m_VariableName);
-        auto var = std::make_shared<ASTVariable>(Consume().Data);
+        Expect(TokenType::Identifier);
+        auto var = std::make_shared<ASTVariable>(Consume().GetData());
 
         auto forLoop = std::make_shared<ASTForExpression>(name);
         forLoop->Push(var);
@@ -635,11 +571,14 @@ namespace clear
         forLoop->Push(body);
 
         m_RootStack.push_back(body);
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseElseIf()
     {
-        Expect(TokenType::ElseIf);
+        Expect("elseif");
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -653,268 +592,178 @@ namespace clear
 
         ifExpr->Push(base);
 
-        m_RootStack.push_back(base);
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
-    void Parser::ParseFunctionDefinition(const std::string& className)
+    void Parser::ParseFunctionDefinition(const std::string& className,  bool descriptionOnly)
     {
-        Expect(TokenType::Function);
-
+        Expect("function");
         Consume();
 
-        Expect(TokenType::FunctionName);
+        Expect(TokenType::Identifier);
+        std::string name = Consume().GetData();
 
-        std::string name = Consume().Data;
         if(!className.empty())
         {
             name = className + "." + name;
         }
 
-        TypeDescriptor returnType;
-        std::vector<UnresolvedParameter> params;
+        auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
 
-        Expect(TokenType::StartFunctionParameters);
+        Expect(TokenType::LeftParen);
 
         Consume();
 
-        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         size_t i = 0;
+
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
+        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
+        std::shared_ptr<ASTNodeBase> returnType;
 
 
         if(!className.empty())
         {
-            TypeDescriptor pClassTy;
-            pClassTy.Description = { { .TokenType=TokenType::ClassName, .Data=className }, 
-                                     { .TokenType=TokenType::PointerDef } };
+            Token classNameToken(TokenType::Identifier, className);
+            Token pointerToken(TokenType::Star, "*");
 
-            UnresolvedParameter param;
-            param.Type = pClassTy;
-            param.Name = "this";
+            auto classPointer = std::make_shared<ASTTypeSpecifier>("this");
+            auto typeResolver = std::make_shared<ASTTypeResolver>();
 
-            params.push_back(param);
-            i++;
+            // className*
+            typeResolver->PushToken(classNameToken);
+            typeResolver->PushToken(pointerToken);
+
+            classPointer->Push(typeResolver);
+
+            params.push_back(classPointer);
         }
 
-        while(!Match(TokenType::EndFunctionParameters)) 
+        auto Flush = [&]()
         {
-            UnresolvedParameter param;
-
-            if(MatchAny(m_VariableName))
+            for(const auto& param : params)
             {
-                param.IsVariadic = true;
-                param.Name = Consume().Data;
-                Expect(TokenType::Ellipsis);
-
-                params.push_back(param);
-
-                Consume();
-                Expect(TokenType::EndFunctionParameters);
-
-                break;
+                funcNode->Push(param);
             }
 
-            param.Type = { ParseVariableTypeTokens() };  
+            funcNode->Push(returnType);
+
+            for(const auto& arg : defaultArgs)
+            {
+                funcNode->Push(arg);
+            }
+
+            Root()->Push(funcNode);
+
+            if(!descriptionOnly)
+                m_RootStack.push_back(funcNode);
+
+            Consume();
+        };
+
+        while (!Match(TokenType::RightParen))
+        {
+            if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
+            {
+                auto x = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
+                x->IsVariadic = true;
+
+                params.push_back(x);
+                Consume();
             
-            ExpectAny(m_VariableName);
-
-            param.Name = Consume().Data;
-
-            if(Match(TokenType::Assignment))
-            {
-                Consume();
-
-                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
-                arg->Push(ParseExpression());
-                defaultArgs.push_back(arg);
-            } 
-
-            if(Match(TokenType::Ellipsis))
-            {
-                param.IsVariadic = true;
-                params.push_back(param);
-
-                Consume();
-
-                Expect(TokenType::EndFunctionParameters);
+                Expect(TokenType::RightParen);
+            
                 break;
             }
+           
+            auto type = ParseTypeResolver();
+            Expect(TokenType::Identifier);
+            std::string name = Consume().GetData();
+           
+            if(Match(TokenType::Equals)) 
+            {
+                Consume();
+            
+                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
+                arg->Push(type);
+                arg->Push(ParseExpression());
+            
+                defaultArgs.push_back(arg);
+            }
+           
+            if(Match(TokenType::Ellipses))
+            {
+                auto x = std::make_shared<ASTTypeSpecifier>(name);
+                x->IsVariadic = true;
+                x->Push(type);
 
-            params.push_back(param);
+                params.push_back(x);
 
-            if(!Match(TokenType::EndFunctionParameters)) 
+                Consume();
+                Expect(TokenType::RightParen);
+
+                break;
+            }
+           
+            if(!Match(TokenType::RightParen))
             {
                 Expect(TokenType::Comma);
                 Consume();
             }
+           
+            auto x = std::make_shared<ASTTypeSpecifier>(name);
+            x->Push(type);
+
+            params.push_back(x);
 
             i++;
         }
-
+       
         Consume();
 
-        if(Match(TokenType::EndLine) || Match(TokenType::StartIndentation)) 
+        if (Match(TokenType::Colon)) 
         {
-            std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
-            func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
-
-            Root()->Push(func);
-            m_RootStack.push_back(func);
-
-            Consume();
-
+            Flush();
             return;
         }
 
-        Expect(TokenType::RightArrow);
-
-        Consume();
-
-        Expect(TokenType::FunctionType);
-
-        Consume();
-
-        ExpectAny(m_VariableType);
-
-        returnType = { ParseVariableTypeTokens() };
-
-        std::shared_ptr<ASTFunctionDefinition> func = std::make_shared<ASTFunctionDefinition>(name, returnType, params);
-        func->GetChildren().insert(func->GetChildren().begin(), defaultArgs.begin(), defaultArgs.end());
-
-        Root()->Push(func);
-        m_RootStack.push_back(func);
-
-        Expect(TokenType::EndLine);
-
-        Consume();
-    }
-
-    void Parser::ParseTraitFunctionDefinition() 
-    {
-        Expect(TokenType::Function);
-
-        Consume();
-        Expect(TokenType::FunctionName);
-        std::string functionName = Consume().Data;
-
-        Expect(TokenType::StartFunctionParameters);
-
-        Consume();
-
-        std::vector<UnresolvedParameter> params;
-
-        while(!MatchAny(m_Terminators))
+        if(Match(TokenType::EndLine) && descriptionOnly)
         {
-            UnresolvedParameter param;
-
-            if(Match(TokenType::Ellipsis))
-            {
-                Consume();
-                Expect(TokenType::EndFunctionParameters);
-                params.push_back(param);
-
-                break;
-            }
-
-            param.Type = { ParseVariableTypeTokens() };
-
-            if(MatchAny(m_VariableName))
-                Consume();
-
-            if(!Match(TokenType::EndFunctionParameters))
-            {
-                Expect(TokenType::Comma);
-                Consume();
-            }
-
-            params.push_back(param);
+            Flush();
+            return;
         }
 
-        Expect(TokenType::EndFunctionParameters);
-
+        Expect(TokenType::RightThinArrow);
         Consume();
+        
+        returnType = ParseTypeResolver();
 
-        TypeDescriptor returnType;
-
-        if(Match(TokenType::RightArrow))
-        {
-            Consume();
-
-            Expect(TokenType::FunctionType);
-
-            Consume();
-
-            returnType = { ParseVariableTypeTokens() };
-        }
-
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
-    }
-
-    void Parser::ParseRaise()
-    {
-        Expect(TokenType::Raise);
-
-        std::shared_ptr<ASTRaise> raise = std::make_shared<ASTRaise>();
-        raise->Push(ParseExpression());
-
-        Root()->Push(raise);
-    }
-
-    void Parser::ParseTry()
-    {
-        Expect(TokenType::Try);
-        Consume();
-
-        std::shared_ptr<ASTTryCatch> tryCatch = std::make_shared<ASTTryCatch>();
-        std::shared_ptr<ASTNodeBase> tryBlock = std::make_shared<ASTNodeBase>();
-
-        tryCatch->Push(tryBlock);
-
-        Root()->Push(tryCatch);
-        m_RootStack.push_back(tryBlock);
-    }
-
-    void Parser::ParseCatch()
-    {
-        Expect(TokenType::Catch);
-        Consume();
-
-        auto& last = Root()->GetChildren().back();
-        auto tryCatch = std::dynamic_pointer_cast<ASTTryCatch>(last);
-        CLEAR_VERIFY(tryCatch, "invalid node");
-
-        m_RootStack.push_back(tryCatch);
-        ParseVariableDecleration();
-        m_RootStack.pop_back();
-
-        std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        tryCatch->Push(base);
-
-        m_RootStack.push_back(base);
+        Flush();
     }
 
     void Parser::ParseEnum()
     {
-        Expect(TokenType::Enum);
+        Expect("enum");
         Consume();
 
-        std::string enumName = Consume().Data;
+        std::string enumName = Consume().GetData();
+
+        Expect(TokenType::Colon);
+        Consume();
 
         Expect(TokenType::EndLine);
-        Consume();
-
-        Expect(TokenType::StartIndentation);
         Consume();
 
         std::vector<std::string> names;
 
         std::shared_ptr<ASTEnum> enum_ = std::make_shared<ASTEnum>(enumName);
 
-        Expect(TokenType::VariableReference);
-        enum_->AddEnumName(Consume().Data);
+        Expect(TokenType::Identifier);
+        enum_->AddEnumName(Consume().GetData());
 
-        Token zero;
-        zero.Data = "0";
-        zero.TokenType = TokenType::RValueNumber;
+        Token zero(TokenType::Number, "0");
 
         if(Match(TokenType::Comma))
         {
@@ -932,9 +781,9 @@ namespace clear
         if(Match(TokenType::EndLine))
             Consume();
 
-        while(Match(TokenType::VariableReference))
+        while(Match(TokenType::Identifier))
         {
-            enum_->AddEnumName(Consume().Data);
+            enum_->AddEnumName(Consume().GetData());
 
             if(Match(TokenType::Comma))
             {
@@ -954,7 +803,7 @@ namespace clear
                 break;
             }
 
-            Expect(TokenType::Assignment);
+            Expect(TokenType::Equals);
             Consume();
 
             enum_->Push(ParseExpression());
@@ -966,15 +815,18 @@ namespace clear
                 Consume();
         }
 
-        Expect(TokenType::EndIndentation);
+        while(Match(TokenType::EndLine))
+            Consume();
+
+        Expect(TokenType::EndScope);
         Consume();
 
-        Root()->Push(enum_);
+        Root()->Push(enum_); 
     }
 
     void Parser::ParseDefer()
     {
-        Expect(TokenType::Defer);
+        Expect("defer");
         Consume();
 
         auto defer = std::make_shared<ASTDefer>();
@@ -986,166 +838,143 @@ namespace clear
         Root()->Push(defer);
     }
 
-    void Parser::ParseFunctionDeclaration()
+    void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
     {
-        Expect(TokenType::Declaration);
-
+        Expect(declareKeyword);
         Consume();
 
-        ExpectAny(m_VariableName);
+        Expect(TokenType::Identifier);
+        std::string functionName = Consume().GetData();
 
+        Expect(TokenType::LeftParen);
         Consume();
 
-        Expect(TokenType::FunctionCall);
+        size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
+        auto decleration = std::make_shared<ASTFunctionDecleration>(functionName);
 
-        std::string functionName = Consume().Data;
-
-        Expect(TokenType::OpenBracket);
-
-        Consume();
-
-        std::vector<UnresolvedParameter> params;
-
-        while(!MatchAny(m_Terminators))
+        // params
+        while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
-            UnresolvedParameter param;
-            
-            if(Match(TokenType::Ellipsis))
+            if(Match(TokenType::Ellipses))
             {
                 Consume();
-                Expect(TokenType::EndFunctionArguments);
-                params.push_back(param);
+                Expect(TokenType::RightParen);
+
+                auto param = std::make_shared<ASTTypeSpecifier>("");
+                param->IsVariadic = true;
+
+                decleration->Push(param);
 
                 break;
             }
-            
-            param.Type = { ParseVariableTypeTokens() };
 
-            if(MatchAny(m_VariableName)) 
+            auto type = ParseTypeResolver();
+
+            if(Match(TokenType::Identifier)) 
                 Consume();
             
-            if(!Match(TokenType::EndFunctionArguments))
+            if(!Match(TokenType::RightParen))
             {
                 Expect(TokenType::Comma);
                 Consume();
             }
 
-            params.push_back(param);
+            auto param = std::make_shared<ASTTypeSpecifier>("");
+            param->Push(type);
+
+            decleration->Push(param);
         }
 
-        Expect(TokenType::EndFunctionArguments);
+        Expect(TokenType::RightParen);
+        CLEAR_VERIFY(m_Position == terminationIndex, "invalid function decleration");
 
         Consume();
 
-        TypeDescriptor returnType;
-
-        if(Match(TokenType::RightArrow))
+        // return type
+        if(Match(TokenType::RightThinArrow))
         {
             Consume();
-
-            Expect(TokenType::FunctionType);
-
-            Consume();
-
-            returnType = { ParseVariableTypeTokens() };
+            decleration->Push(ParseTypeResolver());
         }
 
-        Root()->Push(std::make_shared<ASTFunctionDecleration>(functionName, returnType, params));
+        Root()->Push(decleration);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        ExpectAny(m_VariableName);
+        Expect(TokenType::Identifier);
 
-        std::string functionName = Consume().Data;
+        std::string functionName = Consume().GetData();
 
-        Expect(TokenType::FunctionCall);    
+        Expect(TokenType::LeftParen);
         Consume();
 
-        Expect(TokenType::OpenBracket);
+        size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
 
-        Consume();
+        auto call = std::make_shared<ASTFunctionCall>(functionName);
 
-        std::shared_ptr<ASTFunctionCall> call = std::make_shared<ASTFunctionCall>(functionName);
-
-        while(!MatchAny(m_Terminators))
+        while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
-            call->Push(ParseExpression());
 
-            if(!Match(TokenType::EndFunctionArguments)) 
+            call->Push(ParseExpression(terminationIndex));
+
+            if(m_Position < terminationIndex)
             {
                 Expect(TokenType::Comma);
                 Consume();
             }
         }
 
-        Expect(TokenType::EndFunctionArguments);
+        Expect(TokenType::RightParen);
         Consume();
 
-        return call;
+        return call;   
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
-    {
-        ExpectAny(m_VariableName);
-
-        if(Next().TokenType == TokenType::FunctionCall) 
-            return ParseFunctionCall();
-        
-        if(m_Aliases.contains(Peak().Data))
-        {
-            return ParseFunctionCall();
-        }
-        
-        std::string name = Consume().Data;
-        return std::make_shared<ASTVariable>(name);
-    }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
-
-
         if(MatchAny(m_Literals)) 
             return std::make_shared<ASTNodeLiteral>(Consume());
 
-        if(Match(TokenType::MemberName))
+        if(Match(TokenType::Identifier))
         {
-            if(Next().TokenType == TokenType::FunctionCall) 
+            if(Next().IsType(TokenType::LeftParen))
+            {
                 return ParseFunctionCall();
-            
-            return std::make_shared<ASTMember>(Consume().Data);
+            }
+
+            if(Prev().IsType(TokenType::Dot))
+            {
+                return std::make_shared<ASTMember>(Consume().GetData());
+            }
+
+            return std::make_shared<ASTVariable>(Consume().GetData());
         }
 
-        if(Match(TokenType::FunctionCall)) 
-            Undo();
 
-        std::shared_ptr<ASTNodeBase> variableReference;
-
-        ExpectAny(m_VariableName);
-
-        variableReference = ParseVariableReference();
-
-        return variableReference;
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize)
+    std::shared_ptr<ASTNodeBase> Parser::ParseInitializer(std::shared_ptr<ASTNodeBase> storageOrType, bool initialize)
     {
-        Expect(TokenType::StartArray);
+        Expect(TokenType::LeftBrace);
 
         std::vector<std::vector<size_t>> indices;
         std::vector<size_t> currentIndex = { 0 };
 
         std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>(initialize);
-        initializer->Push(storage);
+        initializer->Push(storageOrType);
 
         while(!Match(TokenType::EndLine))
         {
-            if(Match(TokenType::StartArray))
+            if(Match(TokenType::LeftBrace))
             {
                 currentIndex.push_back(0);
                 Consume();
             }
-            else if (Match(TokenType::EndArray))
+            else if (Match(TokenType::RightBrace))
             {
                 currentIndex.pop_back();
                 currentIndex.back()++;
@@ -1169,11 +998,7 @@ namespace clear
         Consume();
 
         return initializer;
-    }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(const std::string& variableName, bool initialize)
-    {
-        return ParseAssignment(std::make_shared<ASTVariable>(variableName), initialize);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
@@ -1181,17 +1006,14 @@ namespace clear
         ExpectAny(m_AssignmentOperators);
 
         Token assignmentToken = Consume();
+        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.GetType());
 
-        if(Match(TokenType::StartArray))
+        if(Match(TokenType::LeftBrace))
         {
-            CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
-
-            auto initializer = ParseArrayInitializer(storage);
-            return initializer;
+            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid assignment");
+            return ParseInitializer(storage, initialize);
         }
-
-        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.TokenType);
-
+        
         std::shared_ptr<ASTAssignmentOperator> assign;
 
         if(initialize)
@@ -1210,25 +1032,20 @@ namespace clear
         return assign;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::CreateDefaultInitializerFromName(const std::string& name)
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration()
     {
-        auto variable = std::make_shared<ASTVariable>(name);
-        auto defaultInit = std::make_shared<ASTDefaultInitializer>();
-        defaultInit->Push(variable);
+        auto type = ParseTypeResolver();
 
-        return defaultInit;
+        Expect(TokenType::Identifier);
+        
+        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
+        variableDecleration->Push(type);
+
+        return variableDecleration;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression() // infix to RPN and creates nodes
+    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(uint64_t terminationIndex) // infix to RPN and creates nodes
     {
-        struct Operator
-        {
-            BinaryExpressionType BinaryExpression;
-            UnaryExpressionType UnaryExpression;
-            bool IsOpenBracket = false;
-            int32_t Precedence = 0;
-        };
-
         std::shared_ptr<ASTExpression> expression = std::make_shared<ASTExpression>();
         std::stack<Operator> operators;
 
@@ -1238,37 +1055,29 @@ namespace clear
             {
                 const auto& currentOperator = operators.top();
 
-                if (currentOperator.BinaryExpression != BinaryExpressionType::None)
-                    expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.BinaryExpression));
+                if (currentOperator.IsBinary)
+                    expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.OperatorExpr));
                 else 
-                    expression->Push(std::make_shared<ASTUnaryExpression>(currentOperator.UnaryExpression));
+                    expression->Push(std::make_shared<ASTUnaryExpression>(currentOperator.OperatorExpr));
                 
                 operators.pop();
             }
         };
 
-        auto IsTokenOperand = [&](Token token)
+        auto IsTokenOperand = [&](const Token& token)
         {
-            return token.TokenType == TokenType::VariableReference || token.TokenType == TokenType::VariableName ||
-                   m_Literals.test((size_t)token.TokenType);
-        };
-
-        auto IsTokenBoundary = [&](Token token)
-        {
-            return GetBinaryExpressionFromTokenType(token.TokenType) != BinaryExpressionType::None ||
-                   token.TokenType == TokenType::CloseBracket ||
-                   m_Terminators.test((size_t)token.TokenType);
+            return  token.IsType(TokenType::Identifier) || token.IsType(TokenType::Number) || token.IsType(TokenType::String) || 
+                   (token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false"));
         };
 
         auto IsOperand = [&]()
         {
-            return MatchAny(m_VariableName) || Match(TokenType::FunctionCall) ||
-                   MatchAny(m_Literals) || Match(TokenType::MemberName);
+            return IsTokenOperand(Peak());
         };
 
         auto HandleOpenBracket = [&]() 
         {
-            operators.push({ BinaryExpressionType::None, UnaryExpressionType::None, true, 0 });
+            operators.push({ .IsOpenBracket=true });
             Consume();
         };
 
@@ -1282,43 +1091,152 @@ namespace clear
             Consume();
         };
 
-        auto HandleOperator = [&]() 
+        auto GetOperatorTypeFromContext = [&]()
         {
-            TokenType tokenType = Peak().TokenType;
-            int precedence = s_Precedence.at(tokenType);
+            Token current = Peak();
+
+            // unambiguous cases 
+            switch (current.GetType()) 
+            {
+                case TokenType::Plus:               return OperatorType::Add;
+                case TokenType::ForwardSlash:       return OperatorType::Div;
+                case TokenType::Percent:            return OperatorType::Mod;
+                                
+                case TokenType::Pipe:               return OperatorType::BitwiseOr;
+                case TokenType::Hat:                return OperatorType::BitwiseXor;
+                case TokenType::LeftShift:          return OperatorType::LeftShift;
+                case TokenType::RightShift:         return OperatorType::RightShift;
+                case TokenType::Telda:              return OperatorType::BitwiseNot;
+                
+                case TokenType::LogicalAnd:         return OperatorType::And;
+                case TokenType::LogicalOr:          return OperatorType::Or;
+                case TokenType::Bang:               return OperatorType::Not;
+                
+                case TokenType::EqualsEquals:       return OperatorType::IsEqual;
+                case TokenType::BangEquals:         return OperatorType::NotEqual;
+                case TokenType::LessThan:           return OperatorType::LessThan;
+                case TokenType::LessThanEquals:     return OperatorType::LessThanEqual;
+                case TokenType::GreaterThan:        return OperatorType::GreaterThan;
+                case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
+                case TokenType::Dot:                return OperatorType::Dot;
+                case TokenType::LeftBracket:        return OperatorType::Index;
+                case TokenType::Ellipses:           return OperatorType::Ellipsis;
+            
+                default:
+                    break;
+            }
+
+            // ambiguous cases
+            bool isPrevOperandOrBracket = IsTokenOperand(Prev()) || 
+                                          Prev().IsType(TokenType::RightParen) || 
+                                          Prev().IsType(TokenType::RightBracket);
+
+            switch (current.GetType())
+            {
+                case TokenType::Star:
+                {
+                    if (isPrevOperandOrBracket) 
+                        return OperatorType::Mul;
+                
+                    return OperatorType::Dereference;
+                }
+            
+                case TokenType::Ampersand:
+                {
+                    if (isPrevOperandOrBracket) 
+                        return OperatorType::BitwiseAnd;
+                
+                    return OperatorType::Address;
+                }
+            
+                case TokenType::Minus:
+                {
+                    if (isPrevOperandOrBracket)
+                        return OperatorType::Sub;
+                
+                    return OperatorType::Negation;
+                }
+            
+                case TokenType::Decrement:
+                {
+                    bool prev = IsTokenOperand(Prev());
+                    bool next = IsTokenOperand(Next());
+                
+                    if (prev || next)
+                    {
+                        CLEAR_VERIFY(!(prev && next), "ambiguous decrement");
+
+                        if(next) 
+                            return OperatorType::Decrement;
+
+                        return OperatorType::PostDecrement;
+                    }
+
+
+                    CLEAR_UNREACHABLE("invalid decrement");
+                    return OperatorType::None;
+                }
+
+                case TokenType::Increment:
+                {
+                    bool prev = IsTokenOperand(Prev());
+                    bool next = IsTokenOperand(Next());
+                
+                    if (prev || next)
+                    {
+                        CLEAR_VERIFY(!(prev && next), "ambiguous increment");
+
+                        if(next) 
+                            return OperatorType::Increment;
+
+                        return OperatorType::PostIncrement;
+                    }
+                    
+                    CLEAR_UNREACHABLE("invalid increment");
+                    return OperatorType::None;
+                }
+
+                default: 
+                {
+                    break;
+                }
+            }
+
+            return OperatorType::None;
+        };
+
+        auto HandleOperator = [&](OperatorType operatorType) 
+        {
+            if(operatorType == OperatorType::None)
+            {
+                Consume();
+                return;
+            }
+
+            int precedence = g_Precedence.at(operatorType);
 
             PopOperatorsUntil([&](const Operator& op) 
             {
                 return op.IsOpenBracket || precedence > op.Precedence;
             });
 
+
             operators.push({
-                GetBinaryExpressionFromTokenType(tokenType),
-                UnaryExpressionType::None,
-                false,
-                precedence
+                .OperatorExpr = operatorType,
+                .IsBinary = true,
+                .Precedence = precedence
             });
-
-            Consume();
         };
-
-        auto ShouldHandleAsPost = [&]()
-        {
-            if(!(Match(TokenType::Increment) || Match(TokenType::Decrement)))
-                return false;
-            
-            bool left  = IsTokenOperand(Prev());
-            bool right = IsTokenBoundary(Next());
-            
-            return left && right;
-        };      
 
         auto HandlePreUnaryOperators = [&]() 
         {
-            while(MatchAny(m_PreUnaryExpression) && !ShouldHandleAsPost())
+            OperatorType operatorType = GetOperatorTypeFromContext();
+
+            while(g_PreUnaryOperators.test((size_t)operatorType))
             {
-                Token token = Consume();
-                int precedence = s_Precedence.at(token.TokenType);
+                Consume();
+
+                int precedence = g_Precedence.at(operatorType);
 
                 PopOperatorsUntil([&](const Operator& op) 
                 {
@@ -1326,94 +1244,124 @@ namespace clear
                 });
 
                 operators.push({
-                    BinaryExpressionType::None,
-                    GetPreUnaryExpressionTypeFromTokenType(token.TokenType),
-                    false,
-                    precedence
+                    .OperatorExpr = operatorType, 
+                    .IsUnary = true,
+                    .Precedence = precedence
                 });
+
+                operatorType = GetOperatorTypeFromContext();
             }
         };
 
         auto HandlePostUnaryOperators = [&]() 
         {
-            while(MatchAny(m_PostUnaryExpression) && ShouldHandleAsPost())
-            {
-                Token token = Consume();
+            OperatorType operatorType = GetOperatorTypeFromContext();
 
-                int precedence = s_Precedence.at(token.TokenType);
+            while(g_PostUnaryOperators.test((size_t)operatorType))
+            {
+                Consume();
+
+                int precedence = g_Precedence.at(operatorType);
 
                 PopOperatorsUntil([&](const Operator& op) 
                 {
+                    if(op.OperatorExpr == OperatorType::Power)
+                        return op.IsOpenBracket || precedence >= op.Precedence;
+                    
                     return op.IsOpenBracket || precedence > op.Precedence;
                 });
 
                 operators.push({
-                    BinaryExpressionType::None,
-                    GetPostUnaryExpressionTypeFromTokenType(token.TokenType),
-                    false,
-                    precedence
+                    .OperatorExpr = operatorType, 
+                    .IsUnary = true,
+                    .Precedence = precedence
                 });
+
+                operatorType = GetOperatorTypeFromContext();
             }
         };
 
-        while (!MatchAny(m_Terminators)) 
+        auto DebugPrintExpression = [&]()
+        {
+            for(const auto& expr : expression->GetChildren())
+            {
+                if(auto e = std::dynamic_pointer_cast<ASTBinaryExpression>(expr))
+                    std::print("binary_op ");
+                else if(auto e = std::dynamic_pointer_cast<ASTUnaryExpression>(expr))
+                    std::print("unary_op ");
+                else 
+                    std::print("operand ");
+            }  
+            
+            std::println();
+        };
+
+
+        while (!MatchAny(m_Terminators) && m_Position < terminationIndex) 
         {
             HandlePreUnaryOperators();
+
+            OperatorType operatorType = GetOperatorTypeFromContext();
 
             if (IsOperand()) 
             {
                 expression->Push(ParseOperand());
             }
-            else if (Match(TokenType::OpenBracket)) 
+            else if (Match(TokenType::LeftParen)) 
             {
                 HandleOpenBracket();
             }
-            else if (Match(TokenType::CloseBracket)) 
+            else if (Match(TokenType::RightParen) || Match(TokenType::RightBracket)) 
             {
                 HandleCloseBracket();
             }
-            else if (s_Precedence.contains(Peak().TokenType)) 
+            else if (operatorType != OperatorType::None)
             {
-                HandleOperator();
-            }
+                HandleOperator(operatorType);
 
+                if(operatorType == OperatorType::Index) 
+                {
+                    operators.push({ .IsOpenBracket=true });
+                }
+
+                Consume();
+            }
+            
             HandlePostUnaryOperators();
         }
 
         PopOperatorsUntil([](const Operator&) { return false; });
 
+        //DebugPrintExpression();
+
         return expression;
     }
 
-    std::vector<Token> Parser::ParseVariableTypeTokens()
+    std::shared_ptr<ASTNodeBase> Parser::ParseTypeResolver()
     {
-        std::vector<Token> tokens;
+        std::shared_ptr<ASTTypeResolver> resolver = std::make_shared<ASTTypeResolver>();
 
-        if(Match(TokenType::Const))
-            tokens.push_back(Consume());
+        if(Match("const"))
+            resolver->PushToken(Consume());
         
-        tokens.push_back(Consume());
+        resolver->PushToken(Consume());
 
-        while(MatchAny(m_TypeIndirection))
+        while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
         {
-            tokens.push_back(Consume());
+            resolver->PushToken(Consume());
+
+            if(Prev().IsType(TokenType::LeftBracket))
+            {
+                size_t terminationIndex = GetLastBracket(TokenType::LeftBracket, TokenType::RightBracket);
+                
+                resolver->Push(ParseExpression(terminationIndex));
+                resolver->PushToken(Consume());
+            }
         }
 
-        return tokens;
+        return resolver;
     }
 
-    std::pair<std::string, std::shared_ptr<TypeDescriptor>> Parser::ParseVariableTypeDescriptor()
-    {
-        std::shared_ptr<TypeDescriptor> subType = std::make_shared<TypeDescriptor>();
-
-        subType->Description = ParseVariableTypeTokens(); 
-        
-        ExpectAny(m_VariableName);
-
-        std::string name = Consume().Data;
-
-        return {name, subType};
-    }
 
     void Parser::ParseIndentation()
     {
@@ -1423,53 +1371,42 @@ namespace clear
 
     void Parser::ParseClass()
     {
-        Expect(TokenType::Class);
+        Expect("class");
         Consume();
 
-        Expect(TokenType::ClassName);
-        std::string className = Consume().Data;
+        Expect(TokenType::Identifier);
+        std::string className = Consume().GetData();
 
-        SkipUntil(TokenType::StartIndentation);
+        Expect(TokenType::Colon);
         Consume();
 
-        Token token;
-        token.TokenType = TokenType::ClassName;
-        token.Data = className;
-
-        TypeDescriptor classTy;
-        classTy.Description = { token };
-
-        std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>();
+        std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
         Root()->Push(classNode);
 
         m_RootStack.push_back(classNode);
 
-        while(!Match(TokenType::EndIndentation))
+        std::vector<std::shared_ptr<ASTTypeSpecifier>> types;
+        std::vector<std::shared_ptr<ASTNodeBase>> defaultValues;
+
+        auto Flush = [&]()
         {
-            if(MatchAny(m_VariableType))
+            for(const auto& defaultValue : defaultValues)
             {
-                classTy.ChildTypes.push_back(ParseVariableTypeDescriptor());
-
-                if(Match(TokenType::Assignment))
-                {
-                    Consume();
-                    classNode->Push(ParseExpression());
-                }
-                else 
-                {
-                    classNode->Push(nullptr);
-                }
-
-                if(Match(TokenType::Comma))
-                    Consume();
-
-                Expect(TokenType::EndLine);
-                Consume();
-                
-                continue;
+                classNode->Push(defaultValue);
             }
 
-            if(Match(TokenType::Function))
+            for(const auto& type : types)
+            {
+                classNode->Push(type);
+            }
+
+            m_RootStack.pop_back();
+            Consume(); 
+        };
+
+        while(!Match(TokenType::EndScope))
+        {
+            if(Match("function"))
             {
                 size_t rootLevel = m_RootStack.size();
 
@@ -1484,106 +1421,57 @@ namespace clear
                 continue;
             }
 
-            CLEAR_LOG_INFO("ignoring token ", TokenToString(Consume().TokenType), " in class ", className);
+            if(Match(TokenType::Keyword) || Match(TokenType::Identifier))
+            {
+                auto type = ParseTypeResolver();
+
+                Expect(TokenType::Identifier);
+
+                auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
+                typeSpec->Push(type);
+
+                if(Match(TokenType::Equals))
+                {
+                    Consume();
+                    defaultValues.push_back(ParseExpression());
+                }
+                else 
+                {
+                    defaultValues.push_back(nullptr);
+                }
+
+                types.push_back(typeSpec);
+
+                if(Match(TokenType::Comma))
+                    Consume();
+
+                Expect(TokenType::EndLine);
+                Consume();
+                continue;
+            }           
+
+            CLEAR_LOG_WARNING("ignoring token ", Consume().GetData(), " in class ", className);
         }
 
-        classNode->SetTypeDescriptor(classTy);
-        m_RootStack.pop_back();
-
-        Consume();
-    }
-
-    BinaryExpressionType Parser::GetBinaryExpressionFromTokenType(TokenType type)
-    {
-        switch (type)
-	    {
-			case TokenType::Assignment:			return BinaryExpressionType::Assignment;
-			case TokenType::MultiplyAssign:
-			case TokenType::MulOp:				return BinaryExpressionType::Mul;
-			case TokenType::PlusAssign:
-			case TokenType::AddOp:				return BinaryExpressionType::Add;
-			case TokenType::DivideAssign:
-			case TokenType::DivOp:				return BinaryExpressionType::Div;
-			case TokenType::MinusAssign:
-			case TokenType::SubOp:				return BinaryExpressionType::Sub;
-			case TokenType::ModuloAssign:
-			case TokenType::ModOp:				return BinaryExpressionType::Mod;
-			case TokenType::IsEqual:			return BinaryExpressionType::Eq;
-			case TokenType::NotEqual:			return BinaryExpressionType::NotEq;
-			case TokenType::GreaterThan:		return BinaryExpressionType::Greater;
-			case TokenType::LessThan:			return BinaryExpressionType::Less;
-			case TokenType::LessThanEqual:		return BinaryExpressionType::LessEq;
-			case TokenType::GreaterThanEqual:	return BinaryExpressionType::GreaterEq;
-			case TokenType::BitwiseNot:			return BinaryExpressionType::BitwiseNot;
-			case TokenType::LeftShift:			return BinaryExpressionType::BitwiseLeftShift;
-			case TokenType::RightShift:			return BinaryExpressionType::BitwiseRightShift;
-			case TokenType::BitwiseOr:			return BinaryExpressionType::BitwiseOr;
-			case TokenType::BitwiseXor:			return BinaryExpressionType::BitwiseXor;
-			case TokenType::BitwiseAnd:			return BinaryExpressionType::BitwiseAnd;
-			case TokenType::IndexOperator:		return BinaryExpressionType::Index;	
-            case TokenType::Power:              return BinaryExpressionType::Pow;
-            case TokenType::And:                return BinaryExpressionType::And;
-            case TokenType::Or:                 return BinaryExpressionType::Or;
-            case TokenType::DotOp:              return BinaryExpressionType::MemberAccess;
-
-			default:
-				break;
-		}
-
-		return BinaryExpressionType::None;
-    }
-
-    UnaryExpressionType Parser::GetPreUnaryExpressionTypeFromTokenType(TokenType type)
-    {
-        switch (type)
-        {
-			case TokenType::Increment:      return UnaryExpressionType::PreIncrement;
-			case TokenType::Decrement:      return UnaryExpressionType::PreDecrement;
-			case TokenType::BitwiseNot:     return UnaryExpressionType::BitwiseNot;
-			case TokenType::AddressOp:	    return UnaryExpressionType::Reference;
-			case TokenType::DereferenceOp:	return UnaryExpressionType::Dereference;
-			case TokenType::Negation:       return UnaryExpressionType::Negation; 
-			case TokenType::Not:            return UnaryExpressionType::Not;
-            case TokenType::Ellipsis:       return UnaryExpressionType::Unpack;
-
-			default:
-				break;
-		}
-
-
-		return UnaryExpressionType::None;
-    }
-
-    UnaryExpressionType Parser::GetPostUnaryExpressionTypeFromTokenType(TokenType type)
-    {
-        switch (type)
-		{
-			case TokenType::Increment:  return UnaryExpressionType::PostIncrement;
-			case TokenType::Decrement:  return UnaryExpressionType::PostDecrement;
-			default:
-				break;
-		}
-
-		return UnaryExpressionType::None;
+        Flush();
     }
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
     {
         switch (type)
         {
-            case TokenType::Assignment:      return AssignmentOperatorType::Normal;
-            case TokenType::PlusAssign:      return AssignmentOperatorType::Add;
-            case TokenType::MinusAssign:     return AssignmentOperatorType::Sub;
-            case TokenType::MultiplyAssign:  return AssignmentOperatorType::Mul;
-            case TokenType::DivideAssign:    return AssignmentOperatorType::Div;    
-            case TokenType::ModuloAssign:    return AssignmentOperatorType::Mod;    
+            case TokenType::Equals:          return AssignmentOperatorType::Normal;
+            case TokenType::PlusEquals:      return AssignmentOperatorType::Add;
+            case TokenType::MinusEquals:     return AssignmentOperatorType::Sub;
+            case TokenType::StarEquals:      return AssignmentOperatorType::Mul;
+            case TokenType::SlashEquals:     return AssignmentOperatorType::Div;    
+            case TokenType::PercentEquals:   return AssignmentOperatorType::Mod;    
             default:
                 break;
         }
 
-        CLEAR_UNREACHABLE("invalid token type for assignment");
-
-        return AssignmentOperatorType();
+        CLEAR_UNREACHABLE("unimplemented");
+        return {};
     }
 
     void Parser::SavePosition()
@@ -1600,17 +1488,72 @@ namespace clear
 
     void Parser::SkipUntil(TokenType type)
     {
-        while(!Match(type) && !Match(TokenType::Eof))
+        while(!Match(type) && !Match(TokenType::EndOfFile))
         {
             Consume();
         }
     }
 
-    void Parser::SkipUntil(TokenSet set)
+    size_t Parser::FindLastOf(TokenType type)
     {
-        while(!MatchAny(set) && !Match(TokenType::Eof))
+        size_t current = m_Position;
+
+        SkipUntil(TokenType::EndLine);
+
+        while((size_t)m_Position-- > current)
         {
-            Consume();
+            if(Match(type))
+            {
+                size_t result = m_Position;
+                m_Position = current;
+                return result;
+            }
         }
+
+        CLEAR_UNREACHABLE("couldn't find expected token");
+        
+        m_Position = current;
+        return current; 
     }
+
+    size_t Parser::GetLastBracket(TokenType openBracket, TokenType closeBracket)
+    {
+        size_t terminationIndex = 0;
+
+        SavePosition();
+
+        size_t bracketCount = 1;
+
+        while(bracketCount)
+        {
+            if(Match(openBracket))  bracketCount++;
+            if(Match(closeBracket)) bracketCount--;
+
+            m_Position++;
+        }
+
+        terminationIndex = m_Position - 1;
+
+        RestorePosition();
+
+        return terminationIndex;
+    }
+
+    bool Parser::LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match)
+    {
+        size_t pos = m_Position; 
+        size_t k = 0;
+
+        while (pos < m_Tokens.size() && !terminator(m_Tokens[pos]) && k < s_MaxMatchSize && match[k] != TokenType::None)
+        {
+            if (m_Tokens[pos].IsType(match[k]))
+                k++; 
+
+            pos++;
+        }
+
+        // if we matched all tokens in match (until None), return true
+        return k == s_MaxMatchSize || match[k] == TokenType::None;
+    }
+
 }

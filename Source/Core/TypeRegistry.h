@@ -1,10 +1,11 @@
 #pragma once 
 
 #include "Type.h"
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
 #include "API/LLVM/LLVMInclude.h"
 
-#include "Lexing/Tokens.h"
+#include "Lexing/Token.h"
+#include "Log.h"
 
 namespace clear 
 {
@@ -38,13 +39,14 @@ namespace clear
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
         std::shared_ptr<Type> ResolveType(const TypeDescriptor& descriptor);
 
-        static std::string GetTypeNameFromTokenType(TokenType type);
         const auto& GetTypeTable() { return m_Types; }
 
         template<typename T, typename ...Args>
-        void CreateType(const std::string& name, Args&&... args)
+        std::shared_ptr<T> CreateType(const std::string& name, Args&&... args)
         {
-            m_Types[name] = std::make_shared<T>(std::forward<Args>(args)...);
+            auto [it, success] = m_Types.try_emplace(name, std::make_shared<T>(std::forward<Args>(args)...));
+            CLEAR_VERIFY(success, "failed to emplace type ", name);
+            return std::dynamic_pointer_cast<T>(it->second);
         }
 
     private:
