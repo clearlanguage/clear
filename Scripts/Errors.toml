@@ -1,12 +1,15 @@
+[None]
+Message = "An unknown error has occurred."
+Advice  = "The issue occurred at {}. Please report this if unexpected."
+
 [InvalidSyntax]
-Message = "Syntax is invalid"
-Advice = ""
+Message = "Syntax error: unexpected or invalid token."
+Advice  = "‘{}’ is not recognized as valid syntax. Check for typos or missing characters."
 
 [DivisionByZero]  
-Message = "Cannot divide by 0"
-Advice  = "Check denominator"
+Message = "Division by zero is undefined."
+Advice  = "Ensure the denominator is not zero before performing division."
 
 [InvalidOperator]
-Message = "whatever"
-Advice = "get Good"
-
+Message = "Invalid or unsupported operator used."
+Advice  = "‘{}’ is not a valid operator in this context. Check the operator or operand types."

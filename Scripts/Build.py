@@ -6,7 +6,7 @@ path = ''.join(sys.argv.pop(0))
 path = path.removesuffix("Scripts/Build.py")
 
 error_path = os.path.join(path, "Scripts", "Errors.toml")
-error_header = os.path.join(path, "Source", "Errors", "ErrorCode.h")
+error_header = os.path.join(path, "Source", "Diagnostics", "DiagnosticCode.h")
 
 def load_errors():
     global path
@@ -14,16 +14,16 @@ def load_errors():
     with open(error_path, 'rb') as f:
         config = tomllib.load(f)
 
-    enums    = "\tenum ErrorCode\n\t{\n"
-    messages = "\tstatic const char* g_ErrorMessages[] = {\n"
-    advices  = "\tstatic const char* g_ErrorAdvices[] = {\n"
+    enums    = "\tenum DiagnosticCode\n\t{\n"
+    messages = "\tstatic const char* g_DiagnosticMessages[] = {\n"
+    advices  = "\tstatic const char* g_DiagnosticAdvices[] = {\n"
 
     for key, value in config.items():
-        enums += f"\t\tErrorCode_{key},\n"
+        enums += f"\t\tDiagnosticCode_{key},\n"
         messages += f"\t\t\"{value['Message']}\",\n"
         advices += f"\t\t\"{value['Advice']}\",\n"
 
-    enums += "\t\tErrorCode_Count\n"
+    enums += "\t\tDiagnostic_Count\n"
 
     buffer = "#pragma once\n"
     buffer += "namespace clear\n{\n"

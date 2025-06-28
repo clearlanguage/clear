@@ -27,6 +27,10 @@ namespace clear
         bool IsType(TokenType type)  const { return m_Type == type; }
         const std::string& GetData() const { return m_Data; }
         TokenType GetType()          const { return m_Type; }
+
+        const std::filesystem::path& GetSourceFile() const { return m_SourceFile; }
+        size_t GetLineNumber()   const { return m_Line; }
+        size_t GetColumnNumber() const { return m_Column;}
         
         std::string_view GetTypeAsString() const
         {
@@ -97,8 +101,12 @@ namespace clear
                 default:                            return "Unknown";
             }
         }
+    
     private:
         TokenType m_Type = TokenType::None;
         std::string m_Data;
+        std::filesystem::path m_SourceFile;
+        size_t m_Line = 0;
+        size_t m_Column = 0;
     };
 }

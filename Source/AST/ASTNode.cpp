@@ -2438,7 +2438,7 @@ namespace clear
 
 			function->insert(function->end(), branch.BodyBlock);
 			ctx.Builder.SetInsertPoint(branch.BodyBlock);
-
+			
 			CLEAR_VERIFY(branch.ExpressionIdx + 1 < children.size(), "");
 			children[branch.ExpressionIdx + 1]->Codegen(ctx);
 
