@@ -1070,10 +1070,9 @@ namespace clear
                                token.IsType(TokenType::Number) ||
                                token.IsType(TokenType::String);
         
-            bool isSpecialKeyword = token.IsType(TokenType::Keyword) &&
-                                    (token.GetData() == "true" ||
+            bool isSpecialKeyword =  token.GetData() == "true" ||
                                      token.GetData() == "false" ||
-                                     token.GetData() == "null");
+                                     token.GetData() == "null";
         
             return isBasicType || isSpecialKeyword;
         };
