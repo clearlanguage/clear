@@ -106,8 +106,8 @@ namespace clear
         "float",
 
         "if", "else", "while", "for", "return", "break", "continue",
-        "true", "false", "null", "in", "and", "or","elseif","defer",
-        "switch","case","default","import","as"
+        "true", "false", "null", "in", "and", "or", "elseif", "defer",
+        "switch", "case", "default", "import", "as"
 
         "struct", "function", "class", "restriction",
         "trait", "property", "declare", "block", "enum",

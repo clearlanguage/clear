@@ -236,7 +236,11 @@ namespace clear
             {"declare",   [this]() { ParseFunctionDeclaration(); }}, 
             {"const",     [this]() { ParseConstDecleration(); }}, 
             {"struct",    [this]() { ParseStruct(); }}, 
-            {"return",    [this]() { ParseReturn(); }}
+            {"return",    [this]() { ParseReturn(); }}, 
+            {"if",        [this]() { ParseIf(); }},
+            {"else",      [this]() { ParseElse(); }},
+            {"elseif",    [this]() { ParseElseIf(); }},
+
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -596,9 +600,7 @@ namespace clear
 
     void Parser::ParseIf()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-        /* Expect(TokenType::ConditionalIf);
+        Expect("if");
         Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
@@ -609,14 +611,15 @@ namespace clear
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
-        m_RootStack.push_back(base); */
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseElse()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-       /*  Expect(TokenType::Else);
+        Expect("else");
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -627,7 +630,10 @@ namespace clear
         base->CreateSymbolTable();
         ifExpr->Push(base);
             
-        m_RootStack.push_back(base); */
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseWhile()
@@ -682,9 +688,7 @@ namespace clear
 
     void Parser::ParseElseIf()
     {
-        CLEAR_UNREACHABLE("unimplemented");
-
-        /* Expect(TokenType::ElseIf);
+        Expect("elseif");
         Consume();
 
         auto& last = Root()->GetChildren().back();
@@ -698,7 +702,10 @@ namespace clear
 
         ifExpr->Push(base);
 
-        m_RootStack.push_back(base); */
+        m_RootStack.push_back(base); 
+
+        Expect(TokenType::Colon);
+        Consume();
     }
 
     void Parser::ParseFunctionDefinition(const std::string& className)
@@ -1127,25 +1134,6 @@ namespace clear
         return call;   
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableReference()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-      /*   
-        ExpectAny(m_VariableName);
-
-        if(Next().TokenType == TokenType::FunctionCall) 
-            return ParseFunctionCall();
-        
-        if(m_Aliases.contains(Peak().Data))
-        {
-            return ParseFunctionCall();
-        }
-        
-        std::string name = Consume().Data;
-        return std::make_shared<ASTVariable>(name); */
-
-        return {};
-    }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
     {
