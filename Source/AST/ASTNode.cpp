@@ -85,6 +85,11 @@ namespace clear
 
     void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
     {
+		if(m_SymbolTable == registry) // already done
+		{
+			return;
+		}
+
 		if(m_SymbolTable)
 		{
 			m_SymbolTable->SetPrevious(registry);

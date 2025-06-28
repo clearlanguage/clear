@@ -45,7 +45,6 @@ namespace clear
         void ParseGeneral();
         void ParseFunctionDefinition(const std::string& className = "");
         void ParseFunctionDeclaration();        
-        void ParseVariableDecleration(bool defaultInitialize = false);
         void ParseLetDecleration();
         void ParseConstDecleration();
         void ParseStruct();
@@ -76,7 +75,7 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> CreateDefaultInitializerFromName(const std::string& name);
 
-        std::shared_ptr<ASTNodeBase> ParseVariableDeclerationN(bool initialize = false);
+        std::shared_ptr<ASTNodeBase> ParseVariableDecleration(bool initialize = false);
 
         std::shared_ptr<ASTNodeBase> ParseTypeResolver();
 

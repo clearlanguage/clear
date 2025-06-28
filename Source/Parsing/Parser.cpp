@@ -304,7 +304,8 @@ namespace clear
             return token.IsType(TokenType::EndOfFile) || 
                    token.IsType(TokenType::EndLine)   || 
                    token.IsType(TokenType::Equals)    ||
-                   token.IsType(TokenType::LeftParen);
+                   token.IsType(TokenType::LeftParen) || 
+                   token.IsType(TokenType::Comma);
         };
 
 
@@ -316,113 +317,60 @@ namespace clear
         static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
                 {TokenType::Identifier, TokenType::Identifier, TokenType::None};
 
+        bool isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
 
-        if(LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier))
+        // parse either expression or declerations, allowing for multiple on the same line seperated by commas
+
+        if(!isDecleration)
         {
-            auto decleration = ParseVariableDeclerationN(true);
+            while(!(Match(TokenType::EndLine) || Match(TokenType::EndScope) || Match(TokenType::EndOfFile)))
+            {
+                auto expr = ParseExpression();
+
+                if(MatchAny(m_AssignmentOperators))
+                {
+                    Root()->Push(ParseAssignment(expr));
+                    return;
+                }
+                else 
+                {
+                    Root()->Push(expr);
+                }
+
+                if(Match(TokenType::Comma))
+                    Consume();
+            }
+        }
+
+        while(isDecleration)
+        {
+            auto decleration = ParseVariableDecleration(true);
 
             if(MatchAny(m_AssignmentOperators))
             {
                 Root()->Push(ParseAssignment(decleration, true));
-                return;
             }
-            
-            Root()->Push(decleration);
-            
-            return;
+            else 
+            {
+                auto initializer = std::make_shared<ASTDefaultInitializer>();
+                initializer->Push(decleration);
+
+                Root()->Push(initializer);
+            }
+
+            if(Match(TokenType::Comma))
+                Consume();
+
+            isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
         }
-
-        auto expr = ParseExpression();
-
-        if(MatchAny(m_AssignmentOperators))
-        {
-            Root()->Push(ParseAssignment(expr));
-            return;
-        }
-
-        Root()->Push(expr);
-    }
-
-    void Parser::ParseVariableDecleration(bool defaultInitialize)
-    {
-        auto type = ParseTypeResolver();
-
-        Expect(TokenType::Identifier);
-        
-        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
-        variableDecleration->Push(type);
-
-        Root()->Push(variableDecleration);
-
-      /*   TypeDescriptor variableType = { ParseVariableTypeTokens() };
-
-        //ExpectAny(m_VariableName);
-        ExpectAny(m_VariableName);
-
-        std::string variableName = Consume().Data;
-
-        std::vector<std::shared_ptr<ASTVariableDeclaration>> variableDeclerations;
-        std::vector<std::shared_ptr<ASTNodeBase>> assignmentOperators;
-
-        variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(variableName, variableType));
-
-        auto Flush = [&]()
-        {   
-            for(auto dec : variableDeclerations)
-            {
-                Root()->Push(dec);
-            }
-
-            for(auto assignment : assignmentOperators)
-            {
-                Root()->Push(assignment);
-            }
-        };
-
-        if(Match(TokenType::EndLine))
-        {  
-            if(defaultInitialize)
-            {
-                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
-            }
-
-            Flush();
-            Consume();
-            return; 
-        }
-
-        bool assigned = false;
-
-        while(Match(TokenType::Comma) || MatchAny(m_AssignmentOperators))
-        {
-            if(MatchAny(m_AssignmentOperators))
-            {
-                assignmentOperators.push_back(ParseAssignment(variableDeclerations.back()->GetName(), true));
-                assigned = true;
-                continue;
-            }
-
-            Consume();
-            ExpectAny(m_VariableName);
-            variableDeclerations.push_back(std::make_shared<ASTVariableDeclaration>(Consume().Data, variableType));
-
-            if(!assigned && defaultInitialize)
-            {
-                assignmentOperators.push_back(CreateDefaultInitializerFromName(variableDeclerations.back()->GetName()));
-            }
-
-            assigned = false;
-        }
-
-        Flush(); */
     }
 
     void Parser::ParseLoopControls() 
     {
         CLEAR_UNREACHABLE("unimplemented");
-       /*  auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
+        /* auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
         Consume();
-        Root()->Push(node); */
+        Root()->Push(node);  */
     }
 
     void Parser::ParseTrait()
@@ -504,7 +452,7 @@ namespace clear
         if(!Match(TokenType::Identifier))
         {
             Undo();
-            Root()->Push(ParseVariableDeclerationN(true));
+            Root()->Push(ParseVariableDecleration(true));
 
             return;
         }
@@ -1401,7 +1349,7 @@ namespace clear
         return defaultInit; */
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDeclerationN(bool initialize)
+    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration(bool initialize)
     {
         auto type = ParseTypeResolver();
 
