@@ -30,6 +30,7 @@ namespace clear
             TokenType::MinusEquals, 
             TokenType::PercentEquals, 
             TokenType::Colon,
+            TokenType::RightBrace,
             TokenType::EndOfFile
         });
 
@@ -461,7 +462,7 @@ namespace clear
         if(!Match(TokenType::Identifier))
         {
             Undo();
-            Root()->Push(ParseVariableDecleration(true));
+            Root()->Push(ParseVariableDecleration());
 
             return;
         }
@@ -731,16 +732,28 @@ namespace clear
 
         size_t i = 0;
 
-
-        if(!className.empty())
-        {
-            // TODO: Add this argument
-        }
-
         std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         std::shared_ptr<ASTNodeBase> returnType;
-        
+
+
+        if(!className.empty())
+        {
+            Token classNameToken(TokenType::Identifier, className);
+            Token pointerToken(TokenType::Star, "*");
+
+            auto classPointer = std::make_shared<ASTTypeSpecifier>("this");
+            auto typeResolver = std::make_shared<ASTTypeResolver>();
+
+            // className*
+            typeResolver->PushToken(classNameToken);
+            typeResolver->PushToken(pointerToken);
+
+            classPointer->Push(typeResolver);
+
+            params.push_back(classPointer);
+        }
+
         auto Flush = [&]()
         {
             for(const auto& param : params)
@@ -1162,27 +1175,24 @@ namespace clear
         return {};
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseArrayInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize)
+    std::shared_ptr<ASTNodeBase> Parser::ParseInitializer(std::shared_ptr<ASTNodeBase> storageOrType, bool initialize)
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        return {};
-/*  
-        Expect(TokenType::StartArray);
+        Expect(TokenType::LeftBrace);
 
         std::vector<std::vector<size_t>> indices;
         std::vector<size_t> currentIndex = { 0 };
 
         std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>(initialize);
-        initializer->Push(storage);
+        initializer->Push(storageOrType);
 
         while(!Match(TokenType::EndLine))
         {
-            if(Match(TokenType::StartArray))
+            if(Match(TokenType::LeftBrace))
             {
                 currentIndex.push_back(0);
                 Consume();
             }
-            else if (Match(TokenType::EndArray))
+            else if (Match(TokenType::RightBrace))
             {
                 currentIndex.pop_back();
                 currentIndex.back()++;
@@ -1205,7 +1215,7 @@ namespace clear
         initializer->SetIndices(indices);
         Consume();
 
-        return initializer; */
+        return initializer;
 
     }
 
@@ -1222,10 +1232,13 @@ namespace clear
         ExpectAny(m_AssignmentOperators);
 
         Token assignmentToken = Consume();
-
-        // TODO: array initializer 
-
         auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.GetType());
+
+        if(Match(TokenType::LeftBrace))
+        {
+            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid assignment");
+            return ParseInitializer(storage, initialize);
+        }
         
         std::shared_ptr<ASTAssignmentOperator> assign;
 
@@ -1252,7 +1265,7 @@ namespace clear
         {
             CLEAR_VERIFY(assignmentToken.TokenType == TokenType::Assignment, "invalid assignment");
 
-            auto initializer = ParseArrayInitializer(storage);
+            auto initializer = ParseInitializer(storage);
             return initializer;
         }
 
@@ -1364,13 +1377,13 @@ namespace clear
                 case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
                 case TokenType::Dot:                return OperatorType::Dot;
                 case TokenType::LeftBracket:        return OperatorType::Index;
+                case TokenType::Ellipses:           return OperatorType::Ellipsis;
             
                 default:
                     break;
             }
 
             // ambiguous cases
-
             bool isPrevOperandOrBracket = IsTokenOperand(Prev()) || 
                                           Prev().IsType(TokenType::RightParen) || 
                                           Prev().IsType(TokenType::RightBracket);
