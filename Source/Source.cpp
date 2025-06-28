@@ -3,6 +3,7 @@
 #include "Parsing/Parser.h"
 #include "Core/TypeRegistry.h"
 #include "Linker/CompilationManager.h"
+#include "Diagnostics/DiagnosticsBuilder.h"
 #include "Core/Log.h"
 #include <chrono>
 
@@ -17,13 +18,7 @@ using namespace clear;
 
 int main(int argc, char* argv[])
 {
-    /* if(argc == 1)
-    {
-        std::cout<< "Clear language 0.5 dev branch\n";
-        return 0;
-    } */
-    //else if(std::string(argv[1]) == "build")
-    if (false) {
+    if (true) {
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 

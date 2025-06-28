@@ -6,13 +6,13 @@
 #include <unordered_map>
 #include <vector>
 
+
 namespace clear 
 {
     struct FileReference
     {
         std::string Contents;
         llvm::StringRef ContentsRef;
-        std::vector<llvm::StringRef> Lines;
     };
 
     class DiagnosticsBuilder 
@@ -24,7 +24,13 @@ namespace clear
         void Report(Stage stage, 
                     Severity severity, 
                     const Token& token,
-                    DiagnosticCode code);            
+                    DiagnosticCode code);      
+
+                    
+    private:
+        std::string LoadFile(const std::filesystem::path& path);
+
+        llvm::SmallVector<llvm::StringRef, g_SnippetHeight> CreateCodeSnippet(llvm::StringRef file, size_t line);
 
     private:
         std::unordered_map<std::filesystem::path, FileReference> m_LoadedFiles;

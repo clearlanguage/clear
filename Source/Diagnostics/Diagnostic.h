@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/SmallVector.h>
 
 namespace clear 
 {
@@ -20,6 +21,8 @@ namespace clear
         None = 0, Lexing, Parsing, CodeGeneration, Count
     };
 
+    inline constexpr size_t g_SnippetHeight = 6;
+
     struct Diagnostic
     {
         DiagnosticCode Code = DiagnosticCode_None;
@@ -28,7 +31,7 @@ namespace clear
 
         std::filesystem::path File;
 
-        llvm::StringRef CodeSnippet;
+        llvm::SmallVector<llvm::StringRef, g_SnippetHeight> CodeSnippet;
         std::string Message;
         std::string Advice;
 
@@ -43,6 +46,8 @@ namespace clear
     inline std::string_view g_StageStrings[(size_t)Stage::Count] = {
         "None", "Lexing", "Parsing", "CodeGeneration"
     };
+
+
 
 }
 
