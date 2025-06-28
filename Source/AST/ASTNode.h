@@ -588,5 +588,6 @@ namespace clear
 			
 	private:
 		std::vector<Token> m_Tokens;
+		std::optional<CodegenResult> m_Type;
 	};	
 }

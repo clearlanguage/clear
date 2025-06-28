@@ -16,6 +16,11 @@ namespace clear
 
     FunctionInstance& FunctionCache::InstantiateOrReturn(const std::string& templateName, std::vector<Parameter> params, std::shared_ptr<Type> returnType, CodegenContext& context)
     {
+        if(templateName.contains("__destruct__"))
+        {
+
+        }
+
         CLEAR_VERIFY(m_Templates.contains(templateName), "missing function template to instantiate");
 
         std::string mangledName = GetMangledName(templateName, params, returnType);
@@ -72,7 +77,6 @@ namespace clear
         std::transform(types.begin(), types.end(), std::back_inserter(parameterTypes), [](auto& a) { return a.Type->Get(); });
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context.Context), parameterTypes, false);
-
 
         if(useTemplateParams)
         {

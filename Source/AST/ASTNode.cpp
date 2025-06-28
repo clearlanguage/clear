@@ -1197,6 +1197,11 @@ namespace clear
 
 	CodegenResult ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
+		if(m_Name.contains("__destruct__"))
+		{
+
+		}
+
 		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
@@ -2190,9 +2195,13 @@ namespace clear
 
     void ASTReturn::EmitDefaultReturn(CodegenContext& ctx)
     {
-		llvm::Type* retType = ctx.ReturnType->Get();
-    	llvm::Value* defaultVal = llvm::UndefValue::get(retType);
-    	ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
+		if(ctx.ReturnAlloca)
+		{
+			llvm::Type* retType = ctx.ReturnType->Get();
+    		llvm::Value* defaultVal = llvm::UndefValue::get(retType);
+    		ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
+		}
+
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
 
@@ -3038,6 +3047,9 @@ namespace clear
 
     CodegenResult ASTTypeResolver::Codegen(CodegenContext& ctx)
     {
+		if(m_Type.has_value())
+			return m_Type.value();
+
 		auto& children = GetChildren();
 
 		std::shared_ptr<Type> type;
@@ -3094,6 +3106,8 @@ namespace clear
 
 		CodegenResult result;
 		result.CodegenType = type;
+
+		m_Type = result;
         return result;
     }
 
@@ -3105,6 +3119,7 @@ namespace clear
 		{
 			return { .CodegenType = nullptr, .Data = m_Name };
 		}
+
 
 		CLEAR_VERIFY(children.size() == 1, "invalid parameter node");
 
