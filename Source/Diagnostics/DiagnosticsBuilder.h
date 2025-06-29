@@ -26,6 +26,8 @@ namespace clear
                     const Token& token,
                     DiagnosticCode code);      
 
+
+        void PrintErrors();
                     
     private:
         std::string LoadFile(const std::filesystem::path& path);

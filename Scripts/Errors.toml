@@ -13,3 +13,39 @@ Advice  = "Ensure the denominator is not zero before performing division."
 [InvalidOperator]
 Message = "Invalid or unsupported operator used."
 Advice  = "‘{}’ is not a valid operator in this context. Check the operator or operand types."
+
+[UnterminatedComment]
+Message = "Unterminated block comment detected."
+Advice  = "Make sure every ‘/*’ has a matching ‘*/’. Comment started near {}."
+
+[UnterminatedString]
+Message = "Unterminated string literal."
+Advice  = "A string literal starting at {} was not closed. Ensure all strings end with a quote."
+
+[UnexpectedEOF]
+Message = "Unexpected end of file."
+Advice  = "The file ended prematurely. Check for unclosed brackets, comments, or incomplete statements."
+
+[InvalidNumberLiteral]
+Message = "Invalid numeric literal."
+Advice  = "‘{}’ is not a valid number. Ensure correct syntax for integers and decimals."
+
+[RedefinedIdentifier]
+Message = "Redefinition of identifier."
+Advice  = "‘{}’ was already defined in this scope. Rename or remove the duplicate declaration."
+
+[UndeclaredIdentifier]
+Message = "Use of undeclared identifier."
+Advice  = "‘{}’ is not defined in the current scope. Check for typos or missing declarations."
+
+[TypeMismatch]
+Message = "Type mismatch in assignment or operation."
+Advice  = "Cannot assign or operate on incompatible types like ‘{}’. Check for implicit casts or incorrect types."
+
+[InvalidEscapeSequence]
+Message = "Invalid escape sequence in string literal."
+Advice  = "‘{}’ is not a recognized escape sequence. Use sequences like \\n, \\t, \\\"."
+
+[UnmatchedBracket]
+Message = "Unmatched closing or opening bracket."
+Advice  = "There is an unmatched ‘{}’. Check your use of (), {}, and []."

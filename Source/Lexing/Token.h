@@ -6,7 +6,7 @@
 #include <bitset>
 #include <string>
 #include <string_view>
-#include <set>
+#include <filesystem>
 
 namespace clear 
 {
@@ -14,7 +14,8 @@ namespace clear
     {
     public:
         Token() = default;
-        Token(TokenType type, const std::string& data) : m_Type(type), m_Data(data) {}
+        Token(TokenType type, const std::string& data, const std::filesystem::path& path = "", size_t line = 0, size_t col = 0) 
+            : m_Type(type), m_Data(data), m_SourceFile(path), m_Line(line), m_Column(col) {}
         
         ~Token() = default;
 

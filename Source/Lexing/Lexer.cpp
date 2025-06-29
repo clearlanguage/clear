@@ -14,7 +14,8 @@
 
 namespace clear 
 {
-    Lexer::Lexer(const std::filesystem::path& path)
+    Lexer::Lexer(const std::filesystem::path& path, DiagnosticsBuilder& builder)
+        : m_File(path), m_DiagBuilder(builder)
     {
         std::fstream file(path);
         CLEAR_VERIFY(file.is_open(), "failed to open file ", path);
@@ -34,16 +35,16 @@ namespace clear
         }
 
         while(m_Indents-- != 0) 
-            m_Tokens.emplace_back(TokenType::EndScope, "EndScope");
+            emplace_back(TokenType::EndScope, "EndScope");
 
-        m_Tokens.emplace_back(TokenType::EndOfFile, "EOF");
+        emplace_back(TokenType::EndOfFile, "EOF");
     }
 
     void Lexer::Eat()
     {
         if(Prev() == "\n")
         {
-            m_Tokens.emplace_back(TokenType::EndLine, " ");
+            emplace_back(TokenType::EndLine, " ");
         }
 
         if(Prev() == "\n" && !IsLineOnlyWhitespace()) 
@@ -98,7 +99,7 @@ namespace clear
         }
         else if (std::isspace(m_Contents[m_Position]))
         {
-            m_Position++;
+            Increment();
         }
         else 
         {
@@ -119,22 +120,27 @@ namespace clear
 
     void Lexer::EatMultiLineComment()
     {
-        m_Position += 2;
+        Increment(2);
+
         bool valid = false;
+
         while (m_Position < m_Contents.size())
         {
             if (m_Contents[m_Position] == '*' && m_Contents[m_Position + 1] == '/')
             {
-                m_Position += 2;
+                Increment(2);
+
                 valid = true;
+
                 break;
             }
-            m_Position++;
+
+            Increment();
         }
 
-        if (m_Position >= m_Contents.size() and !valid)
+        if (m_Position >= m_Contents.size() && !valid)
         {
-            CLEAR_LOG_ERROR("Unterminated comment (reached EOF before '*/')");
+            Report(m_Contents.back(), DiagnosticCode_UnterminatedComment, Severity::High);
         }
 
     }
@@ -151,11 +157,11 @@ namespace clear
 
         if(g_Keywords.contains(word)) 
         {
-            m_Tokens.emplace_back(TokenType::Keyword, word);
+            emplace_back(TokenType::Keyword, word);
         }
         else 
         {
-            m_Tokens.emplace_back(TokenType::Identifier, word);
+            emplace_back(TokenType::Identifier, word);
         }
     }
 
@@ -179,10 +185,18 @@ namespace clear
             {
                 operator_.pop_back();
             }
+
+            if(operator_.empty())
+            {
+                Report(operator_, DiagnosticCode_InvalidOperator, Severity::High);
+                AbortCurrent();
+
+                return;
+            }
             
             CLEAR_VERIFY(!operator_.empty(), "not a valid operator ", word);
 
-            m_Tokens.emplace_back(g_OperatorMappings.at(operator_), operator_);
+            emplace_back(g_OperatorMappings.at(operator_), operator_);
             i += operator_.size();
         }
     }
@@ -191,28 +205,31 @@ namespace clear
     {
         // punctuators guarenteed to be one size only for now
 
-        std::string word(1, m_Contents[m_Position++]);
+        std::string word(1, m_Contents[m_Position]);
+        Increment();
 
         if(g_PunctuatorMappings.contains(word))
         {
-            m_Tokens.emplace_back(g_PunctuatorMappings.at(word), word);
+            emplace_back(g_PunctuatorMappings.at(word), word);
         }
         else 
         {
-            CLEAR_UNREACHABLE("invalid punctuator ", word);
+            Report(word, DiagnosticCode_InvalidSyntax, Severity::High);
+            AbortCurrent();
         }   
     }
 
     void Lexer::EatString()
     {
         size_t start = m_Position;
-        m_Position++;
+        Increment();
 
         std::string lexedString;
 
         while (m_Position < m_Contents.size()) 
         {
-            char c = m_Contents[m_Position++];
+            char c = m_Contents[m_Position];
+            Increment();
         
             if (c == '"') 
                 break;
@@ -222,7 +239,8 @@ namespace clear
                 if (m_Position >= m_Contents.size())
                     break;
             
-                char next = m_Contents[m_Position++];
+                char next = m_Contents[m_Position];
+                Increment();
 
                 switch (next) 
                 {
@@ -245,7 +263,13 @@ namespace clear
             lexedString += c;
         }
 
-        m_Tokens.emplace_back(TokenType::String, lexedString);
+        if(m_Position == m_Contents.size())
+        {
+            Report(m_Tokens.back(), DiagnosticCode_UnterminatedString, Severity::High);
+            return;
+        }
+
+        emplace_back(TokenType::String, lexedString);
     }
 
     void Lexer::EatNumber()
@@ -277,15 +301,23 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
         auto [mantissa, isNumber] = GetNumber(word);
 
+        if(!isNumber)
+        {
+            Report(word, DiagnosticCode_InvalidNumberLiteral, Severity::High);
+            AbortCurrent();
+
+            return;
+        }
+
         int64_t exponent = 0;
     
         if(Peak() == "E" || Peak() == "e")
         {
-            m_Position++;
-
+            Increment();
+            
             if(Peak() == "+")
             {
-                m_Position++;
+                Increment();
             }
 
             bool isNegative = false;
@@ -293,7 +325,7 @@ namespace clear
             if(Peak() == "-")
             {
                 isNegative = true;
-                m_Position++;
+                Increment();
             }
 
             auto ShouldContnueExp = [&]()
@@ -314,7 +346,7 @@ namespace clear
         std::ostringstream oss;
         oss << std::setprecision(17) << (mantissa * std::pow(10, exponent));
         
-        m_Tokens.emplace_back(TokenType::Number, oss.str());
+        emplace_back(TokenType::Number, oss.str());
     }
 
     void Lexer::FlushScopes()
@@ -329,12 +361,12 @@ namespace clear
 			if (Peak() == "\t")
 			{
 				totalSpaces += tabWidth;
-				m_Position++;
+                Increment();
 			}
 			else if (Peak() == " ")
 			{
 				totalSpaces++;
-                m_Position++;
+                Increment();
 			}
 			else
 			{
@@ -346,7 +378,7 @@ namespace clear
 
         while (m_Indents > localIndents)
 		{
-            m_Tokens.emplace_back(TokenType::EndScope, "");
+            emplace_back(TokenType::EndScope, "");
 			m_Indents--;
 		}
         
@@ -355,7 +387,7 @@ namespace clear
 
     void Lexer::EatHex()
     {
-        m_Position += 2; // skip the 0x
+        Increment(2);
 
         auto ShouldContinue = [&]()
         {
@@ -387,12 +419,12 @@ namespace clear
             num += digit * std::pow(16, k++);
         }
 
-        m_Tokens.emplace_back(TokenType::Number, std::to_string(num));
+        emplace_back(TokenType::Number, std::to_string(num));
     }
 
     void Lexer::EatBin()
     {
-        m_Position += 2; // skip the 0b
+        Increment(2);
 
         auto ShouldContinue = [&]()
         {
@@ -410,14 +442,13 @@ namespace clear
             num += digit * std::pow(2, k++);
         }
 
-        m_Tokens.emplace_back(TokenType::Number, std::to_string(num));
+        emplace_back(TokenType::Number, std::to_string(num));
     }
 
     void Lexer::EatChar()
     {
         size_t start = m_Position;
-
-        m_Position++;
+        Increment();
 
         if (m_Position >= m_Contents.size()) 
         {
@@ -429,10 +460,11 @@ namespace clear
 
         if (m_Contents[m_Position] == '\\') 
         {
-            m_Position++;
+            Increment();
+
             if (m_Position >= m_Contents.size()) 
             {
-                CLEAR_LOG_ERROR("Unterminated escape sequence");
+                Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
                 return;
             }
 
@@ -459,17 +491,17 @@ namespace clear
             value = m_Contents[m_Position];
         }
 
-        m_Position++;
+        Increment();
 
         if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
         {
-            CLEAR_LOG_ERROR("Missing closing quote");
+            Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
 
-        m_Position++;
+        Increment();
 
-        m_Tokens.emplace_back(TokenType::Char, std::string(1, value));
+        emplace_back(TokenType::Char, std::string(1, value));
     }
 
     bool Lexer::IsLineOnlyWhitespace()
@@ -486,7 +518,7 @@ namespace clear
                 return false;   
             }
 
-            m_Position++;
+            Increment();
         }
 
         m_Position = position;
@@ -521,5 +553,59 @@ namespace clear
             return std::string(1, '\0');
         
         return std::string(1, m_Contents[m_Position - 1]);
+    }
+
+    void Lexer::Increment()
+    {
+        if(m_Position == m_Contents.size())
+            return;
+        
+        m_Position++;
+
+        if(m_Contents[m_Position] == '\n')
+        {
+            m_LineNumber++;
+            m_ColumnNumber = 0;
+        }
+        else 
+        {
+            m_ColumnNumber++;
+        }
+    }
+
+    void Lexer::Increment(size_t n)
+    {
+        for(size_t i = 0; i < n; i++)
+            Increment();
+    }
+
+    void Lexer::Report(char character, DiagnosticCode code, Severity severity)
+    {
+        Token token(TokenType::None, std::string(1, character), m_File, m_LineNumber, m_ColumnNumber);
+        m_DiagBuilder.Report(Stage::Lexing, severity, token, code);
+    }
+
+     void Lexer::Report(const std::string& str, DiagnosticCode code, Severity severity)
+    {
+        Token token(TokenType::None, str, m_File, m_LineNumber, m_ColumnNumber);
+        m_DiagBuilder.Report(Stage::Lexing, severity, token, code);
+    }
+
+    void Lexer::Report(const Token& token, DiagnosticCode code, Severity severity)
+    {
+        m_DiagBuilder.Report(Stage::Lexing, severity, token, code);
+    }
+
+    void Lexer::AbortCurrent()
+    {
+        while(m_Position < m_Contents.size() && m_Contents[m_Position] != '\n')
+        {
+            m_Position++;
+        }
+    }
+
+    void Lexer::emplace_back(TokenType type, const std::string& data)
+    {
+        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
     }
 }

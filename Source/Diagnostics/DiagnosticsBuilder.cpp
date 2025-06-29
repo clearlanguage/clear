@@ -17,23 +17,26 @@ namespace clear
             fileRef.ContentsRef = fileRef.Contents;
         }
 
-        Diagnostic diag = {
-            .Code = code,
-            .DiagSeverity = severity,
-            .DiagStage = stage,
-
-            .File = token.GetSourceFile(),
-
-            .CodeSnippet = CreateCodeSnippet(fileRef.ContentsRef, token.GetLineNumber()),
-
-            .Message = g_DiagnosticMessages[code],
-            .Advice  = std::format(g_DiagnosticAdvices[code], token.GetData()),
-
-            .Line = token.GetLineNumber(),
-            .Column = token.GetColumnNumber()
-        };
+        Diagnostic diag;
+        diag.Code         = code;
+        diag.DiagSeverity = severity;
+        diag.DiagStage    = stage;
+        diag.File         = token.GetSourceFile();
+        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.GetLineNumber());
+        diag.Message      = g_DiagnosticMessages[code];
+        diag.Advice       = std::vformat(g_DiagnosticAdvices[code],  std::make_format_args(token.GetData()));
+        diag.Line         = token.GetLineNumber();
+        diag.Column       = token.GetColumnNumber();
 
         m_ReportedErrors.push_back(diag);
+    }
+
+    void DiagnosticsBuilder::PrintErrors()
+    {
+        for(const auto& error : m_ReportedErrors)
+        {
+            std::println("{}", error);
+        }
     }
 
     std::string DiagnosticsBuilder::LoadFile(const std::filesystem::path& path)
@@ -50,12 +53,13 @@ namespace clear
     llvm::SmallVector<llvm::StringRef, g_SnippetHeight> DiagnosticsBuilder::CreateCodeSnippet(llvm::StringRef file, size_t line)
     {        
         llvm::SmallVector<llvm::StringRef, g_SnippetHeight> codeSnippet;
-    
         size_t index = 0;
+
+        line += g_SnippetHeight / 2;
 
         while(index < file.size() && line)
         {
-            size_t endln = file.find(file, index);
+            size_t endln = file.find("\n", index);
 
             if (endln == llvm::StringRef::npos)
                 endln = file.size();

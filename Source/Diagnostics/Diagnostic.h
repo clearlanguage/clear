@@ -5,9 +5,12 @@
 #include <print>
 #include <string_view>
 #include <filesystem>
+#include <format>
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/SmallString.h>
+
 
 namespace clear 
 {
@@ -58,13 +61,32 @@ namespace std
     {
         auto format(const clear::Diagnostic& error, format_context& ctx) const 
         { 
-            std::string formatString = std::format(
+            llvm::SmallString<256> codeSnippet;
+
+            for (auto line : error.CodeSnippet)
+            {
+                codeSnippet.append(line);
+                codeSnippet.push_back('\n');
+            }
+
+            std::string_view codeSnippetView(codeSnippet.data(), codeSnippet.size());
+            const auto& severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
+            const auto& stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
+            int codeInt             = (int)error.Code; 
+            std::string filePath    = error.File.string();
+
+            std::string formatString = std::vformat(
                 "File: {}; Line: {}; Column: {}; Stage: {}; Error Code: {};\n"
                 "{}\n"
                 "{}\n"
                 "{}\n",
-                error.File, error.Line, error.Column, clear::g_SeverityStrings[(size_t)error.DiagSeverity], clear::g_StageStrings[(size_t)error.DiagStage],
-                error.Code, error.CodeSnippet, error.Message, error.Advice
+                std::make_format_args(filePath, error.Line, error.Column,
+                    stageStr,
+                    codeInt,
+                    codeSnippetView, 
+                    error.Message,
+                    error.Advice
+                )
             );
         
             return formatter<std::string>::format(formatString, ctx);
