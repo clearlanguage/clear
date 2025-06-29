@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
         std::filesystem::current_path(current.parent_path());
 
         std::cout << "------PARSER TESTS--------" << std::endl;
-        
+
         DiagnosticsBuilder builder;
 
         Lexer parser("Tests/test.cl", builder);
@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
             std::cout<< "TYPE: " << token.GetTypeAsString() <<  " DATA: " << token.GetData() << std::endl;
         }
 
-        builder.PrintErrors();
+        builder.Dump();
     }
     else {
         auto start = std::chrono::high_resolution_clock::now();

@@ -27,7 +27,7 @@ namespace clear
                     DiagnosticCode code);      
 
 
-        void PrintErrors();
+        void Dump(std::FILE* output = stdout);
                     
     private:
         std::string LoadFile(const std::filesystem::path& path);

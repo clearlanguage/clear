@@ -50,8 +50,6 @@ namespace clear
         "None", "Lexing", "Parsing", "CodeGeneration"
     };
 
-
-
 }
 
 namespace std 

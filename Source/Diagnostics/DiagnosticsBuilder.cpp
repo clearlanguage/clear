@@ -31,11 +31,11 @@ namespace clear
         m_ReportedErrors.push_back(diag);
     }
 
-    void DiagnosticsBuilder::PrintErrors()
+    void DiagnosticsBuilder::Dump(std::FILE* output)
     {
         for(const auto& error : m_ReportedErrors)
         {
-            std::println("{}", error);
+            std::println(output, "{}", error);
         }
     }
 

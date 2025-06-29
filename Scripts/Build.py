@@ -15,8 +15,8 @@ def load_errors():
         config = tomllib.load(f)
 
     enums    = "\tenum DiagnosticCode\n\t{\n"
-    messages = "\tstatic const char* g_DiagnosticMessages[] = {\n"
-    advices  = "\tstatic const char* g_DiagnosticAdvices[] = {\n"
+    messages = "\tinline const char* g_DiagnosticMessages[] = {\n"
+    advices  = "\tinline const char* g_DiagnosticAdvices[] = {\n"
 
     for key, value in config.items():
         enums += f"\t\tDiagnosticCode_{key},\n"

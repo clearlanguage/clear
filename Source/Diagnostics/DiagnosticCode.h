@@ -18,7 +18,7 @@ namespace clear
 		DiagnosticCode_UnmatchedBracket,
 		Diagnostic_Count
 	};
-	static const char* g_DiagnosticMessages[] = {
+	inline const char* g_DiagnosticMessages[] = {
 		"An unknown error has occurred.",
 		"Syntax error: unexpected or invalid token.",
 		"Division by zero is undefined.",
@@ -33,7 +33,7 @@ namespace clear
 		"Invalid escape sequence in string literal.",
 		"Unmatched closing or opening bracket.",
 	};
-	static const char* g_DiagnosticAdvices[] = {
+	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
 		"‘{}’ is not recognized as valid syntax. Check for typos or missing characters.",
 		"Ensure the denominator is not zero before performing division.",
