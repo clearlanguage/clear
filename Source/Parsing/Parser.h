@@ -12,18 +12,20 @@
 
 namespace clear  
 {
+    class Module;
 
     class Parser 
     {        
     public:
         Parser() = delete;
-        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context);
+        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> root);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
 
     private:
         std::shared_ptr<ASTNodeBase> Root();
+        std::shared_ptr<Module> RootModule();
 
         Token Consume();
         Token Peak();
@@ -62,6 +64,8 @@ namespace clear
         void ParseEnum();
         void ParseDefer();
         void ParseBlock();
+        void ParseModule();
+        void ParseEndModule();
 
         std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
         std::shared_ptr<ASTNodeBase> ParseOperand();
@@ -97,5 +101,6 @@ namespace clear
         TokenSet m_Literals;
 
         std::shared_ptr<llvm::LLVMContext> m_Context;
+        std::vector<std::shared_ptr<Module>> m_Modules;
     };
 }

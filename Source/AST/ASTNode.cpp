@@ -6,6 +6,7 @@
 
 #include "Core/TypeRegistry.h"
 #include "Intrinsics.h"
+#include "Compilation/Module.h"
 
 #include <stack>
 
@@ -857,7 +858,7 @@ namespace clear
 			lhs = left->Codegen(ctx);
 		}
 
-		if(!lhs.CodegenValue) // enum
+		if(!lhs.CodegenValue)
 		{
 			CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid enum access");
 
@@ -910,6 +911,7 @@ namespace clear
 			CodegenResult result = funcCall->Codegen(ctx);
 			
 			funcCall->SetName(name);
+
 			return result;
 		}
 

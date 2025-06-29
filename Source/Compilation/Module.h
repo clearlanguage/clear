@@ -8,7 +8,7 @@
 
 namespace clear 
 {
-    class Module 
+    class Module : public std::enable_shared_from_this<Module>
     {
     public:
         Module(const std::string& name = "");
@@ -18,10 +18,14 @@ namespace clear
         void PushNode(const std::shared_ptr<ASTNodeBase>& node);
         void PropagateSymbolTables();
 
+        std::shared_ptr<Module> EmplaceOrReturn(const std::string& moduleName);
+
         void Codegen(const BuildConfig& config);
 
         llvm::Module* GetModule()   { return m_Module.get(); }
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
+
+        CodegenContext GetCodegenContext();
 
     private:
         std::string m_ModuleName;

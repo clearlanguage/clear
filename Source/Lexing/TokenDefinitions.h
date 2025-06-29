@@ -107,7 +107,7 @@ namespace clear
 
         "if", "else", "while", "for", "return", "break", "continue",
         "true", "false", "null", "in", "and", "or", "elseif", "defer",
-        "switch", "case", "default", "import", "as"
+        "switch", "case", "default", "import", "as", "module", "endmodule"
 
         "struct", "function", "class", "restriction",
         "trait", "property", "declare", "block", "enum",

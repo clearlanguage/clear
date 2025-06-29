@@ -4,6 +4,7 @@
 #include "Core/TypeRegistry.h"
 #include "Core/Utils.h"
 #include "Lexing/Token.h"
+#include "Compilation/Module.h"
 
 #include <stack>
 #include <print>
@@ -11,9 +12,11 @@
 
 namespace clear 
 {
-    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context)
+    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> rootModule)
         : m_Tokens(tokens), m_Context(context)
     {
+        m_Modules.push_back(rootModule);
+
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); 
         root->CreateSymbolTable(m_Context);
 
@@ -65,6 +68,11 @@ namespace clear
     std::shared_ptr<ASTNodeBase> Parser::Root()
     {
         return m_RootStack.back();
+    }
+
+    std::shared_ptr<Module> Parser::RootModule()
+    {
+        return m_Modules.back();
     }
 
     Token Parser::Consume()
@@ -176,7 +184,10 @@ namespace clear
             {"class",     [this]() { ParseClass(); }},
             {"enum",      [this]() { ParseEnum(); }},
             {"trait",     [this]() { ParseTrait(); }},
-            {"block",     [this]() { ParseBlock(); }}
+            {"block",     [this]() { ParseBlock(); }},
+            {"module",    [this]() { ParseModule(); }},
+            {"endmodule", [this]() { ParseEndModule(); }}
+
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -858,6 +869,34 @@ namespace clear
 
         Root()->Push(block);
         m_RootStack.push_back(block);
+    }
+
+    void Parser::ParseModule()
+    {
+        Expect("module");
+        Consume();
+
+        Expect(TokenType::String);
+        std::string modules = Consume().GetData(); // TODO: indexing into modules using .
+
+        auto mod = RootModule()->EmplaceOrReturn(modules);
+
+        auto node = std::make_shared<ASTNodeBase>();
+        node->CreateSymbolTable(m_Context);
+
+        m_Modules.push_back(mod);
+        m_RootStack.push_back(node);
+
+        mod->PushNode(node);
+    }
+
+    void Parser::ParseEndModule()
+    {
+        Expect("endmodule");
+        Consume();
+
+        m_Modules.pop_back();
+        m_RootStack.pop_back();
     }
 
     void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)

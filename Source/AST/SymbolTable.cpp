@@ -82,7 +82,6 @@ namespace clear
             ptr = ptr->m_Previous;
         }
 
-        CLEAR_LOG_WARNING("couldn't find type ", name);
         return nullptr;
     }
 

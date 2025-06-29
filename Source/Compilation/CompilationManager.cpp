@@ -47,7 +47,7 @@ namespace clear
 
         CLEAR_LOG_INFO("End of tokens for ", path);
 
-        Parser parser(lexer.GetTokens(), m_MainModule->GetContext());
+        Parser parser(lexer.GetTokens(), m_MainModule->GetContext(), m_MainModule);
         m_MainModule->PushNode(parser.GetResult());
     }
 

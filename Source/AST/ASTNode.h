@@ -38,6 +38,7 @@ namespace clear
 	};
 
 	class ASTNodeBase;
+	class Module;
 
 	struct CodegenContext 
 	{
@@ -53,6 +54,8 @@ namespace clear
 		llvm::BasicBlock*  ReturnBlock = nullptr;
 		llvm::BasicBlock* LoopConditionBlock = nullptr;
 		llvm::BasicBlock* LoopEndBlock = nullptr;
+
+		std::shared_ptr<clear::Module> ClearModule;
 
 		bool WantAddress;
 		bool Thrown = false;

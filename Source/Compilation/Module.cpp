@@ -46,13 +46,30 @@ namespace clear
         }
     }
 
+    std::shared_ptr<Module> Module::EmplaceOrReturn(const std::string& moduleName)
+    {
+        auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(moduleName));
+        return it->second;
+    }
+
     void Module::Codegen(const BuildConfig& config)
     {
         CodegenContext context(m_ModuleName, *m_Context, *m_Builder, *m_Module);
+        context.ClearModule = shared_from_this();
 
         for(auto& node : m_Nodes)
         {
             node->Codegen(context);
         }
+
+        for(const auto& [_, mod] : m_ContainedModules)
+        {
+            mod->Codegen(config);
+        }
+    }
+    
+    CodegenContext Module::GetCodegenContext()
+    {
+        return CodegenContext(m_ModuleName, *m_Context, *m_Builder, *m_Module);
     }
 }
