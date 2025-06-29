@@ -5,7 +5,6 @@
 
 #include "Lexing/Token.h"
 #include "SymbolTable.h"
-#include "Linker/LibraryLinker.h"
 #include "Core/Log.h"
 #include "Core/Operator.h"
 
@@ -40,20 +39,8 @@ namespace clear
 
 	class ASTNodeBase;
 
-	struct AstLookupInfo
-	{
-		std::shared_ptr<ASTNodeBase> Node;
-		TypeRegistry Registry;
-
-		AstLookupInfo(std::shared_ptr<llvm::LLVMContext> context) : Registry(context) {}
-	};
-
-	using LookupAstTable = std::unordered_map<std::filesystem::path, AstLookupInfo>;
-
 	struct CodegenContext 
 	{
-    	LookupAstTable& LookupTable;
-
 		std::filesystem::path CurrentDirectory;
 		std::filesystem::path StdLibraryDirectory;
 
@@ -61,24 +48,20 @@ namespace clear
         llvm::IRBuilder<>& Builder;
         llvm::Module&      Module;
 
-		TypeRegistry& Registry;
-
 		std::shared_ptr<Type> ReturnType;
 		llvm::AllocaInst*  ReturnAlloca = nullptr;
 		llvm::BasicBlock*  ReturnBlock = nullptr;
 		llvm::BasicBlock* LoopConditionBlock = nullptr;
 		llvm::BasicBlock* LoopEndBlock = nullptr;
 
-
 		bool WantAddress;
 		bool Thrown = false;
 
 		std::vector<std::shared_ptr<ASTNodeBase>> DeferredCalls;
 
-    	CodegenContext(LookupAstTable& map, const std::filesystem::path& path, llvm::LLVMContext& context, 
-					   llvm::IRBuilder<>& builder, llvm::Module& module, TypeRegistry& registry) 
-			: LookupTable(map), CurrentDirectory(path), Context(context), Builder(builder), Module(module), 
-			  Registry(registry)
+    	CodegenContext(const std::filesystem::path& path, llvm::LLVMContext& context, 
+					   llvm::IRBuilder<>& builder, llvm::Module& module) 
+			: CurrentDirectory(path), Context(context), Builder(builder), Module(module)
 		{
 		}
 	};
@@ -96,7 +79,7 @@ namespace clear
 
 		void PropagateSymbolTableToChildren();
 
-		void CreateSymbolTable();
+		void CreateSymbolTable(std::shared_ptr<llvm::LLVMContext> context);
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
@@ -134,11 +117,11 @@ namespace clear
 		inline const OperatorType GetExpression() const { return m_Expression; }
 
 		CodegenResult HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   OperatorType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
-		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
-		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx);
+		static CodegenResult HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,   OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+		static CodegenResult HandleMathExpressionF(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+		static CodegenResult HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+		static CodegenResult HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+		static CodegenResult HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 
 
 	private:

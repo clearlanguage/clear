@@ -11,11 +11,11 @@
 
 namespace clear 
 {
-    Parser::Parser(const std::vector<Token>& tokens)
-        : m_Tokens(tokens)
+    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context)
+        : m_Tokens(tokens), m_Context(context)
     {
         std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); 
-        root->CreateSymbolTable();
+        root->CreateSymbolTable(m_Context);
 
         m_RootStack.push_back(root);
 
@@ -498,7 +498,7 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable();
+        base->CreateSymbolTable(m_Context);
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
@@ -518,7 +518,7 @@ namespace clear
         CLEAR_VERIFY(ifExpr, "invalid node");
         
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable();
+        base->CreateSymbolTable(m_Context);
         ifExpr->Push(base);
             
         m_RootStack.push_back(base); 
@@ -536,6 +536,8 @@ namespace clear
         whileExp->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
+        base->CreateSymbolTable(m_Context);
+
         whileExp->Push(base);
 
         Root()->Push(whileExp);
@@ -567,7 +569,7 @@ namespace clear
         Root()->Push(forLoop);
 
         auto body = std::make_shared<ASTNodeBase>();
-        body->CreateSymbolTable();
+        body->CreateSymbolTable(m_Context);
         
         forLoop->Push(body);
 
@@ -589,7 +591,7 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable();
+        base->CreateSymbolTable(m_Context);
 
         ifExpr->Push(base);
 
@@ -613,6 +615,7 @@ namespace clear
         }
 
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
+        funcNode->CreateSymbolTable(m_Context);
 
         Expect(TokenType::LeftParen);
 
@@ -851,7 +854,7 @@ namespace clear
         Consume();
 
         auto block = std::make_shared<ASTNodeBase>();
-        block->CreateSymbolTable();
+        block->CreateSymbolTable(m_Context);
 
         Root()->Push(block);
         m_RootStack.push_back(block);

@@ -61,8 +61,8 @@ namespace clear
 		return {strPtr, globalStr->getValueType()};
 	}
 
-	Value::Value(const Token& rValue, TypeRegistry& typeRegistry, llvm::LLVMContext& context, llvm::Module& module)
-		: m_Type(typeRegistry.GetTypeFromToken(rValue)), m_Token(rValue)
+	Value::Value(const Token& rValue, std::shared_ptr<SymbolTable> tbl, llvm::LLVMContext& context, llvm::Module& module)
+		: m_Type(tbl->GetTypeFromToken(rValue)), m_Token(rValue)
 	{
 		auto [value, type] = Value::GetConstant(m_Type, m_Token, context, module);
 		m_Value = value;

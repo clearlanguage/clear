@@ -17,7 +17,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const std::vector<Token>& tokens);
+        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -95,5 +95,7 @@ namespace clear
         TokenSet m_Terminators;
         TokenSet m_AssignmentOperators;
         TokenSet m_Literals;
+
+        std::shared_ptr<llvm::LLVMContext> m_Context;
     };
 }

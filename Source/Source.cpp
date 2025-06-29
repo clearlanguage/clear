@@ -2,13 +2,12 @@
 #include "AST/ASTNode.h"
 #include "Parsing/Parser.h"
 #include "Core/TypeRegistry.h"
-#include "Linker/CompilationManager.h"
+#include "Compilation/CompilationManager.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include "Core/Log.h"
 #include <chrono>
 
 #include <toml++/toml.h>
-#include "Linker/LibraryLinker.h"
 #include <iostream>
 #include <filesystem>
 #include <cstdlib>

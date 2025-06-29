@@ -3,11 +3,203 @@
 #include "ASTNode.h"
 #include "Core/Log.h"
 
+#include "Core/Utils.h"
+
 namespace clear 
 {
-    SymbolTable::SymbolTable(const std::shared_ptr<SymbolTable>& other)
+    static std::string GuessTypeNameFromNumber(const std::string& number)
+    {
+        NumberInfo info = GetNumberInfoFromLiteral(number);
+
+        if (!info.Valid)
+        {
+            CLEAR_LOG_ERROR("invalid number ", number);
+            return "";
+        } 
+
+        if(info.IsFloatingPoint)
+        {
+            switch (info.BitsNeeded)
+			{
+				case 32: return "float32"; break;
+				case 64: return "float64"; break;
+				default:
+					break;
+			}
+        }
+		else if (info.IsSigned)
+		{
+			switch (info.BitsNeeded)
+			{
+				case 8:  return "int8";
+				case 16: return "int16";
+				case 32: return "int32";
+				case 64: return "int64";
+				default:
+					break;
+			}
+		}
+		else
+		{
+			switch (info.BitsNeeded)
+			{
+				case 8:  return "uint8";
+				case 16: return "uint16";
+				case 32: return "uint32";
+				case 64: return "uint64";
+				default:
+					break;
+			}
+		}
+        
+        CLEAR_LOG_ERROR("unable to guess type for ", number);
+        return "";
+    }
+
+    SymbolTable::SymbolTable(std::shared_ptr<llvm::LLVMContext> context)
+        : m_TypeRegistry(context)
+    {
+    }
+
+    SymbolTable::SymbolTable(const std::shared_ptr<SymbolTable>& other, std::shared_ptr<llvm::LLVMContext> context)
+        : m_TypeRegistry(context)
     {
         m_Previous = other;
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetType(const std::string& name)
+    {
+        if(auto type = m_TypeRegistry.GetType(name)) 
+            return type;
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {            
+            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
+                return type;
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_LOG_WARNING("couldn't find type ", name);
+        return nullptr;
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetPointerTo(std::shared_ptr<Type> base)
+    {
+        std::string name = base->GetHash();
+
+        if(auto type = m_TypeRegistry.GetType(name)) 
+            return m_TypeRegistry.GetPointerTo(type);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {            
+            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
+                return ptr->m_TypeRegistry.GetPointerTo(type);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("couldn't find type ", name);
+        return std::shared_ptr<Type>();
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetArrayFrom(std::shared_ptr<Type> base, size_t count)
+    {
+        std::string name = base->GetHash();
+
+        if(auto type = m_TypeRegistry.GetType(name)) 
+            return m_TypeRegistry.GetArrayFrom(type, count);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {            
+            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
+                return ptr->m_TypeRegistry.GetArrayFrom(type, count);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("couldn't find type ", name);
+        return std::shared_ptr<Type>();
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetConstFrom(std::shared_ptr<Type> base)
+    {
+        std::string name = base->GetHash();
+
+        if(auto type = m_TypeRegistry.GetType(name)) 
+            return m_TypeRegistry.GetConstFrom(type);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {            
+            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
+                return ptr->m_TypeRegistry.GetConstFrom(type);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("couldn't find type ", name);
+        return std::shared_ptr<Type>();
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetSignedType(std::shared_ptr<Type> base)
+    {
+        std::string name = base->GetHash();
+
+        if(auto type = m_TypeRegistry.GetType(name)) 
+            return m_TypeRegistry.GetSignedType(type);
+
+        std::shared_ptr<SymbolTable> ptr = m_Previous;
+
+        while(ptr)
+        {            
+            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
+                return ptr->m_TypeRegistry.GetSignedType(type);
+                
+            ptr = ptr->m_Previous;
+        }
+
+        CLEAR_UNREACHABLE("couldn't find type ", name);
+        return std::shared_ptr<Type>();
+    }
+
+    std::shared_ptr<Type> SymbolTable::GetTypeFromToken(const Token& token)
+    {
+        if(token.GetData() == "null") return GetType("opaque_ptr");
+
+        if(token.IsType(TokenType::String))
+        {
+            return GetPointerTo(GetType("int8"));
+        }
+
+        if(token.IsType(TokenType::Char))
+        {
+            return GetType("int8");
+        }
+
+        if(token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false") )
+        {
+            return GetType("bool");
+        }
+
+        if(token.IsType(TokenType::Number))
+        {
+            return GetType(GuessTypeNameFromNumber(token.GetData()));
+        }
+
+        if(token.IsType(TokenType::Identifier))
+        {
+            return GetType(token.GetData());
+        }
+
+        return GetType(token.GetData());
     }
 
     Allocation SymbolTable::RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder)
@@ -238,7 +430,7 @@ namespace clear
 			Parameter param;
 
 			param.Name = "this";
-			param.Type = ctx.Registry.GetPointerTo(classTy);
+			param.Type = GetPointerTo(classTy);
 
 			std::string name = classTy->GetHash() + "." + "__destruct__";
 
@@ -359,7 +551,7 @@ namespace clear
 
     bool SymbolTable::HasInstance(const std::string& instanceName)
     {
-         if(m_FunctionCache.HasInstance(instanceName)) return true;
+        if(m_FunctionCache.HasInstance(instanceName)) return true;
 
         std::shared_ptr<SymbolTable> ptr = m_Previous;
 

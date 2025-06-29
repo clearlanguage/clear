@@ -78,13 +78,14 @@ namespace clear
 			child->PropagateSymbolTable(m_SymbolTable);
     }
 
-    void ASTNodeBase::CreateSymbolTable()
+    void ASTNodeBase::CreateSymbolTable(std::shared_ptr<llvm::LLVMContext> context)
     {
-		m_SymbolTable = std::make_shared<SymbolTable>();
+		m_SymbolTable = std::make_shared<SymbolTable>(context);
     }
 
     void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
     {
+		CLEAR_VERIFY(registry, "dont take in null");
 		if(m_SymbolTable == registry) // already done
 		{
 			return;
@@ -104,6 +105,7 @@ namespace clear
 			if(child)
 				child->PropagateSymbolTable(m_SymbolTable);
 		}
+
     }
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
@@ -116,7 +118,7 @@ namespace clear
 		if(m_Value.has_value())
 			return { m_Value.value().Get(), m_Value.value().GetType() };
 
-		m_Value = Value(m_Token, ctx.Registry, ctx.Context, ctx.Module);
+		m_Value = Value(m_Token, GetSymbolTable(), ctx.Context, ctx.Module);
 		return { m_Value.value().Get(), m_Value.value().GetType() };
 	}
 
@@ -308,21 +310,21 @@ namespace clear
         return false;
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpression(CodegenResult& lhs, CodegenResult& rhs,  OperatorType type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
     {
 		if(lhs.CodegenType != rhs.CodegenType)
 			HandleTypePromotion(lhs, rhs, ctx);
 
         if(lhs.CodegenValue->getType()->isFloatingPointTy()) 
-			return HandleMathExpressionF(lhs, rhs, type, ctx);
+			return HandleMathExpressionF(lhs, rhs, type, ctx, tbl);
 
 		if(lhs.CodegenType->IsSigned() || rhs.CodegenType->IsSigned()) 
-			return HandleMathExpressionSI(lhs, rhs, type, ctx);
+			return HandleMathExpressionSI(lhs, rhs, type, ctx, tbl);
 
-		return HandleMathExpressionUI(lhs, rhs, type, ctx);
+		return HandleMathExpressionUI(lhs, rhs, type, ctx, tbl);
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		// ctx.WantAddress is set by parent to this node
 		CodegenResult lhs = left->Codegen(ctx);
@@ -336,12 +338,12 @@ namespace clear
 		}
 
 		if(lhs.CodegenType->IsPointer()) 
-			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx); //internally will verify correct expression type
+			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx, GetSymbolTable()); //internally will verify correct expression type
 
-        return HandleMathExpression(lhs, rhs, m_Expression, ctx);
+        return HandleMathExpression(lhs, rhs, m_Expression, ctx, GetSymbolTable());
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, OperatorType binExpressionType, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionF(CodegenResult &lhs, CodegenResult &rhs, OperatorType binExpressionType, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
@@ -371,13 +373,13 @@ namespace clear
 			}
 			/* case OperatorType::Pow:
 			{
-				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
-				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, GetSymbolTable()->GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, GetSymbolTable()->GetType("float64"), ctx.Builder);
 
 
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
-					     ctx.Registry.GetType("float64")  };
+					     GetSymbolTable()->GetType("float64")  };
 			} */
 			default:
 				break;
@@ -386,7 +388,7 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType binExpressionType, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionSI(CodegenResult& lhs, CodegenResult& rhs, OperatorType binExpressionType, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
@@ -418,12 +420,12 @@ namespace clear
 			}
 			case OperatorType::Pow:
 			{
-				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
-				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, tbl->GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, tbl->GetType("float64"), ctx.Builder);
 
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
-					     ctx.Registry.GetType("float64")  };
+					     tbl->GetType("float64")  };
 			}
 			default:
 				break;
@@ -432,7 +434,7 @@ namespace clear
 		return {};
     }
 
-    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandleMathExpressionUI(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
     {
         auto& builder = ctx.Builder;
 		auto& module  = ctx.Module;
@@ -462,12 +464,12 @@ namespace clear
 			}
 			case OperatorType::Pow:
 			{
-				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
-				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("float64"), ctx.Builder);
+				llvm::Value* cast1 = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, tbl->GetType("float64"), ctx.Builder);
+				llvm::Value* cast2 = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, tbl->GetType("float64"), ctx.Builder);
 
 				llvm::Function* powFunction = llvm::Intrinsic::getDeclaration(&module, llvm::Intrinsic::pow, { builder.getDoubleTy() });
                 return { builder.CreateCall(powFunction, {cast1, cast2}), 
-					     ctx.Registry.GetType("float64")  };
+					     tbl->GetType("float64")  };
 			}
 			default:
 				break;
@@ -510,28 +512,28 @@ namespace clear
 		{
 			case OperatorType::LessThan:
             {
-                return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpOLT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::LessThanEqual:
             {
-                return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpOLE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThan:
             {
-                return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpOGT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThanEqual:
 			{
-                return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpOGE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 
 			}
 			case OperatorType::IsEqual:
 			{
-                return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpOEQ(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			case OperatorType::NotEqual:
 			{
-                return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateFCmpONE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			default:
 				break;
@@ -548,28 +550,28 @@ namespace clear
 		{
 			case OperatorType::LessThan:
             {
-                return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpSLT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::LessThanEqual:
             {
-                return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpSLE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThan:
             {
-                return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpSGT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThanEqual:
 			{
-                return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpSGE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 
 			}
 			case OperatorType::IsEqual:
 			{
-                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			case OperatorType::NotEqual:
 			{
-                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			default:
 				break;
@@ -586,28 +588,28 @@ namespace clear
 		{
 			case OperatorType::LessThan:
             {
-                return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpULT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::LessThanEqual:
             {
-                return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpULE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThan:
             {
-                return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpUGT(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
             }
 			case OperatorType::GreaterThanEqual:
 			{
-                return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpUGE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 
 			}
 			case OperatorType::IsEqual:
 			{
-                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpEQ(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			case OperatorType::NotEqual:
 			{
-                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), ctx.Registry.GetType("bool") };
+                return { builder.CreateICmpNE(lhs.CodegenValue, rhs.CodegenValue), GetSymbolTable()->GetType("bool") };
 			}
 			default:
 				break;
@@ -664,8 +666,8 @@ namespace clear
 
 		CodegenResult lhs = left->Codegen(ctx);
 
-		lhs.CodegenValue = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
-		lhs.CodegenType  = ctx.Registry.GetType("bool");
+		lhs.CodegenValue = TypeCasting::Cast(lhs.CodegenValue, lhs.CodegenType, GetSymbolTable()->GetType("bool"), ctx.Builder);
+		lhs.CodegenType  = GetSymbolTable()->GetType("bool");
 
 		CodegenResult result;
 
@@ -684,8 +686,8 @@ namespace clear
 		
 		CodegenResult rhs = right->Codegen(ctx);
 		
-		rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
-		rhs.CodegenType  = ctx.Registry.GetType("bool");
+		rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, rhs.CodegenType, GetSymbolTable()->GetType("bool"), ctx.Builder);
+		rhs.CodegenType  = GetSymbolTable()->GetType("bool");
 		
 		ctx.Builder.CreateCondBr(rhs.CodegenValue, trueResult, falseResult);
 		
@@ -712,7 +714,7 @@ namespace clear
         return result;
     }
 
-    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx)
+    CodegenResult ASTBinaryExpression::HandlePointerArithmetic(CodegenResult& lhs, CodegenResult& rhs, OperatorType type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
     {
 		CLEAR_VERIFY(lhs.CodegenType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhs.CodegenType->IsIntegral(), "invalid pointer arithmetic");
@@ -721,7 +723,7 @@ namespace clear
 		{
 			rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
 												 rhs.CodegenType, 
-												 ctx.Registry.GetType("int64"), 
+												 tbl->GetType("int64"), 
 												 ctx.Builder);
 		}
 		
@@ -766,11 +768,11 @@ namespace clear
 
 		if(lhs.CodegenType->IsVariadic())
 		{
-			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
+			if(rhs.CodegenType != GetSymbolTable()->GetType("int64")) 
 			{
 				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
 													 rhs.CodegenType, 
-													 ctx.Registry.GetType("int64"), 
+													 GetSymbolTable()->GetType("int64"), 
 													 ctx.Builder);
 			}
 
@@ -792,7 +794,7 @@ namespace clear
 			}
 
 			if(ctx.WantAddress)
-				return {gep, ctx.Registry.GetPointerTo(baseType) };
+				return {gep, GetSymbolTable()->GetPointerTo(baseType) };
 
         	return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
 				
@@ -807,11 +809,11 @@ namespace clear
 		{
 			llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
 
-			if(rhs.CodegenType != ctx.Registry.GetType("int64")) 
+			if(rhs.CodegenType != GetSymbolTable()->GetType("int64")) 
 			{
 				rhs.CodegenValue = TypeCasting::Cast(rhs.CodegenValue, 
 													 rhs.CodegenType, 
-													 ctx.Registry.GetType("int64"), 
+													 GetSymbolTable()->GetType("int64"), 
 													 ctx.Builder);
 			}
 
@@ -840,7 +842,7 @@ namespace clear
 		}
 
 		if(ctx.WantAddress)
-			return {gep, ctx.Registry.GetPointerTo(baseType) };
+			return {gep, GetSymbolTable()->GetPointerTo(baseType) };
 
         return { ctx.Builder.CreateLoad(baseType->Get(), gep), baseType} ;
     }
@@ -860,12 +862,12 @@ namespace clear
 			CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid enum access");
 
 			auto member = std::dynamic_pointer_cast<ASTMember>(right);
-			auto enumTy = dyn_cast<EnumType>(ctx.Registry.GetType(lhs.Data));
+			auto enumTy = dyn_cast<EnumType>(GetSymbolTable()->GetType(lhs.Data));
 			CLEAR_VERIFY(enumTy, "not a valid enum");
 
 			CodegenResult result;
 			result.CodegenValue = ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName()));
-			result.CodegenType = ctx.Registry.GetType("int64");
+			result.CodegenType = GetSymbolTable()->GetType("int64");
 			
 			return result;
 		}
@@ -876,7 +878,7 @@ namespace clear
 			ctx.Builder.CreateStore(lhs.CodegenValue, temp.Alloca);
 
 			lhs.CodegenValue = temp.Alloca;
-			lhs.CodegenType = ctx.Registry.GetPointerTo(temp.Type);
+			lhs.CodegenType = GetSymbolTable()->GetPointerTo(temp.Type);
 		}
 
 		if(right->GetType() == ASTNodeType::Member)
@@ -948,7 +950,7 @@ namespace clear
 
         if(ctx.WantAddress)
 		{
-			return { getElementPtr, ctx.Registry.GetPointerTo(curr) };
+			return { getElementPtr, GetSymbolTable()->GetPointerTo(curr) };
 		}
 
 		return { ctx.Builder.CreateLoad(curr->Get(), getElementPtr), curr };
@@ -1000,7 +1002,7 @@ namespace clear
 		}
 
 		codegenResult.CodegenValue = alloca.Alloca;
-		codegenResult.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
+		codegenResult.CodegenType  = GetSymbolTable()->GetPointerTo(alloca.Type);
 
 		return codegenResult;
     }
@@ -1021,7 +1023,7 @@ namespace clear
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 	
 		if(m_IsConst)
-			result.CodegenType = ctx.Registry.GetConstFrom(result.CodegenType);
+			result.CodegenType = GetSymbolTable()->GetConstFrom(result.CodegenType);
 
 		
 		bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
@@ -1038,7 +1040,7 @@ namespace clear
 			ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
 		}
 
-		return {alloca.Alloca, ctx.Registry.GetPointerTo(result.CodegenType)};
+		return {alloca.Alloca, GetSymbolTable()->GetPointerTo(result.CodegenType)};
 	}
 
 	ASTVariable::ASTVariable(const std::string& name)
@@ -1070,7 +1072,7 @@ namespace clear
 		if(ctx.WantAddress)
 		{
 			result.CodegenValue = alloca.Alloca;
-			result.CodegenType  = ctx.Registry.GetPointerTo(alloca.Type);
+			result.CodegenType  = GetSymbolTable()->GetPointerTo(alloca.Type);
 		}
 		else 
 		{
@@ -1131,23 +1133,23 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Add)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Add, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Add, ctx, GetSymbolTable());
 		}
 		else if (m_Type == AssignmentOperatorType::Sub)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Sub, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Sub, ctx, GetSymbolTable());
 		}
 		else if (m_Type == AssignmentOperatorType::Mul)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mul, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mul, ctx, GetSymbolTable());
 		}
 		else if (m_Type == AssignmentOperatorType::Div)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Div, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Div, ctx, GetSymbolTable());
 		}
 		else if (m_Type == AssignmentOperatorType::Mod)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mod, ctx);
+			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mod, ctx, GetSymbolTable());
 		}
 		else 
 		{
@@ -1192,7 +1194,6 @@ namespace clear
 	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name)
 		: m_Name(name)
 	{
-		CreateSymbolTable();
 	}
 
 	CodegenResult ASTFunctionDefinition::Codegen(CodegenContext& ctx)
@@ -1287,7 +1288,7 @@ namespace clear
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
 		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(m_ResolvedReturnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : ctx.Registry.GetType("void"));
+		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : GetSymbolTable()->GetType("void"));
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
@@ -1402,7 +1403,7 @@ namespace clear
 
 		Allocation temporary;
 
-		if(auto ty = ctx.Registry.GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
+		if(auto ty = GetSymbolTable()->GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
 		{
 			CLEAR_VERIFY(ctx.WantAddress == false, "cannot get an address to a temporary!");
 
@@ -1419,7 +1420,7 @@ namespace clear
 			}
 
 			m_Name = std::format("{}.{}", m_Name, "__construct__");
-			m_PrefixArguments.push_back({ temporary.Alloca, ctx.Registry.GetPointerTo(ty) });
+			m_PrefixArguments.push_back({ temporary.Alloca, GetSymbolTable()->GetPointerTo(ty) });
 		}
 
 		uint32_t k = 0;
@@ -1440,11 +1441,11 @@ namespace clear
 
 			if(!value) return {};
 
-			if(m_Name == "sizeof") return { value, ctx.Registry.GetType("int64") };
-			if(m_Name == "len") return { value, ctx.Registry.GetType("int64") };
+			if(m_Name == "sizeof") return { value, GetSymbolTable()->GetType("int64") };
+			if(m_Name == "len") return { value, GetSymbolTable()->GetType("int64") };
 
 
-			return { value, ctx.Registry.GetType(m_Name) };
+			return { value, GetSymbolTable()->GetType(m_Name) };
 		}
 
 		// find most suitable template to arguments and name
@@ -1620,7 +1621,7 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		m_ReturnType = ctx.Registry.GetType("void");
+		m_ReturnType = GetSymbolTable()->GetType("void");
 
 		if (i < children.size())
 		{
@@ -2114,14 +2115,14 @@ namespace clear
 			return param;
 		}
 
-		param.Type = ctx.Registry.GetTypeFromToken(arg[0]);
+		param.Type = GetSymbolTable()->GetTypeFromToken(arg[0]);
 		
 		for(size_t i = 1; i < arg.size(); i++)
 		{
 			if(arg[i].TokenType == TokenType::PointerDef)
-				param.Type = ctx.Registry.GetPointerTo(param.Type);
+				param.Type = GetSymbolTable()->GetPointerTo(param.Type);
 			else if (arg[i].TokenType == TokenType::StaticArrayDef)
-				param.Type = ctx.Registry.GetArrayFrom(param.Type, std::stoull(arg[i].Data));
+				param.Type = GetSymbolTable()->GetArrayFrom(param.Type, std::stoull(arg[i].Data));
 			else
 				CLEAR_UNREACHABLE("invalid token");
 		}
@@ -2141,9 +2142,9 @@ namespace clear
 			if(type->IsCompound())
 			{
 				if(!m_Alias.empty())
-					ctx.Registry.RegisterType(m_Alias + "." + typeName, type);
+					GetSymbolTable()->GetTypeRegistry().RegisterType(m_Alias + "." + typeName, type);
 				else 
-					ctx.Registry.RegisterType(typeName, type);
+					GetSymbolTable()->GetTypeRegistry().RegisterType(typeName, type);
 			}
 		}
     } */
@@ -2265,7 +2266,7 @@ namespace clear
 			else 
 			{
 				negated = ctx.Builder.CreateNeg(result.CodegenValue);
-				result.CodegenType = ctx.Registry.GetSignedType(result.CodegenType);
+				result.CodegenType = GetSymbolTable()->GetTypeRegistry().GetSignedType(result.CodegenType);
 			}
 
 			return { negated, result.CodegenType };
@@ -2280,8 +2281,8 @@ namespace clear
 		if(m_Type == OperatorType::Not)
 		{
 			CodegenResult result = children[0]->Codegen(ctx);
-			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, ctx.Registry.GetType("bool"), ctx.Builder);
-			result.CodegenType  = ctx.Registry.GetType("bool");
+			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, GetSymbolTable()->GetType("bool"), ctx.Builder);
+			result.CodegenType  = GetSymbolTable()->GetType("bool");
 
 			result.CodegenValue = ctx.Builder.CreateXor(ctx.Builder.getTrue(), result.CodegenValue);
 
@@ -2289,7 +2290,7 @@ namespace clear
 		}
 		
 		CodegenResult one;
-		one.CodegenType  = ctx.Registry.GetType("int32");
+		one.CodegenType  = GetSymbolTable()->GetType("int32");
 		one.CodegenValue = ctx.Builder.getInt32(1);
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
@@ -2305,9 +2306,9 @@ namespace clear
 		auto ApplyFun = [&](OperatorType type)
 		{
 			if(ty->GetBaseType()->IsPointer())
-				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
+				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx, GetSymbolTable());
 			else 
-				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
+				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx, GetSymbolTable());
 		};
 
 		if(m_Type == OperatorType::PostIncrement)
@@ -2465,7 +2466,6 @@ namespace clear
 
     ASTWhileExpression::ASTWhileExpression()
     {
-		CreateSymbolTable();
     }
 
     CodegenResult ASTWhileExpression::Codegen(CodegenContext &ctx)
@@ -2578,7 +2578,7 @@ namespace clear
 		auto& children = GetChildren();
 
 		// create the struct type
-		auto structTy = ctx.Registry.CreateType<StructType>(m_Name, m_Name, ctx.Context);
+		auto structTy = GetSymbolTable()->GetTypeRegistry().CreateType<StructType>(m_Name, m_Name, ctx.Context);
 		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
 
 		size_t i = 0;
@@ -2654,7 +2654,7 @@ namespace clear
 
 		// create the struct type
 		auto structTy = std::make_shared<StructType>(m_Name, ctx.Context);
-		auto classTy  = ctx.Registry.CreateType<ClassType>(m_Name, structTy);
+		auto classTy  = GetSymbolTable()->GetTypeRegistry().CreateType<ClassType>(m_Name, structTy);
 
 		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
 
@@ -2735,7 +2735,7 @@ namespace clear
 			if(child->GetType() == ASTNodeType::VariableDecleration)
 			{
 				auto decleration = std::dynamic_pointer_cast<ASTVariableDeclaration>(child);
-				members.emplace_back(decleration->GetName(), ctx.Registry.ResolveType(decleration->GetVariableType()));
+				members.emplace_back(decleration->GetName(), GetSymbolTable()->GetTypeRegistry().ResolveType(decleration->GetVariableType()));
 			}
 			else if(child->GetType() == ASTNodeType::FunctionDecleration)
 			{
@@ -2753,7 +2753,7 @@ namespace clear
 			}
 		}
 
-		ctx.Registry.CreateType<TraitType>(m_Name, functions, members, m_Name);
+		GetSymbolTable()->GetTypeRegistry().CreateType<TraitType>(m_Name, functions, members, m_Name);
         return CodegenResult();
     }
 
@@ -2775,6 +2775,7 @@ namespace clear
     {
 		auto& children = GetChildren();
 		auto tbl = GetSymbolTable();
+
 		CLEAR_VERIFY(children.size() == 1, "invalid node");
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
@@ -2973,7 +2974,7 @@ namespace clear
 
 			Parameter param;
 			param.Name = "this";
-			param.Type = ctx.Registry.GetPointerTo(classTy);
+			param.Type = tbl->GetPointerTo(classTy);
 
 			std::string name = classTy->GetHash() + "." + "__construct__";
 
@@ -3002,7 +3003,7 @@ namespace clear
 
     CodegenResult ASTEnum::Codegen(CodegenContext& ctx)
     {
-		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(ctx.Registry.GetType("int64"), m_EnumName);
+		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(GetSymbolTable()->GetType("int64"), m_EnumName);
 
 		auto& children = GetChildren();
 
@@ -3027,7 +3028,7 @@ namespace clear
 			previous = casted->getSExtValue();
 		}
 
-		ctx.Registry.RegisterType(m_EnumName, type);
+		GetSymbolTable()->GetTypeRegistry().RegisterType(m_EnumName, type);
         return CodegenResult();
     }
 
@@ -3061,11 +3062,11 @@ namespace clear
 		if(m_Tokens[i].GetData() == "const")
 			i++;
 
-		type = ctx.Registry.GetTypeFromToken(m_Tokens[i]);
+		type = GetSymbolTable()->GetTypeFromToken(m_Tokens[i]);
 		CLEAR_VERIFY(type, "not a valid type name ", m_Tokens[i].GetData());
 
 		if(i == 1)
-			type = ctx.Registry.GetConstFrom(type);
+			type = GetSymbolTable()->GetConstFrom(type);
 
 		i++;
 		
@@ -3076,7 +3077,7 @@ namespace clear
 		{
 			if(m_Tokens[i].IsType(TokenType::Star))
 			{
-				type = ctx.Registry.GetPointerTo(type);
+				type = GetSymbolTable()->GetPointerTo(type);
 			}
 			else if (m_Tokens[i].IsType(TokenType::LeftBracket))
 			{
@@ -3092,11 +3093,11 @@ namespace clear
 				int64_t arraySize = constant->getSExtValue();
 				CLEAR_VERIFY(arraySize > 0, "cannot have an array size with negative value ", arraySize);
 
-				type = ctx.Registry.GetArrayFrom(type, arraySize);
+				type = GetSymbolTable()->GetArrayFrom(type, arraySize);
 			}
 			else if (m_Tokens[i].GetData() == "const")
 			{
-				type = ctx.Registry.GetConstFrom(type);
+				type = GetSymbolTable()->GetConstFrom(type);
 			}
 			else 
 			{

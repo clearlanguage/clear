@@ -31,10 +31,12 @@ namespace clear
 
         CLEAR_VERIFY(value && type, "value or type was invalid");
 
-        auto ty = ctx.Registry.GetType(name);
-        CLEAR_VERIFY(TypeCasting::CanBeCasted(type, ty), "type ", type->GetHash(), " cannot be casted to ", ty->GetHash());
-
-        return TypeCasting::Cast(value, type, ty, ctx.Builder);
+        /* auto ty = ctx.Registry.GetType(name); */
+        //CLEAR_VERIFY(TypeCasting::CanBeCasted(type, ty), "type ", type->GetHash(), " cannot be casted to ", ty->GetHash());
+        CLEAR_UNREACHABLE("unimplemented");
+        return nullptr;
+        
+        //return TypeCasting::Cast(value, type, ty, ctx.Builder);
     }
 
     bool Intrinsics::IsIntrinsic(const std::string& name)

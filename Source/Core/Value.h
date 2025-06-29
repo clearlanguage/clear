@@ -3,6 +3,8 @@
 #include "TypeRegistry.h"
 #include "Lexing/Token.h"
 
+#include "AST/SymbolTable.h"
+
 #include <list>
 #include <memory>
 
@@ -15,7 +17,7 @@ namespace clear {
 
 	public:
 		Value() = default;
-		Value(const Token& rValue, TypeRegistry& typeRegistry, llvm::LLVMContext& context, llvm::Module& module);
+		Value(const Token& rValue, std::shared_ptr<SymbolTable> tbl, llvm::LLVMContext& context, llvm::Module& module);
 
 		~Value() = default;
 

@@ -7,9 +7,7 @@ namespace clear
     CompilationManager::CompilationManager(const BuildConfig& config)
         : m_Config(config)
     {
-        m_Context = std::make_shared<llvm::LLVMContext>();
-		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
-        m_MainModule = std::make_unique<llvm::Module>(m_Config.ApplicationName, *m_Context);
+        m_MainModule = std::make_shared<Module>("main_module");
     }
 
     void CompilationManager::LoadSources()
@@ -27,7 +25,7 @@ namespace clear
 
     void CompilationManager::LoadSourceFile(const std::filesystem::path& path)
     {
-        if(m_LookupTable.contains(path))
+        if(m_Modules.contains(path))
         {
             return;
         }
@@ -48,52 +46,32 @@ namespace clear
         }
 
         CLEAR_LOG_INFO("End of tokens for ", path);
-    
-        auto& lookup = m_LookupTable.emplace(path, AstLookupInfo(m_Context)).first->second;
-        lookup.Registry.RegisterBuiltinTypes();
 
-        Parser parser(lexer.GetTokens());
-        lookup.Node = parser.GetResult();
-        
-
-       /*  for(const auto& node : lookup.Node->GetChildren())
-        {
-            if(node->GetType() == ASTNodeType::Import)
-            {
-                std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
-                std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
-                
-                if(!std::filesystem::exists(fullQualifiedPath))
-                {
-                    std::filesystem::path stdLib = m_Config.StandardLibrary / importNode->GetFilePath();
-                    CLEAR_VERIFY(std::filesystem::exists(stdLib), "file ", path, " doesn't exist");
-
-                    if(m_LookupTable.contains(stdLib)) 
-                        return;
-
-                    LoadSourceFile(stdLib);
-                }
-            }
-        } */
+        Parser parser(lexer.GetTokens(), m_MainModule->GetContext());
+        m_MainModule->PushNode(parser.GetResult());
     }
 
     void CompilationManager::PropagateSymbolTables()
     {
-        for(auto& [filepath, ast] : m_LookupTable)
+        for(auto& [filepath, mod] : m_Modules)
         {
-            ast.Node->PropagateSymbolTableToChildren();
+            mod->PropagateSymbolTables();
         }
+
+        m_MainModule->PropagateSymbolTables();
     }
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
-        for(auto& [filepath, ast] : m_LookupTable)
+        m_MainModule->Codegen(m_Config);
+
+        /* for(auto& [filepath, mod] : m_Modules)
         {
             CodegenModule(filepath);
-        }
+        } */
 
         //m_MainModule->print(llvm::errs(), nullptr);
-        CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule, &llvm::errs()), "module verification failed");
+        CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()), "module verification failed");
 
         if(m_Config.EmitIntermiediateIR)
         {
@@ -102,10 +80,10 @@ namespace clear
             std::error_code EC;
             llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
             
-            m_MainModule->print(file, nullptr, true, true);
+            m_MainModule->GetModule()->print(file, nullptr, true, true);
         }   
 
-        BuildModule(m_MainModule.get(), m_Config.OutputPath / m_Config.OutputFilename);
+        BuildModule(m_MainModule->GetModule(), m_Config.OutputPath / m_Config.OutputFilename);
         OptimizeModule();
     }
 
@@ -129,7 +107,7 @@ namespace clear
             std::error_code EC;
             llvm::raw_fd_ostream file(filepath.string(), EC, llvm::sys::fs::OF_None);
 
-            m_MainModule->print(file, nullptr);
+            m_MainModule->GetModule()->print(file, nullptr);
             std::filesystem::remove(objectPath);
         }
         else if (m_Config.OutputFormat == BuildConfig::OutputFormatType::ObjectFile)
@@ -323,7 +301,7 @@ namespace clear
         }
 
 
-        modulePM.run(*m_MainModule, moduleAM);
+        modulePM.run(*m_MainModule->GetModule(), moduleAM);
     }
 
     void CompilationManager::CodegenModule(const std::filesystem::path& path)
@@ -349,25 +327,6 @@ namespace clear
         }
 
         CLEAR_VERIFY(std::filesystem::exists(path), "file ", path, " doesn't exist");
-        CLEAR_VERIFY(m_LookupTable.contains(path),  "file ", path, " not loaded");
-
-
-        auto& [rootNode, reg] = m_LookupTable.at(path);
-
-       /*  for(const auto& node : rootNode->GetChildren())
-        {
-            if(node->GetType() == ASTNodeType::Import)
-            {
-                std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
-                std::filesystem::path fullQualifiedPath = path.parent_path() / importNode->GetFilePath();
-                CodegenModule(fullQualifiedPath);
-            }
-        } */
-
-        CodegenContext context(m_LookupTable, path.parent_path(), *m_Context, *m_Builder, *m_MainModule, reg);
-        context.StdLibraryDirectory = m_Config.StandardLibrary;
-
-        rootNode->Codegen(context); 
-        m_GeneratedModules.insert(path);
+        CLEAR_VERIFY(m_Modules.contains(path),  "file ", path, " not loaded");
     }
 }

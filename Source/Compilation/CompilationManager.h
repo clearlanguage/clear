@@ -2,6 +2,8 @@
 
 #include "Parsing/Parser.h"
 #include "BuildConfig.h"
+#include "Module.h"
+
 
 #include <unordered_map>
 #include <unordered_set>
@@ -32,12 +34,10 @@ namespace clear
         void CodegenModule(const std::filesystem::path& path);
 
     private:
-        LookupAstTable m_LookupTable;
         BuildConfig m_Config;
-        std::shared_ptr<llvm::LLVMContext> m_Context;
-        std::shared_ptr<llvm::IRBuilder<>> m_Builder;
-        std::unique_ptr<llvm::Module> m_MainModule;
+        std::shared_ptr<Module> m_MainModule;
 
         std::unordered_set<std::filesystem::path> m_GeneratedModules;
+        std::unordered_map<std::filesystem::path, std::shared_ptr<Module>> m_Modules;
     };
 }
