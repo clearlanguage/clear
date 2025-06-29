@@ -1,7 +1,7 @@
 #include "DiagnosticsBuilder.h"
 
 #include "Core/Log.h"
-
+#include <sstream>
 #include <fstream>
 
 namespace clear 
