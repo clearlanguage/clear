@@ -35,16 +35,16 @@ namespace clear
         }
 
         while(m_Indents-- != 0) 
-            emplace_back(TokenType::EndScope, "EndScope");
+            EmplaceBack(TokenType::EndScope, "EndScope");
 
-        emplace_back(TokenType::EndOfFile, "EOF");
+        EmplaceBack(TokenType::EndOfFile, "EOF");
     }
 
     void Lexer::Eat()
     {
         if(Prev() == "\n")
         {
-            emplace_back(TokenType::EndLine, " ");
+            EmplaceBack(TokenType::EndLine, " ");
         }
 
         if(Prev() == "\n" && !IsLineOnlyWhitespace()) 
@@ -157,11 +157,11 @@ namespace clear
 
         if(g_Keywords.contains(word)) 
         {
-            emplace_back(TokenType::Keyword, word);
+            EmplaceBack(TokenType::Keyword, word);
         }
         else 
         {
-            emplace_back(TokenType::Identifier, word);
+            EmplaceBack(TokenType::Identifier, word);
         }
     }
 
@@ -196,7 +196,7 @@ namespace clear
             
             CLEAR_VERIFY(!operator_.empty(), "not a valid operator ", word);
 
-            emplace_back(g_OperatorMappings.at(operator_), operator_);
+            EmplaceBack(g_OperatorMappings.at(operator_), operator_);
             i += operator_.size();
         }
     }
@@ -210,7 +210,7 @@ namespace clear
 
         if(g_PunctuatorMappings.contains(word))
         {
-            emplace_back(g_PunctuatorMappings.at(word), word);
+            EmplaceBack(g_PunctuatorMappings.at(word), word);
         }
         else 
         {
@@ -269,7 +269,7 @@ namespace clear
             return;
         }
 
-        emplace_back(TokenType::String, lexedString);
+        EmplaceBack(TokenType::String, lexedString);
     }
 
     void Lexer::EatNumber()
@@ -288,20 +288,22 @@ namespace clear
             return;
         }
 
-        auto ShouldContinue = [&]()
+        auto ShouldContinue = [&]() 
         {
-            return m_Position < m_Contents.size() && 
-                   !std::isspace(m_Contents[m_Position]) && 
-                   (std::isdigit(m_Contents[m_Position]) || 
-                    m_Contents[m_Position] == '.'
-                    );
+            return m_Position < m_Contents.size() &&
+                   (std::isdigit(m_Contents[m_Position]) ||
+                    m_Contents[m_Position] == '.' ||
+                    m_Contents[m_Position] == 'e' ||
+                    m_Contents[m_Position] == 'E' ||
+                    m_Contents[m_Position] == '+' ||
+                    m_Contents[m_Position] == '-');
         };
 
-    
         std::string word = GetWord(ShouldContinue);
-        auto [mantissa, isNumber] = GetNumber(word);
 
-        if(!isNumber)
+        auto [value, isNumber] = GetNumber(word);
+
+        if (!isNumber) 
         {
             Report(word, DiagnosticCode_InvalidNumberLiteral, Severity::High);
             AbortCurrent();
@@ -309,46 +311,12 @@ namespace clear
             return;
         }
 
-        int64_t exponent = 0;
-    
-        if(Peak() == "E" || Peak() == "e")
-        {
-            Increment();
-            
-            if(Peak() == "+")
-            {
-                Increment();
-            }
-
-            bool isNegative = false;
-
-            if(Peak() == "-")
-            {
-                isNegative = true;
-                Increment();
-            }
-
-            auto ShouldContnueExp = [&]()
-            {
-                return m_Position < m_Contents.size() && 
-                       std::isdigit(m_Contents[m_Position]);
-            }; 
-
-            word = GetWord(ShouldContnueExp);
-            auto [expCopy, isNumber] = GetNumber(word);
-
-            exponent = expCopy;
-
-            if(isNegative) 
-                exponent *= -1;
-        }
-
         std::ostringstream oss;
-        oss << std::setprecision(17) << (mantissa * std::pow(10, exponent));
-        
-        emplace_back(TokenType::Number, oss.str());
-    }
+        oss << std::setprecision(17) << value;
 
+        EmplaceBack(TokenType::Number, oss.str());
+    }
+        
     void Lexer::FlushScopes()
     {
         size_t tabWidth = 4;
@@ -378,7 +346,7 @@ namespace clear
 
         while (m_Indents > localIndents)
 		{
-            emplace_back(TokenType::EndScope, "");
+            EmplaceBack(TokenType::EndScope, "");
 			m_Indents--;
 		}
         
@@ -419,7 +387,7 @@ namespace clear
             num += digit * std::pow(16, k++);
         }
 
-        emplace_back(TokenType::Number, std::to_string(num));
+        EmplaceBack(TokenType::Number, std::to_string(num));
     }
 
     void Lexer::EatBin()
@@ -442,7 +410,7 @@ namespace clear
             num += digit * std::pow(2, k++);
         }
 
-        emplace_back(TokenType::Number, std::to_string(num));
+        EmplaceBack(TokenType::Number, std::to_string(num));
     }
 
     void Lexer::EatChar()
@@ -495,13 +463,15 @@ namespace clear
 
         if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
         {
-            Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
+            Report(m_Tokens.back(), DiagnosticCode_InvalidCharLiteral, Severity::High);
+            AbortCurrent();
+
             return;
         }
 
         Increment();
 
-        emplace_back(TokenType::Char, std::string(1, value));
+        EmplaceBack(TokenType::Char, std::string(1, value));
     }
 
     bool Lexer::IsLineOnlyWhitespace()
@@ -560,8 +530,6 @@ namespace clear
         if(m_Position == m_Contents.size())
             return;
         
-        m_Position++;
-
         if(m_Contents[m_Position] == '\n')
         {
             m_LineNumber++;
@@ -571,6 +539,8 @@ namespace clear
         {
             m_ColumnNumber++;
         }
+
+        m_Position++;
     }
 
     void Lexer::Increment(size_t n)
@@ -600,11 +570,11 @@ namespace clear
     {
         while(m_Position < m_Contents.size() && m_Contents[m_Position] != '\n')
         {
-            m_Position++;
+            Increment();
         }
     }
 
-    void Lexer::emplace_back(TokenType type, const std::string& data)
+    void Lexer::EmplaceBack(TokenType type, const std::string& data)
     {
         m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
     }

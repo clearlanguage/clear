@@ -69,6 +69,7 @@ namespace std
             {
                 codeSnippet.append(prefix);
                 codeSnippet.append(std::to_string(lineNum));
+                codeSnippet.append("\t");
                 codeSnippet.append(code);
                 codeSnippet.push_back('\n');
             };
@@ -85,19 +86,21 @@ namespace std
             {
                 appendLine("|  ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex]);
             }
-            
+
             std::string_view codeSnippetView(codeSnippet.data(), codeSnippet.size());
             const auto& severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
             const auto& stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
             int codeInt             = (int)error.Code; 
             std::string filePath    = error.File.string();
 
+            size_t lineNum = error.Line + 1;
+
             std::string formatString = std::vformat(
                 "File: {}; Line: {}; Column: {}; Stage: {}; Error Code: {};\n"
                 "{}\n"
                 "{}\n"
                 "{}\n",
-                std::make_format_args(filePath, error.Line, error.Column,
+                std::make_format_args(filePath, lineNum, error.Column,
                     stageStr,
                     codeInt,
                     codeSnippetView, 

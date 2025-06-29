@@ -30,6 +30,10 @@ Advice  = "The file ended prematurely. Check for unclosed brackets, comments, or
 Message = "Invalid numeric literal."
 Advice  = "‘{}’ is not a valid number. Ensure correct syntax for integers and decimals."
 
+[InvalidCharLiteral]
+Message = "Invalid character literal."
+Advice  = "A character literal starting at ‘{}’ is not valid. Ensure only one character long."
+
 [RedefinedIdentifier]
 Message = "Redefinition of identifier."
 Advice  = "‘{}’ was already defined in this scope. Rename or remove the duplicate declaration."
