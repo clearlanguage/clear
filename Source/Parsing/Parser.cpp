@@ -176,6 +176,7 @@ namespace clear
             {"class",     [this]() { ParseClass(); }},
             {"enum",      [this]() { ParseEnum(); }},
             {"trait",     [this]() { ParseTrait(); }},
+            {"block",     [this]() { ParseBlock(); }}
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -836,6 +837,24 @@ namespace clear
         m_RootStack.pop_back();
 
         Root()->Push(defer);
+    }
+
+    void Parser::ParseBlock()
+    {
+        Expect("block");
+        Consume();
+
+        Expect(TokenType::Colon);
+        Consume();
+
+        Expect(TokenType::EndLine);
+        Consume();
+
+        auto block = std::make_shared<ASTNodeBase>();
+        block->CreateSymbolTable();
+
+        Root()->Push(block);
+        m_RootStack.push_back(block);
     }
 
     void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)

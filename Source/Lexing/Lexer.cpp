@@ -103,7 +103,8 @@ namespace clear
         }
         else 
         {
-            CLEAR_UNREACHABLE("unexpected token ", m_Contents[m_Position]);
+            Report(m_Contents[m_Position], DiagnosticCode_UnexpectedToken, Severity::High);
+            AbortCurrent();
         }
     }
 
@@ -188,14 +189,12 @@ namespace clear
 
             if(operator_.empty())
             {
-                Report(operator_, DiagnosticCode_InvalidOperator, Severity::High);
+                Report(word, DiagnosticCode_InvalidOperator, Severity::High);
                 AbortCurrent();
 
                 return;
             }
             
-            CLEAR_VERIFY(!operator_.empty(), "not a valid operator ", word);
-
             EmplaceBack(g_OperatorMappings.at(operator_), operator_);
             i += operator_.size();
         }
@@ -470,7 +469,6 @@ namespace clear
         }
 
         Increment();
-
         EmplaceBack(TokenType::Char, std::string(1, value));
     }
 

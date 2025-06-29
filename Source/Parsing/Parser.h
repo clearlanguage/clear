@@ -61,6 +61,7 @@ namespace clear
         void ParseTrait();
         void ParseEnum();
         void ParseDefer();
+        void ParseBlock();
 
         std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
         std::shared_ptr<ASTNodeBase> ParseOperand();

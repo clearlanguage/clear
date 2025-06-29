@@ -18,7 +18,7 @@ using namespace clear;
 
 int main(int argc, char* argv[])
 {
-    if (true) {
+    if (false) {
         std::filesystem::path current = __FILE__;
         std::filesystem::current_path(current.parent_path());
 

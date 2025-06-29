@@ -17,6 +17,7 @@ namespace clear
 		DiagnosticCode_TypeMismatch,
 		DiagnosticCode_InvalidEscapeSequence,
 		DiagnosticCode_UnmatchedBracket,
+		DiagnosticCode_UnexpectedToken,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -34,6 +35,7 @@ namespace clear
 		"Type mismatch in assignment or operation.",
 		"Invalid escape sequence in string literal.",
 		"Unmatched closing or opening bracket.",
+		"Unexpected token encountered.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -50,5 +52,6 @@ namespace clear
 		"Cannot assign or operate on incompatible types like ‘{}’. Check for implicit casts or incorrect types.",
 		"‘{}’ is not a recognized escape sequence. Use sequences like \n, \t, \".",
 		"There is an unmatched ‘{}’. Check your use of (), {}, and [].",
+		"The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed.",
 	};
 }
