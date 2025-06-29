@@ -20,7 +20,7 @@ Advice  = "Make sure every ‘/*’ has a matching ‘*/’. Comment started nea
 
 [UnterminatedString]
 Message = "Unterminated string literal."
-Advice  = "A string literal starting at {} was not closed. Ensure all strings end with a quote."
+Advice  = "A string literal starting at ‘{}’ was not closed. Ensure all strings end with a quote."
 
 [UnexpectedEOF]
 Message = "Unexpected end of file."

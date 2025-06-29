@@ -39,7 +39,7 @@ namespace clear
 		"Ensure the denominator is not zero before performing division.",
 		"‘{}’ is not a valid operator in this context. Check the operator or operand types.",
 		"Make sure every ‘/*’ has a matching ‘*/’. Comment started near {}.",
-		"A string literal starting at {} was not closed. Ensure all strings end with a quote.",
+		"A string literal starting at ‘{}’ was not closed. Ensure all strings end with a quote.",
 		"The file ended prematurely. Check for unclosed brackets, comments, or incomplete statements.",
 		"‘{}’ is not a valid number. Ensure correct syntax for integers and decimals.",
 		"‘{}’ was already defined in this scope. Rename or remove the duplicate declaration.",

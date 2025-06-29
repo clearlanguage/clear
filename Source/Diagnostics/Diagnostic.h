@@ -59,14 +59,33 @@ namespace std
     {
         auto format(const clear::Diagnostic& error, format_context& ctx) const 
         { 
-            llvm::SmallString<256> codeSnippet;
+           llvm::SmallString<256> codeSnippet;
 
-            for (auto line : error.CodeSnippet)
+            size_t snippetStartLine = error.Line - clear::g_SnippetHeight / 2;
+            size_t snippetLineNumber = snippetStartLine;
+            size_t snippetIndex = 0;
+
+            auto appendLine = [&](const std::string& prefix, size_t lineNum, llvm::StringRef code) 
             {
-                codeSnippet.append(line);
+                codeSnippet.append(prefix);
+                codeSnippet.append(std::to_string(lineNum));
+                codeSnippet.append(code);
                 codeSnippet.push_back('\n');
+            };
+
+            for (; snippetLineNumber < error.Line; ++snippetLineNumber) 
+            {
+                appendLine("|  ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex++]);
             }
 
+            appendLine("|> ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex++]);
+            ++snippetLineNumber;
+
+            for (; snippetIndex < error.CodeSnippet.size(); ++snippetIndex, ++snippetLineNumber) 
+            {
+                appendLine("|  ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex]);
+            }
+            
             std::string_view codeSnippetView(codeSnippet.data(), codeSnippet.size());
             const auto& severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
             const auto& stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
