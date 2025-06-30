@@ -12,6 +12,29 @@
 
 namespace clear 
 {
+
+    #define EXPECT_TOKEN(type, code)                           \
+    if (!Match(type)) {                                              \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
+    SkipUntil(TokenType::EndLine);  \
+    return;                                                      \
+    }
+
+    #define EXPECT_DATA(str, code)                             \
+    if (!Match(str)) {                                               \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
+    SkipUntil(TokenType::EndLine);  \
+    return;                                                      \
+    }
+
+    #define VERIFY_OR_RAISE(cond, code)                             \
+    if (!cond) {                                               \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
+    SkipUntil(TokenType::EndLine);  \
+    return;                                                      \
+    }
+
+
     Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> rootModule,DiagnosticsBuilder& builder)
         : m_Tokens(tokens), m_Context(context), m_DiagnosticsBuilder(builder)
     {
@@ -136,6 +159,7 @@ namespace clear
         if(Match(data)) return;
 
         m_DiagnosticsBuilder.Report(Stage::Parsing,severity,Peak(),code);
+
     }
 
     void Parser::Expect(TokenType tokenType)
@@ -302,15 +326,15 @@ namespace clear
 
     void Parser::ParseTrait()
     { 
-        Expect("trait",Severity::High,DiagnosticCode::DiagnosticCode_None);
+        EXPECT_DATA("trait",DiagnosticCode_None);
         Consume();
 
         std::string traitName = Consume().GetData();
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
 
-        Expect(TokenType::EndLine);
+        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
     
         std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
@@ -341,16 +365,16 @@ namespace clear
 
     void Parser::ParseLetDecleration()
     {
-        Expect("let");
+        EXPECT_DATA("let",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
 
         while(Match(TokenType::Identifier))
         {
             std::string variableName = Consume().GetData();
 
-            Expect(TokenType::Equals);
+            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment);
             Consume();
 
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
@@ -361,14 +385,14 @@ namespace clear
             if(Match(TokenType::Comma))
             {
                 Consume();
-                Expect(TokenType::Identifier);
+                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
             }
         }
      }
 
     void Parser::ParseConstDecleration()
     {       
-        Expect("const");
+        EXPECT_DATA("const",DiagnosticCode_None);
         Consume();
 
         if(!Match(TokenType::Identifier))
@@ -383,7 +407,7 @@ namespace clear
         {
             std::string variableName = Consume().GetData();
         
-            Expect(TokenType::Equals);
+            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment);
             Consume();
         
             auto inferredType = std::make_shared<ASTInferredDecleration>(variableName, true);
@@ -394,23 +418,24 @@ namespace clear
             if(Match(TokenType::Comma))
             {
                 Consume();
-                Expect(TokenType::Identifier);
+                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
             }
         }
     }
 
     void Parser::ParseStruct()
     {
-        Expect("struct");
+        EXPECT_DATA("struct",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string structName = Consume().GetData();
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
 
-        Expect(TokenType::EndLine);
+        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
 
         auto struct_ = std::make_shared<ASTStruct>(structName);
@@ -436,7 +461,7 @@ namespace clear
 
         auto ConstructType = [&](const std::shared_ptr<ASTNodeBase>& type)
         {   
-            Expect(TokenType::Identifier);
+            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
             std::string memberName = Consume().GetData();
 
             auto member = std::make_shared<ASTTypeSpecifier>(memberName);
@@ -504,7 +529,7 @@ namespace clear
 
     void Parser::ParseReturn()
     {
-        Expect("return");
+        EXPECT_DATA("return",DiagnosticCode_None);
         Consume();
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
@@ -515,7 +540,7 @@ namespace clear
 
     void Parser::ParseIf()
     {
-        Expect("if");
+        EXPECT_DATA("if",DiagnosticCode_None);
         Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
@@ -528,18 +553,18 @@ namespace clear
         Root()->Push(ifExpr);
         m_RootStack.push_back(base); 
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
     void Parser::ParseElse()
     {
-        Expect("else");
+        EXPECT_DATA("else",DiagnosticCode_None);
         Consume();
 
         auto& last = Root()->GetChildren().back();
         std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        CLEAR_VERIFY(ifExpr, "invalid node");
+        VERIFY_OR_RAISE(ifExpr, DiagnosticCode_ElseNotInIfBlock);
         
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         base->CreateSymbolTable(m_Context);
@@ -547,13 +572,13 @@ namespace clear
             
         m_RootStack.push_back(base); 
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
     void Parser::ParseWhile()
     {
-        Expect("while");
+        EXPECT_DATA("while",DiagnosticCode_None);
         Consume();
 
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
@@ -567,24 +592,24 @@ namespace clear
         Root()->Push(whileExp);
         m_RootStack.push_back(base);
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
     void Parser::ParseFor()
     {
-        Expect("for");
+        EXPECT_DATA("for",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string name = Consume().GetData();
 
-        Expect("in");
+        EXPECT_DATA("in",DiagnosticCode_InvalidForLoop);
         Consume();
 
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         auto var = std::make_shared<ASTVariable>(Consume().GetData());
 
         auto forLoop = std::make_shared<ASTForExpression>(name);
@@ -599,18 +624,18 @@ namespace clear
 
         m_RootStack.push_back(body);
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
     void Parser::ParseElseIf()
     {
-        Expect("elseif");
+        EXPECT_DATA("elseif",DiagnosticCode_None);
         Consume();
 
         auto& last = Root()->GetChildren().back();
         std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        CLEAR_VERIFY(ifExpr, "invalid node");
+        VERIFY_OR_RAISE(ifExpr, DiagnosticCode_ElseNotInIfBlock);
 
         ifExpr->Push(ParseExpression());
 
@@ -621,16 +646,16 @@ namespace clear
 
         m_RootStack.push_back(base); 
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
     }
 
     void Parser::ParseFunctionDefinition(const std::string& className,  bool descriptionOnly)
     {
-        Expect("function");
+        EXPECT_DATA("function",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string name = Consume().GetData();
 
         if(!className.empty())

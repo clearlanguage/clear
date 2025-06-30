@@ -18,6 +18,12 @@ namespace clear
 		DiagnosticCode_InvalidEscapeSequence,
 		DiagnosticCode_UnmatchedBracket,
 		DiagnosticCode_UnexpectedToken,
+		DiagnosticCode_ExpectedIndentation,
+		DiagnosticCode_ExpectedNewlineAferIndentation,
+		DiagnosticCode_ExpectedIdentifier,
+		DiagnosticCode_ExpectedAssignment,
+		DiagnosticCode_ElseNotInIfBlock,
+		DiagnosticCode_InvalidForLoop,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -36,6 +42,12 @@ namespace clear
 		"Invalid escape sequence in string literal.",
 		"Unmatched closing or opening bracket.",
 		"Unexpected token encountered.",
+		"Expected indentation missing :",
+		"Expected new line after :",
+		"Expected identifier",
+		"Expected assigmnet after identifier",
+		"Unexpected else",
+		"For loop missing required in",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -53,5 +65,11 @@ namespace clear
 		"‘{}’ is not a recognized escape sequence. Use sequences like \n, \t, \".",
 		"There is an unmatched ‘{}’. Check your use of (), {}, and [].",
 		"The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed.",
+		"Add : after {}",
+		"Add the code into the block after : do not leave it empty",
+		"Add the required indentifer after {}",
+		"Add = and complete the statment",
+		"Make sure else is used in a valid if statment",
+		"Add in to complete for expression",
 	};
 }

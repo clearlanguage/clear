@@ -27,6 +27,7 @@ namespace clear
     private:
         void LoadDirectory(const std::filesystem::path& path);
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
+        void CheckErrors();
 
         void LinkToExecutableOrDynamic();
         void LinkToStaticLibrary();

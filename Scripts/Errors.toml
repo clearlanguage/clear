@@ -61,3 +61,27 @@ Advice  = "The parser encountered a token it didn't expect. Ensure your syntax f
 [ExpectedIndentation]
 Message = "Expected indentation missing :"
 Advice = "Add : after {}"
+
+[ExpectedNewlineAferIndentation]
+Message = "Expected new line after :"
+Advice = "Add the code into the block after : do not leave it empty"
+
+[ExpectedIdentifier]
+Message = "Expected identifier"
+Advice = "Add the required indentifer after {}"
+
+[ExpectedAssignment]
+Message = "Expected assigmnet after identifier"
+Advice = "Add = and complete the statment"
+
+[ElseNotInIfBlock]
+Message = "Unexpected else"
+Advice = "Make sure else is used in a valid if statment"
+
+[InvalidForLoop]
+Message = "For loop missing required in"
+Advice = "Add in to complete for expression"
+
+[ExpectedParanFunctionDefinition]
+Message = "Expected ( after function name"
+Advice = "Add ( after function name"
