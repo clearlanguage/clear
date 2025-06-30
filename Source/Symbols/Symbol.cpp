@@ -1,5 +1,9 @@
 #include "Symbol.h"
 
+#include "Module.h"
+#include "Type.h"
+#include "FunctionCache.h"
+
 namespace clear 
 {
     Symbol Symbol::CreateType(std::shared_ptr<Type> type)
@@ -36,6 +40,14 @@ namespace clear
         };
     }
 
+    Symbol Symbol::CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type)
+    {
+        Symbol symbol = CreateValue(value, type);
+        symbol.Metadata = name;
+
+        return symbol;
+    }
+
     Symbol Symbol::CreateFunction(FunctionInstance* instance)
     {
         FunctionSymbol symbol = { instance };
@@ -59,19 +71,27 @@ namespace clear
         };
     }
 
-    std::shared_ptr<Type> Symbol::GetType()
+    Symbol Symbol::CreateIdentifier(StringRef identifierName)
+    {
+        return Symbol {
+            .Kind = SymbolKind::Identifier,
+            .Data = String(identifierName)
+        };
+    }
+
+    std::shared_ptr<Type> Symbol::GetType() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Type, "cannot call Symbol::GetType() when kind is not Type");
         return std::get<TypeSymbol>(Data).Type_;
     }
 
-    std::shared_ptr<Module> Symbol::GetModule()
+    std::shared_ptr<Module> Symbol::GetModule() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Module, "cannot call Symbol::GetModule() when kind is not Module");
         return std::get<ModuleSymbol>(Data).Module_;
     }
 
-    std::pair<llvm::Value*, std::shared_ptr<Type>> Symbol::GetValue()
+    std::pair<llvm::Value*, std::shared_ptr<Type>> Symbol::GetValue() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");
         auto& value = std::get<ValueSymbol>(Data);
@@ -79,13 +99,13 @@ namespace clear
         return std::make_pair(value.Values[0], value.Types[0]);
     }
 
-    FunctionInstance* Symbol::GetFunction()
+    FunctionInstance* Symbol::GetFunction() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
         return std::get<FunctionSymbol>(Data).Instance;
     }
 
-    ValueSymbol& Symbol::GetValueTuple()
+    const ValueSymbol& Symbol::GetValueTuple() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValueTuple() when kind is not Value");
         return std::get<ValueSymbol>(Data);;
