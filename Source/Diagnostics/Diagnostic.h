@@ -41,6 +41,8 @@ namespace clear
 
         size_t Line = 0;
         size_t Column = 0;
+
+        size_t ArrowsWidth = 1;
     };
 
     inline std::string_view g_SeverityStrings[(size_t)Severity::Count] = {
@@ -82,6 +84,10 @@ namespace std
             }
 
             appendLine("|> ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex++]);
+            codeSnippet.append("|");
+            codeSnippet.append(std::string(error.Column+7 , ' '));
+            codeSnippet.append(std::string(error.ArrowsWidth,'^'));
+            codeSnippet.append("\n");
             ++snippetLineNumber;
 
             for (; snippetIndex < error.CodeSnippet.size(); ++snippetIndex, ++snippetLineNumber) 

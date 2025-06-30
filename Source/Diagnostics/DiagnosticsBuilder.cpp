@@ -27,6 +27,7 @@ namespace clear
         diag.Advice       = std::vformat(g_DiagnosticAdvices[code],  std::make_format_args(token.GetData()));
         diag.Line         = token.GetLineNumber();
         diag.Column       = token.GetColumnNumber();
+        diag.ArrowsWidth  = token.GetData().length();
 
         if (severity == Severity::High)
         {
