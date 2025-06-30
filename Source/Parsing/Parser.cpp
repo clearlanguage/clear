@@ -941,10 +941,10 @@ namespace clear
         EXPECT_DATA(declareKeyword,DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string functionName = Consume().GetData();
 
-        Expect(TokenType::LeftParen);
+        EXPECT_TOKEN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition);
         Consume();
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
@@ -956,7 +956,7 @@ namespace clear
             if(Match(TokenType::Ellipses))
             {
                 Consume();
-                Expect(TokenType::RightParen);
+                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
 
                 auto param = std::make_shared<ASTTypeSpecifier>("");
                 param->IsVariadic = true;
@@ -983,8 +983,8 @@ namespace clear
             decleration->Push(param);
         }
 
-        Expect(TokenType::RightParen);
-        CLEAR_VERIFY(m_Position == terminationIndex, "invalid function decleration");
+        EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
+        VERIFY_OR_RAISE(m_Position == terminationIndex, DiagnosticCode_None);
 
         Consume();
 
@@ -1476,13 +1476,13 @@ namespace clear
 
     void Parser::ParseClass()
     {
-        Expect("class");
+        EXPECT_DATA("class",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string className = Consume().GetData();
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
@@ -1530,7 +1530,7 @@ namespace clear
             {
                 auto type = ParseTypeResolver();
 
-                Expect(TokenType::Identifier);
+                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
 
                 auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
                 typeSpec->Push(type);
@@ -1550,7 +1550,7 @@ namespace clear
                 if(Match(TokenType::Comma))
                     Consume();
 
-                Expect(TokenType::EndLine);
+                EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
                 Consume();
                 continue;
             }           
