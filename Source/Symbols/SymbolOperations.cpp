@@ -1,6 +1,7 @@
 #include "SymbolOperations.h"
 
 #include "Type.h"
+#include "Core/Log.h"
 
 namespace clear 
 {

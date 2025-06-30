@@ -4,6 +4,7 @@
 #include "Type.h"
 #include "FunctionCache.h"
 
+
 namespace clear 
 {
     Symbol Symbol::CreateType(std::shared_ptr<Type> type)
