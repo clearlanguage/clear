@@ -28,6 +28,11 @@ namespace clear
         diag.Line         = token.GetLineNumber();
         diag.Column       = token.GetColumnNumber();
 
+        if (severity == Severity::High)
+        {
+            m_IsFatal = true;
+        }
+
         m_ReportedErrors.push_back(diag);
     }
 
@@ -49,6 +54,11 @@ namespace clear
 
         return stream.str();
     }
+
+    bool DiagnosticsBuilder::IsFatal() {
+        return m_IsFatal;
+    }
+
 
     llvm::SmallVector<llvm::StringRef, g_SnippetHeight> DiagnosticsBuilder::CreateCodeSnippet(llvm::StringRef file, size_t line)
     {        

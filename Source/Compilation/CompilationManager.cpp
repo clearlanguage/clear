@@ -21,6 +21,11 @@ namespace clear
         {
             LoadSourceFile(filename);
         }
+
+        if (m_DiagnosticsBuilder.IsFatal()) {
+            m_DiagnosticsBuilder.Dump();
+            throw std::exception();
+        }
     }
 
     void CompilationManager::LoadSourceFile(const std::filesystem::path& path)
@@ -36,7 +41,7 @@ namespace clear
         }
         
 
-        Lexer lexer(path);
+        Lexer lexer(path,m_DiagnosticsBuilder);
 
         CLEAR_LOG_INFO("Tokens For ", path);
 

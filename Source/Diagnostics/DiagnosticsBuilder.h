@@ -28,6 +28,7 @@ namespace clear
 
 
         void Dump(std::FILE* output = stdout);
+        bool IsFatal();
                     
     private:
         std::string LoadFile(const std::filesystem::path& path);
@@ -37,5 +38,6 @@ namespace clear
     private:
         std::unordered_map<std::filesystem::path, FileReference> m_LoadedFiles;
         std::vector<Diagnostic> m_ReportedErrors;
+        bool m_IsFatal = false;
     };
 }

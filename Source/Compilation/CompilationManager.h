@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
+#include "Diagnostics/DiagnosticsBuilder.h"
 
 namespace clear 
 {
@@ -39,5 +40,6 @@ namespace clear
 
         std::unordered_set<std::filesystem::path> m_GeneratedModules;
         std::unordered_map<std::filesystem::path, std::shared_ptr<Module>> m_Modules;
+        DiagnosticsBuilder m_DiagnosticsBuilder;
     };
 }
