@@ -12,8 +12,8 @@
 
 namespace clear 
 {
-    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> rootModule)
-        : m_Tokens(tokens), m_Context(context)
+    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> rootModule,DiagnosticsBuilder& builder)
+        : m_Tokens(tokens), m_Context(context), m_DiagnosticsBuilder(builder)
     {
         m_Modules.push_back(rootModule);
 
@@ -124,10 +124,24 @@ namespace clear
         return tokenSet.test((size_t)Peak().TokenType);
     } */
 
+    void Parser::Expect(TokenType tokenType,Severity severity,DiagnosticCode code)
+    {
+        if(Match(tokenType)) return;
+
+        m_DiagnosticsBuilder.Report(Stage::Parsing,severity,Peak(),code);
+    }
+
+    void Parser::Expect(const std::string& data,Severity severity,DiagnosticCode code)
+    {
+        if(Match(data)) return;
+
+        m_DiagnosticsBuilder.Report(Stage::Parsing,severity,Peak(),code);
+    }
+
     void Parser::Expect(TokenType tokenType)
     {
         if(Match(tokenType)) return;
-        
+
         //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
         CLEAR_UNREACHABLE("TODO: add errors here");
     }
@@ -288,7 +302,7 @@ namespace clear
 
     void Parser::ParseTrait()
     { 
-        Expect("trait");
+        Expect("trait",Severity::High,DiagnosticCode::DiagnosticCode_None);
         Consume();
 
         std::string traitName = Consume().GetData();

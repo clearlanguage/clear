@@ -4,7 +4,7 @@
 #include "AST/ASTNode.h"
 #include "Symbols/Type.h"
 #include "Core/Operator.h"
-
+#include "Diagnostics/DiagnosticsBuilder.h"
 #include <memory>
 #include <vector>
 #include <set>
@@ -18,7 +18,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> root);
+        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> root,DiagnosticsBuilder& builder);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -38,8 +38,12 @@ namespace clear
 
         bool MatchAny(TokenSet tokenSet);
 
+        void Expect(TokenType tokenType,Severity severity,DiagnosticCode code);
+        void Expect(const std::string& data,Severity severity,DiagnosticCode code);
+
         void Expect(TokenType tokenType);
         void Expect(const std::string& data);
+
 
         void ExpectAny(TokenSet tokenSet);
 
@@ -102,5 +106,6 @@ namespace clear
 
         std::shared_ptr<llvm::LLVMContext> m_Context;
         std::vector<std::shared_ptr<Module>> m_Modules;
+        DiagnosticsBuilder& m_DiagnosticsBuilder;
     };
 }
