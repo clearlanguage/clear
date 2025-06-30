@@ -1,6 +1,6 @@
 #include "API/LLVM/LLVMInclude.h"
 
-#include "Core/Type.h"
+#include "Symbols/Type.h"
 
 namespace clear 
 {

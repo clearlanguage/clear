@@ -22,7 +22,8 @@ namespace clear
             LoadSourceFile(filename);
         }
 
-        if (m_DiagnosticsBuilder.IsFatal()) {
+        if (m_DiagnosticsBuilder.IsFatal()) 
+        {
             m_DiagnosticsBuilder.Dump();
             throw std::exception();
         }

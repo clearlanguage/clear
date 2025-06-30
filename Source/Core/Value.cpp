@@ -2,7 +2,7 @@
 
 #include "API/LLVM/LLVMInclude.h"
 #include "Log.h"
-#include "TypeRegistry.h"
+#include "Symbols/TypeRegistry.h"
 
 namespace clear
 {

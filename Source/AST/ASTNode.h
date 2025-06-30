@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Core/Type.h"
+#include "Symbols/Type.h"
 #include "Core/Value.h"
 
 #include "Lexing/Token.h"
-#include "SymbolTable.h"
+#include "Symbols/SymbolTable.h"
 #include "Core/Log.h"
 #include "Core/Operator.h"
 
@@ -148,9 +148,10 @@ namespace clear
 		CodegenResult HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);	
 
 		CodegenResult HandleMember(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
+		CodegenResult HandleMemberEnum(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
+		CodegenResult HandleModuleAccess(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
 		std::shared_ptr<StructType> GetStruct(std::shared_ptr<Type> type);
-
 	private:
 		OperatorType m_Expression;
 	};
@@ -164,10 +165,11 @@ namespace clear
 		virtual CodegenResult Codegen(CodegenContext&) override;
 
 		const auto& GetName() const { return m_Name; }
-		const TypeDescriptor GetVariableType() const { CLEAR_UNREACHABLE("depricated"); return {}; }
+		const auto& GetResolvedType() const { return m_Type; }
 
 	private:
 		std::string m_Name;
+		std::shared_ptr<Type> m_Type;
 	};
 
 	class ASTInferredDecleration : public ASTNodeBase 
@@ -233,16 +235,11 @@ namespace clear
 
 		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
-		auto& GetUnresolvedParams() { return m_Parameters; }
-		const auto& GetUnresolvedReturnType() const { return m_ReturnType; }
-
 		const auto& GetParameters() const { return m_ResolvedParams; }
 		const auto& GetReturnType() const { return m_ResolvedReturnType; }
 
 	private:
-		std::vector<UnresolvedParameter> m_Parameters;
 		std::string m_Name;
-		TypeDescriptor m_ReturnType;
 
 		std::vector<Parameter> m_ResolvedParams;
 		std::shared_ptr<Type> m_ResolvedReturnType;

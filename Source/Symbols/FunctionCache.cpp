@@ -2,8 +2,8 @@
 
 #include "Core/Log.h"
 
-#include "ASTNode.h"
-#include "TypeCasting.h"
+#include "AST/ASTNode.h"
+#include "AST/TypeCasting.h"
 
 #include <queue>
 

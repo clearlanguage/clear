@@ -55,7 +55,8 @@ namespace clear
         return stream.str();
     }
 
-    bool DiagnosticsBuilder::IsFatal() {
+    bool DiagnosticsBuilder::IsFatal() 
+    {
         return m_IsFatal;
     }
 

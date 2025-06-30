@@ -1,9 +1,9 @@
 #pragma once 
 
-#include "TypeRegistry.h"
+#include "Symbols/TypeRegistry.h"
 #include "Lexing/Token.h"
 
-#include "AST/SymbolTable.h"
+#include "Symbols/SymbolTable.h"
 
 #include <list>
 #include <memory>

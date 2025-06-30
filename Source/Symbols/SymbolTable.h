@@ -1,7 +1,7 @@
 #pragma once
 
 #include "API/LLVM/LLVMInclude.h"
-#include "Core/Type.h"
+#include "Symbols/Type.h"
 #include "FunctionCache.h"
 
 #include <unordered_map>

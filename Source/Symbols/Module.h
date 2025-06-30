@@ -2,7 +2,7 @@
 
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
-#include "BuildConfig.h"
+#include "Compilation/BuildConfig.h"
 
 #include <unordered_map>
 

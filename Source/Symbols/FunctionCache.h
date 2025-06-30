@@ -1,7 +1,7 @@
 #pragma once 
 
 #include "API/LLVM/LLVMInclude.h"
-#include "Core/TypeRegistry.h"
+#include "Symbols/TypeRegistry.h"
 
 #include <unordered_map>
 
@@ -14,13 +14,6 @@ namespace clear
         bool IsVariadic = false;
         bool IsTrait = false;
 	};
-
-    struct UnresolvedParameter
-    {
-        std::string Name;
-		TypeDescriptor Type;
-        bool IsVariadic = false;
-    };
 
     class ASTNodeBase; 
 

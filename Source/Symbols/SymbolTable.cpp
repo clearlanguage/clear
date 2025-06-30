@@ -1,6 +1,6 @@
 #include "SymbolTable.h"
 
-#include "ASTNode.h"
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
 
 #include "Core/Utils.h"

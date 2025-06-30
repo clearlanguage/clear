@@ -1,10 +1,10 @@
 #include "Parser.h"
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
-#include "Core/TypeRegistry.h"
+#include "Symbols/TypeRegistry.h"
 #include "Core/Utils.h"
 #include "Lexing/Token.h"
-#include "Compilation/Module.h"
+#include "Symbols/Module.h"
 
 #include <stack>
 #include <print>

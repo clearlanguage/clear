@@ -2,7 +2,7 @@
 
 #include "Lexing/Lexer.h"
 #include "AST/ASTNode.h"
-#include "Core/Type.h"
+#include "Symbols/Type.h"
 #include "Core/Operator.h"
 
 #include <memory>

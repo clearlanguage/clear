@@ -4,9 +4,9 @@
 #include "Core/Log.h"
 #include "TypeCasting.h"
 
-#include "Core/TypeRegistry.h"
+#include "Symbols/TypeRegistry.h"
 #include "Intrinsics.h"
-#include "Compilation/Module.h"
+#include "Symbols/Module.h"
 
 #include <stack>
 
@@ -858,19 +858,15 @@ namespace clear
 			lhs = left->Codegen(ctx);
 		}
 
+
 		if(!lhs.CodegenValue)
 		{
-			CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid enum access");
+			auto ty = GetSymbolTable()->GetType(lhs.Data);
 
-			auto member = std::dynamic_pointer_cast<ASTMember>(right);
-			auto enumTy = dyn_cast<EnumType>(GetSymbolTable()->GetType(lhs.Data));
-			CLEAR_VERIFY(enumTy, "not a valid enum");
+			if(ty && ty->IsEnum())
+				return HandleMemberEnum(lhs, right, ctx);
 
-			CodegenResult result;
-			result.CodegenValue = ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName()));
-			result.CodegenType = GetSymbolTable()->GetType("int64");
-			
-			return result;
+			return HandleModuleAccess(lhs, right, ctx);
 		}
 
 		if(!lhs.CodegenType->IsPointer()) 
@@ -958,6 +954,24 @@ namespace clear
 		return { ctx.Builder.CreateLoad(curr->Get(), getElementPtr), curr };
     }
 
+    CodegenResult ASTBinaryExpression::HandleMemberEnum(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
+    {
+		auto member = std::dynamic_pointer_cast<ASTMember>(right);
+		auto enumTy = dyn_cast<EnumType>(GetSymbolTable()->GetType(lhs.Data));
+		CLEAR_VERIFY(enumTy, "not a valid enum");
+
+		CodegenResult result;
+		result.CodegenValue = ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName()));
+		result.CodegenType = GetSymbolTable()->GetType("int64");
+			
+		return result;
+    }
+
+    CodegenResult ASTBinaryExpression::HandleModuleAccess(CodegenResult& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
+    {
+        return CodegenResult();
+    }
+
     std::shared_ptr<StructType> ASTBinaryExpression::GetStruct(std::shared_ptr<Type> curr)
 	{
 		if(auto structTy = std::dynamic_pointer_cast<StructType>(curr))
@@ -989,6 +1003,7 @@ namespace clear
 		auto& typeResolver = GetChildren()[0];
 
 		std::shared_ptr<Type> resolvedType = typeResolver->Codegen(ctx).CodegenType;
+		m_Type = resolvedType;
 
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 
@@ -2737,7 +2752,7 @@ namespace clear
 			if(child->GetType() == ASTNodeType::VariableDecleration)
 			{
 				auto decleration = std::dynamic_pointer_cast<ASTVariableDeclaration>(child);
-				members.emplace_back(decleration->GetName(), GetSymbolTable()->GetTypeRegistry().ResolveType(decleration->GetVariableType()));
+				members.emplace_back(decleration->GetName(), decleration->GetResolvedType());
 			}
 			else if(child->GetType() == ASTNodeType::FunctionDecleration)
 			{

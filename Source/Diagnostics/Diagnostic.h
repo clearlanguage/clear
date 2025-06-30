@@ -59,7 +59,7 @@ namespace std
     {
         auto format(const clear::Diagnostic& error, format_context& ctx) const 
         { 
-           llvm::SmallString<256> codeSnippet;
+            llvm::SmallString<256> codeSnippet;
 
             size_t snippetStartLine = error.Line - clear::g_SnippetHeight / 2;
             size_t snippetLineNumber = snippetStartLine;
@@ -88,8 +88,8 @@ namespace std
             }
 
             std::string_view codeSnippetView(codeSnippet.data(), codeSnippet.size());
-            const auto& severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
-            const auto& stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
+            std::string_view severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
+            std::string_view stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
             int codeInt             = (int)error.Code; 
             std::string filePath    = error.File.string();
 

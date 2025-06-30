@@ -5,22 +5,10 @@
 #include "API/LLVM/LLVMInclude.h"
 
 #include "Lexing/Token.h"
-#include "Log.h"
+#include "Core/Log.h"
 
 namespace clear 
 {
-    struct TypeDescriptor
-    {
-        // could be int****, structName[10] etc...
-        std::vector<Token> Description;
-
-        // this is for compound types (structs/classes), that have multiple types
-        std::vector<std::pair<std::string, std::shared_ptr<TypeDescriptor>>> ChildTypes;
-
-        // function names that are defined in this type, used for class methods
-        std::vector<std::string> Functions; 
-    };
-
     class TypeRegistry 
     {
     public:
@@ -37,7 +25,6 @@ namespace clear
         std::shared_ptr<Type> GetSignedType(std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
         std::shared_ptr<Type> CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
-        std::shared_ptr<Type> ResolveType(const TypeDescriptor& descriptor);
 
         const auto& GetTypeTable() { return m_Types; }
 
@@ -51,10 +38,6 @@ namespace clear
 
     private:
         std::string GuessTypeNameFromNumber(const std::string& number);
-
-        std::shared_ptr<Type> ResolveStruct(const TypeDescriptor& descriptor);
-        std::shared_ptr<Type> ResolveClass(const TypeDescriptor& descriptor);
-
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;

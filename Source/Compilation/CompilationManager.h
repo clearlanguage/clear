@@ -2,7 +2,7 @@
 
 #include "Parsing/Parser.h"
 #include "BuildConfig.h"
-#include "Module.h"
+#include "Symbols/Module.h"
 
 
 #include <unordered_map>

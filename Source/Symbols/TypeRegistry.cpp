@@ -2,7 +2,7 @@
 
 #include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
-#include "Utils.h"
+#include "Core/Utils.h"
 
 namespace clear 
 {
@@ -162,82 +162,6 @@ namespace clear
         return structType;
     }
 
-    std::shared_ptr<Type> TypeRegistry::ResolveType(const TypeDescriptor& descriptor)
-    {
-        if(descriptor.Description.size() == 0) return nullptr;
-
-        auto Resolve = [&](const TypeDescriptor& desc) 
-        {
-            std::shared_ptr<Type> baseType;
-            size_t start = 1;
-
-            if(desc.Description[0].GetData() == "const")
-            {
-                baseType = GetConstFrom(m_Types[desc.Description[1].GetData()]);
-                start++;
-            }
-            else 
-            {
-                baseType = m_Types[desc.Description[0].GetData()];
-            }
-
-            for(size_t i = start; i < desc.Description.size(); i++)
-            {
-                Token token = desc.Description[i];
-
-                if(token.IsType(TokenType::Star))
-                {
-                    baseType = GetPointerTo(baseType); 
-                }
-                //else if (token.TokenType == TokenType::StaticArrayDef)
-                //{
-                  //  baseType = GetArrayFrom(baseType, std::stoll(token.Data));
-                //}
-                else if (token.GetData() == "const")
-                {
-                    CLEAR_VERIFY(!baseType->IsConst(), "cannot have a const of a constant!");
-                    baseType = GetConstFrom(baseType);
-                }
-                else 
-                {
-                    CLEAR_UNREACHABLE("unimplemented type ", token.GetData());
-                }
-            }
-
-            return baseType;
-        };
-
-        size_t index = 0;
-
-        if(descriptor.Description[0].GetData() == "const")
-        {
-            index++;
-            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
-        }
-
-        if(m_Types.contains(descriptor.Description[index].GetData())) // type we already have just have to retrieve
-        {
-            return Resolve(descriptor);
-        }
-
-        const auto& desc = descriptor.Description[index];
-        
-        if(desc.GetData() == "struct")
-        {
-            return ResolveStruct(descriptor);
-        }
-        else if (desc.GetData() == "class")
-        {
-            return ResolveClass(descriptor);
-        }
-        else 
-        {
-            CLEAR_UNREACHABLE("unimplemented compound type descriptor ", desc.GetData());
-        }
-    
-        return nullptr;
-    }
-
     std::string TypeRegistry::GuessTypeNameFromNumber(const std::string& number)
     {
         NumberInfo info = GetNumberInfoFromLiteral(number);
@@ -285,62 +209,5 @@ namespace clear
         
         CLEAR_LOG_ERROR("unable to guess type for ", number);
         return "";
-    }
-
-    std::shared_ptr<Type> TypeRegistry::ResolveStruct(const TypeDescriptor& descriptor)
-    {
-        size_t index = 0;
-
-        if(descriptor.Description[0].GetData() == "const")
-        {
-            index++;
-            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
-        }
-
-        std::string structName = descriptor.Description[index].GetData();
-
-        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(structName, *m_Context);
-        m_Types[structName] = structTy;
-
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-        for(auto& [typeName, subType] : descriptor.ChildTypes)
-        {
-            std::shared_ptr<Type> type = ResolveType(*subType);
-            members.push_back({typeName, type});
-        }
-
-        structTy->SetBody(members);
-        return structTy;
-    }
-
-    std::shared_ptr<Type> TypeRegistry::ResolveClass(const TypeDescriptor& descriptor)
-    {
-        size_t index = 0;
-
-        if(descriptor.Description[0].GetData() == "const")
-        {
-            index++;
-            CLEAR_VERIFY(descriptor.Description.size() >= 2, "cannot have type descriptor inferred const");
-        }
-
-        std::string className = descriptor.Description[index].GetData();
-
-        std::shared_ptr<StructType> structTy = std::make_shared<StructType>(className, *m_Context);
-        std::shared_ptr<ClassType>  classTy  = std::make_shared<ClassType>(structTy);
-
-        m_Types[className] = classTy;
-
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-        for(auto& [typeName, subType] : descriptor.ChildTypes)
-        {
-            std::shared_ptr<Type> type = ResolveType(*subType);
-            members.push_back({typeName, type});
-        }
-
-        structTy->SetBody(members);
-
-        return classTy;
     }
 }
