@@ -24,6 +24,12 @@ namespace clear
 		DiagnosticCode_ExpectedAssignment,
 		DiagnosticCode_ElseNotInIfBlock,
 		DiagnosticCode_InvalidForLoop,
+		DiagnosticCode_ExpectedLeftParanFunctionDefinition,
+		DiagnosticCode_ExpectedEndOfFunction,
+		DiagnosticCode_ExpectedCommaBetweenFunctionParams,
+		DiagnosticCode_ExpectedFunctionReturnType,
+		DiagnosticCode_ExpectedEndOfScope,
+		DiagnosticCode_ExpectedModuleName,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -48,6 +54,12 @@ namespace clear
 		"Expected assigmnet after identifier",
 		"Unexpected else",
 		"For loop missing required in",
+		"Expected ( after function name",
+		"Expected ) at the end of the function",
+		"Expected , in between function params",
+		"Missing ->",
+		"expected end of scope",
+		"Expected module name string",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -71,5 +83,11 @@ namespace clear
 		"Add = and complete the statment",
 		"Make sure else is used in a valid if statment",
 		"Add in to complete for expression",
+		"Add ( after function name",
+		"Add ) after function",
+		"Seperate function params with ,",
+		"Add -> after function defintion to signify function return type",
+		"",
+		"Add module name after module keyword surrounded in """,
 	};
 }

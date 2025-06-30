@@ -82,6 +82,29 @@ Advice = "Make sure else is used in a valid if statment"
 Message = "For loop missing required in"
 Advice = "Add in to complete for expression"
 
-[ExpectedParanFunctionDefinition]
+[ExpectedLeftParanFunctionDefinition]
 Message = "Expected ( after function name"
 Advice = "Add ( after function name"
+
+[ExpectedEndOfFunction]
+Message = "Expected ) at the end of the function"
+Advice = "Add ) after function"
+
+
+[ExpectedCommaBetweenFunctionParams]
+Message = "Expected , in between function params"
+Advice = "Seperate function params with ,"
+
+
+[ExpectedFunctionReturnType]
+Message = "Missing ->"
+Advice = "Add -> after function defintion to signify function return type"
+
+
+[ExpectedEndOfScope]
+Message  = "expected end of scope"
+Advice = ""
+
+[ExpectedModuleName]
+Message = "Expected module name string"
+Advice = "Add module name after module keyword surrounded in \"\""

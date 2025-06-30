@@ -666,7 +666,7 @@ namespace clear
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
         funcNode->CreateSymbolTable(m_Context);
 
-        Expect(TokenType::LeftParen);
+        EXPECT_TOKEN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition);
 
         Consume();
 
@@ -726,13 +726,12 @@ namespace clear
                 params.push_back(x);
                 Consume();
             
-                Expect(TokenType::RightParen);
-            
+                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
                 break;
             }
            
             auto type = ParseTypeResolver();
-            Expect(TokenType::Identifier);
+            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
             std::string name = Consume().GetData();
            
             if(Match(TokenType::Equals)) 
@@ -755,14 +754,14 @@ namespace clear
                 params.push_back(x);
 
                 Consume();
-                Expect(TokenType::RightParen);
+                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction);
 
                 break;
             }
            
             if(!Match(TokenType::RightParen))
             {
-                Expect(TokenType::Comma);
+                EXPECT_TOKEN(TokenType::Comma,DiagnosticCode_ExpectedCommaBetweenFunctionParams)
                 Consume();
             }
            
@@ -788,7 +787,7 @@ namespace clear
             return;
         }
 
-        Expect(TokenType::RightThinArrow);
+        EXPECT_TOKEN(TokenType::RightThinArrow,DiagnosticCode_ExpectedFunctionReturnType);
         Consume();
         
         returnType = ParseTypeResolver();
@@ -798,22 +797,22 @@ namespace clear
 
     void Parser::ParseEnum()
     {
-        Expect("enum");
+        EXPECT_DATA("enum",DiagnosticCode_None);
         Consume();
 
         std::string enumName = Consume().GetData();
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
 
-        Expect(TokenType::EndLine);
+        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation)
         Consume();
 
         std::vector<std::string> names;
 
         std::shared_ptr<ASTEnum> enum_ = std::make_shared<ASTEnum>(enumName);
 
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         enum_->AddEnumName(Consume().GetData());
 
         Token zero(TokenType::Number, "0");
@@ -856,7 +855,7 @@ namespace clear
                 break;
             }
 
-            Expect(TokenType::Equals);
+            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment)
             Consume();
 
             enum_->Push(ParseExpression());
@@ -871,7 +870,7 @@ namespace clear
         while(Match(TokenType::EndLine))
             Consume();
 
-        Expect(TokenType::EndScope);
+        EXPECT_TOKEN(TokenType::EndScope,DiagnosticCode_ExpectedEndOfScope)
         Consume();
 
         Root()->Push(enum_); 
@@ -879,7 +878,7 @@ namespace clear
 
     void Parser::ParseDefer()
     {
-        Expect("defer");
+        EXPECT_DATA("defer",DiagnosticCode_None);
         Consume();
 
         auto defer = std::make_shared<ASTDefer>();
@@ -893,13 +892,13 @@ namespace clear
 
     void Parser::ParseBlock()
     {
-        Expect("block");
+        EXPECT_DATA("block",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::Colon);
+        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
         Consume();
 
-        Expect(TokenType::EndLine);
+        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
 
         auto block = std::make_shared<ASTNodeBase>();
@@ -911,10 +910,10 @@ namespace clear
 
     void Parser::ParseModule()
     {
-        Expect("module");
+        EXPECT_DATA("module",DiagnosticCode_None);
         Consume();
 
-        Expect(TokenType::String);
+        EXPECT_TOKEN(TokenType::String,DiagnosticCode_ExpectedModuleName)
         std::string modules = Consume().GetData(); // TODO: indexing into modules using .
 
         auto mod = RootModule()->EmplaceOrReturn(modules);
@@ -930,7 +929,7 @@ namespace clear
 
     void Parser::ParseEndModule()
     {
-        Expect("endmodule");
+        EXPECT_DATA("endmodule",DiagnosticCode_None);
         Consume();
 
         m_Modules.pop_back();
@@ -939,7 +938,7 @@ namespace clear
 
     void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
     {
-        Expect(declareKeyword);
+        EXPECT_DATA(declareKeyword,DiagnosticCode_None);
         Consume();
 
         Expect(TokenType::Identifier);
