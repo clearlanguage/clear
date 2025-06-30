@@ -8,6 +8,8 @@
 #include "Core/Log.h"
 #include "Core/Operator.h"
 
+#include "Symbols/Symbol.h"
+
 #include <memory>
 #include <string>
 #include <filesystem>

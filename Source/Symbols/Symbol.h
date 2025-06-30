@@ -63,6 +63,6 @@ namespace clear
         std::shared_ptr<Module> GetModule();
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue();
         FunctionInstance* GetFunction();
-        ValueSymbol GetValueTuple();
+        ValueSymbol& GetValueTuple();
     };
 }

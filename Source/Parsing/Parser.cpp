@@ -234,7 +234,6 @@ namespace clear
         bool isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
 
         // parse either expression or declerations, allowing for multiple on the same line seperated by commas
-
         if(!isDecleration)
         {
             while(!(Match(TokenType::EndLine) || Match(TokenType::EndScope) || Match(TokenType::EndOfFile)))

@@ -78,4 +78,16 @@ namespace clear
 
         return std::make_pair(value.Values[0], value.Types[0]);
     }
+
+    FunctionInstance* Symbol::GetFunction()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
+        return std::get<FunctionSymbol>(Data).Instance;
+    }
+
+    ValueSymbol& Symbol::GetValueTuple()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValueTuple() when kind is not Value");
+        return std::get<ValueSymbol>(Data);;
+    }
 }
