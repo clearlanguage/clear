@@ -6,6 +6,7 @@
 #include <string_view>
 #include <filesystem>
 #include <format>
+#include <algorithm>
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -61,7 +62,8 @@ namespace std
         { 
             llvm::SmallString<256> codeSnippet;
 
-            size_t snippetStartLine = error.Line - clear::g_SnippetHeight / 2;
+            int64_t snippetStartLineCalc = (int64_t)error.Line - clear::g_SnippetHeight / 2;
+            size_t snippetStartLine = std::max(snippetStartLineCalc, (int64_t)0);
             size_t snippetLineNumber = snippetStartLine;
             size_t snippetIndex = 0;
 
