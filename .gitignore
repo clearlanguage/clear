@@ -23,3 +23,4 @@ Source/Tests/
 cmake-build-release/
 *.ll
 *.o
+.cache/
