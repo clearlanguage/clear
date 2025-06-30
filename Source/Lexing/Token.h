@@ -102,12 +102,12 @@ namespace clear
                 default:                            return "Unknown";
             }
         }
-    
+        size_t m_Column = 0;
+
     private:
         TokenType m_Type = TokenType::None;
         std::string m_Data;
         std::filesystem::path m_SourceFile;
         size_t m_Line = 0;
-        size_t m_Column = 0;
     };
 }

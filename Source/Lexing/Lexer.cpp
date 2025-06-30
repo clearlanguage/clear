@@ -264,6 +264,7 @@ namespace clear
 
         if(m_Position == m_Contents.size())
         {
+            m_Tokens.back().m_Column = start;
             Report(m_Tokens.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
@@ -419,7 +420,8 @@ namespace clear
 
         if (m_Position >= m_Contents.size()) 
         {
-            CLEAR_LOG_ERROR("char error");
+            m_Tokens.back().m_Column = start;
+            Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
 
@@ -431,6 +433,7 @@ namespace clear
 
             if (m_Position >= m_Contents.size()) 
             {
+                m_Tokens.back().m_Column = start;
                 Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
                 return;
             }
@@ -462,6 +465,7 @@ namespace clear
 
         if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
         {
+            m_Tokens.back().m_Column = start;
             Report(m_Tokens.back(), DiagnosticCode_InvalidCharLiteral, Severity::High);
             AbortCurrent();
 

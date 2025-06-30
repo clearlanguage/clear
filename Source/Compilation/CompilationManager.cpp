@@ -47,6 +47,7 @@ namespace clear
         
 
         Lexer lexer(path,m_DiagnosticsBuilder);
+        CheckErrors();
 
         CLEAR_LOG_INFO("Tokens For ", path);
 
@@ -58,7 +59,6 @@ namespace clear
         CLEAR_LOG_INFO("End of tokens for ", path);
 
         Parser parser(lexer.GetTokens(), m_MainModule->GetContext(), m_MainModule,m_DiagnosticsBuilder);
-        CheckErrors();
         m_MainModule->PushNode(parser.GetResult());
     }
 
