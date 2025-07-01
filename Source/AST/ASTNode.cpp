@@ -1447,25 +1447,16 @@ namespace clear
 		for (auto& child : GetChildren())	
 		{
 			Symbol gen = child->Codegen(ctx);
-
-			if (gen.IsTuple) 
+			for (auto jj : gen.GetValueTuple().Values)
 			{
-				for (auto jj : gen.TupleValues) 
-				{
-					args.push_back(jj);
-				}
-
-				for (auto jt : gen.TupleTypes) 
-				{
-					params.push_back({"", jt });
-				}
-
+				args.push_back(jj);
 			}
-			else 
+
+			for (auto jt : gen.GetValueTuple().Types)
 			{
-				args.push_back(gen.CodegenValue);
-				params.push_back({"", gen.CodegenType });
+				params.push_back({"", jt });
 			}
+
 		}
     }
 
@@ -2603,7 +2594,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(result.Data, result.CodegenType);
+			members.emplace_back(std::get<std::string>(result.Data), result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2628,8 +2619,9 @@ namespace clear
 			
 
 			Symbol result = 	children[i--]->Codegen(ctx);
-			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, result.CodegenValue);
+			auto [resultValue, resultType] = result.GetValue();
+			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
+			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
 
@@ -2957,7 +2949,7 @@ namespace clear
 
 			Symbol result = children[i]->Codegen(ctx);
 
-			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.CodegenValue);
+			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.GetValue().first);
 			CLEAR_VERIFY(casted, "not a valid enum value!");
 
 			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
@@ -3023,7 +3015,7 @@ namespace clear
 
 				i++; // skip the Right Bracket as expression is stored in child
 
-				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.CodegenValue);
+				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.GetValue().first);
 				CLEAR_VERIFY(constant, "array expression must be a constant int");
 
 				int64_t arraySize = constant->getSExtValue();
