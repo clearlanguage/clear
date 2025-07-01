@@ -1532,7 +1532,7 @@ namespace clear
 
 			Symbol param = fnParam->Codegen(ctx);
 
-			m_Parameters.push_back({ .Name = param.Data, .Type = param.CodegenType, .IsVariadic = fnParam->IsVariadic });
+			m_Parameters.push_back({ .Name = param.Data, .Type = param.GetType(), .IsVariadic = fnParam->IsVariadic });
 		} 
 
 		bool isVariadic = false;
@@ -1657,7 +1657,7 @@ namespace clear
 			storage = children[0]->Codegen(ctx);
 		}
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
 		CLEAR_VERIFY(storageType, "invalid storage type");
 
 		CLEAR_VERIFY(children.size() - 1 == m_Indices.size(), "sizes don't match!");
@@ -1720,19 +1720,19 @@ namespace clear
 
 		llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
 		std::shared_ptr<ArrayType> baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType());
 		CLEAR_VERIFY(baseType, "base type is not an array type");
 
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
-		ctx.Builder.CreateStore(zeroArray, storage.CodegenValue);
+		ctx.Builder.CreateStore(zeroArray, storage.GetValue().first);
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		auto Store = [&](llvm::Value* value, std::shared_ptr<Type> type, size_t i, size_t offset)
 		{
 			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
-													 		     storage.CodegenValue, ctx.Builder.getInt64(0), 
+													 		     storage.GetValue().first, ctx.Builder.getInt64(0),
 													 		     "gep");
 
 			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx, offset);
@@ -1752,23 +1752,18 @@ namespace clear
 		{
 			Symbol valueToStore = children[k++]->Codegen(ctx);
 
-			if(valueToStore.IsTuple)
-			{	
-				size_t j = 0;
+			size_t j = 0;
 
-				for(; j < valueToStore.TupleValues.size(); j++)
-				{
-					Store(valueToStore.TupleValues[j], valueToStore.TupleTypes[j], i, offset);
-					offset++;
-				}
-
-				if(offset > 0) 
-					offset--;
-
-				continue;
+			auto [tupleValues,tupleTypes] = valueToStore.GetValueTuple();
+			for(; j < tupleTypes.size(); j++)
+			{
+				Store(tupleValues[j], tupleTypes[j], i, offset);
+				offset++;
 			}
 
-			Store(valueToStore.CodegenValue, valueToStore.CodegenType, i, offset);
+			if(offset > 0)
+				offset--;
+
 		}
     }
 
@@ -1776,7 +1771,7 @@ namespace clear
     {
 		auto& children = GetChildren();
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
 		std::shared_ptr<StructType> baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType());
 
 		if(!baseType)
@@ -1803,7 +1798,7 @@ namespace clear
 		CLEAR_VERIFY(baseType, "base type is not a struct type");
 
 		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
-		ctx.Builder.CreateStore(zeroArray, storage.CodegenValue);
+		ctx.Builder.CreateStore(zeroArray, storage.GetValue().first);
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
@@ -1811,7 +1806,7 @@ namespace clear
 		{
 			CLEAR_VERIFY(m_Indices[i].size() >= 2, "");
 
-			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.CodegenValue, m_Indices[i][1], "gep");
+			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.GetValue().first, m_Indices[i][1], "gep");
 			std::shared_ptr<Type> innerType = baseType->GetMemberAtIndex(m_Indices[i][1]);
 
 			auto [elemPtr2, innerType2] = GetBasePointer(i, elemPtr, innerType, 2, ctx);
@@ -1821,7 +1816,7 @@ namespace clear
 
 			Symbol valueToStore = children[i + 1]->Codegen(ctx);
 
-			if(valueToStore.CodegenType != innerType)
+			if(valueToStore.GetType() != innerType)
 			{
 				valueToStore.CodegenValue = TypeCasting::Cast(
 							valueToStore.CodegenValue,
@@ -1830,7 +1825,7 @@ namespace clear
 							ctx.Builder);
 			}
 
-			ctx.Builder.CreateStore(valueToStore.CodegenValue, elemPtr);
+			ctx.Builder.CreateStore(valueToStore.GetValue().first, elemPtr);
 		}
 		
 		
