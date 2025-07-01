@@ -1853,37 +1853,13 @@ namespace clear
 		if(m_Type == OperatorType::Negation)
 		{			
 			Symbol result = children[0]->Codegen(ctx);
-
-			llvm::Value* negated;
-
-			if(result.CodegenType->IsFloatingPoint())
-			{
-				negated = ctx.Builder.CreateFNeg(result.CodegenValue);
-			}
-			else 
-			{
-				negated = ctx.Builder.CreateNeg(result.CodegenValue);
-				result.CodegenType = GetSymbolTable()->GetTypeRegistry().GetSignedType(result.CodegenType);
-			}
-
-			return { negated, result.CodegenType };
+			return SymbolOps::Neg(result, ctx.Builder); 
 		}
-
-		if(m_Type == OperatorType::BitwiseNot)
-		{
-			Symbol result = children[0]->Codegen(ctx);
-			return { ctx.Builder.CreateNot(result.CodegenValue), result.CodegenType };
-		}	
 
 		if(m_Type == OperatorType::Not)
 		{
 			Symbol result = children[0]->Codegen(ctx);
-			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, GetSymbolTable()->GetType("bool"), ctx.Builder);
-			result.CodegenType  = GetSymbolTable()->GetType("bool");
-
-			result.CodegenValue = ctx.Builder.CreateXor(ctx.Builder.getTrue(), result.CodegenValue);
-
-			return result;
+			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
 		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1),GetSymbolTable()->GetType("int32"));

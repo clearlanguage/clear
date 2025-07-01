@@ -16,7 +16,6 @@ namespace clear
         static Symbol BitAnd(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
         static Symbol BitOr(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
         static Symbol BitXor(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol BitNot(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
 
         static Symbol Shl(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
         static Symbol Shr(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
