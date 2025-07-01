@@ -2631,7 +2631,7 @@ namespace clear
 
 			Symbol result = children[i]->Codegen(ctx);
 
-			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.CodegenValue);
+			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.GetValue().first);
 			CLEAR_VERIFY(casted, "not a valid enum value!");
 
 			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
@@ -2697,7 +2697,7 @@ namespace clear
 
 				i++; // skip the Right Bracket as expression is stored in child
 
-				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.CodegenValue);
+				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.GetValue().first);
 				CLEAR_VERIFY(constant, "array expression must be a constant int");
 
 				int64_t arraySize = constant->getSExtValue();
