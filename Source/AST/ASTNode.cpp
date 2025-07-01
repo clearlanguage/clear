@@ -2153,7 +2153,7 @@ namespace clear
 
 		auto tbl = GetSymbolTable();
 
-		if(iterator.CodegenType->IsVariadic())
+		if(iterator.GetType()->IsVariadic())
 		{
 			auto& args = tbl->GetVariadicArguments();
 
@@ -2276,7 +2276,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(result.Data, result.CodegenType);
+			members.emplace_back(result.Data, result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2391,11 +2391,12 @@ namespace clear
 		Symbol variable = children[0]->Codegen(ctx);
 		
 		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to a value");
-		
-		auto pointerTy = dyn_cast<PointerType>(variable.CodegenType);
+		auto [VarValue, VarType] = variable.GetValue();
+
+		auto pointerTy = dyn_cast<PointerType>(VarType);
 		auto baseTy = pointerTy->GetBaseType();
 
-		bool isGlobal = llvm::isa<llvm::GlobalVariable>(variable.CodegenValue);
+		bool isGlobal = llvm::isa<llvm::GlobalVariable>(VarValue);
 
 		if (baseTy->IsPointer()) 
 		{
@@ -2405,16 +2406,16 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(nullPtr);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(nullPtr);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(nullPtr, variable.CodegenValue);
+		        ctx.Builder.CreateStore(nullPtr, VarValue);
 		    }
 		}
 		else if (baseTy->IsCompound())
 		{
-		    RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
+		    RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
 		}
 		else if (baseTy->IsArray())
 		{
@@ -2422,7 +2423,7 @@ namespace clear
 
 			if(arrayTy->GetBaseType()->IsCompound())
 			{
-				RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
+				RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
 			}
 			else 
 			{
@@ -2430,11 +2431,11 @@ namespace clear
 		
 		    	if (isGlobal)
 		    	{
-		    	    llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    	    llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    	}
 		    	else
 		    	{
-		    	    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    	    ctx.Builder.CreateStore(zero, VarValue);
 		    	}
 			}
 		}
@@ -2444,11 +2445,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		        ctx.Builder.CreateStore(zero, VarValue);
 		    }
 		}
 		else if (baseTy->IsFloatingPoint())
@@ -2457,11 +2458,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		        ctx.Builder.CreateStore(zero, VarValue);
 		    }
 		}
 
