@@ -59,7 +59,7 @@ namespace clear
         };
     }
 
-    Symbol Symbol::CreateTuple(const std::vector<llvm::Value*>& values, const std::vector<std::shared_ptr<Type>>& types)
+    Symbol Symbol::CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types)
     {
         ValueSymbol symbol;
 

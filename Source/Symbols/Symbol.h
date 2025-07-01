@@ -63,7 +63,7 @@ namespace clear
         static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
         static Symbol CreateFunction(FunctionInstance* instance);
-        static Symbol CreateTuple(const std::vector<llvm::Value*>& values, const std::vector<std::shared_ptr<Type>>& types);
+        static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
 
         std::shared_ptr<Type>   GetType() const;

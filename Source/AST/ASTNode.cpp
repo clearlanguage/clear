@@ -9,6 +9,7 @@
 #include "Intrinsics.h"
 #include "Symbols/SymbolOperations.h"
 
+#include <llvm/ADT/SmallVector.h>
 #include <stack>
 
 namespace clear
@@ -1862,14 +1863,16 @@ namespace clear
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
-		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1),GetSymbolTable()->GetType("int32"));
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), GetSymbolTable()->GetType("int32"));
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 
 		Symbol result = children[0]->Codegen(ctx);
-		CLEAR_VERIFY(result.CodegenType->IsPointer(), "not valid type for increment");
+		auto [resultValue, resultType] = result.GetValue();
+
+		CLEAR_VERIFY(resultType->IsPointer(), "not valid type for increment");
 		
-		std::shared_ptr<PointerType> ty = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
+		std::shared_ptr<PointerType> ty = std::dynamic_pointer_cast<PointerType>(resultType);
 
 		Symbol valueToStore;
 		Symbol returnValue;
@@ -1884,57 +1887,58 @@ namespace clear
 
 		if(m_Type == OperatorType::PostIncrement)
 		{
-			returnValue.CreateValue(ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue),ty->GetBaseType();)
-
+			returnValue = SymbolOps::Load(result, ctx.Builder);
 			ApplyFun(OperatorType::Add);
 		}
 		else if (m_Type == OperatorType::PostDecrement)
 		{
-			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
-			returnValue.CodegenType = ty->GetBaseType();
-
+			returnValue = SymbolOps::Load(result, ctx.Builder);
 			ApplyFun(OperatorType::Sub);
 		}
 		else if (m_Type == OperatorType::Increment)
 		{
-			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
-			returnValue.CodegenType = ty->GetBaseType();
+			returnValue = SymbolOps::Load(result, ctx.Builder);
 
 			ApplyFun(OperatorType::Add);
-			returnValue.CodegenValue = valueToStore.CodegenValue;
+			returnValue = valueToStore;
 		}
 		else if (m_Type == OperatorType::Decrement)
 		{
-			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
-			returnValue.CodegenType = ty->GetBaseType();
+			returnValue = SymbolOps::Load(result, ctx.Builder);
 
 			ApplyFun(OperatorType::Sub);
-			returnValue.CodegenValue = valueToStore.CodegenValue;
+			returnValue = valueToStore;
 		}
     	else if(m_Type == OperatorType::Ellipsis)
     	{
     		auto ptrTy = std::dynamic_pointer_cast<PointerType>(ty);
     		auto arrTy = std::dynamic_pointer_cast<ArrayType>(ptrTy->GetBaseType());
+
     		CLEAR_VERIFY(arrTy,"Unpack must have array");
-			returnValue.IsTuple = true;
+
+			llvm::SmallVector<llvm::Value*> values;
+			llvm::SmallVector<std::shared_ptr<Type>> types;
 
     		for (int i = 0; i < arrTy->GetArraySize(); i++)
     		{
-    			auto pointer =ctx.Builder.CreateGEP(arrTy->Get(),result.CodegenValue,{ctx.Builder.getInt64(0),ctx.Builder.getInt64(i)});
+    			auto pointer = ctx.Builder.CreateGEP(arrTy->Get(), resultValue, { ctx.Builder.getInt64(0),ctx.Builder.getInt64(i) });
     			auto loadedValue = ctx.Builder.CreateLoad(arrTy->GetBaseType()->Get(), pointer);
-    			returnValue.TupleValues.push_back(loadedValue);
-    			returnValue.TupleTypes.push_back(arrTy->GetBaseType());
+				
+    			values.push_back(loadedValue);
+    			types.push_back(arrTy->GetBaseType());
     		}
-    		return returnValue;
+
+    		return Symbol::CreateTuple(values, types);
     	}
 		else
 		{
 			CLEAR_UNREACHABLE("unimplemented");
 		}
 
-		valueToStore.CodegenValue = TypeCasting::Cast(valueToStore.CodegenValue, valueToStore.CodegenType, ty->GetBaseType(), ctx.Builder);
+		auto [storedValue, storedType] = valueToStore.GetValue();
+		storedValue = TypeCasting::Cast(storedValue, storedType, ty->GetBaseType(), ctx.Builder);
 
-		ctx.Builder.CreateStore(valueToStore.CodegenValue, result.CodegenValue);
+		ctx.Builder.CreateStore(storedValue, resultValue);
 
 		return returnValue;
 	}
