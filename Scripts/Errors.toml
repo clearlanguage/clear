@@ -48,7 +48,7 @@ Advice  = "Cannot assign or operate on incompatible types like ‘{}’. Check f
 
 [InvalidEscapeSequence]
 Message = "Invalid escape sequence in string literal."
-Advice  = "‘{}’ is not a recognized escape sequence. Use sequences like \\n, \\t, \\\"."
+Advice  = "‘{}’ is not a recognized escape sequence. Use sequences like \\\\n, \\\\t, \\\"."
 
 [UnmatchedBracket]
 Message = "Unmatched closing or opening bracket."
@@ -104,4 +104,4 @@ Advice = "Ensure all indented blocks are properly closed"
 
 [ExpectedModuleName]
 Message = "Expected a module name string"
-Advice = "Add a module name string (e.g. \"math\") after the module keyword"
+Advice = "Add a module name string (e.g. \\\"math\\\") after the module keyword"

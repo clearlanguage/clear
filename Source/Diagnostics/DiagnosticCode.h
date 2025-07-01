@@ -74,7 +74,7 @@ namespace clear
 		"‘{}’ was already defined in this scope. Rename or remove the duplicate declaration.",
 		"‘{}’ is not defined in the current scope. Check for typos or missing declarations.",
 		"Cannot assign or operate on incompatible types like ‘{}’. Check for implicit casts or incorrect types.",
-		"‘{}’ is not a recognized escape sequence. Use sequences like \n, \t, \".",
+		"‘{}’ is not a recognized escape sequence. Use sequences like \\n, \\t, \".",
 		"There is an unmatched ‘{}’. Check your use of (), {}, and [].",
 		"The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed.",
 		"Add a colon ':' after {} to begin an indented code block",
@@ -88,6 +88,6 @@ namespace clear
 		"Separate each function parameter with a comma ','",
 		"Add '->' followed by the return type after the parameter list",
 		"Ensure all indented blocks are properly closed",
-		"Add a module name string (e.g. "math") after the module keyword",
+		"Add a module name string (e.g. \"math\") after the module keyword",
 	};
 }
