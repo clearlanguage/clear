@@ -704,7 +704,7 @@ namespace clear
 
 			if(alloca.Type->IsVariadic())  // special case
 			{
-				return Symbol::CreateValue(nullptr, alloca.Type); 
+				return Symbol::CreateType(alloca.Type); 
 			}
 
 			if(ctx.WantAddress)
@@ -2696,10 +2696,10 @@ namespace clear
 
 		if(children.empty())
 		{
-			CLEAR_UNREACHABLE("unimplemented");
-			//return { .CodegenType = nullptr, .Data = m_Name };
+			Symbol type = Symbol::CreateType(nullptr);
+			type.Metadata = m_Name;
+			return type;
 		}
-
 
 		CLEAR_VERIFY(children.size() == 1, "invalid parameter node");
 
