@@ -1150,24 +1150,17 @@ namespace clear
 		{
 			Symbol gen = child->Codegen(ctx);
 
-			if (gen.IsTuple) 
+			for (auto jj : gen.GetValueTuple().Values)
 			{
-				for (auto jj : gen.TupleValues) 
-				{
-					args.push_back(jj);
-				}
-
-				for (auto jt : gen.TupleTypes) 
-				{
-					params.push_back({"", jt });
-				}
-
+				args.push_back(jj);
 			}
-			else 
+
+			for (auto jt : gen.GetValueTuple().Types)
 			{
-				args.push_back(gen.CodegenValue);
-				params.push_back({"", gen.CodegenType });
+				params.push_back({"", jt });
 			}
+
+
 		}
     }
 
