@@ -903,10 +903,10 @@ namespace clear
 
     void Parser::ParseModule()
     {
-        EXPECT_DATA("module",DiagnosticCode_None);
+        EXPECT_DATA("module", DiagnosticCode_None);
         Consume();
 
-        EXPECT_TOKEN(TokenType::String,DiagnosticCode_ExpectedModuleName)
+        EXPECT_TOKEN(TokenType::String, DiagnosticCode_ExpectedModuleName)
         std::string modules = Consume().GetData(); // TODO: indexing into modules using .
 
         auto mod = RootModule()->EmplaceOrReturn(modules);

@@ -59,17 +59,17 @@ namespace clear
 
     void Module::Codegen(const BuildConfig& config)
     {
+        for(const auto& [_, mod] : m_ContainedModules)
+        {
+            mod->Codegen(config);
+        }
+
         CodegenContext context(m_ModuleName, *m_Context, *m_Builder, *m_Module);
         context.ClearModule = shared_from_this();
 
         for(auto& node : m_Nodes)
         {
             node->Codegen(context);
-        }
-
-        for(const auto& [_, mod] : m_ContainedModules)
-        {
-            mod->Codegen(config);
         }
     }
     

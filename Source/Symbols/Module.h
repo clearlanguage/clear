@@ -1,8 +1,8 @@
 #pragma once 
 
 #include "AST/ASTNode.h"
-#include "Core/Log.h"
 #include "Compilation/BuildConfig.h"
+#include "Symbols/SymbolTable.h"
 
 #include <unordered_map>
 
@@ -29,6 +29,8 @@ namespace clear
 
         CodegenContext GetCodegenContext();
 
+        std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
+
     private:
         std::string m_ModuleName;
 
@@ -39,7 +41,6 @@ namespace clear
         std::unordered_map<std::string, std::shared_ptr<Module>> m_ContainedModules;
         std::vector<std::shared_ptr<ASTNodeBase>> m_Nodes;
 
-        std::shared_ptr<TypeRegistry> m_Registry;
         std::shared_ptr<SymbolTable> m_SymbolTable;
     };
 }

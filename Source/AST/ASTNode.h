@@ -84,6 +84,7 @@ namespace clear
 		void PropagateSymbolTableToChildren();
 
 		void CreateSymbolTable(std::shared_ptr<llvm::LLVMContext> context);
+		void SetSymbolTable(std::shared_ptr<SymbolTable> tbl);
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 

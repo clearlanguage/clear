@@ -88,6 +88,11 @@ namespace clear
 		m_SymbolTable = std::make_shared<SymbolTable>(context);
     }
 
+	void ASTNodeBase::SetSymbolTable(std::shared_ptr<SymbolTable> tbl)
+    {
+		m_SymbolTable = tbl;
+    }
+
     void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
     {
 		CLEAR_VERIFY(registry, "dont take in null");
@@ -563,19 +568,7 @@ namespace clear
 			}
 		}
 
-		if(lhs.Kind == SymbolKind::Type)
-		{
-			auto ty = lhs.GetType();
-
-			if(ty->IsEnum())
-				return HandleMemberEnum(lhs, right, ctx);
-
-			CLEAR_UNREACHABLE("unimplemented");
-		}
-
-		if(lhs.Kind == SymbolKind::Module)
-			return HandleModuleAccess(lhs, right, ctx);
-
+		CLEAR_UNREACHABLE("unimplemented");
 		return Symbol();	
 	}
 
@@ -618,6 +611,8 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
     {
+		CLEAR_UNREACHABLE("unimplemented");
+
 		/* auto member = std::dynamic_pointer_cast<ASTMember>(right);
 		auto enumTy = dyn_cast<EnumType>(GetSymbolTable()->GetType(lhs.Data));
 		CLEAR_VERIFY(enumTy, "not a valid enum");
@@ -632,6 +627,18 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
+		if(right->GetType() == ASTNodeType::Member)
+		{
+			CLEAR_UNREACHABLE("unimplemented");
+		}
+
+		if(right->GetType() == ASTNodeType::FunctionCall)
+		{
+			auto mod = lhs.GetModule();
+			right->SetSymbolTable(mod->GetSymbolTable());
+			return right->Codegen(ctx);
+		}
+
         return Symbol();
     }
 
@@ -722,7 +729,7 @@ namespace clear
 
 			if(alloca.Type->IsVariadic())  // special case
 			{
-				return Symbol::CreateType(alloca.Type); 
+				return Symbol::CreateValue(nullptr, alloca.Type); 
 			}
 
 			if(ctx.WantAddress)
@@ -2152,7 +2159,9 @@ namespace clear
 
 		auto tbl = GetSymbolTable();
 
-		if(iterator.GetType()->IsVariadic())
+		auto [iterValue, iterType] = iterator.GetValue();
+
+		if(iterType->IsVariadic())
 		{
 			auto& args = tbl->GetVariadicArguments();
 
