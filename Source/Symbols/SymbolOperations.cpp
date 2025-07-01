@@ -190,6 +190,15 @@ namespace clear
         );
     }
     
+    Symbol SymbolOps::BitNot(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder)
+    {
+        return BinaryIntOp(
+            lhs, rhs, builder, 
+            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateXor(l, r, name); },
+            "bitnot"
+        );
+    }
+    
     Symbol SymbolOps::Shl(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder)
     {
         return BinaryIntOp(

@@ -129,7 +129,6 @@ namespace clear
 
 
 	private:
-
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
 		bool IsBitwiseExpression() const;
@@ -151,7 +150,6 @@ namespace clear
 		Symbol HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		Symbol HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
-		std::shared_ptr<StructType> GetStruct(std::shared_ptr<Type> type);
 	private:
 		OperatorType m_Expression;
 	};
