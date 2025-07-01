@@ -659,7 +659,7 @@ namespace clear
 
 		if(type == OperatorType::Add)
 		{
-			return SymbolOps::GEP(lhs, ptrType, { rhsValue }, ctx.Builder); 
+			return SymbolOps::GEP(lhs, ptrType, { rhsValue }, ctx.Builder);
 		}
 
 		if(type == OperatorType::Sub)
@@ -2225,9 +2225,7 @@ namespace clear
 			return result;
 		}
 		
-		Symbol one;
-		one.CodegenType  = GetSymbolTable()->GetType("int32");
-		one.CodegenValue = ctx.Builder.getInt32(1);
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1),GetSymbolTable()->GetType("int32"));
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 
@@ -2249,8 +2247,7 @@ namespace clear
 
 		if(m_Type == OperatorType::PostIncrement)
 		{
-			returnValue.CodegenValue = ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue);
-			returnValue.CodegenType = ty->GetBaseType();
+			returnValue.CreateValue(ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue),ty->GetBaseType();)
 
 			ApplyFun(OperatorType::Add);
 		}
@@ -2356,22 +2353,22 @@ namespace clear
 				ValueRestoreGuard guard(ctx.WantAddress, false);
 				condition = children[branch.ExpressionIdx]->Codegen(ctx);
 			}
+			auto [conditionValue, conditionType] = condition.GetValue();
+			if (conditionType->IsIntegral() && conditionType->GetSize() > 1)
+			{
+				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
+			}
+			else if (conditionType->IsFloatingPoint())
+			{
+				conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
+			}
+			else if (conditionType->IsPointer())
+			{
+				conditionValue = ctx.Builder.CreatePtrToInt(conditionValue, ctx.Builder.getInt64Ty(), "cast");
+				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, ctx.Builder.getInt64(0));
+			}
 
-			if (condition.CodegenType->IsIntegral() && condition.CodegenType->GetSize() > 1)
-			{
-				condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
-			}
-			else if (condition.CodegenType->IsFloatingPoint())
-			{
-				condition.CodegenValue = ctx.Builder.CreateFCmpONE(condition.CodegenValue, llvm::ConstantFP::get(condition.CodegenType->Get(), 0.0));
-			}
-			else if (condition.CodegenType->IsPointer())
-			{
-				condition.CodegenValue = ctx.Builder.CreatePtrToInt(condition.CodegenValue, ctx.Builder.getInt64Ty(), "cast");
-				condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, ctx.Builder.getInt64(0));
-			}
-
-			ctx.Builder.CreateCondBr(condition.CodegenValue, branch.BodyBlock, nextBranch);
+			ctx.Builder.CreateCondBr(conditionValue, branch.BodyBlock, nextBranch);
 
 			function->insert(function->end(), branch.BodyBlock);
 			ctx.Builder.SetInsertPoint(branch.BodyBlock);
@@ -2430,15 +2427,17 @@ namespace clear
 			ValueRestoreGuard guard(ctx.WantAddress, false);
 			condition = children[0]->Codegen(ctx);
 		}
+		auto [conditionValue, conditionType] = condition.GetValue();
 
-		if (condition.CodegenType->IsIntegral())
-			condition.CodegenValue = ctx.Builder.CreateICmpNE(condition.CodegenValue, llvm::ConstantInt::get(condition.CodegenType->Get(), 0));
+
+		if (conditionType->IsIntegral())
+			conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
 			
-		else if (condition.CodegenType->IsFloatingPoint())
-			condition.CodegenValue = ctx.Builder.CreateFCmpONE(condition.CodegenValue, llvm::ConstantFP::get(condition.CodegenType->Get(), 0.0));
+		else if (conditionType->IsFloatingPoint())
+			conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
-			ctx.Builder.CreateCondBr(condition.CodegenValue, body, end);
+			ctx.Builder.CreateCondBr(conditionValue, body, end);
 
 		function->insert(function->end(), body);
 		ctx.Builder.SetInsertPoint(body);
