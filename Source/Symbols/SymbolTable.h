@@ -4,6 +4,7 @@
 #include "FunctionCache.h"
 #include "TypeRegistry.h"
 
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -72,7 +73,8 @@ namespace clear
                             std::shared_ptr<Type> returnType, 
                             const std::vector<Parameter>& params, 
                             bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs,
-                            std::shared_ptr<ASTNodeBase> root);
+                            std::shared_ptr<ASTNodeBase> root, 
+                            std::shared_ptr<Module> sourceModule);
 
         FunctionInstance& InstantiateOrReturn(const std::string& templateName, 
                                               const std::vector<Parameter>& params, 

@@ -25,6 +25,7 @@ namespace clear
         std::string MangledName;
         bool IsVariadic = false;
         bool IsExternal = false;
+        std::shared_ptr<Module> SourceModule;
     };
 
     struct FunctionInstance
@@ -50,7 +51,8 @@ namespace clear
                             std::shared_ptr<Type> returnType,
                             const std::vector<Parameter>& params,
                             bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs,
-                            std::shared_ptr<ASTNodeBase> root);
+                            std::shared_ptr<ASTNodeBase> root, 
+                            std::shared_ptr<Module> sourceModule);
 
         FunctionInstance& InstantiateOrReturn(const std::string& templateName, 
                                               std::vector<Parameter> params, 

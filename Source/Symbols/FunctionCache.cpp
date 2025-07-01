@@ -4,23 +4,35 @@
 
 #include "AST/ASTNode.h"
 #include "AST/TypeCasting.h"
+#include "Module.h"
 
 #include <queue>
 
 namespace clear 
 {
-    void FunctionCache::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic, const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
+    void FunctionCache::CreateTemplate(const std::string& templateName, 
+                                       std::shared_ptr<Type> returnType, 
+                                       const std::vector<Parameter>& params, 
+                                       bool isVariadic, 
+                                       const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, 
+                                       std::shared_ptr<ASTNodeBase> root, 
+                                       std::shared_ptr<Module> sourceModule)
     {
-        m_Templates[templateName].push_back({returnType, params, root, defaultArgs, GetMangledName(templateName, params, returnType), isVariadic});
+        FunctionTemplate templateF;
+        templateF.MangledName = GetMangledName(templateName, params, returnType);
+        templateF.ReturnType = returnType;
+        templateF.Root = root;
+        templateF.Parameters = params;
+        templateF.IsVariadic = isVariadic;
+        templateF.IsExternal = false;
+        templateF.DefaultArguments = defaultArgs;
+        templateF.SourceModule = sourceModule;
+
+        m_Templates[templateName].push_back(templateF);
     }
 
     FunctionInstance& FunctionCache::InstantiateOrReturn(const std::string& templateName, std::vector<Parameter> params, std::shared_ptr<Type> returnType, CodegenContext& context)
     {
-        if(templateName.contains("__destruct__"))
-        {
-
-        }
-
         CLEAR_VERIFY(m_Templates.contains(templateName), "missing function template to instantiate");
 
         std::string mangledName = GetMangledName(templateName, params, returnType);
@@ -83,13 +95,18 @@ namespace clear
             mangledName = GetMangledName(templateName, functionTemplate.Parameters, functionTemplate.ReturnType);
         }
 
+
+
+        CodegenContext ctx = functionTemplate.SourceModule->GetCodegenContext();
+
 		FunctionInstance functionData;
+        
         functionData.FunctionType = functionType;
         functionData.ReturnType   = returnType;
         functionData.Parameters   = types;
         functionData.MangledName  = mangledName;
 
-		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, functionData.MangledName, context.Module);
+		llvm::Function* function = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, functionData.MangledName, ctx.Module);
         functionData.Function     = function;
         m_Instances[mangledName] = functionData;
         
@@ -97,8 +114,12 @@ namespace clear
         CLEAR_VERIFY(definition, "invalid object");
 
         definition->SetName(mangledName);
-        definition->Instantiate(functionData, context);
+        definition->Instantiate(functionData, ctx);
 
+        if(ctx.ClearModule != context.ClearModule)
+        {
+            m_Instances[mangledName].Function = llvm::cast<llvm::Function>(context.Module.getOrInsertFunction(mangledName, functionType).getCallee());
+        }
         
         return m_Instances[mangledName];
     }

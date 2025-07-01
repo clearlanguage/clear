@@ -75,13 +75,14 @@ namespace clear
     void CompilationManager::GenerateIRAndObjectFiles()
     {
         m_MainModule->Codegen(m_Config);
+        m_MainModule->Link();
 
         /* for(auto& [filepath, mod] : m_Modules)
         {
             CodegenModule(filepath);
         } */
 
-        //m_MainModule->print(llvm::errs(), nullptr);
+        //m_MainModule->GetModule()->print(llvm::errs(), nullptr);
         CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()), "module verification failed");
 
         if(m_Config.EmitIntermiediateIR)

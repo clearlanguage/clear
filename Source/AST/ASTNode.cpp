@@ -903,7 +903,7 @@ namespace clear
 		// erase no longer needed children (params, return type and default args)
 		children.erase(children.begin(), children.begin() + i);
 
-		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this());
+		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this(), ctx.ClearModule);
 		
 		// main needs to be instantiated immedietly as nothing calls it.
 		if(m_Name == "main")
