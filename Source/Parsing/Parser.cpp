@@ -4,6 +4,7 @@
 #include "Symbols/TypeRegistry.h"
 #include "Core/Utils.h"
 #include "Lexing/Token.h"
+#include <cstring>
 #include "Symbols/Module.h"
 
 #include <stack>
@@ -16,7 +17,7 @@ namespace clear
     #define EXPECT_TOKEN(type, code) \
     if (!Match(type)) { \
     auto location = (m_Position > 0 ? Prev() : Peak()); \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code,getExpectedLength(type)); \
     SkipUntil(TokenType::EndLine); \
     return; \
     }

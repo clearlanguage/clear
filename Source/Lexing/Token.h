@@ -6,6 +6,7 @@
 #include <bitset>
 #include <string>
 #include <string_view>
+#include <map>
 #include <filesystem>
 
 namespace clear 
@@ -110,4 +111,6 @@ namespace clear
         std::filesystem::path m_SourceFile;
         size_t m_Line = 0;
     };
+
+    size_t getExpectedLength(TokenType type);
 }

@@ -24,7 +24,13 @@ namespace clear
         void Report(Stage stage, 
                     Severity severity, 
                     const Token& token,
-                    DiagnosticCode code);      
+                    DiagnosticCode code);
+
+        void Report(Stage stage,
+               Severity severity,
+               const Token& token,
+               DiagnosticCode code,
+               size_t expectedLength);
 
 
         void Dump(std::FILE* output = stdout);

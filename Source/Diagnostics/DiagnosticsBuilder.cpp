@@ -37,6 +37,38 @@ namespace clear
         m_ReportedErrors.push_back(diag);
     }
 
+
+    void DiagnosticsBuilder::Report(Stage stage, Severity severity, const Token& token, DiagnosticCode code,size_t expectedLength)
+    {
+        auto [it, success] = m_LoadedFiles.try_emplace(token.GetSourceFile(), FileReference());
+        auto& fileRef = it->second;
+
+        if(success)
+        {
+            fileRef.Contents = LoadFile(token.GetSourceFile());
+            fileRef.ContentsRef = fileRef.Contents;
+        }
+
+        Diagnostic diag;
+        diag.Code         = code;
+        diag.DiagSeverity = severity;
+        diag.DiagStage    = stage;
+        diag.File         = token.GetSourceFile();
+        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.GetLineNumber());
+        diag.Message      = g_DiagnosticMessages[code];
+        diag.Advice       = std::vformat(g_DiagnosticAdvices[code],  std::make_format_args(token.GetData()));
+        diag.Line         = token.GetLineNumber();
+        diag.Column       = token.GetColumnNumber();
+        diag.ArrowsWidth  = expectedLength;
+
+        if (severity == Severity::High)
+        {
+            m_IsFatal = true;
+        }
+
+        m_ReportedErrors.push_back(diag);
+    }
+
     void DiagnosticsBuilder::Dump(std::FILE* output)
     {
         for(const auto& error : m_ReportedErrors)
