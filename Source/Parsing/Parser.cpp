@@ -33,7 +33,7 @@ namespace clear
 
 
     #define VERIFY_OR_RAISE(cond, code)                             \
-    if (!cond) {                                               \
+    if (!(cond)) {                                               \
     auto location = (m_Position > 0 ? Prev() : Peak());        \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine);  \
@@ -157,10 +157,10 @@ namespace clear
     {
         if(Match(tokenType)) return;
 
-        m_DiagnosticsBuilder.Report(Stage::Parsing,severity,Peak(),code);
+        m_DiagnosticsBuilder.Report(Stage::Parsing, severity,Peak(),code);
     }
 
-    void Parser::Expect(const std::string& data,Severity severity,DiagnosticCode code)
+    void Parser::Expect(const std::string& data, Severity severity, DiagnosticCode code)
     {
         if(Match(data)) return;
 

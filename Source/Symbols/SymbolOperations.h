@@ -7,39 +7,39 @@ namespace clear
 {
     struct SymbolOps
     {
-        static Symbol Add(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Sub(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Mul(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Div(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Mod(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol And(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Or(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Add(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Sub(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Mul(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Div(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Mod(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
 
-        static Symbol BitAnd(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol BitOr(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol BitXor(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol BitNot(const Symbol& operand, llvm::IRBuilder<>& builder);
-        static Symbol Shl(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Shr(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol BitAnd(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol BitOr(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol BitXor(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Shl(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol Shr(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder);
 
-        static Symbol Eq(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Neq(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Lt(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Lte(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Gt(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
-        static Symbol Gte(const Symbol& lhs, const Symbol& rhs, llvm::IRBuilder<>& builder);
+        static Symbol And(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
+        static Symbol Or(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
 
-        static Symbol Neg(const Symbol& operand, llvm::IRBuilder<>& builder);
-        static Symbol Not(const Symbol& operand, llvm::IRBuilder<>& builder);
+        static Symbol Eq(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
+        static Symbol Neq(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
+        static Symbol Lt(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
+        static Symbol Lte(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
+        static Symbol Gt(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType,  llvm::IRBuilder<>& builder);
+        static Symbol Gte(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
 
-        static Symbol Call(const Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder);
+        static Symbol Neg(Symbol& operand, llvm::IRBuilder<>& builder);
+        static Symbol Not(Symbol& operand, llvm::IRBuilder<>& builder);
 
-        static Symbol Cast(const Symbol& value, const Symbol& type, llvm::IRBuilder<>& builder);
+        static Symbol Call(Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder);
 
-        static Symbol Load(const Symbol& ptr, llvm::IRBuilder<>& builder);
-        static void   Store(const Symbol& ptr, const Symbol& value, llvm::IRBuilder<>& builder);
-        static Symbol GEP(const Symbol& basePtr, const llvm::SmallVector<size_t>& indices, llvm::IRBuilder<>& builder);
+        static Symbol Load(Symbol& ptr, llvm::IRBuilder<>& builder);
+        static void   Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, bool isFirstTime = false);
+        
+        static Symbol GEPStruct(Symbol& basePtr, Symbol& resPtrType, size_t index, llvm::IRBuilder<>& builder);
+        static Symbol GEP(Symbol& basePtr, Symbol& resPtrType, const llvm::SmallVector<llvm::Value*>& indices, llvm::IRBuilder<>& builder);
 
-        void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder);
+        static void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder);
     };
 }

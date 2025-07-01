@@ -39,7 +39,7 @@ namespace clear
 					break;
 			}
 		}
-		else
+        else
 		{
 			switch (info.BitsNeeded)
 			{
