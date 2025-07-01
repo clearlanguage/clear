@@ -2141,7 +2141,7 @@ namespace clear
 
 		auto tbl = GetSymbolTable();
 
-		if(iterator.CodegenType->IsVariadic())
+		if(iterator.GetType()->IsVariadic())
 		{
 			auto& args = tbl->GetVariadicArguments();
 
@@ -2264,7 +2264,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(result.Data, result.CodegenType);
+			members.emplace_back(result.Data, result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2379,11 +2379,12 @@ namespace clear
 		Symbol variable = children[0]->Codegen(ctx);
 		
 		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to a value");
-		
-		auto pointerTy = dyn_cast<PointerType>(variable.CodegenType);
+		auto [VarValue, VarType] = variable.GetValue();
+
+		auto pointerTy = dyn_cast<PointerType>(VarType);
 		auto baseTy = pointerTy->GetBaseType();
 
-		bool isGlobal = llvm::isa<llvm::GlobalVariable>(variable.CodegenValue);
+		bool isGlobal = llvm::isa<llvm::GlobalVariable>(VarValue);
 
 		if (baseTy->IsPointer()) 
 		{
@@ -2393,16 +2394,16 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(nullPtr);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(nullPtr);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(nullPtr, variable.CodegenValue);
+		        ctx.Builder.CreateStore(nullPtr, VarValue);
 		    }
 		}
 		else if (baseTy->IsCompound())
 		{
-		    RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
+		    RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
 		}
 		else if (baseTy->IsArray())
 		{
@@ -2410,7 +2411,7 @@ namespace clear
 
 			if(arrayTy->GetBaseType()->IsCompound())
 			{
-				RecursiveCallConstructors(variable.CodegenValue, baseTy, ctx, tbl, isGlobal);
+				RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
 			}
 			else 
 			{
@@ -2418,11 +2419,11 @@ namespace clear
 		
 		    	if (isGlobal)
 		    	{
-		    	    llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		    	    llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    	}
 		    	else
 		    	{
-		    	    ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		    	    ctx.Builder.CreateStore(zero, VarValue);
 		    	}
 			}
 		}
@@ -2432,11 +2433,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		        ctx.Builder.CreateStore(zero, VarValue);
 		    }
 		}
 		else if (baseTy->IsFloatingPoint())
@@ -2445,11 +2446,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(variable.CodegenValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, variable.CodegenValue);
+		        ctx.Builder.CreateStore(zero, VarValue);
 		    }
 		}
 
@@ -2618,7 +2619,7 @@ namespace clear
 
 			Symbol result = children[i]->Codegen(ctx);
 
-			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.CodegenValue);
+			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.GetValue().first);
 			CLEAR_VERIFY(casted, "not a valid enum value!");
 
 			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
@@ -2684,7 +2685,7 @@ namespace clear
 
 				i++; // skip the Right Bracket as expression is stored in child
 
-				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.CodegenValue);
+				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.GetValue().first);
 				CLEAR_VERIFY(constant, "array expression must be a constant int");
 
 				int64_t arraySize = constant->getSExtValue();
