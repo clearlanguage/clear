@@ -1362,7 +1362,9 @@ namespace clear
 			storage = children[0]->Codegen(ctx);
 		}
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
+		auto [storageValue, stType] = storage.GetValue();
+
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
 		CLEAR_VERIFY(storageType, "invalid storage type");
 
 		CLEAR_VERIFY(children.size() - 1 == m_Indices.size(), "sizes don't match!");
@@ -1425,7 +1427,9 @@ namespace clear
 
 		llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
+		auto [storageValue, stType] = storage.GetValue();
+
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
 		std::shared_ptr<ArrayType> baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType());
 		CLEAR_VERIFY(baseType, "base type is not an array type");
 
@@ -1476,7 +1480,9 @@ namespace clear
     {
 		auto& children = GetChildren();
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.GetType());
+		auto [storageValue, stType] = storage.GetValue();
+
+		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
 		std::shared_ptr<StructType> baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType());
 
 		if(!baseType)
