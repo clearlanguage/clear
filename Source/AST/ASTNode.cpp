@@ -444,7 +444,7 @@ namespace clear
 
 		if(lhsType->IsVariadic())
 		{
-			auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhsValue)
+			auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhsValue);
 			CLEAR_VERIFY(constIdx, "only allow constant expression indexing, runtime indexing is not supported yet");
 
 			uint64_t index = constIdx->getZExtValue();
@@ -471,7 +471,10 @@ namespace clear
 		CLEAR_VERIFY(arrType, "invalid base type ", type->GetBaseType()->GetHash());
 
 		llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
-		Symbol gepResult = SymbolOps::GEP(lhs, Symbol::CreateType(GetSymbolTable()->GetPointerTo(arrType->GetBaseType())), { zero, rhsValue }, ctx.Builder);
+
+		auto basePtrTy = Symbol::CreateType(GetSymbolTable()->GetPointerTo(arrType->GetBaseType()));
+
+		Symbol gepResult = SymbolOps::GEP(lhs, basePtrTy, { zero, rhsValue }, ctx.Builder);
 
 		if(ctx.WantAddress)
 			return  gepResult;
@@ -481,7 +484,10 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		auto tbl = GetSymbolTable();
+		CLEAR_UNREACHABLE("unimplemented");
+		return {};
+		
+		/* auto tbl = GetSymbolTable();
 
 		Symbol lhs;
 		{
@@ -551,7 +557,7 @@ namespace clear
 
 		CLEAR_UNREACHABLE("invalid member access, expected member or function call");
 		return {};
-		
+		 */
     }
 
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
