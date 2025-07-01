@@ -1784,18 +1784,20 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 		Symbol codegen = children[0]->Codegen(ctx);
 
-		if(codegen.CodegenValue == nullptr)
+		auto [CodegenValue,CodegenType] = codegen.GetValue();
+
+		if(CodegenValue == nullptr)
 		{
 			EmitDefaultReturn(ctx);
 			return {};
 		}
 		
-		if(codegen.CodegenType->Get() != ctx.ReturnType->Get())
+		if(CodegenType->Get() != ctx.ReturnType->Get())
 		{
-			codegen.CodegenValue = TypeCasting::Cast(codegen.CodegenValue, codegen.CodegenType, ctx.ReturnType, ctx.Builder);
+			CodegenValue = TypeCasting::Cast(CodegenValue, CodegenType, ctx.ReturnType, ctx.Builder);
 		}
 
-		ctx.Builder.CreateStore(codegen.CodegenValue, ctx.ReturnAlloca);
+		ctx.Builder.CreateStore(CodegenValue, ctx.ReturnAlloca);
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
 
 		return {};
