@@ -215,7 +215,10 @@ namespace clear
             {"trait",     [this]() { ParseTrait(); }},
             {"block",     [this]() { ParseBlock(); }},
             {"module",    [this]() { ParseModule(); }},
-            {"endmodule", [this]() { ParseEndModule(); }}
+            {"endmodule", [this]() { ParseEndModule(); }},
+            {"break",     [this]() {ParseLoopControls();}},
+            {"continue",     [this]() {ParseLoopControls();}}
+
 
         };
         
@@ -309,10 +312,9 @@ namespace clear
 
     void Parser::ParseLoopControls() 
     {
-        CLEAR_UNREACHABLE("unimplemented");
-        /* auto node = std::make_shared<ASTLoopControlFlow>(Peak().TokenType);
+        auto node = std::make_shared<ASTLoopControlFlow>(Peak().GetData());
         Consume();
-        Root()->Push(node);  */
+        Root()->Push(node);
     }
 
     void Parser::ParseTrait()

@@ -2170,7 +2170,7 @@ namespace clear
 		return {};
 	}
 
-	ASTLoopControlFlow::ASTLoopControlFlow(TokenType jumpTy) 
+	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy)
 		: m_JumpTy(jumpTy)
 	{
 	}
@@ -2232,13 +2232,12 @@ namespace clear
 		
 		GetSymbolTable()->FlushScope(ctx);
 
-    	//if (m_JumpTy == TokenType::Continue) 
-		//	ctx.Builder.CreateBr(ctx.LoopConditionBlock);
-		//
-    	//else if(m_JumpTy == TokenType::Break) 
-    	//	ctx.Builder.CreateBr(ctx.LoopEndBlock);
-    	//
-		
+    	if (m_JumpTy == "continue")
+			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
+
+    	else if(m_JumpTy == "break")
+    		ctx.Builder.CreateBr(ctx.LoopEndBlock);
+
     	return {};
     }
 
