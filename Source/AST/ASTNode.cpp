@@ -320,7 +320,7 @@ namespace clear
     		case OperatorType::BitwiseXor: return SymbolOps::BitXor(lhs, rhs, ctx.Builder);
     		case OperatorType::LeftShift:  return SymbolOps::Shl(lhs, rhs, ctx.Builder);
     		case OperatorType::RightShift: return SymbolOps::Shr(lhs, rhs, ctx.Builder);
-    		case OperatorType::BitwiseNot: return SymbolOps::Not(lhs, rhs, ctx.Builder);
+    		case OperatorType::BitwiseNot: return SymbolOps::Not(lhs, ctx.Builder);
     		default: return {};
     	}
 
@@ -394,7 +394,7 @@ namespace clear
 		CLEAR_VERIFY(lhsType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhsType->IsIntegral(), "invalid pointer arithmetic");
 
-		if(rhs.CodegenType->GetSize() != 64) 
+		if(rhsType->GetSize() != 64) 
 		{
 			rhsValue = TypeCasting::Cast(rhsValue, 
 												rhsType, 
@@ -406,19 +406,17 @@ namespace clear
 		
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
 
+		auto symPtrType = Symbol::CreateType(ptrType);
+
 		if(type == OperatorType::Add)
 		{
-<<<<<<< HEAD
-			return SymbolOps::GEP(lhs, Symbol::CreateType(ptrType), { rhsValue }, ctx.Builder); 
-=======
-			return SymbolOps::GEP(lhs, ptrType, { rhsValue }, ctx.Builder);
->>>>>>> 0925dea46163acc30e60142f3a57c96d22bf2b1f
+			return SymbolOps::GEP(lhs, symPtrType, { rhsValue }, ctx.Builder); 
 		}
 
 		if(type == OperatorType::Sub)
 		{
 			rhsValue = ctx.Builder.CreateNeg(rhsValue);
-			return SymbolOps::GEP(lhs, Symbol::CreateType(ptrType), { rhsValue }, ctx.Builder); 
+			return SymbolOps::GEP(lhs,symPtrType, { rhsValue }, ctx.Builder); 
 		}
 
 		CLEAR_UNREACHABLE("invalid binary expression");
@@ -1151,16 +1149,25 @@ namespace clear
 		for (auto& child : GetChildren())	
 		{
 			Symbol gen = child->Codegen(ctx);
-			for (auto jj : gen.GetValueTuple().Values)
-			{
-				args.push_back(jj);
-			}
 
-			for (auto jt : gen.GetValueTuple().Types)
+			if (gen.IsTuple) 
 			{
-				params.push_back({"", jt });
-			}
+				for (auto jj : gen.TupleValues) 
+				{
+					args.push_back(jj);
+				}
 
+				for (auto jt : gen.TupleTypes) 
+				{
+					params.push_back({"", jt });
+				}
+
+			}
+			else 
+			{
+				args.push_back(gen.CodegenValue);
+				params.push_back({"", gen.CodegenType });
+			}
 		}
     }
 
@@ -2298,7 +2305,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(std::get<std::string>(result.Data), result.GetType());
+			members.emplace_back(result.Data, result.CodegenType);
 		}
 
 		structTy->SetBody(members);
@@ -2323,9 +2330,8 @@ namespace clear
 			
 
 			Symbol result = 	children[i--]->Codegen(ctx);
-			auto [resultValue, resultType] = result.GetValue();
-			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, resultValue);
+			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
+			structTy->AddDefaultValue(memberName, result.CodegenValue);
 		}
 
 
@@ -2653,7 +2659,7 @@ namespace clear
 
 			Symbol result = children[i]->Codegen(ctx);
 
-			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.GetValue().first);
+			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.CodegenValue);
 			CLEAR_VERIFY(casted, "not a valid enum value!");
 
 			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
@@ -2719,7 +2725,7 @@ namespace clear
 
 				i++; // skip the Right Bracket as expression is stored in child
 
-				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.GetValue().first);
+				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.CodegenValue);
 				CLEAR_VERIFY(constant, "array expression must be a constant int");
 
 				int64_t arraySize = constant->getSExtValue();
