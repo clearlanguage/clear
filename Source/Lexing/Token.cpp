@@ -13,6 +13,12 @@ namespace clear
 
     const std::map<TokenType, size_t> g_TokenTypeToExpectedLength = {
         {TokenType::Identifier,5},
+            {TokenType::String,6},
+            {TokenType::Char,3},
+            {TokenType::Number,4},
+            {TokenType::EndScope,1},
+                {TokenType::EndLine,1}
+
 
     };
 
