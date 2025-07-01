@@ -2166,7 +2166,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(std::get<std::string>(result.Data), result.GetType());
+			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2244,7 +2244,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(result.Data, result.GetType());
+			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2268,9 +2268,12 @@ namespace clear
 			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::Expression, "haven't added all the default values");
 			
 
-			Symbol result = 	children[i--]->Codegen(ctx);
-			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, result.CodegenValue);
+			Symbol result = children[i--]->Codegen(ctx);
+
+			auto [resultValue, resultType] = result.GetValue();
+
+			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
+			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
 
@@ -2683,11 +2686,8 @@ namespace clear
 			}
 		}
 
-		Symbol result;
-		result.CodegenType = type;
-
-		m_Type = result;
-        return result;
+		m_Type = Symbol::CreateType(type);
+        return m_Type.value();
     }
 
 	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 
@@ -2696,14 +2696,16 @@ namespace clear
 
 		if(children.empty())
 		{
-			return { .CodegenType = nullptr, .Data = m_Name };
+			CLEAR_UNREACHABLE("unimplemented");
+			//return { .CodegenType = nullptr, .Data = m_Name };
 		}
 
 
 		CLEAR_VERIFY(children.size() == 1, "invalid parameter node");
 
 		Symbol type = children[0]->Codegen(ctx);
-		return { .CodegenType = type.CodegenType, .Data = m_Name };
+		type.Metadata = m_Name;
+		return type;
 	}
 
 	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)
