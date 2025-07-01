@@ -17,6 +17,9 @@ namespace clear
     };
 
     size_t getExpectedLength(TokenType type) {
+        if (g_TokenLengths.contains(type)) {
+            return g_TokenLengths.at(type);
+        }
         CLEAR_VERIFY(g_TokenTypeToExpectedLength.contains(type),"TokenType not in map");
         return g_TokenTypeToExpectedLength.at(type);
     }

@@ -42,8 +42,6 @@ namespace clear
         GreaterThan,     // >
         Bang,            // !
         RightThinArrow,       // ->
-        RightFatArrow,        // =>
-        LeftFatArrow,         // <=
         LeftThinArrow,        // <-
 
         PlusEquals,          // +=
@@ -167,9 +165,7 @@ namespace clear
             {">>=",  TokenType::RightShiftEquals},
 
             {"->",   TokenType::RightThinArrow},
-            {"=>",   TokenType::RightFatArrow},
             {"<-",   TokenType::LeftThinArrow},
-            {"<=",   TokenType::LeftFatArrow}
     };
 
     inline const size_t g_MaxOperatorSize = 3;
@@ -184,6 +180,54 @@ namespace clear
             {"}",  TokenType::RightBrace},
             {"[",  TokenType::LeftBracket},
             {"]",  TokenType::RightBracket}
+    };
+
+    inline std::unordered_map<TokenType, size_t> g_TokenLengths = {
+        {TokenType::Plus,              1},
+        {TokenType::Minus,             1},
+        {TokenType::Star,              1},
+        {TokenType::ForwardSlash,      1},
+        {TokenType::Percent,           1},
+        {TokenType::Equals,            1},
+        {TokenType::LessThan,          1},
+        {TokenType::GreaterThan,       1},
+        {TokenType::Bang,              1},
+        {TokenType::Ampersand,         1},
+        {TokenType::Pipe,              1},
+        {TokenType::Hat,               1},
+        {TokenType::Telda,             1},
+        {TokenType::Dot,               1},
+        {TokenType::Ellipses,          3},
+
+        {TokenType::Increment,         2},
+        {TokenType::Decrement,         2},
+        {TokenType::PlusEquals,        2},
+        {TokenType::MinusEquals,       2},
+        {TokenType::StarEquals,        2},
+        {TokenType::SlashEquals,       2},
+        {TokenType::PercentEquals,     2},
+        {TokenType::EqualsEquals,      2},
+        {TokenType::BangEquals,        2},
+        {TokenType::LessThanEquals,    2},
+        {TokenType::GreaterThanEquals, 2},
+        {TokenType::AmpersandEquals,   2},
+        {TokenType::PipeEquals,        2},
+        {TokenType::HatEquals,         2},
+        {TokenType::LeftShift,         2},
+        {TokenType::RightShift,        2},
+        {TokenType::LeftShiftEquals,   3},
+        {TokenType::RightShiftEquals,  3},
+        {TokenType::RightThinArrow,    2},
+        {TokenType::LeftThinArrow,     2},
+        {TokenType::Colon,         1},
+        {TokenType::Semicolon,     1},
+        {TokenType::Comma,         1},
+        {TokenType::LeftParen,     1},
+        {TokenType::RightParen,    1},
+        {TokenType::LeftBrace,     1},
+        {TokenType::RightBrace,    1},
+        {TokenType::LeftBracket,   1},
+        {TokenType::RightBracket,  1}
     };
 
 
