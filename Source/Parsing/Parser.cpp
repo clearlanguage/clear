@@ -33,7 +33,8 @@ namespace clear
 
     #define VERIFY_OR_RAISE(cond, code)                             \
     if (!cond) {                                               \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
+    auto location = (m_Position > 0 ? Prev() : Peak());        \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine);  \
     return;                                                      \
     }
