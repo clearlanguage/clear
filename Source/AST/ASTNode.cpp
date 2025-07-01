@@ -798,29 +798,19 @@ namespace clear
     {
 		auto& builder = ctx.Builder;
 		
-		if(storage.CodegenType->IsConst())
-		{
-			auto constTy = std::dynamic_pointer_cast<ConstantType>(storage.CodegenType);
-			storage.CodegenType = constTy->GetBaseType();
-		}
+		auto [_, storageType] = storage.GetValue();
+		auto [dataValue, dataType] = data.GetValue();
 
-		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
-		CLEAR_VERIFY(ptrType, "storage must have pointer type not ", storage.CodegenType->GetHash());
+		auto ptrType = dyn_cast<PointerType>(storageType);
+		auto baseTy = ptrType->GetBaseType();
 
-		if(m_Type != AssignmentOperatorType::Initialize)
-			CLEAR_VERIFY(!ptrType->GetBaseType()->IsConst(), "cannot assign to constant!");
+		if(baseTy == dataType)
+			return; 
 
-		std::shared_ptr<Type> underlyingStorageType = ptrType->GetBaseType();
-		CLEAR_VERIFY(underlyingStorageType, "not valid storage");
+		dataValue = TypeCasting::Cast(dataValue, dataType, baseTy, ctx.Builder);
+		dataType = baseTy;
 
-        llvm::Type* storageType = underlyingStorageType->Get();
-        llvm::Type* dataType = data.CodegenType->Get();
-
-		if(storageType == dataType)
-			return;
-
-		data.CodegenValue = TypeCasting::Cast(data.CodegenValue, data.CodegenType, underlyingStorageType, ctx.Builder);
-		data.CodegenType = underlyingStorageType; 
+		data = Symbol::CreateValue(dataValue, dataType);
     }
 
 	ASTFunctionDefinition::ASTFunctionDefinition(const std::string& name)
