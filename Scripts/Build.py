@@ -8,6 +8,15 @@ path = path.removesuffix("Scripts/Build.py")
 error_path = os.path.join(path, "Scripts", "Errors.toml")
 error_header = os.path.join(path, "Source", "Diagnostics", "DiagnosticCode.h")
 
+def escape_for_error_message(s) :
+    return (
+        s.replace('\\', '\\\\')
+        .replace('\n', '\\\\n')
+        .replace('\r', '\\\\r')
+        .replace('\t', '\\\\t')
+        .replace('"', '\\\"')
+    )
+
 def load_errors():
     global path
 
@@ -20,8 +29,8 @@ def load_errors():
 
     for key, value in config.items():
         enums += f"\t\tDiagnosticCode_{key},\n"
-        messages += f"\t\t\"{value['Message']}\",\n"
-        advices += f"\t\t\"{value['Advice']}\",\n"
+        messages += f"\t\t\"{escape_for_error_message(value['Message'])}\",\n"
+        advices += f"\t\t\"{escape_for_error_message(value['Advice'])}\",\n"
 
     enums += "\t\tDiagnostic_Count\n"
 
@@ -43,4 +52,3 @@ def load_errors():
         f.write(buffer)
 
 load_errors()
-    
