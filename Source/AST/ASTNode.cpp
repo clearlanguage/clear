@@ -2525,7 +2525,7 @@ namespace clear
 			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 			Symbol result = typeSpec->Codegen(ctx);
 
-			members.emplace_back(result.Data, result.CodegenType);
+			members.emplace_back(std::get<std::string>(result.Data), result.GetType());
 		}
 
 		structTy->SetBody(members);
@@ -2546,8 +2546,9 @@ namespace clear
 			}
 
 			Symbol result = 	children[i++]->Codegen(ctx);
-			result.CodegenValue = TypeCasting::Cast(result.CodegenValue, result.CodegenType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, result.CodegenValue);
+			auto [resultValue, resultType] = result.GetValue();
+			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
+			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
 		return {};
