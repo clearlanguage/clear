@@ -842,7 +842,7 @@ namespace clear
 			Symbol result = fnParam->Codegen(ctx);
 			isVariadic = fnParam->IsVariadic;
 
-			m_ResolvedParams.push_back({ result.Metadata.value_or(String()), result.GetType(), fnParam->IsVariadic });
+			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), fnParam->IsVariadic });
 		}
 
 		if(!children[i])
@@ -1217,7 +1217,7 @@ namespace clear
 
 			Symbol param = fnParam->Codegen(ctx);
 
-			m_Parameters.push_back({ .Name = param.Data, .Type = param.GetType(), .IsVariadic = fnParam->IsVariadic });
+			m_Parameters.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = fnParam->IsVariadic });
 		} 
 
 		bool isVariadic = false;
@@ -1238,7 +1238,7 @@ namespace clear
 		if (i < children.size())
 		{
 			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::TypeResolver, "not a valid return type node");
-			m_ReturnType = children[i]->Codegen(ctx).CodegenType;
+			m_ReturnType = children[i]->Codegen(ctx).GetType();
 		}
 
 		if(InsertDecleration)
@@ -1264,7 +1264,7 @@ namespace clear
 
 			GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
 
-			return { data.Function, m_ReturnType };	
+			return Symbol::CreateFunction(&GetSymbolTable()->GetInstance(m_Name));	
 		}
 
 		return {};
@@ -1501,18 +1501,15 @@ namespace clear
 
 			Symbol valueToStore = children[i + 1]->Codegen(ctx);
 
-			if(valueToStore.GetType() != innerType)
+			auto [value, type] = valueToStore.GetValue();
+
+			if(type != innerType)
 			{
-				valueToStore.CodegenValue = TypeCasting::Cast(
-							valueToStore.CodegenValue,
-							valueToStore.CodegenType, 
-							innerType,
-							ctx.Builder);
+				value = TypeCasting::Cast(value, type, innerType, ctx.Builder);
 			}
 
 			ctx.Builder.CreateStore(valueToStore.GetValue().first, elemPtr);
 		}
-		
 		
     }
 
@@ -1784,18 +1781,20 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 		Symbol codegen = children[0]->Codegen(ctx);
 
-		if(codegen.CodegenValue == nullptr)
+		auto [codegenValue, codegenType] = codegen.GetValue();
+
+		if(codegenValue == nullptr)
 		{
 			EmitDefaultReturn(ctx);
 			return {};
 		}
 		
-		if(codegen.CodegenType->Get() != ctx.ReturnType->Get())
+		if(codegenType->Get() != ctx.ReturnType->Get())
 		{
-			codegen.CodegenValue = TypeCasting::Cast(codegen.CodegenValue, codegen.CodegenType, ctx.ReturnType, ctx.Builder);
+			codegenValue = TypeCasting::Cast(codegenValue, codegenType, ctx.ReturnType, ctx.Builder);
 		}
 
-		ctx.Builder.CreateStore(codegen.CodegenValue, ctx.ReturnAlloca);
+		ctx.Builder.CreateStore(codegenValue, ctx.ReturnAlloca);
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
 
 		return {};
@@ -1833,21 +1832,14 @@ namespace clear
 				result = children[0]->Codegen(ctx);
 			}
 
-			CLEAR_VERIFY(result.CodegenType->IsPointer(), "not a valid dereference");
+			auto [resultValue, resultType] = result.GetValue();
+
+			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
 
 			if(ctx.WantAddress)
 				return result;
 
-			if(result.CodegenType->IsConst())
-			{
-				auto constTy = std::dynamic_pointer_cast<ConstantType>(result.CodegenType);
-				result.CodegenType = constTy->GetBaseType();
-			}
-			
-			std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(result.CodegenType);
-
-			return {ctx.Builder.CreateLoad(ptrType->GetBaseType()->Get(), 
-										   result.CodegenValue), ptrType->GetBaseType() };
+			return SymbolOps::Load(result, ctx.Builder);
 		}	
 
 		CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of unary expression");
@@ -1855,9 +1847,7 @@ namespace clear
 		if(m_Type == OperatorType::Address)
 		{		
 			ValueRestoreGuard guard(ctx.WantAddress, true);
-			Symbol result = children[0]->Codegen(ctx);
-
-			return result;
+			return children[0]->Codegen(ctx);;
 		}
 
 		if(m_Type == OperatorType::Negation)

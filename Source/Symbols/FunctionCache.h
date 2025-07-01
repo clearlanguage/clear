@@ -8,7 +8,7 @@ namespace clear
 {
     struct Parameter
 	{
-		String Name;
+		std::string Name;
 		std::shared_ptr<Type> Type;
         bool IsVariadic = false;
         bool IsTrait = false;
@@ -22,7 +22,7 @@ namespace clear
         std::vector<Parameter> Parameters;
         std::shared_ptr<ASTNodeBase> Root;
         std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
-        String MangledName;
+        std::string MangledName;
         bool IsVariadic = false;
         bool IsExternal = false;
     };
