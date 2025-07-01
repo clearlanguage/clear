@@ -820,11 +820,6 @@ namespace clear
 
 	Symbol ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
-		if(m_Name.contains("__destruct__"))
-		{
-
-		}
-
 		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
@@ -846,7 +841,8 @@ namespace clear
 
 			Symbol result = fnParam->Codegen(ctx);
 			isVariadic = fnParam->IsVariadic;
-			m_ResolvedParams.push_back({ result.Data, result.CodegenType, fnParam->IsVariadic });
+
+			m_ResolvedParams.push_back({ result.Metadata.value_or(String()), result.GetType(), fnParam->IsVariadic });
 		}
 
 		if(!children[i])
@@ -856,7 +852,7 @@ namespace clear
 		if(i < children.size() && children[i]->GetType() == ASTNodeType::TypeResolver)
 		{
 			if(children[i])
-				m_ResolvedReturnType = children[i]->Codegen(ctx).CodegenType;
+				m_ResolvedReturnType = children[i]->Codegen(ctx).GetType();
 		
 			i++;
 		}
@@ -879,7 +875,6 @@ namespace clear
 
 		// erase no longer needed children (params, return type and default args)
 		children.erase(children.begin(), children.begin() + i);
-
 
 		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this());
 		
@@ -943,7 +938,7 @@ namespace clear
 			alloca.Alloca = argAlloc;
 			alloca.Type   = type;
 
-			tbl->OwnAllocation(param.Name, alloca);
+			tbl->OwnAllocation(std::string(param.Name), alloca);
 			k++;
 		}
 
@@ -967,7 +962,7 @@ namespace clear
 			dummy.Alloca = nullptr;
 			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); 
 
-			tbl->TrackAllocation(m_ResolvedParams[k].Name, dummy);
+			tbl->TrackAllocation(std::string(m_ResolvedParams[k].Name), dummy);
 		}
 
 		functionData.Function->insert(functionData.Function->end(), body);
@@ -1038,7 +1033,7 @@ namespace clear
 
 				ASTDefaultInitializer::RecursiveCallConstructors(temporary.Alloca, ty, ctx, GetSymbolTable()); // call constructors recursively.
 
-				return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type }; // return value of temporary
+				return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type); // return value of temporary
 			}
 
 			m_Name = std::format("{}.{}", m_Name, "__construct__");
@@ -1063,11 +1058,11 @@ namespace clear
 
 			if(!value) return {};
 
-			if(m_Name == "sizeof") return { value, GetSymbolTable()->GetType("int64") };
-			if(m_Name == "len") return { value, GetSymbolTable()->GetType("int64") };
+			if(m_Name == "sizeof") return Symbol::CreateValue(value, GetSymbolTable()->GetType("int64"));
+			if(m_Name == "len")    return Symbol::CreateValue(value, GetSymbolTable()->GetType("int64"));
 
 
-			return { value, GetSymbolTable()->GetType(m_Name) };
+			return Symbol::CreateValue(value, GetSymbolTable()->GetType(m_Name));
 		}
 
 		// find most suitable template to arguments and name
@@ -1083,8 +1078,10 @@ namespace clear
 
 			Symbol argument = data.DefaultArguments[i]->Codegen(ctx);
 
-			args.push_back(argument.CodegenValue);
-			params.push_back({ .Type=argument.CodegenType });
+			auto [argValue, argType] = argument.GetValue();
+
+			args.push_back(argValue);
+			params.push_back({ .Type=argType });
 		}
 		
 		// cast
@@ -1101,10 +1098,10 @@ namespace clear
 			if(temporary.Alloca)
 			{
 				ctx.Builder.CreateCall(instance.Function, args);
-				return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type };
+				return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type);
 			}
 
-			return { ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType };
+			return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType);
 		}
 
 		// instantiate and call
@@ -1114,10 +1111,10 @@ namespace clear
 		if(temporary.Alloca)
 		{
 			ctx.Builder.CreateCall(instance.Function, args);
-			return { ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type };
+			return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type);
 		}
 
-		return { ctx.Builder.CreateCall(instance.Function, args), data.ReturnType };
+		return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), data.ReturnType);
 	}
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)

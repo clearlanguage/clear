@@ -1,7 +1,6 @@
 #pragma once 
 
-#include "API/LLVM/LLVMInclude.h"
-#include "Symbols/TypeRegistry.h"
+#include "Symbol.h"
 
 #include <unordered_map>
 
@@ -9,7 +8,7 @@ namespace clear
 {
     struct Parameter
 	{
-		std::string Name;
+		String Name;
 		std::shared_ptr<Type> Type;
         bool IsVariadic = false;
         bool IsTrait = false;
@@ -23,7 +22,7 @@ namespace clear
         std::vector<Parameter> Parameters;
         std::shared_ptr<ASTNodeBase> Root;
         std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
-        std::string MangledName;
+        String MangledName;
         bool IsVariadic = false;
         bool IsExternal = false;
     };

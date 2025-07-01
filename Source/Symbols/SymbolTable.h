@@ -1,8 +1,8 @@
 #pragma once
 
-#include "API/LLVM/LLVMInclude.h"
 #include "Symbols/Type.h"
 #include "FunctionCache.h"
+#include "TypeRegistry.h"
 
 #include <unordered_map>
 #include <vector>
