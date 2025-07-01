@@ -13,19 +13,23 @@
 namespace clear 
 {
 
-    #define EXPECT_TOKEN(type, code)                           \
-    if (!Match(type)) {                                              \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
-    SkipUntil(TokenType::EndLine);  \
-    return;                                                      \
+    #define EXPECT_TOKEN(type, code) \
+    if (!Match(type)) { \
+    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
+    SkipUntil(TokenType::EndLine); \
+    return; \
     }
 
-    #define EXPECT_DATA(str, code)                             \
-    if (!Match(str)) {                                               \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Prev(), code); \
-    SkipUntil(TokenType::EndLine);  \
-    return;                                                      \
+
+    #define EXPECT_DATA(str, code) \
+    if (!Match(str)) { \
+    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
+    SkipUntil(TokenType::EndLine); \
+    return; \
     }
+
 
     #define VERIFY_OR_RAISE(cond, code)                             \
     if (!cond) {                                               \
