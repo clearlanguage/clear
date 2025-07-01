@@ -761,8 +761,6 @@ namespace clear
 			return Symbol();
 		}
 
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
-
 		Symbol loadedValue = SymbolOps::Load(storage, ctx.Builder);		
 
 		Symbol tmp;
