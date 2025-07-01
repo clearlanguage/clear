@@ -486,7 +486,7 @@ namespace clear
     {
 		CLEAR_UNREACHABLE("unimplemented");
 		return {};
-		
+
 		/* auto tbl = GetSymbolTable();
 
 		Symbol lhs;
@@ -585,9 +585,9 @@ namespace clear
 
 		size_t index = structTy->GetMemberIndex(member->GetName());
 
-		auto resultantType = GetSymbolTable()->GetPointerTo(structTy->GetMemberType(member->GetName()));
-			
-		Symbol gep = SymbolOps::GEPStruct(lhs, Symbol::CreateType(resultantType), index, ctx.Builder);
+		auto resultantType = Symbol::CreateType(GetSymbolTable()->GetPointerTo(structTy->GetMemberType(member->GetName())));
+		
+		Symbol gep = SymbolOps::GEPStruct(lhs, resultantType, index, ctx.Builder);
 
         if(ctx.WantAddress)
 		{
@@ -623,14 +623,12 @@ namespace clear
 
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
-		Symbol Symbol;
-
 		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
 		
 		auto& typeResolver = GetChildren()[0];
 
-		std::shared_ptr<Type> resolvedType = typeResolver->Codegen(ctx).CodegenType;
-		m_Type = resolvedType;
+		Symbol resolvedType = typeResolver->Codegen(ctx);
+		m_Type = resolvedType.GetType();
 
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 
@@ -638,17 +636,14 @@ namespace clear
 
 		if(isGlobal)
 		{
-			alloca = registry->CreateGlobal(m_Name, resolvedType, ctx.Module);
+			alloca = registry->CreateGlobal(m_Name, m_Type, ctx.Module);
 		}
 		else 
 		{
-			alloca = registry->CreateAlloca(m_Name, resolvedType, ctx.Builder);
+			alloca = registry->CreateAlloca(m_Name, m_Type, ctx.Builder);
 		}
 
-		Symbol.CodegenValue = alloca.Alloca;
-		Symbol.CodegenType  = GetSymbolTable()->GetPointerTo(alloca.Type);
-
-		return Symbol;
+		return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(alloca.Type));
     }
 
 	ASTInferredDecleration::ASTInferredDecleration(const std::string& name, bool isConst)
@@ -665,9 +660,11 @@ namespace clear
 		Symbol result = children[0]->Codegen(ctx);
 
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
+
+		auto [resultValue, resultType] = result.GetValue();
 	
 		if(m_IsConst)
-			result.CodegenType = GetSymbolTable()->GetConstFrom(result.CodegenType);
+			resultType = GetSymbolTable()->GetConstFrom(resultType);
 
 		
 		bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
@@ -676,15 +673,15 @@ namespace clear
 
 		if(isGlobal)
 		{
-			alloca = tbl->CreateGlobal(m_Name, result.CodegenType, ctx.Module, result.CodegenValue);
+			alloca = tbl->CreateGlobal(m_Name, resultType, ctx.Module, resultValue);
 		}
 		else 
 		{
-			alloca = tbl->CreateAlloca(m_Name, result.CodegenType, ctx.Builder);
-			ctx.Builder.CreateStore(result.CodegenValue, alloca.Alloca);
+			alloca = tbl->CreateAlloca(m_Name, resultType, ctx.Builder);
+			ctx.Builder.CreateStore(resultValue, alloca.Alloca);
 		}
 
-		return {alloca.Alloca, GetSymbolTable()->GetPointerTo(result.CodegenType)};
+		return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(resultType));
 	}
 
 	ASTVariable::ASTVariable(const std::string& name)
