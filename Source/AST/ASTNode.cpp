@@ -1884,7 +1884,7 @@ namespace clear
 
 		if(m_Type == OperatorType::PostIncrement)
 		{
-			returnValue.CreateValue(ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue),ty->GetBaseType();)
+			returnValue.CreateValue(ctx.Builder.CreateLoad(ty->GetBaseType()->Get(), result.CodegenValue),ty->GetBaseType());
 
 			ApplyFun(OperatorType::Add);
 		}
@@ -2354,8 +2354,8 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 		Symbol variable = children[0]->Codegen(ctx);
 		
-		CLEAR_VERIFY(variable.CodegenType->IsPointer(), "cannot assign to a value");
 		auto [VarValue, VarType] = variable.GetValue();
+		CLEAR_VERIFY(VarType->IsPointer(), "cannot assign to a value");
 
 		auto pointerTy = dyn_cast<PointerType>(VarType);
 		auto baseTy = pointerTy->GetBaseType();
