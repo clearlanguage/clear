@@ -19,6 +19,8 @@ namespace clear
         void PropagateSymbolTables();
 
         std::shared_ptr<Module> EmplaceOrReturn(const std::string& moduleName);
+        std::shared_ptr<Module> Return(const std::string& moduleName);
+
 
         void Codegen(const BuildConfig& config);
 

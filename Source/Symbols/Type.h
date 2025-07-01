@@ -285,6 +285,15 @@ namespace clear
             return std::dynamic_pointer_cast<To>(constTy->GetBaseType());
         }
 
+        if constexpr (std::is_same_v<To, StructType>)
+        {
+            if(auto classTy = std::dynamic_pointer_cast<ClassType>(val))
+            {
+                return classTy->GetBaseType();
+            }
+        }
+        
+
         return std::dynamic_pointer_cast<To>(val);
     }
 }

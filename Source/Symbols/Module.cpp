@@ -51,6 +51,11 @@ namespace clear
         auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(moduleName));
         return it->second;
     }
+    
+    std::shared_ptr<Module> Module::Return(const std::string& moduleName)
+    {
+        return m_ContainedModules[moduleName];
+    }
 
     void Module::Codegen(const BuildConfig& config)
     {

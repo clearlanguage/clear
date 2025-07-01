@@ -8,9 +8,11 @@
 #include "Symbols/TypeRegistry.h"
 #include "Intrinsics.h"
 #include "Symbols/SymbolOperations.h"
+#include "Symbols/Module.h"
 
 #include <llvm/ADT/SmallVector.h>
 #include <stack>
+
 
 namespace clear
 {
@@ -485,10 +487,8 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		CLEAR_UNREACHABLE("unimplemented");
-		return {};
 
-		/* auto tbl = GetSymbolTable();
+		auto tbl = GetSymbolTable();
 
 		Symbol lhs;
 		{
@@ -496,6 +496,72 @@ namespace clear
 			lhs = left->Codegen(ctx);
 		}
 
+		switch (lhs.Kind) 
+		{
+			case SymbolKind::Type:
+			{
+				auto ty = lhs.GetType();
+
+				if(ty->IsEnum())
+					return HandleMemberEnum(lhs, right, ctx);
+
+				CLEAR_UNREACHABLE("unimplemented");
+			}
+			case SymbolKind::Module:
+			{
+				return HandleModuleAccess(lhs, right, ctx);
+			}
+			case SymbolKind::Value:
+			{
+				auto [lhsValue, lhsType] = lhs.GetValue();
+
+				if(!lhsType->IsPointer()) 
+				{
+					Allocation temp = tbl->RequestTemporary(lhsType, ctx.Builder);
+					ctx.Builder.CreateStore(lhsValue, temp.Alloca);
+
+					lhsValue = temp.Alloca;
+					lhsType =  GetSymbolTable()->GetPointerTo(temp.Type);
+				}
+
+				if(right->GetType() == ASTNodeType::Member)
+				{
+					return HandleMember(lhs, right, ctx);
+				}
+				else if (right->GetType() == ASTNodeType::FunctionCall)
+				{
+					auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
+					CLEAR_VERIFY(funcCall, "invalid function call");
+
+					auto ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
+					CLEAR_VERIFY(ptrType, "invalid pointer type for function call");
+
+					while(!ptrType->GetBaseType()->IsCompound()) // automatic derefencing if pointer
+					{
+						lhs = SymbolOps::Load(lhs, ctx.Builder);
+						ptrType =  std::dynamic_pointer_cast<PointerType>(lhs.GetValue().second);
+					}
+
+					auto classType = dyn_cast<ClassType>(ptrType->GetBaseType());
+					CLEAR_VERIFY(classType, "invalid class type for function call");
+
+					std::string name = funcCall->GetName();
+
+					funcCall->PushPrefixArgument(lhs.GetValue().first, ptrType);
+					funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
+
+					Symbol result = funcCall->Codegen(ctx);
+
+					funcCall->SetName(name);
+
+					return result;
+				}
+			}
+			default:	
+			{
+				break;
+			}
+		}
 
 		if(lhs.Kind == SymbolKind::Type)
 		{
@@ -510,56 +576,8 @@ namespace clear
 		if(lhs.Kind == SymbolKind::Module)
 			return HandleModuleAccess(lhs, right, ctx);
 
-		// lhs.Kind == SymbolKind::Value
-		auto [lhsValue, lhsType] = lhs.GetValue();
-
-		if(!lhsType->IsPointer()) 
-		{
-			Allocation temp = tbl->RequestTemporary(lhs.CodegenType, ctx.Builder);
-			ctx.Builder.CreateStore(lhs.CodegenValue, temp.Alloca);
-
-			lhsValue = temp.Alloca;
-			lhsType =  GetSymbolTable()->GetPointerTo(temp.Type);
-		}
-
-		if(right->GetType() == ASTNodeType::Member)
-		{
-			return HandleMember(lhs, right, ctx);
-		}
-		else if (right->GetType() == ASTNodeType::FunctionCall)
-		{
-			auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
-			CLEAR_VERIFY(funcCall, "invalid function call");
-			
-			auto ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
-			CLEAR_VERIFY(ptrType, "invalid pointer type for function call");
-
-			while(!ptrType->GetBaseType()->IsCompound()) // automatic derefencing if pointer
-			{
-				lhs = SymbolOps::Load(lhs, ctx.Builder);
-				ptrType =  std::dynamic_pointer_cast<PointerType>(lhs.GetValue().second);
-			}
-
-			auto classType = dyn_cast<ClassType>(ptrType->GetBaseType());
-			CLEAR_VERIFY(classType, "invalid class type for function call");
-
-			std::string name = funcCall->GetName();
-
-			funcCall->PushPrefixArgument(lhs.GetValue().first, ptrType);
-			funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
-			
-			Symbol result = funcCall->Codegen(ctx);
-			
-			funcCall->SetName(name);
-
-			return result;
-		}
-
-
-		CLEAR_UNREACHABLE("invalid member access, expected member or function call");
-		return {};
-		 */
-    }
+		return Symbol();	
+	}
 
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
@@ -721,8 +739,10 @@ namespace clear
 		{
 			return Symbol::CreateType(ty);
 		}
-		//else if (auto module = registry->GetModule()) TODO:
-
+		else if (auto module = ctx.ClearModule->Return(m_Name)) 
+		{
+			return Symbol::CreateModule(module);
+		}
 	
 		return Symbol();
     }
@@ -748,7 +768,6 @@ namespace clear
 		}
 
 		Symbol data;
-
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, false);
 			data    = children[1]->Codegen(ctx);
@@ -1782,12 +1801,18 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 		Symbol codegen = children[0]->Codegen(ctx);
 
+		if(codegen.Kind == SymbolKind::None)
+		{
+			EmitDefaultReturn(ctx);
+			return Symbol();
+		}
+
 		auto [codegenValue, codegenType] = codegen.GetValue();
 
 		if(codegenValue == nullptr)
 		{
 			EmitDefaultReturn(ctx);
-			return {};
+			return Symbol();
 		}
 		
 		if(codegenType->Get() != ctx.ReturnType->Get())
