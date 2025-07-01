@@ -38,9 +38,6 @@ namespace clear
 
         bool MatchAny(TokenSet tokenSet);
 
-        void Expect(TokenType tokenType,Severity severity,DiagnosticCode code);
-        void Expect(const std::string& data,Severity severity,DiagnosticCode code);
-
         void Expect(TokenType tokenType);
         void Expect(const std::string& data);
 

@@ -153,21 +153,6 @@ namespace clear
         return tokenSet.test((size_t)Peak().TokenType);
     } */
 
-    void Parser::Expect(TokenType tokenType,Severity severity,DiagnosticCode code)
-    {
-        if(Match(tokenType)) return;
-
-        m_DiagnosticsBuilder.Report(Stage::Parsing, severity,Peak(),code);
-    }
-
-    void Parser::Expect(const std::string& data, Severity severity, DiagnosticCode code)
-    {
-        if(Match(data)) return;
-
-        m_DiagnosticsBuilder.Report(Stage::Parsing,severity,Peak(),code);
-
-    }
-
     void Parser::Expect(TokenType tokenType)
     {
         if(Match(tokenType)) return;
