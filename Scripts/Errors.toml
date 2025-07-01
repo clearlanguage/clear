@@ -59,52 +59,49 @@ Message = "Unexpected token encountered."
 Advice  = "The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed."
 
 [ExpectedIndentation]
-Message = "Expected indentation missing :"
-Advice = "Add : after {}"
+Message = "Expected ':' for block indentation"
+Advice = "Add a colon ':' after {} to begin an indented code block"
 
 [ExpectedNewlineAferIndentation]
-Message = "Expected new line after :"
-Advice = "Add the code into the block after : do not leave it empty"
+Message = "Expected a new line after ':'"
+Advice = "Add a line break after ':' and indent the next line to start the block"
 
 [ExpectedIdentifier]
-Message = "Expected identifier"
-Advice = "Add the required indentifer after {}"
+Message = "Expected an identifier"
+Advice = "Add a valid name or identifier after {}"
 
 [ExpectedAssignment]
-Message = "Expected assigmnet after identifier"
-Advice = "Add = and complete the statment"
+Message = "Expected '=' after identifier"
+Advice = "Assign a value using '=' after the identifier to complete the statement"
 
 [ElseNotInIfBlock]
-Message = "Unexpected else"
-Advice = "Make sure else is used in a valid if statment"
+Message = "Unexpected 'else' without matching 'if'"
+Advice = "Ensure 'else' is used directly after a valid 'if' or 'elif' block"
 
 [InvalidForLoop]
-Message = "For loop missing required in"
-Advice = "Add in to complete for expression"
+Message = "Invalid 'for' loop syntax: missing 'in'"
+Advice = "Use 'in' to complete the 'for' loop syntax (e.g. 'for item in list')"
 
 [ExpectedLeftParanFunctionDefinition]
-Message = "Expected ( after function name"
-Advice = "Add ( after function name"
+Message = "Expected '(' after function name"
+Advice = "Add '(' to begin the function’s parameter list"
 
 [ExpectedEndOfFunction]
-Message = "Expected ) at the end of the function"
-Advice = "Add ) after function"
-
+Message = "Expected ')' at end of parameter list"
+Advice = "Close the function’s parameter list with ')'"
 
 [ExpectedCommaBetweenFunctionParams]
-Message = "Expected , in between function params"
-Advice = "Seperate function params with ,"
-
+Message = "Expected ',' between function parameters"
+Advice = "Separate each function parameter with a comma ','"
 
 [ExpectedFunctionReturnType]
-Message = "Missing ->"
-Advice = "Add -> after function defintion to signify function return type"
-
+Message = "Missing '->' for function return type"
+Advice = "Add '->' followed by the return type after the parameter list"
 
 [ExpectedEndOfScope]
-Message  = "expected end of scope"
-Advice = ""
+Message = "Expected end of scope (e.g. end of class or function block)"
+Advice = "Ensure all indented blocks are properly closed"
 
 [ExpectedModuleName]
-Message = "Expected module name string"
-Advice = "Add module name after module keyword surrounded in \"\""
+Message = "Expected a module name string"
+Advice = "Add a module name string (e.g. \"math\") after the module keyword"
