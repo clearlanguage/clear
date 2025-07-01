@@ -695,33 +695,35 @@ namespace clear
 
 		Symbol result;
 
-		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
+		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 
-		if(!registry->HasAlloca(m_Name))
+		if(tbl->HasAlloca(m_Name))
 		{
-			result.Data = m_Name;
-			return result;
+			Allocation alloca = tbl->GetAlloca(m_Name);
+
+			if(alloca.Type->IsVariadic())  // special case
+			{
+				return Symbol::CreateValue(nullptr, alloca.Type); 
+			}
+
+			if(ctx.WantAddress)
+			{
+				return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(alloca.Type));
+			}
+			else 
+			{
+				return Symbol::CreateValue(builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name), alloca.Type);
+	
+			}
 		}
-
-		Allocation alloca = registry->GetAlloca(m_Name);
-
-		if(alloca.Type->IsVariadic())  // special case
+		else if (auto ty = tbl->GetType(m_Name))
 		{
-			return { nullptr, alloca.Type }; 
+			return Symbol::CreateType(ty);
 		}
+		//else if (auto module = registry->GetModule()) TODO:
 
-		if(ctx.WantAddress)
-		{
-			result.CodegenValue = alloca.Alloca;
-			result.CodegenType  = GetSymbolTable()->GetPointerTo(alloca.Type);
-		}
-		else 
-		{
-			result.CodegenValue = builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name);
-			result.CodegenType  = alloca.Type;
-		}
-
-		return result;
+	
+		return Symbol();
     }
 
 	ASTAssignmentOperator::ASTAssignmentOperator(AssignmentOperatorType type)
@@ -753,54 +755,45 @@ namespace clear
 
 		HandleDifferentTypes(storage, data, ctx);
 
-		Symbol result;
-
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
-
-
-			result.CodegenValue = builder.CreateStore(data.CodegenValue, storage.CodegenValue);
-			result.CodegenType = storage.CodegenType;
-			return result;
+			SymbolOps::Store(storage, data, ctx.Builder, true);
+			return Symbol();
 		}
 
 		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(storage.CodegenType);
 
-		Symbol loadedValue;
-		loadedValue.CodegenValue = builder.CreateLoad(storageType->GetBaseType()->Get(), storage.CodegenValue);
-		loadedValue.CodegenType = storageType->GetBaseType();
+		Symbol loadedValue = SymbolOps::Load(storage, ctx.Builder);		
 
 		Symbol tmp;
 
 		if(m_Type == AssignmentOperatorType::Add)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Add, ctx, GetSymbolTable());
+			tmp = SymbolOps::Add(loadedValue, data, ctx.Builder); 
 		}
 		else if (m_Type == AssignmentOperatorType::Sub)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Sub, ctx, GetSymbolTable());
+			tmp = SymbolOps::Sub(loadedValue, data, ctx.Builder); 
 		}
 		else if (m_Type == AssignmentOperatorType::Mul)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mul, ctx, GetSymbolTable());
+			tmp = SymbolOps::Mul(loadedValue, data, ctx.Builder); 
 		}
 		else if (m_Type == AssignmentOperatorType::Div)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Div, ctx, GetSymbolTable());
+			tmp = SymbolOps::Div(loadedValue, data, ctx.Builder); 
 		}
 		else if (m_Type == AssignmentOperatorType::Mod)
 		{
-			tmp = ASTBinaryExpression::HandleMathExpression(loadedValue, data, OperatorType::Mod, ctx, GetSymbolTable());
+			tmp = SymbolOps::Mod(loadedValue, data, ctx.Builder); 
 		}
 		else 
 		{
 			CLEAR_UNREACHABLE("invalid assignment type");
 		}
 
-		result.CodegenValue = builder.CreateStore(tmp.CodegenValue, storage.CodegenValue);
-		result.CodegenType  = storage.CodegenType;
-
-		return result;
+		SymbolOps::Store(storage, tmp, ctx.Builder);
+		return Symbol();
     }
 
     void ASTAssignmentOperator::HandleDifferentTypes(Symbol& storage, Symbol& data, CodegenContext& ctx)
