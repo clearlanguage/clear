@@ -2113,6 +2113,17 @@ namespace clear
     {
     }
 
+	ASTTernaryExpression::ASTTernaryExpression() {
+
+	}
+
+	Symbol ASTTernaryExpression::Codegen(CodegenContext &) {
+		return {};
+	}
+
+
+
+
     Symbol ASTWhileExpression::Codegen(CodegenContext &ctx)
     {
 		PushScopeMarker(ctx);

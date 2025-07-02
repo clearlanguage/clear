@@ -25,7 +25,7 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer, TypeResolver,TypeSpecifier
+		Enum, Defer, TypeResolver,TypeSpecifier,TernaryExpression
 	};
 
 	struct CodegenResult
@@ -405,6 +405,16 @@ namespace clear
 		ASTWhileExpression();
 		virtual ~ASTWhileExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
+		virtual Symbol Codegen(CodegenContext&) override;
+	};
+
+
+	class ASTTernaryExpression : public ASTNodeBase
+	{
+	public:
+		ASTTernaryExpression();
+		virtual ~ASTTernaryExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TernaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
 	};
 
