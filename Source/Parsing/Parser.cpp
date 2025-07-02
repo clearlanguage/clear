@@ -248,10 +248,10 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
-        bool isDecleration = IsDecleration();
+        bool isDeclaration = IsDeclaration();
 
         // parse either expression or declerations, allowing for multiple on the same line seperated by commas
-        if(!isDecleration)
+        if(!isDeclaration)
         {
             while(!(Match(TokenType::EndLine) || Match(TokenType::EndScope) || Match(TokenType::EndOfFile)))
             {
@@ -274,7 +274,7 @@ namespace clear
             return;
         }
 
-        while(isDecleration)
+        while(isDeclaration)
         {
             auto decleration = ParseVariableDecleration();
 
@@ -293,7 +293,7 @@ namespace clear
             if(Match(TokenType::Comma))
                 Consume();
 
-            isDecleration = IsDecleration();
+            isDeclaration = IsDeclaration();
         }
     }
 
@@ -1647,23 +1647,20 @@ namespace clear
         return k == s_MaxMatchSize || match[k] == TokenType::None;
     }
     
-    bool Parser::IsDecleration()
+    bool Parser::IsDeclaration()
     {
-        if(Match(TokenType::EndLine))
+        if (Match(TokenType::EndLine))
             return false;
 
         SavePosition();
 
-        ParseTypeResolver(); // try parse as type
+        ParseTypeResolver();
 
-        if(Match(TokenType::Identifier)) // if we end up at identifier then must be decl
-        {
-            RestorePosition();
-            return true;
-        }
+        bool isDecl = Match(TokenType::Identifier); 
 
-        RestorePosition();
-        return false;
-    }   
+        RestorePosition(); 
+
+        return isDecl;
+    }
 
 }
