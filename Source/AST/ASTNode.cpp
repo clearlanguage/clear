@@ -611,18 +611,13 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
     {
-		CLEAR_UNREACHABLE("unimplemented");
+		 auto member = std::dynamic_pointer_cast<ASTMember>(right);
 
-		/* auto member = std::dynamic_pointer_cast<ASTMember>(right);
-		auto enumTy = dyn_cast<EnumType>(GetSymbolTable()->GetType(lhs.Data));
+		auto enumTy = dyn_cast<EnumType>(lhs.GetType());
 		CLEAR_VERIFY(enumTy, "not a valid enum");
+		auto ty = GetSymbolTable()->GetType("int64");
+		return Symbol::CreateValue(ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName())),GetSymbolTable()->GetType("int64"));
 
-		Symbol result;
-		result.CodegenValue = ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName()));
-		result.CodegenType = GetSymbolTable()->GetType("int64");
-			
-		return result; */
-		return Symbol();
     }
 
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
