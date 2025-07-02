@@ -258,13 +258,21 @@ namespace clear
 
                 continue;
             }
-        
+
             lexedString += c;
         }
 
-        if(m_Position == m_Contents.size())
+        if(m_Position == m_Contents.size() and m_Contents[m_Position-1] != '"')
         {
-            m_Tokens.back().m_Column = start;
+            int count = 0;
+            for (size_t i = 0; i < lexedString.length(); ++i) {
+                if (lexedString[i] == '\n') {
+                    break;
+                }
+                ++count;
+            }
+
+            m_Tokens.back().m_Column = m_ColumnNumber+count;
             Report(m_Tokens.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
@@ -420,7 +428,7 @@ namespace clear
 
         if (m_Position >= m_Contents.size()) 
         {
-            m_Tokens.back().m_Column = start;
+            m_Tokens.back().m_Column = m_ColumnNumber;
             Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
@@ -433,7 +441,7 @@ namespace clear
 
             if (m_Position >= m_Contents.size()) 
             {
-                m_Tokens.back().m_Column = start;
+                m_Tokens.back().m_Column = m_ColumnNumber;
                 Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
                 return;
             }
@@ -465,7 +473,7 @@ namespace clear
 
         if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
         {
-            m_Tokens.back().m_Column = start;
+            m_Tokens.back().m_Column = m_ColumnNumber-4; //TODO: fix this hard coded value
             Report(m_Tokens.back(), DiagnosticCode_InvalidCharLiteral, Severity::High);
             AbortCurrent();
 
