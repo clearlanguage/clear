@@ -9,6 +9,7 @@ namespace clear
     class Module;
     class Type;
     class FunctionInstance;
+    class FunctionTemplate;
 
     using String = llvm::SmallString<64>;
     using StringRef = llvm::StringRef;
@@ -17,6 +18,7 @@ namespace clear
     {
         None=0,
         Function, 
+        FunctionTemplate,
         Module, 
         Type,
         Value, 
@@ -26,6 +28,11 @@ namespace clear
     struct FunctionSymbol 
     {
         FunctionInstance* Instance;
+    };
+
+    struct FunctionTemplateSymbol 
+    {
+        FunctionTemplate* Template;
     };
 
     struct ValueSymbol 
@@ -47,6 +54,7 @@ namespace clear
     using SymbolData = std::variant<
         std::monostate,
         FunctionSymbol,
+        FunctionTemplateSymbol,
         ValueSymbol,
         ModuleSymbol, 
         TypeSymbol, 
@@ -63,6 +71,7 @@ namespace clear
         static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
         static Symbol CreateFunction(FunctionInstance* instance);
+        static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
 
@@ -71,6 +80,7 @@ namespace clear
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;
         FunctionInstance* GetFunction() const;
+        FunctionTemplate* GetFunctionTemplate() const;
         const ValueSymbol& GetValueTuple() const;
     };
 }

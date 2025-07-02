@@ -38,6 +38,7 @@ namespace clear
     private:
         BuildConfig m_Config;
         std::shared_ptr<Module> m_MainModule;
+        std::shared_ptr<Module> m_Builtins;
 
         std::unordered_set<std::filesystem::path> m_GeneratedModules;
         std::unordered_map<std::filesystem::path, std::shared_ptr<Module>> m_Modules;

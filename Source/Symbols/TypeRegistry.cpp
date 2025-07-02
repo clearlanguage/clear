@@ -66,7 +66,7 @@ namespace clear
     std::shared_ptr<Type> TypeRegistry::GetPointerTo(std::shared_ptr<Type> base)
     {
         if(!base) 
-            return GetPointerTo(m_Types["void"]);
+            return nullptr;
 
         std::string hash = base->GetHash();
         hash += "*";

@@ -58,6 +58,16 @@ namespace clear
             .Data = symbol
         };
     }
+    
+    Symbol Symbol::CreateFunctionTemplate(FunctionTemplate* template_)
+    {
+        FunctionTemplateSymbol symbol = { template_ };
+
+        return Symbol {
+            .Kind = SymbolKind::FunctionTemplate,
+            .Data = symbol
+        };
+    }
 
     Symbol Symbol::CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types)
     {
@@ -122,5 +132,11 @@ namespace clear
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValueTuple() when kind is not Value");
         return std::get<ValueSymbol>(Data);;
+    }
+    
+    FunctionTemplate* Symbol::GetFunctionTemplate() const
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::FunctionTemplate, "cannot call Symbol::GetFunctionTemplate() when kind is not FunctionTemplate");
+        return std::get<FunctionTemplateSymbol>(Data).Template;
     }
 }

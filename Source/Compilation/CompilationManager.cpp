@@ -1,13 +1,17 @@
 #include "CompilationManager.h"
 
 #include "Core/Log.h"
+#include <llvm/IR/LLVMContext.h>
+#include <memory>
 
 namespace clear 
 {
     CompilationManager::CompilationManager(const BuildConfig& config)
         : m_Config(config)
     {
-        m_MainModule = std::make_shared<Module>("main_module");
+        std::shared_ptr<llvm::LLVMContext> context = std::make_shared<llvm::LLVMContext>();
+        m_Builtins = std::make_shared<Module>("__clrt_internal", context, nullptr);
+        m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins);
     }
 
     void CompilationManager::LoadSources()
@@ -21,10 +25,12 @@ namespace clear
         {
             LoadSourceFile(filename);
         }
+
         CheckErrors();
     }
 
-    void CompilationManager::CheckErrors() {
+    void CompilationManager::CheckErrors() 
+    {
         if (m_DiagnosticsBuilder.IsFatal())
         {
             m_DiagnosticsBuilder.Dump();
@@ -46,7 +52,7 @@ namespace clear
         }
         
 
-        Lexer lexer(path,m_DiagnosticsBuilder);
+        Lexer lexer(path, m_DiagnosticsBuilder);
         CheckErrors();
 
         CLEAR_LOG_INFO("Tokens For ", path);
@@ -58,8 +64,7 @@ namespace clear
 
         CLEAR_LOG_INFO("End of tokens for ", path);
 
-        Parser parser(lexer.GetTokens(), m_MainModule->GetContext(), m_MainModule,m_DiagnosticsBuilder);
-        m_MainModule->PushNode(parser.GetResult());
+        Parser parser(lexer.GetTokens(), m_MainModule->GetContext(), m_MainModule, m_DiagnosticsBuilder);
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -82,7 +87,7 @@ namespace clear
             CodegenModule(filepath);
         } */
 
-        m_MainModule->GetModule()->print(llvm::errs(), nullptr);
+        //m_MainModule->GetModule()->print(llvm::errs(), nullptr);
         CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()), "module verification failed");
 
         if(m_Config.EmitIntermiediateIR)

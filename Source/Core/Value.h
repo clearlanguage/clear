@@ -1,11 +1,9 @@
 #pragma once 
 
-#include "Symbols/TypeRegistry.h"
 #include "Lexing/Token.h"
 
-#include "Symbols/SymbolTable.h"
+#include "Symbols/Type.h"
 
-#include <list>
 #include <memory>
 
 namespace clear {
@@ -17,7 +15,7 @@ namespace clear {
 
 	public:
 		Value() = default;
-		Value(const Token& rValue, std::shared_ptr<SymbolTable> tbl, llvm::LLVMContext& context, llvm::Module& module);
+		Value(const Token& rValue,std::shared_ptr<Type>, llvm::LLVMContext& context, llvm::Module& module);
 
 		~Value() = default;
 

@@ -1,6 +1,8 @@
 #include "Parser.h"
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
+#include "Diagnostics/DiagnosticCode.h"
+#include "Lexing/TokenDefinitions.h"
 #include "Symbols/TypeRegistry.h"
 #include "Core/Utils.h"
 #include "Lexing/Token.h"
@@ -20,6 +22,14 @@ namespace clear
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code,getExpectedLength(type)); \
     SkipUntil(TokenType::EndLine); \
     return; \
+    }
+
+    #define EXPECT_TOKEN_RETURN(type, code, returnValue) \
+    if (!Match(type)) { \
+    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code,getExpectedLength(type)); \
+    SkipUntil(TokenType::EndLine); \
+    return returnValue; \
     }
 
 
@@ -45,11 +55,7 @@ namespace clear
         : m_Tokens(tokens), m_Context(context), m_DiagnosticsBuilder(builder)
     {
         m_Modules.push_back(rootModule);
-
-        std::shared_ptr<ASTNodeBase> root = std::make_shared<ASTNodeBase>(); 
-        root->CreateSymbolTable(m_Context);
-
-        m_RootStack.push_back(root);
+        m_RootStack.push_back(rootModule->GetRoot());
 
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
@@ -242,28 +248,7 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
-        // first we need to determine how to parse
-        auto terminator = [](const Token& token)
-        {
-            return token.IsType(TokenType::EndOfFile)  || 
-                   token.IsType(TokenType::EndLine)    || 
-                   token.IsType(TokenType::Equals)     ||
-                   token.IsType(TokenType::PlusEquals) ||
-                   token.IsType(TokenType::LeftParen)  || 
-                   token.IsType(TokenType::Comma)      || 
-                   token.IsType(TokenType::Dot);
-        };
-
-
-        // int var
-        static constexpr std::array<TokenType, s_MaxMatchSize> s_KeywordIdentifier = 
-                {TokenType::Keyword, TokenType::Identifier, TokenType::None};
-        
-        // Foo var
-        static constexpr std::array<TokenType, s_MaxMatchSize> s_IdentifierIdentifier = 
-                {TokenType::Identifier, TokenType::Identifier, TokenType::None};
-
-        bool isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
+        bool isDecleration = IsDecleration();
 
         // parse either expression or declerations, allowing for multiple on the same line seperated by commas
         if(!isDecleration)
@@ -306,7 +291,7 @@ namespace clear
             if(Match(TokenType::Comma))
                 Consume();
 
-            isDecleration = LookAheadMatches(terminator, s_KeywordIdentifier) || LookAheadMatches(terminator, s_IdentifierIdentifier);
+            isDecleration = IsDecleration();
         }
     }
 
@@ -540,7 +525,7 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable(m_Context);
+        base->CreateSymbolTable();
         ifExpr->Push(base);
 
         Root()->Push(ifExpr);
@@ -560,7 +545,7 @@ namespace clear
         VERIFY_OR_RAISE(ifExpr, DiagnosticCode_ElseNotInIfBlock);
         
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable(m_Context);
+        base->CreateSymbolTable();
         ifExpr->Push(base);
             
         m_RootStack.push_back(base); 
@@ -578,7 +563,7 @@ namespace clear
         whileExp->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable(m_Context);
+        base->CreateSymbolTable();
 
         whileExp->Push(base);
 
@@ -611,7 +596,7 @@ namespace clear
         Root()->Push(forLoop);
 
         auto body = std::make_shared<ASTNodeBase>();
-        body->CreateSymbolTable(m_Context);
+        body->CreateSymbolTable();
         
         forLoop->Push(body);
 
@@ -633,7 +618,7 @@ namespace clear
         ifExpr->Push(ParseExpression());
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
-        base->CreateSymbolTable(m_Context);
+        base->CreateSymbolTable();
 
         ifExpr->Push(base);
 
@@ -657,7 +642,7 @@ namespace clear
         }
 
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
-        funcNode->CreateSymbolTable(m_Context);
+        funcNode->CreateSymbolTable();
 
         EXPECT_TOKEN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition);
 
@@ -895,7 +880,7 @@ namespace clear
         Consume();
 
         auto block = std::make_shared<ASTNodeBase>();
-        block->CreateSymbolTable(m_Context);
+        block->CreateSymbolTable();
 
         Root()->Push(block);
         m_RootStack.push_back(block);
@@ -911,13 +896,8 @@ namespace clear
 
         auto mod = RootModule()->EmplaceOrReturn(modules);
 
-        auto node = std::make_shared<ASTNodeBase>();
-        node->CreateSymbolTable(m_Context);
-
         m_Modules.push_back(mod);
-        m_RootStack.push_back(node);
-
-        mod->PushNode(node);
+        m_RootStack.push_back(mod->GetRoot());
     }
 
     void Parser::ParseEndModule()
@@ -1444,6 +1424,15 @@ namespace clear
         
         resolver->PushToken(Consume());
 
+        while(Match(TokenType::Dot))
+        {
+            resolver->PushToken(Consume());
+
+            EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+
+            resolver->PushToken(Consume());
+        }
+
         while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
         {
             resolver->PushToken(Consume());
@@ -1655,5 +1644,47 @@ namespace clear
         // if we matched all tokens in match (until None), return true
         return k == s_MaxMatchSize || match[k] == TokenType::None;
     }
+    
+    bool Parser::IsDecleration()
+    {
+        if(Match(TokenType::EndLine) || Match(TokenType::EndOfFile) || Match(TokenType::EndScope))
+            return false;
+
+        SavePosition();
+
+        if(Match("const"))
+            Consume();
+
+        if(Match(TokenType::Keyword) || Match(TokenType::Identifier)) // int/Foo
+            Consume();
+
+        if(Match(TokenType::Equals) || Match(TokenType::LeftParen) || Match(TokenType::LeftBracket) || Match(TokenType::LeftBrace) 
+           || Match(TokenType::Comma))
+        {
+            RestorePosition();
+            return false;
+        }
+
+        while(Match(TokenType::Dot))
+        {
+            Consume();
+
+            EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, false);
+
+            Consume();
+        }
+
+        if(Match(TokenType::Equals) || Match(TokenType::LeftParen) || Match(TokenType::LeftBracket) || Match(TokenType::LeftBrace) 
+           || Match(TokenType::Comma))
+        {
+            RestorePosition();
+            return false;
+        }
+
+        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, true);
+        RestorePosition();
+
+        return true;
+    }   
 
 }

@@ -89,6 +89,8 @@ namespace clear
         static constexpr size_t s_MaxMatchSize = 15;
         bool LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match);
 
+        bool IsDecleration();
+
     private:    
         std::vector<Token> m_Tokens;
         std::set<std::string> m_Aliases;
