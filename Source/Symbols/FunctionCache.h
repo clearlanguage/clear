@@ -26,12 +26,13 @@ namespace clear
         bool IsVariadic = false;
         bool IsExternal = false;
         std::shared_ptr<Module> SourceModule;
+        bool Valid = false;
     };
 
     struct FunctionInstance
     {
-        llvm::FunctionType* FunctionType;
-        llvm::Function* Function;
+        llvm::FunctionType* FunctionType = nullptr;
+        llvm::Function* Function = nullptr;
         std::shared_ptr<Type> ReturnType;
         std::vector<Parameter> Parameters;
         std::string MangledName;

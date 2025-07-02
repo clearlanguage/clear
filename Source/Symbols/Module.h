@@ -2,7 +2,11 @@
 
 #include "AST/ASTNode.h"
 #include "Compilation/BuildConfig.h"
+#include "Symbols/FunctionCache.h"
 #include "Symbols/SymbolTable.h"
+#include "Symbols/TypeRegistry.h"
+
+#include "Symbols/Symbol.h"
 
 #include <llvm/IR/Module.h>
 #include <memory>
@@ -13,27 +17,31 @@ namespace clear
     class Module : public std::enable_shared_from_this<Module>
     {
     public:
-        Module(const std::string& name = "");
-        Module(Module* parent, const std::string& name = "");
+        Module(const std::string& name, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> builtins);
+        Module(Module* parent, const std::string& name, std::shared_ptr<Module> builtins);
         ~Module() = default;
 
-        void PushNode(const std::shared_ptr<ASTNodeBase>& node);
         void PropagateSymbolTables();
 
         std::shared_ptr<Module> EmplaceOrReturn(const std::string& moduleName);
         std::shared_ptr<Module> Return(const std::string& moduleName);
+        void InsertModule(const std::string& name, std::shared_ptr<Module> module_);
 
         void Codegen(const BuildConfig& config);
         void Link();
 
         llvm::Module* GetModule()   { return m_Module.get(); }
         std::unique_ptr<llvm::Module> TakeModule() { return std::move(m_Module); }
+        
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
+        std::shared_ptr<ASTNodeBase> GetRoot() { return m_Root; }
 
         CodegenContext GetCodegenContext();
 
-        //NOTE: hack until export keyword is implemented
-        std::shared_ptr<SymbolTable> GetSymbolTable() { return m_Nodes[0]->GetSymbolTable(); } 
+        Symbol Lookup(const std::string& symbol);
+        Symbol Lookup(const std::string& fn, const std::vector<Parameter>& params);
+
+        std::shared_ptr<Type> GetTypeFromToken(const Token& token);
 
     private:
         std::string m_ModuleName;
@@ -43,8 +51,11 @@ namespace clear
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
         
         std::unordered_map<std::string, std::shared_ptr<Module>> m_ContainedModules;
-        std::vector<std::shared_ptr<ASTNodeBase>> m_Nodes;
+        std::shared_ptr<ASTNodeBase> m_Root;
 
-        std::shared_ptr<SymbolTable> m_SymbolTable;
+        std::shared_ptr<TypeRegistry> m_TypeRegistry;
+
+        bool m_CodeGenerated = false;
+        bool m_IsBuiltin = false;
     };
 }

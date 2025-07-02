@@ -46,18 +46,9 @@ namespace clear
     class SymbolTable
     {
     public:
-        SymbolTable(std::shared_ptr<llvm::LLVMContext> context);
-        SymbolTable(const std::shared_ptr<SymbolTable>& other, std::shared_ptr<llvm::LLVMContext> context);
+        SymbolTable();
+        SymbolTable(const std::shared_ptr<SymbolTable>& other);
         ~SymbolTable() = default;
-
-        Symbol Lookup(const std::string& name);
-
-        std::shared_ptr<Type> GetType(const std::string& name);
-        std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);
-        std::shared_ptr<Type> GetArrayFrom(std::shared_ptr<Type> base, size_t count);
-        std::shared_ptr<Type> GetConstFrom(std::shared_ptr<Type> base);
-        std::shared_ptr<Type> GetSignedType(std::shared_ptr<Type> type);
-        std::shared_ptr<Type> GetTypeFromToken(const Token& token);
 
         Allocation  RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder);
         Allocation  CreateGlobal(const std::string& name, std::shared_ptr<Type> type, llvm::Module& module, llvm::Value* value = nullptr); //TODO: add linkage and threading options
@@ -102,8 +93,6 @@ namespace clear
         void FlushScope(CodegenContext& ctx);
         void RecursiveCallDestructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, bool isGlobal = false);    
 
-        TypeRegistry& GetTypeRegistry() { return m_TypeRegistry; }
-
     private:
         std::vector<Allocation> m_Allocations;
 
@@ -115,8 +104,6 @@ namespace clear
         std::vector<Allocation> m_VariadicArguments;
 
         FunctionCache m_FunctionCache;
-        TypeRegistry  m_TypeRegistry;
-
         std::shared_ptr<SymbolTable> m_Previous;
     };
 }

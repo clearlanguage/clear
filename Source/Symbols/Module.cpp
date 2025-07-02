@@ -1,47 +1,56 @@
 #include "Module.h"
 #include "AST/ASTNode.h"
+#include "Symbols/FunctionCache.h"
+#include "Symbols/TypeRegistry.h"
+#include "Symbols/SymbolTable.h"
+#include <memory>
 
 namespace clear 
 {
-    Module::Module(const std::string& name)
+    Module::Module(const std::string& name, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> builtins)
         : m_ModuleName(name)
     {
-        m_Context = std::make_shared<llvm::LLVMContext>();
+        m_Context = context;
 		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
         m_Module  = std::make_unique<llvm::Module>(name, *m_Context);
 
-        m_SymbolTable = std::make_shared<SymbolTable>(m_Context);
-        m_SymbolTable->GetTypeRegistry().RegisterBuiltinTypes();
+        m_Root = std::make_shared<ASTNodeBase>();
+        m_Root->CreateSymbolTable();
+
+        m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
+
+        if(builtins)
+        {
+            m_ContainedModules["__clrt_internal"] = builtins;
+        }
+        else
+        {
+            m_TypeRegistry->RegisterBuiltinTypes();
+            m_IsBuiltin = true;
+        } 
+
     }
 
-    Module::Module(Module* parent, const std::string& name)
+    Module::Module(Module* parent, const std::string& name, std::shared_ptr<Module> builtins)
         : m_ModuleName(name)
-    {   
+    {
         m_Context = parent->m_Context;
         m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
         m_Module  = std::make_unique<llvm::Module>(name, *m_Context);
 
-        m_SymbolTable = std::make_shared<SymbolTable>(m_Context);
-        m_SymbolTable->SetPrevious(parent->m_SymbolTable);
+        m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
+        m_ContainedModules["__clrt_internal"] = builtins;
+
+        m_Root = std::make_shared<ASTNodeBase>();
+        m_Root->CreateSymbolTable();
+        m_Root->GetSymbolTable()->SetPrevious(parent->GetRoot()->GetSymbolTable());
     }
 
-    void Module::PushNode(const std::shared_ptr<ASTNodeBase>& node)
-    {
-        m_Nodes.push_back(node);
-
-        if(auto tbl = node->GetSymbolTable())
-        {
-            tbl->SetPrevious(m_SymbolTable);
-        }
-    }
-
+ 
     void Module::PropagateSymbolTables()
     {
-        for(auto& node : m_Nodes)
-        {
-            node->PropagateSymbolTableToChildren();
-        }
-
+        m_Root->PropagateSymbolTableToChildren();
+       
         for(auto& [_, mod] : m_ContainedModules)
         {
             mod->PropagateSymbolTables();
@@ -50,7 +59,7 @@ namespace clear
 
     std::shared_ptr<Module> Module::EmplaceOrReturn(const std::string& moduleName)
     {
-        auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(this, moduleName));
+        auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(this, moduleName, m_ContainedModules["__clrt_internal"]));
         return it->second;
     }
     
@@ -58,34 +67,45 @@ namespace clear
     {
         return m_ContainedModules[moduleName];
     }
+    
+    void Module::InsertModule(const std::string& name, std::shared_ptr<Module> module_)
+    {
+        m_ContainedModules[name] = module_;
+    }
 
     void Module::Codegen(const BuildConfig& config)
     {
+        if(m_CodeGenerated)
+            return;
+
+        m_CodeGenerated = true;
+
         for(const auto& [_, mod] : m_ContainedModules)
         {
             mod->Codegen(config);
         }
 
-        CodegenContext context(m_ModuleName, *m_Context, *m_Builder, *m_Module);
-        context.ClearModule = shared_from_this();
-
-        for(auto& node : m_Nodes)
-        {
-            node->Codegen(context);
-        }
+        CodegenContext context = GetCodegenContext();
+        m_Root->Codegen(context);
     }
     
     void Module::Link()
     {
-        for(const auto& [_, mod] : m_ContainedModules)
+        for(const auto& [name, mod] : m_ContainedModules)
         {
             mod->Link();
         }
 
+        if(!m_Module) // module has already been taken and linked elsewhere so should merge gracefully later
+            return;
+
         llvm::Linker linker(*m_Module);
 
-        for(const auto& [_, mod] : m_ContainedModules)
+        for(const auto& [name, mod] : m_ContainedModules)
         {
+            if(!mod->GetModule()) // same as above
+                continue;
+            
             linker.linkInModule(mod->TakeModule());
         }
     }
@@ -93,7 +113,69 @@ namespace clear
     CodegenContext Module::GetCodegenContext()
     {
         CodegenContext ctx(m_ModuleName, *m_Context, *m_Builder, *m_Module);
+        
         ctx.ClearModule = shared_from_this();
+        ctx.ClearModuleSecondary = shared_from_this();
+        ctx.TypeReg = m_TypeRegistry;
+
         return ctx;
+    }
+    
+    Symbol Module::Lookup(const std::string& symbolName)
+    {
+        if(auto ty = m_TypeRegistry->GetType(symbolName))
+            return Symbol::CreateType(ty);
+    
+        // TODO: any function/variable should be exported which will move it to the modules symbol table
+        // for now everything is public
+        
+        auto tbl = m_Root->GetSymbolTable();
+        
+        Allocation alloca = tbl->GetAlloca(symbolName);
+
+        if(alloca.Alloca)
+        {
+            return Symbol::CreateValue(alloca.Alloca, m_TypeRegistry->GetPointerTo(alloca.Type));
+        }
+
+
+        for(const auto& [name, containedModule] : m_ContainedModules)
+        {
+            if(name == symbolName)
+                return Symbol::CreateModule(containedModule);
+
+            Symbol symbol = containedModule->Lookup(symbolName);
+
+            if(symbol.Kind != SymbolKind::None)
+                return symbol;
+        }
+
+        return Symbol();
+    }
+    
+    Symbol Module::Lookup(const std::string& fn, const std::vector<Parameter>& params)
+    {
+        FunctionTemplate& template_ = m_Root->GetSymbolTable()->GetTemplate(fn, params);
+
+        if(template_.SourceModule)
+            return Symbol::CreateFunctionTemplate(&template_);
+
+        for(const auto& [name, containedModule] : m_ContainedModules)
+        {
+            Symbol symbol = containedModule->Lookup(fn, params);
+
+            if(symbol.Kind != SymbolKind::None)
+                return symbol;
+        }
+
+        return Symbol();
+    }
+    
+    std::shared_ptr<Type> Module::GetTypeFromToken(const Token& token)
+    {
+        if(auto ty = m_TypeRegistry->GetTypeFromToken(token))
+            return ty;
+
+        return m_ContainedModules["__clrt_internal"]->GetTypeFromToken(token);
     }
 }

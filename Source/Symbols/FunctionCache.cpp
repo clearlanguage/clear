@@ -27,6 +27,7 @@ namespace clear
         templateF.IsExternal = false;
         templateF.DefaultArguments = defaultArgs;
         templateF.SourceModule = sourceModule;
+        templateF.Valid = true;
 
         m_Templates[templateName].push_back(templateF);
     }

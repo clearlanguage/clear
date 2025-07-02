@@ -84,9 +84,9 @@ namespace clear
 			child->PropagateSymbolTable(m_SymbolTable);
     }
 
-    void ASTNodeBase::CreateSymbolTable(std::shared_ptr<llvm::LLVMContext> context)
+    void ASTNodeBase::CreateSymbolTable()
     {
-		m_SymbolTable = std::make_shared<SymbolTable>(context);
+		m_SymbolTable = std::make_shared<SymbolTable>();
     }
 
 	void ASTNodeBase::SetSymbolTable(std::shared_ptr<SymbolTable> tbl)
@@ -129,7 +129,7 @@ namespace clear
 		if(m_Value.has_value())
 			return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 
-		m_Value = Value(m_Token, GetSymbolTable(), ctx.Context, ctx.Module);
+		m_Value = Value(m_Token, ctx.ClearModule->GetTypeFromToken(m_Token), ctx.Context, ctx.Module);
 		return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 	}
 
@@ -290,7 +290,7 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
-		auto booleanType = GetSymbolTable()->GetType("bool");
+		auto booleanType = ctx.TypeReg->GetType("bool");
 
     	switch (m_Expression)
 		{
@@ -349,8 +349,8 @@ namespace clear
 
 		auto [lhsValue, lhsType] = lhs.GetValue();
 
-		lhsValue = TypeCasting::Cast(lhsValue, lhsType, GetSymbolTable()->GetType("bool"), ctx.Builder);
-		lhsType  = GetSymbolTable()->GetType("bool");
+		lhsValue = TypeCasting::Cast(lhsValue, lhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
+		lhsType  = ctx.TypeReg->GetType("bool");
 
 
 		llvm::BasicBlock* checkSecond  = llvm::BasicBlock::Create(ctx.Context, "check_second");
@@ -370,8 +370,8 @@ namespace clear
 		
 		auto [rhsValue, rhsType] = rhs.GetValue();
 
-		rhsValue = TypeCasting::Cast(rhsValue, rhsType, GetSymbolTable()->GetType("bool"), ctx.Builder);
-		rhsType  = GetSymbolTable()->GetType("bool");
+		rhsValue = TypeCasting::Cast(rhsValue, rhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
+		rhsType  = ctx.TypeReg->GetType("bool");
 		
 		ctx.Builder.CreateCondBr(rhsValue, trueResult, falseResult);
 		
@@ -407,10 +407,10 @@ namespace clear
 		{
 			rhsValue = TypeCasting::Cast(rhsValue, 
 												rhsType, 
-												tbl->GetType("int64"), 
+												ctx.TypeReg->GetType("int64"), 
 												ctx.Builder);
 
-			rhsType = tbl->GetType("int64");
+			rhsType = ctx.TypeReg->GetType("int64");
 		}
 		
 		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
@@ -465,7 +465,7 @@ namespace clear
 			std::shared_ptr<Type> baseType = alloc.Type;
 
 			if(ctx.WantAddress)
-				return Symbol::CreateValue(gep, GetSymbolTable()->GetPointerTo(baseType));
+				return Symbol::CreateValue(gep, ctx.TypeReg->GetPointerTo(baseType));
 
         	return Symbol::CreateValue(ctx.Builder.CreateLoad(baseType->Get(), gep), baseType);
 				
@@ -481,7 +481,7 @@ namespace clear
 
 		llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
 
-		auto basePtrTy = Symbol::CreateType(GetSymbolTable()->GetPointerTo(arrType->GetBaseType()));
+		auto basePtrTy = Symbol::CreateType(ctx.TypeReg->GetPointerTo(arrType->GetBaseType()));
 
 		Symbol gepResult = SymbolOps::GEP(lhs, basePtrTy, { zero, rhsValue }, ctx.Builder);
 
@@ -526,7 +526,7 @@ namespace clear
 					ctx.Builder.CreateStore(lhsValue, temp.Alloca);
 
 					lhsValue = temp.Alloca;
-					lhsType =  GetSymbolTable()->GetPointerTo(temp.Type);
+					lhsType =  ctx.TypeReg->GetPointerTo(temp.Type);
 				}
 
 				if(right->GetType() == ASTNodeType::Member)
@@ -597,7 +597,7 @@ namespace clear
 
 		size_t index = structTy->GetMemberIndex(member->GetName());
 
-		auto resultantType = Symbol::CreateType(GetSymbolTable()->GetPointerTo(structTy->GetMemberType(member->GetName())));
+		auto resultantType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(structTy->GetMemberType(member->GetName())));
 		
 		Symbol gep = SymbolOps::GEPStruct(lhs, resultantType, index, ctx.Builder);
 
@@ -616,7 +616,7 @@ namespace clear
 		auto enumTy = dyn_cast<EnumType>(lhs.GetType());
 		CLEAR_VERIFY(enumTy, "not a valid enum");
 
-		auto ty = GetSymbolTable()->GetType("int64");
+		auto ty = ctx.TypeReg->GetType("int64");
 		return Symbol::CreateValue(ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName())), ty);
     }
 
@@ -627,7 +627,7 @@ namespace clear
 		if(right->GetType() == ASTNodeType::Member)
 		{
 			auto member = std::dynamic_pointer_cast<ASTMember>(right);
-			Symbol symbol = mod->GetSymbolTable()->Lookup(member->GetName());
+			Symbol symbol = mod->Lookup(member->GetName());
 
 			if(symbol.Kind == SymbolKind::Type) //only one LLVMContext for now so this is fine
 			{
@@ -667,7 +667,7 @@ namespace clear
 
 		if(right->GetType() == ASTNodeType::FunctionCall)
 		{
-			right->SetSymbolTable(mod->GetSymbolTable());
+			ValueRestoreGuard moduleGuard(ctx.ClearModuleSecondary, mod);
 			return right->Codegen(ctx);
 		}
 
@@ -701,7 +701,7 @@ namespace clear
 			alloca = registry->CreateAlloca(m_Name, m_Type, ctx.Builder);
 		}
 
-		return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(alloca.Type));
+		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
     }
 
 	ASTInferredDecleration::ASTInferredDecleration(const std::string& name, bool isConst)
@@ -722,8 +722,7 @@ namespace clear
 		auto [resultValue, resultType] = result.GetValue();
 	
 		if(m_IsConst)
-			resultType = GetSymbolTable()->GetConstFrom(resultType);
-
+			resultType = ctx.TypeReg->GetConstFrom(resultType);
 		
 		bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 
@@ -739,7 +738,7 @@ namespace clear
 			ctx.Builder.CreateStore(resultValue, alloca.Alloca);
 		}
 
-		return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(resultType));
+		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(resultType));
 	}
 
 	ASTVariable::ASTVariable(const std::string& name)
@@ -766,7 +765,7 @@ namespace clear
 
 			if(ctx.WantAddress)
 			{
-				return Symbol::CreateValue(alloca.Alloca, GetSymbolTable()->GetPointerTo(alloca.Type));
+				return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
 			}
 			else 
 			{
@@ -774,7 +773,7 @@ namespace clear
 	
 			}
 		}
-		else if (auto ty = tbl->GetType(m_Name))
+		else if (auto ty = ctx.TypeReg->GetType(m_Name))
 		{
 			return Symbol::CreateType(ty);
 		}
@@ -964,7 +963,7 @@ namespace clear
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
 		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(m_ResolvedReturnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : GetSymbolTable()->GetType("void"));
+		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : ctx.TypeReg->GetType("void"));
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
@@ -1079,7 +1078,7 @@ namespace clear
 
 		Allocation temporary;
 
-		if(auto ty = GetSymbolTable()->GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
+		if(auto ty = ctx.TypeReg->GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
 		{
 			CLEAR_VERIFY(ctx.WantAddress == false, "cannot get an address to a temporary!");
 
@@ -1096,7 +1095,7 @@ namespace clear
 			}
 
 			m_Name = std::format("{}.{}", m_Name, "__construct__");
-			m_PrefixArguments.push_back({ temporary.Alloca, GetSymbolTable()->GetPointerTo(ty) });
+			m_PrefixArguments.push_back({ temporary.Alloca, ctx.TypeReg->GetPointerTo(ty) });
 		}
 
 		uint32_t k = 0;
@@ -1117,15 +1116,17 @@ namespace clear
 
 			if(!value) return {};
 
-			if(m_Name == "sizeof") return Symbol::CreateValue(value, GetSymbolTable()->GetType("int64"));
-			if(m_Name == "len")    return Symbol::CreateValue(value, GetSymbolTable()->GetType("int64"));
+			if(m_Name == "sizeof") return Symbol::CreateValue(value, ctx.TypeReg->GetType("int64"));
+			if(m_Name == "len")    return Symbol::CreateValue(value, ctx.TypeReg->GetType("int64"));
 
 
-			return Symbol::CreateValue(value, GetSymbolTable()->GetType(m_Name));
+			return Symbol::CreateValue(value, ctx.TypeReg->GetType(m_Name));
 		}
 
-		// find most suitable template to arguments and name
-		FunctionTemplate& data = symbolTable->GetTemplate(m_Name, params);
+
+		// ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable() hack for now until i can think of a better solution
+		FunctionTemplate& data = ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable()->GetTemplate(m_Name, params);
+		CLEAR_VERIFY(data.Valid, "failed to find template named ", m_Name);
 
 		// add any default arguments
 		for(size_t i = args.size(); i < data.DefaultArguments.size(); i++)
@@ -1165,7 +1166,8 @@ namespace clear
 
 		// instantiate and call
 
-		FunctionInstance& instance = symbolTable->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
+		
+		FunctionInstance& instance = ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
 
 		if(temporary.Alloca)
 		{
@@ -1292,7 +1294,7 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		m_ReturnType = GetSymbolTable()->GetType("void");
+		m_ReturnType = ctx.TypeReg->GetType("void");
 
 		if (i < children.size())
 		{
@@ -1320,6 +1322,7 @@ namespace clear
 			functionTemplate.ReturnType = m_ReturnType;
 			functionTemplate.Root = nullptr; // external function so no root
 			functionTemplate.IsExternal = true;
+			functionTemplate.Valid = true;
 
 			GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
 
@@ -1790,9 +1793,9 @@ namespace clear
 		for(size_t i = 1; i < arg.size(); i++)
 		{
 			if(arg[i].TokenType == TokenType::PointerDef)
-				param.Type = GetSymbolTable()->GetPointerTo(param.Type);
+				param.Type = ctx.TypeReg->GetPointerTo(param.Type);
 			else if (arg[i].TokenType == TokenType::StaticArrayDef)
-				param.Type = GetSymbolTable()->GetArrayFrom(param.Type, std::stoull(arg[i].Data));
+				param.Type = ctx.TypeReg->GetArrayFrom(param.Type, std::stoull(arg[i].Data));
 			else
 				CLEAR_UNREACHABLE("invalid token");
 		}
@@ -1812,9 +1815,9 @@ namespace clear
 			if(type->IsCompound())
 			{
 				if(!m_Alias.empty())
-					GetSymbolTable()->GetTypeRegistry().RegisterType(m_Alias + "." + typeName, type);
+					ctx.TypeReg->RegisterType(m_Alias + "." + typeName, type);
 				else 
-					GetSymbolTable()->GetTypeRegistry().RegisterType(typeName, type);
+					ctx.TypeReg->RegisterType(typeName, type);
 			}
 		}
     } */
@@ -1934,7 +1937,7 @@ namespace clear
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
-		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), GetSymbolTable()->GetType("int32"));
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.TypeReg->GetType("int32"));
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 
@@ -2227,7 +2230,7 @@ namespace clear
 		auto& children = GetChildren();
 
 		// create the struct type
-		auto structTy = GetSymbolTable()->GetTypeRegistry().CreateType<StructType>(m_Name, m_Name, ctx.Context);
+		auto structTy = ctx.TypeReg->CreateType<StructType>(m_Name, m_Name, ctx.Context);
 		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
 
 		size_t i = 0;
@@ -2303,7 +2306,7 @@ namespace clear
 
 		// create the struct type
 		auto structTy = std::make_shared<StructType>(m_Name, ctx.Context);
-		auto classTy  = GetSymbolTable()->GetTypeRegistry().CreateType<ClassType>(m_Name, structTy);
+		auto classTy  = ctx.TypeReg->CreateType<ClassType>(m_Name, structTy);
 
 		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
 
@@ -2405,7 +2408,7 @@ namespace clear
 			}
 		}
 
-		GetSymbolTable()->GetTypeRegistry().CreateType<TraitType>(m_Name, functions, members, m_Name);
+		ctx.TypeReg->CreateType<TraitType>(m_Name, functions, members, m_Name);
         return Symbol();
     }
 
@@ -2627,7 +2630,7 @@ namespace clear
 
 			Parameter param;
 			param.Name = "this";
-			param.Type = tbl->GetPointerTo(classTy);
+			param.Type = ctx.TypeReg->GetPointerTo(classTy);
 
 			std::string name = classTy->GetHash() + "." + "__construct__";
 
@@ -2656,7 +2659,7 @@ namespace clear
 
     Symbol ASTEnum::Codegen(CodegenContext& ctx)
     {
-		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(GetSymbolTable()->GetType("int64"), m_EnumName);
+		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(ctx.TypeReg->GetType("int64"), m_EnumName);
 
 		auto& children = GetChildren();
 
@@ -2681,7 +2684,7 @@ namespace clear
 			previous = casted->getSExtValue();
 		}
 
-		GetSymbolTable()->GetTypeRegistry().RegisterType(m_EnumName, type);
+		ctx.TypeReg->RegisterType(m_EnumName, type);
         return Symbol();
     }
 
@@ -2715,11 +2718,32 @@ namespace clear
 		if(m_Tokens[i].GetData() == "const")
 			i++;
 
-		type = GetSymbolTable()->GetTypeFromToken(m_Tokens[i]);
-		CLEAR_VERIFY(type, "not a valid type name ", m_Tokens[i].GetData());
+		auto symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
 
-		if(i == 1)
-			type = GetSymbolTable()->GetConstFrom(type);
+		if(symbol.Kind == SymbolKind::None)
+		{
+			symbol = Symbol::CreateModule(ctx.ClearModule->Return(m_Tokens[i].GetData()));
+		}
+
+		while(symbol.Kind == SymbolKind::Module) // TODO: nested types
+		{
+			i++; // .
+			i++; // identifier
+
+			Symbol lookup = symbol.GetModule()->Lookup(m_Tokens[i].GetData());
+
+			if(lookup.Kind == SymbolKind::None)
+			{
+				lookup = Symbol::CreateModule(symbol.GetModule()->Return(m_Tokens[i].GetData()));
+			}
+
+			symbol = lookup;
+		}
+
+		type = symbol.GetType();
+
+		if(m_Tokens[0].GetData() == "const")
+			type = ctx.TypeReg->GetConstFrom(type);
 
 		i++;
 		
@@ -2730,7 +2754,7 @@ namespace clear
 		{
 			if(m_Tokens[i].IsType(TokenType::Star))
 			{
-				type = GetSymbolTable()->GetPointerTo(type);
+				type = ctx.TypeReg->GetPointerTo(type);
 			}
 			else if (m_Tokens[i].IsType(TokenType::LeftBracket))
 			{
@@ -2746,11 +2770,11 @@ namespace clear
 				int64_t arraySize = constant->getSExtValue();
 				CLEAR_VERIFY(arraySize > 0, "cannot have an array size with negative value ", arraySize);
 
-				type = GetSymbolTable()->GetArrayFrom(type, arraySize);
+				type = ctx.TypeReg->GetArrayFrom(type, arraySize);
 			}
 			else if (m_Tokens[i].GetData() == "const")
 			{
-				type = GetSymbolTable()->GetConstFrom(type);
+				type = ctx.TypeReg->GetConstFrom(type);
 			}
 			else 
 			{

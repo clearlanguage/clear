@@ -8,6 +8,7 @@
 #include "Core/Operator.h"
 
 #include "Symbols/Symbol.h"
+#include "Symbols/TypeRegistry.h"
 
 #include <memory>
 #include <string>
@@ -57,6 +58,8 @@ namespace clear
 		llvm::BasicBlock* LoopEndBlock = nullptr;
 
 		std::shared_ptr<clear::Module> ClearModule;
+		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls
+		std::shared_ptr<TypeRegistry> TypeReg;
 
 		bool WantAddress;
 		bool Thrown = false;
@@ -83,7 +86,7 @@ namespace clear
 
 		void PropagateSymbolTableToChildren();
 
-		void CreateSymbolTable(std::shared_ptr<llvm::LLVMContext> context);
+		void CreateSymbolTable();
 		void SetSymbolTable(std::shared_ptr<SymbolTable> tbl);
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }

@@ -56,163 +56,13 @@ namespace clear
         return "";
     }
 
-    SymbolTable::SymbolTable(std::shared_ptr<llvm::LLVMContext> context)
-        : m_TypeRegistry(context)
+    SymbolTable::SymbolTable()
     {
     }
 
-    SymbolTable::SymbolTable(const std::shared_ptr<SymbolTable>& other, std::shared_ptr<llvm::LLVMContext> context)
-        : m_TypeRegistry(context)
+    SymbolTable::SymbolTable(const std::shared_ptr<SymbolTable>& other)
     {
         m_Previous = other;
-    }
-    
-    Symbol SymbolTable::Lookup(const std::string& name)
-    {
-        if(auto ty = GetType(name))
-            return Symbol::CreateType(ty);
-        
-        auto var = GetAlloca(name);
-
-        if(var.Alloca)
-            return Symbol::CreateVariable(name, var.Alloca, GetPointerTo(var.Type));
-
-        CLEAR_UNREACHABLE("unimplemented/unable to find symbol ", name);
-        return Symbol();
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetType(const std::string& name)
-    {
-        if(auto type = m_TypeRegistry.GetType(name)) 
-            return type;
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {            
-            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
-                return type;
-                
-            ptr = ptr->m_Previous;
-        }
-
-        return nullptr;
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetPointerTo(std::shared_ptr<Type> base)
-    {
-        std::string name = base->GetHash();
-
-        if(auto type = m_TypeRegistry.GetType(name)) 
-            return m_TypeRegistry.GetPointerTo(type);
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {            
-            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
-                return ptr->m_TypeRegistry.GetPointerTo(type);
-                
-            ptr = ptr->m_Previous;
-        }
-
-        CLEAR_UNREACHABLE("couldn't find type ", name);
-        return std::shared_ptr<Type>();
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetArrayFrom(std::shared_ptr<Type> base, size_t count)
-    {
-        std::string name = base->GetHash();
-
-        if(auto type = m_TypeRegistry.GetType(name)) 
-            return m_TypeRegistry.GetArrayFrom(type, count);
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {            
-            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
-                return ptr->m_TypeRegistry.GetArrayFrom(type, count);
-                
-            ptr = ptr->m_Previous;
-        }
-
-        CLEAR_UNREACHABLE("couldn't find type ", name);
-        return std::shared_ptr<Type>();
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetConstFrom(std::shared_ptr<Type> base)
-    {
-        std::string name = base->GetHash();
-
-        if(auto type = m_TypeRegistry.GetType(name)) 
-            return m_TypeRegistry.GetConstFrom(type);
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {            
-            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
-                return ptr->m_TypeRegistry.GetConstFrom(type);
-                
-            ptr = ptr->m_Previous;
-        }
-
-        CLEAR_UNREACHABLE("couldn't find type ", name);
-        return std::shared_ptr<Type>();
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetSignedType(std::shared_ptr<Type> base)
-    {
-        std::string name = base->GetHash();
-
-        if(auto type = m_TypeRegistry.GetType(name)) 
-            return m_TypeRegistry.GetSignedType(type);
-
-        std::shared_ptr<SymbolTable> ptr = m_Previous;
-
-        while(ptr)
-        {            
-            if(auto type = ptr->m_TypeRegistry.GetType(name)) 
-                return ptr->m_TypeRegistry.GetSignedType(type);
-                
-            ptr = ptr->m_Previous;
-        }
-
-        CLEAR_UNREACHABLE("couldn't find type ", name);
-        return std::shared_ptr<Type>();
-    }
-
-    std::shared_ptr<Type> SymbolTable::GetTypeFromToken(const Token& token)
-    {
-        if(token.GetData() == "null") return GetType("opaque_ptr");
-
-        if(token.IsType(TokenType::String))
-        {
-            return GetPointerTo(GetType("int8"));
-        }
-
-        if(token.IsType(TokenType::Char))
-        {
-            return GetType("int8");
-        }
-
-        if(token.IsType(TokenType::Keyword) && (token.GetData() == "true" || token.GetData() == "false") )
-        {
-            return GetType("bool");
-        }
-
-        if(token.IsType(TokenType::Number))
-        {
-            return GetType(GuessTypeNameFromNumber(token.GetData()));
-        }
-
-        if(token.IsType(TokenType::Identifier))
-        {
-            return GetType(token.GetData());
-        }
-
-        return GetType(token.GetData());
     }
 
     Allocation SymbolTable::RequestTemporary(const std::shared_ptr<Type>& type, llvm::IRBuilder<>& builder)
@@ -232,7 +82,7 @@ namespace clear
 	    Allocation allocation;
         allocation.Alloca = builder.CreateAlloca(type->Get(), nullptr, std::format("{}.{}", "tmp", type->GetHash()));
         allocation.Type = type; 
-        
+
 	    builder.restoreIP(ip);  
         
         it->second = m_Allocations.size();
@@ -454,7 +304,7 @@ namespace clear
 			Parameter param;
 
 			param.Name = "this";
-			param.Type = GetPointerTo(classTy);
+			param.Type = ctx.TypeReg->GetPointerTo(classTy);
 
 			std::string name = classTy->GetHash() + "." + "__destruct__";
 
@@ -528,7 +378,6 @@ namespace clear
             ptr = ptr->m_Previous;
         }
 
-        CLEAR_UNREACHABLE("unable to find instance ", instanceName);
         static FunctionInstance s_NullInstance;
         return s_NullInstance;
     }
@@ -566,8 +415,6 @@ namespace clear
                 
             ptr = ptr->m_Previous;
         }
-
-        CLEAR_UNREACHABLE("unable to find decleration ", templateName);
 
         static FunctionTemplate s_NullTemplate;
         return s_NullTemplate;
