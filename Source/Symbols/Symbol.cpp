@@ -79,11 +79,23 @@ namespace clear
             .Data = String(identifierName)
         };
     }
+    
+    llvm::Value* Symbol::GetLLVMValue()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");
+        auto& value = std::get<ValueSymbol>(Data);
+        return value.Values[0];
+    }
 
     std::shared_ptr<Type> Symbol::GetType() const
     {
-        CLEAR_VERIFY(Kind == SymbolKind::Type, "cannot call Symbol::GetType() when kind is not Type");
-        return std::get<TypeSymbol>(Data).Type_;
+        CLEAR_VERIFY(Kind == SymbolKind::Type || Kind == SymbolKind::Value, "cannot call Symbol::GetType() when kind is not Type or Value");
+
+        if(Kind == SymbolKind::Type)
+            return std::get<TypeSymbol>(Data).Type_;
+
+        auto& value = std::get<ValueSymbol>(Data);
+        return value.Types[0];
     }
 
     std::shared_ptr<Module> Symbol::GetModule() const

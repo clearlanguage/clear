@@ -615,9 +615,9 @@ namespace clear
 
 		auto enumTy = dyn_cast<EnumType>(lhs.GetType());
 		CLEAR_VERIFY(enumTy, "not a valid enum");
-		auto ty = GetSymbolTable()->GetType("int64");
-		return Symbol::CreateValue(ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName())),GetSymbolTable()->GetType("int64"));
 
+		auto ty = GetSymbolTable()->GetType("int64");
+		return Symbol::CreateValue(ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName())), ty);
     }
 
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)

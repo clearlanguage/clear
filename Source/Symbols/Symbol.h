@@ -66,6 +66,7 @@ namespace clear
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
 
+        llvm::Value* GetLLVMValue();
         std::shared_ptr<Type>   GetType() const;
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;
