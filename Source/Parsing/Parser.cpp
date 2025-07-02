@@ -270,6 +270,8 @@ namespace clear
                 if(Match(TokenType::Comma))
                     Consume();
             }
+
+            return;
         }
 
         while(isDecleration)
@@ -1647,44 +1649,21 @@ namespace clear
     
     bool Parser::IsDecleration()
     {
-        if(Match(TokenType::EndLine) || Match(TokenType::EndOfFile) || Match(TokenType::EndScope))
+        if(Match(TokenType::EndLine))
             return false;
 
         SavePosition();
 
-        if(Match("const"))
-            Consume();
+        ParseTypeResolver(); // try parse as type
 
-        if(Match(TokenType::Keyword) || Match(TokenType::Identifier)) // int/Foo
-            Consume();
-
-        if(Match(TokenType::Equals) || Match(TokenType::LeftParen) || Match(TokenType::LeftBracket) || Match(TokenType::LeftBrace) 
-           || Match(TokenType::Comma))
+        if(Match(TokenType::Identifier)) // if we end up at identifier then must be decl
         {
             RestorePosition();
-            return false;
+            return true;
         }
 
-        while(Match(TokenType::Dot))
-        {
-            Consume();
-
-            EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, false);
-
-            Consume();
-        }
-
-        if(Match(TokenType::Equals) || Match(TokenType::LeftParen) || Match(TokenType::LeftBracket) || Match(TokenType::LeftBrace) 
-           || Match(TokenType::Comma))
-        {
-            RestorePosition();
-            return false;
-        }
-
-        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, true);
         RestorePosition();
-
-        return true;
+        return false;
     }   
 
 }
