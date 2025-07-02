@@ -1,6 +1,7 @@
 #pragma once 
 
 #include "Symbol.h"
+#include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 
 namespace clear 
@@ -36,11 +37,14 @@ namespace clear
         static Symbol Call(Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder);
 
         static Symbol Load(Symbol& ptr, llvm::IRBuilder<>& builder);
-        static void   Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, bool isFirstTime = false);
+        static void   Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, llvm::Module& module, bool isFirstTime = false);
         
         static Symbol GEPStruct(Symbol& basePtr, Symbol& resPtrType, size_t index, llvm::IRBuilder<>& builder);
         static Symbol GEP(Symbol& basePtr, Symbol& resPtrType, const llvm::SmallVector<llvm::Value*>& indices, llvm::IRBuilder<>& builder);
 
         static void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder);
+
+
+        static llvm::Function* GetInitGlobalsFunction(llvm::Module& module);
     };
 }

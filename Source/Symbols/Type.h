@@ -103,7 +103,7 @@ namespace clear
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
-        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "P"; }
+        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "*"; }
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);

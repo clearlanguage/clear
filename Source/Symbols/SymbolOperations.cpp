@@ -3,7 +3,9 @@
 #include "Symbols/FunctionCache.h"
 #include "Type.h"
 #include "Core/Log.h"
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/Support/Casting.h>
 
 namespace clear 
 {
@@ -322,7 +324,7 @@ namespace clear
         return Symbol::CreateValue(builder.CreateLoad(ptrType->GetBaseType()->Get(), value, "load"), ptrType->GetBaseType());
     }
     
-    void SymbolOps::Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, bool isFirstTime)
+    void SymbolOps::Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, llvm::Module& module,  bool isFirstTime)
     {
         auto [storage, storageType] = ptr.GetValue();
         auto [val, type] = value.GetValue();
@@ -335,7 +337,24 @@ namespace clear
         {   
             CLEAR_VERIFY(!baseTy->IsConst(), "cannot change a constant value!");
         }
+
+        if(llvm::isa<llvm::GlobalVariable>(storage))
+        {
+            auto func = GetInitGlobalsFunction(module);
+
+            llvm::BasicBlock& entryBlock = func->getEntryBlock();
+
+            auto savedIp = builder.saveIP();
+
+            builder.SetInsertPoint(entryBlock.getTerminator());
+            builder.CreateStore(val, storage);
+
+            builder.restoreIP(savedIp);
+
+            return;
+        }
         
+
         builder.CreateStore(val, storage);
     }
     
@@ -453,6 +472,28 @@ namespace clear
         {
             CLEAR_UNREACHABLE("unsupported type promotion");
         }
+    }
+    
+    llvm::Function* SymbolOps::GetInitGlobalsFunction(llvm::Module& module)
+    {
+        if(auto func = module.getFunction("__clrt_init_globals"))
+            return func;
+
+        llvm::FunctionType* funcType = llvm::FunctionType::get(llvm::Type::getVoidTy(module.getContext()), false);
+        llvm::Function* func = llvm::Function::Create(
+            funcType,
+            llvm::Function::InternalLinkage,
+            "__clrt_init_globals",
+            module
+        );
+
+        llvm::BasicBlock* entry = llvm::BasicBlock::Create(module.getContext(), "entry", func);
+        llvm::IRBuilder<> builder(entry);
+        builder.CreateRetVoid();
+
+        llvm::appendToGlobalCtors(module, func, 1);
+
+        return func;
     }
     
 }

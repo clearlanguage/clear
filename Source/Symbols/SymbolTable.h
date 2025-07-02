@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Symbols/Type.h"
+#include "Symbols/Symbol.h"
 #include "FunctionCache.h"
 #include "TypeRegistry.h"
 
@@ -49,6 +49,8 @@ namespace clear
         SymbolTable(std::shared_ptr<llvm::LLVMContext> context);
         SymbolTable(const std::shared_ptr<SymbolTable>& other, std::shared_ptr<llvm::LLVMContext> context);
         ~SymbolTable() = default;
+
+        Symbol Lookup(const std::string& name);
 
         std::shared_ptr<Type> GetType(const std::string& name);
         std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);

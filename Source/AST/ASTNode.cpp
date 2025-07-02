@@ -11,6 +11,7 @@
 #include "Symbols/Module.h"
 
 #include <llvm/ADT/SmallVector.h>
+#include <memory>
 #include <stack>
 
 
@@ -492,7 +493,6 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-
 		auto tbl = GetSymbolTable();
 
 		Symbol lhs;
@@ -622,14 +622,51 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
+		auto mod = lhs.GetModule();
+
 		if(right->GetType() == ASTNodeType::Member)
 		{
-			CLEAR_UNREACHABLE("unimplemented");
+			auto member = std::dynamic_pointer_cast<ASTMember>(right);
+			Symbol symbol = mod->GetSymbolTable()->Lookup(member->GetName());
+
+			if(symbol.Kind == SymbolKind::Type) //only one LLVMContext for now so this is fine
+			{
+				return symbol;
+			}
+			else if (symbol.Kind == SymbolKind::Value) //variable
+			{
+				llvm::GlobalVariable* existingGV = ctx.Module.getNamedGlobal(member->GetName());
+				Symbol value;
+
+				if(existingGV)
+				{
+					value = Symbol::CreateValue(existingGV, symbol.GetType());
+				}
+				else 
+				{
+					llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(symbol.GetLLVMValue());
+
+					llvm::GlobalVariable* decl = new llvm::GlobalVariable(
+				    	ctx.Module,
+				    	gv->getValueType(),
+				    	gv->isConstant(),
+				    	llvm::GlobalValue::ExternalLinkage,
+				    	nullptr,
+				    	gv->getName()
+					);
+
+					value = Symbol::CreateValue(decl, symbol.GetType());
+				}
+
+				if(ctx.WantAddress)
+					return value;
+
+				return SymbolOps::Load(value, ctx.Builder);
+			}
 		}
 
 		if(right->GetType() == ASTNodeType::FunctionCall)
 		{
-			auto mod = lhs.GetModule();
 			right->SetSymbolTable(mod->GetSymbolTable());
 			return right->Codegen(ctx);
 		}
@@ -779,7 +816,7 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
-			SymbolOps::Store(storage, data, ctx.Builder, true);
+			SymbolOps::Store(storage, data, ctx.Builder, ctx.Module, true);
 			return Symbol();
 		}
 
@@ -812,7 +849,7 @@ namespace clear
 			CLEAR_UNREACHABLE("invalid assignment type");
 		}
 
-		SymbolOps::Store(storage, tmp, ctx.Builder);
+		SymbolOps::Store(storage, tmp, ctx.Builder, ctx.Module);
 		return Symbol();
     }
 
@@ -1465,7 +1502,8 @@ namespace clear
 
 			size_t j = 0;
 
-			auto [tupleValues,tupleTypes] = valueToStore.GetValueTuple();
+			auto [tupleValues, tupleTypes] = valueToStore.GetValueTuple();
+
 			for(; j < tupleTypes.size(); j++)
 			{
 				Store(tupleValues[j], tupleTypes[j], i, offset);

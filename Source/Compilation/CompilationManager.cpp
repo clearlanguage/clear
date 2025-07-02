@@ -82,7 +82,7 @@ namespace clear
             CodegenModule(filepath);
         } */
 
-        //m_MainModule->GetModule()->print(llvm::errs(), nullptr);
+        m_MainModule->GetModule()->print(llvm::errs(), nullptr);
         CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()), "module verification failed");
 
         if(m_Config.EmitIntermiediateIR)

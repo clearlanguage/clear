@@ -66,6 +66,20 @@ namespace clear
     {
         m_Previous = other;
     }
+    
+    Symbol SymbolTable::Lookup(const std::string& name)
+    {
+        if(auto ty = GetType(name))
+            return Symbol::CreateType(ty);
+        
+        auto var = GetAlloca(name);
+
+        if(var.Alloca)
+            return Symbol::CreateVariable(name, var.Alloca, GetPointerTo(var.Type));
+
+        CLEAR_UNREACHABLE("unimplemented/unable to find symbol ", name);
+        return Symbol();
+    }
 
     std::shared_ptr<Type> SymbolTable::GetType(const std::string& name)
     {
@@ -218,6 +232,7 @@ namespace clear
 	    Allocation allocation;
         allocation.Alloca = builder.CreateAlloca(type->Get(), nullptr, std::format("{}.{}", "tmp", type->GetHash()));
         allocation.Type = type; 
+        
 	    builder.restoreIP(ip);  
         
         it->second = m_Allocations.size();
@@ -230,15 +245,26 @@ namespace clear
     {
         Allocation alloca;
 
+        llvm::Constant* init = nullptr;
+
+        if (value)
+        {
+            init = llvm::cast<llvm::Constant>(value);
+        }
+        else
+        {
+            init = llvm::Constant::getNullValue(type->Get());
+        }
+
         alloca.Alloca = new llvm::GlobalVariable(
             module,
             type->Get(),
-            false,
+            false, 
             llvm::GlobalValue::ExternalLinkage,
-            value ? llvm::cast<llvm::Constant>(value) : nullptr,
+            init,
             name
         );
-        
+
         alloca.Type = type;
         alloca.IsGlobal = true;
 
@@ -314,8 +340,7 @@ namespace clear
             ptr = ptr->m_Previous;
         }
 
-        CLEAR_UNREACHABLE("unable to find variable ", name);
-
+        CLEAR_LOG_WARNING("unable to find variable ", name);
         return {};
     }
 

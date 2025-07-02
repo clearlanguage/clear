@@ -182,7 +182,7 @@ namespace clear
 					break;
 			}
         }
-		else if (info.IsSigned)
+        else if (info.IsSigned)
 		{
 			switch (info.BitsNeeded)
 			{
