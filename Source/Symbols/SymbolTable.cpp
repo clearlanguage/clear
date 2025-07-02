@@ -649,9 +649,15 @@ namespace clear
         return false;
     }
 
-    void SymbolTable::CreateTemplate(const std::string& templateName, std::shared_ptr<Type> returnType, const std::vector<Parameter>& params, bool isVariadic,  const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, std::shared_ptr<ASTNodeBase> root)
+    void SymbolTable::CreateTemplate(const std::string& templateName, 
+                                     std::shared_ptr<Type> returnType, 
+                                     const std::vector<Parameter>& params, 
+                                     bool isVariadic,  
+                                     const std::vector<std::shared_ptr<ASTNodeBase>>& defaultArgs, 
+                                     std::shared_ptr<ASTNodeBase> root, 
+                                    std::shared_ptr<Module> sourceModule)
     {
-        m_FunctionCache.CreateTemplate(templateName, returnType, params, isVariadic, defaultArgs, root);
+        m_FunctionCache.CreateTemplate(templateName, returnType, params, isVariadic, defaultArgs, root, sourceModule);
     }
 
     FunctionInstance& SymbolTable::InstantiateOrReturn(const std::string& templateName, const std::vector<Parameter>& params, std::shared_ptr<Type> returnType, CodegenContext& context)

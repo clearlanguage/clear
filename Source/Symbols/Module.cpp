@@ -1,4 +1,5 @@
 #include "Module.h"
+#include "AST/ASTNode.h"
 
 namespace clear 
 {
@@ -14,6 +15,7 @@ namespace clear
     }
 
     Module::Module(Module* parent, const std::string& name)
+        : m_ModuleName(name)
     {   
         m_Context = parent->m_Context;
         m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
@@ -48,7 +50,7 @@ namespace clear
 
     std::shared_ptr<Module> Module::EmplaceOrReturn(const std::string& moduleName)
     {
-        auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(moduleName));
+        auto [it, sucess] = m_ContainedModules.try_emplace(moduleName, std::make_shared<Module>(this, moduleName));
         return it->second;
     }
     
@@ -73,8 +75,25 @@ namespace clear
         }
     }
     
+    void Module::Link()
+    {
+        for(const auto& [_, mod] : m_ContainedModules)
+        {
+            mod->Link();
+        }
+
+        llvm::Linker linker(*m_Module);
+
+        for(const auto& [_, mod] : m_ContainedModules)
+        {
+            linker.linkInModule(mod->TakeModule());
+        }
+    }
+    
     CodegenContext Module::GetCodegenContext()
     {
-        return CodegenContext(m_ModuleName, *m_Context, *m_Builder, *m_Module);
+        CodegenContext ctx(m_ModuleName, *m_Context, *m_Builder, *m_Module);
+        ctx.ClearModule = shared_from_this();
+        return ctx;
     }
 }

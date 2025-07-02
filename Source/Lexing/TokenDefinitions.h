@@ -109,6 +109,7 @@ namespace clear
 
         "struct", "function", "class", "restriction",
         "trait", "property", "declare", "block", "enum",
+        "export",
 
         "not","and","or",
 

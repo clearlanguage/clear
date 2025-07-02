@@ -4,6 +4,8 @@
 #include "Compilation/BuildConfig.h"
 #include "Symbols/SymbolTable.h"
 
+#include <llvm/IR/Module.h>
+#include <memory>
 #include <unordered_map>
 
 namespace clear 
@@ -21,15 +23,17 @@ namespace clear
         std::shared_ptr<Module> EmplaceOrReturn(const std::string& moduleName);
         std::shared_ptr<Module> Return(const std::string& moduleName);
 
-
         void Codegen(const BuildConfig& config);
+        void Link();
 
         llvm::Module* GetModule()   { return m_Module.get(); }
+        std::unique_ptr<llvm::Module> TakeModule() { return std::move(m_Module); }
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
 
         CodegenContext GetCodegenContext();
 
-        std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
+        //NOTE: hack until export keyword is implemented
+        std::shared_ptr<SymbolTable> GetSymbolTable() { return m_Nodes[0]->GetSymbolTable(); } 
 
     private:
         std::string m_ModuleName;
