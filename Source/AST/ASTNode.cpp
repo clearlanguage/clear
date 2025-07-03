@@ -11,6 +11,10 @@
 #include "Symbols/Module.h"
 
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/Support/Casting.h>
 #include <memory>
 #include <stack>
 
@@ -2818,5 +2822,69 @@ namespace clear
 	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)
 		 : m_Name(name)
 	{
+	}
+
+	Symbol ASTSwitch::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		auto& children = GetChildren(); 
+
+		// default case must be at back
+		llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(ctx.Context, "continue");
+		llvm::BasicBlock* defaultCase   = llvm::BasicBlock::Create(ctx.Context, "default");
+		auto defaultCaseCode = children.back();
+
+		auto savedIp = ctx.Builder.saveIP();
+
+		ctx.Builder.SetInsertPoint(defaultCase);
+		defaultCaseCode->Codegen(ctx);
+		
+		if(!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(continueBlock);
+
+		ctx.Builder.restoreIP(savedIp);
+
+		// first child must be value
+		Symbol value = children[0]->Codegen(ctx);
+
+		llvm::SwitchInst* switchStatement = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultCase);
+		function->insert(function->end(), defaultCase);
+
+		llvm::SmallVector<llvm::Value*> values;
+
+		// rest should be value ... code
+		for(size_t i = 1; i < children.size() - 1; i++)
+		{
+			auto child = children[i];
+
+			if(child->GetType() == ASTNodeType::Expression)
+			{
+				ValueRestoreGuard guard(ctx.WantAddress, false);
+				values.push_back(child->Codegen(ctx).GetLLVMValue());
+				continue;
+			}
+
+			llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "switch_case", function);
+			ctx.Builder.SetInsertPoint(block);
+			child->Codegen(ctx);
+			
+			if(!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(continueBlock);
+
+			while(!values.empty())
+			{
+				llvm::ConstantInt* casted = llvm::dyn_cast<llvm::ConstantInt>(values.back());
+				CLEAR_VERIFY(casted, "not a constant int!");
+
+				switchStatement->addCase(casted, block);
+				values.pop_back();
+			}
+		}
+
+		function->insert(function->end(), continueBlock);
+		ctx.Builder.SetInsertPoint(continueBlock);
+
+		return Symbol();
 	}
 }

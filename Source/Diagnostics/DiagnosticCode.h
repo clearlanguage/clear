@@ -30,6 +30,8 @@ namespace clear
 		DiagnosticCode_ExpectedFunctionReturnType,
 		DiagnosticCode_ExpectedEndOfScope,
 		DiagnosticCode_ExpectedModuleName,
+		DiagnosticCode_ExpectedComma,
+		DiagnosticCode_ExpectedColon,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -60,6 +62,8 @@ namespace clear
 		"Missing '->' for function return type",
 		"Expected end of scope (e.g. end of class or function block)",
 		"Expected a module name string",
+		"Expected ',' between list or argument elements.",
+		"Expected ':' after case label or block starter.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -89,5 +93,7 @@ namespace clear
 		"Add '->' followed by the return type after the parameter list",
 		"Ensure all indented blocks are properly closed",
 		"Add a module name string (e.g. \"math\") after the module keyword",
+		"Separate items with a comma ',' at {} to continue the list or argument sequence.",
+		"Add a colon ':' after {} to start the block or specify the case body.",
 	};
 }

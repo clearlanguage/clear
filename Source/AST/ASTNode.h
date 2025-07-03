@@ -26,7 +26,8 @@ namespace clear
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer, TypeResolver,TypeSpecifier,TernaryExpression
+		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
+		Switch 
 	};
 
 	struct CodegenResult
@@ -574,7 +575,7 @@ namespace clear
 		ASTTypeResolver(const std::vector<Token>& tokens = {});
 		virtual ~ASTTypeResolver() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
-		virtual Symbol Codegen(CodegenContext&) override; // goal is to return a type
+		virtual Symbol Codegen(CodegenContext&) override; 
 
 		void PushToken(const Token& token)
 		{
@@ -584,5 +585,14 @@ namespace clear
 	private:
 		std::vector<Token> m_Tokens;
 		std::optional<Symbol> m_Type;
+	};	
+
+	class ASTSwitch : public ASTNodeBase 
+	{
+	public:
+		ASTSwitch() = default;
+		virtual ~ASTSwitch() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Switch; }
+		virtual Symbol Codegen(CodegenContext&) override; 
 	};	
 }

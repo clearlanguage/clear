@@ -105,3 +105,11 @@ Advice = "Ensure all indented blocks are properly closed"
 [ExpectedModuleName]
 Message = "Expected a module name string"
 Advice = "Add a module name string (e.g. \"math\") after the module keyword"
+
+[ExpectedComma]
+Message = "Expected ',' between list or argument elements."
+Advice  = "Separate items with a comma ',' at {} to continue the list or argument sequence."
+
+[ExpectedColon]
+Message = "Expected ':' after case label or block starter."
+Advice  = "Add a colon ':' after {} to start the block or specify the case body."

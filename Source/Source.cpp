@@ -1,7 +1,4 @@
 ﻿#include "Lexing/Lexer.h"
-#include "AST/ASTNode.h"
-#include "Parsing/Parser.h"
-#include "Symbols/TypeRegistry.h"
 #include "Compilation/CompilationManager.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include "Core/Log.h"

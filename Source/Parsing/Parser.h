@@ -41,8 +41,11 @@ namespace clear
         void Expect(TokenType tokenType);
         void Expect(const std::string& data);
 
-
         void ExpectAny(TokenSet tokenSet);
+
+        void ParseUntil(TokenType endToken);
+        void ParseUntil(const std::string& endToken);
+        void ParseUntilMatchIndentation(size_t rootLevel);
 
         void ParseStatement();
         void ParseGeneral();
@@ -67,6 +70,7 @@ namespace clear
         void ParseBlock();
         void ParseModule();
         void ParseEndModule();
+        void ParseSwitch();
 
         std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
         std::shared_ptr<ASTNodeBase> ParseOperand();

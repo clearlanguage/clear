@@ -222,10 +222,9 @@ namespace clear
             {"block",     [this]() { ParseBlock(); }},
             {"module",    [this]() { ParseModule(); }},
             {"endmodule", [this]() { ParseEndModule(); }},
-            {"break",     [this]() {ParseLoopControls();}},
-            {"continue",     [this]() {ParseLoopControls();}}
-
-
+            {"break",     [this]() { ParseLoopControls();}},
+            {"continue",  [this]() { ParseLoopControls();}},
+            {"switch",    [this]() { ParseSwitch();}}
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -1115,6 +1114,89 @@ namespace clear
         variableDecleration->Push(type);
 
         return variableDecleration;
+    }
+
+    void Parser::ParseSwitch() 
+    { 
+        EXPECT_DATA("switch", DiagnosticCode_None); 
+        Consume(); 
+
+        auto switchStatement = std::make_shared<ASTSwitch>(); 
+        switchStatement->Push(ParseExpression()); 
+
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
+
+        Consume(); 
+
+        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_None);
+
+        Consume();
+
+        bool hasDefault = false; 
+
+        while(Match("case")) 
+        { 
+            Consume();
+
+            while(Match(TokenType::EndLine)) 
+            { 
+                Consume(); 
+            } 
+            
+            switchStatement->Push(ParseExpression()); 
+
+            while(!Match(TokenType::Colon)) 
+            { 
+                EXPECT_TOKEN(TokenType::Comma, DiagnosticCode_ExpectedComma); 
+                Consume(); 
+                switchStatement->Push(ParseExpression()); 
+            } 
+
+            Consume();
+
+            auto block = std::make_shared<ASTNodeBase>(); 
+            block->CreateSymbolTable(); 
+            switchStatement->Push(block); 
+
+            size_t rootLevel = m_RootStack.size();
+
+            m_RootStack.push_back(block); 
+
+            while(rootLevel < m_RootStack.size())
+            {
+                ParseStatement();
+            }
+
+            if(Match("default")) 
+            { 
+                hasDefault = true; 
+
+                Consume(); 
+                EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon); 
+                Consume(); 
+
+                block = std::make_shared<ASTNodeBase>(); 
+
+                block->CreateSymbolTable(); 
+                switchStatement->Push(block); 
+
+                size_t rootLevel = m_RootStack.size();
+
+                m_RootStack.push_back(block); 
+
+                while(rootLevel < m_RootStack.size())
+                {
+                    ParseStatement();
+                }
+
+                break; 
+            } 
+        } 
+
+        if(!hasDefault) 
+            switchStatement->Push(std::make_shared<ASTNodeBase>()); 
+
+        Root()->Push(switchStatement);
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseExpression(uint64_t terminationIndex) // infix to RPN and creates nodes
