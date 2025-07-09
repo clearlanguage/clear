@@ -22,11 +22,11 @@ namespace clear
         diag.DiagSeverity = severity;
         diag.DiagStage    = stage;
         diag.File         = token.GetSourceFile();
-        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.GetLineNumber());
+        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.LineNumber);
         diag.Message      = g_DiagnosticMessages[code];
         diag.Advice       = std::vformat(g_DiagnosticAdvices[code],  std::make_format_args(token.GetData()));
-        diag.Line         = token.GetLineNumber();
-        diag.Column       = token.GetColumnNumber();
+        diag.Line         = token.LineNumber;
+        diag.Column       = token.ColumnNumber;
         diag.ArrowsWidth  = token.GetData().length();
 
         if (severity == Severity::High)
@@ -38,7 +38,7 @@ namespace clear
     }
 
 
-    void DiagnosticsBuilder::Report(Stage stage, Severity severity, const Token& token, DiagnosticCode code,size_t expectedLength)
+    void DiagnosticsBuilder::Report(Stage stage, Severity severity, const Token& token, DiagnosticCode code, size_t expectedLength)
     {
         auto [it, success] = m_LoadedFiles.try_emplace(token.GetSourceFile(), FileReference());
         auto& fileRef = it->second;
@@ -54,11 +54,11 @@ namespace clear
         diag.DiagSeverity = severity;
         diag.DiagStage    = stage;
         diag.File         = token.GetSourceFile();
-        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.GetLineNumber());
+        diag.CodeSnippet  = CreateCodeSnippet(fileRef.ContentsRef, token.LineNumber);
         diag.Message      = g_DiagnosticMessages[code];
         diag.Advice       = std::vformat(g_DiagnosticAdvices[code],  std::make_format_args(token.GetData()));
-        diag.Line         = token.GetLineNumber();
-        diag.Column       = token.GetColumnNumber();
+        diag.Line         = token.LineNumber;
+        diag.Column       = token.ColumnNumber;
         diag.ArrowsWidth  = expectedLength;
 
         if (severity == Severity::High)

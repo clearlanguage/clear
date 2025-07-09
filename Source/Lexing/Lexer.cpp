@@ -4,8 +4,6 @@
 
 #include <fstream>
 #include <iostream>
-#include <map>
-#include <charconv>
 #include <math.h>
 #include <sstream>
 #include <fast_float/fast_float.h>
@@ -265,15 +263,18 @@ namespace clear
         if(m_Position == m_Contents.size() and m_Contents[m_Position-1] != '"')
         {
             int count = 0;
-            for (size_t i = 0; i < lexedString.length(); ++i) {
-                if (lexedString[i] == '\n') {
+
+            for (size_t i = 0; i < lexedString.length(); i++) 
+            {
+                if (lexedString[i] == '\n') 
                     break;
-                }
-                ++count;
+
+                count++;
             }
 
-            m_Tokens.back().m_Column = m_ColumnNumber+count;
+            m_Tokens.back().ColumnNumber = m_ColumnNumber + count;
             Report(m_Tokens.back(), DiagnosticCode_UnterminatedString, Severity::High);
+            
             return;
         }
 
@@ -428,7 +429,7 @@ namespace clear
 
         if (m_Position >= m_Contents.size()) 
         {
-            m_Tokens.back().m_Column = m_ColumnNumber;
+            m_Tokens.back().ColumnNumber= m_ColumnNumber;
             Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
             return;
         }
@@ -441,7 +442,7 @@ namespace clear
 
             if (m_Position >= m_Contents.size()) 
             {
-                m_Tokens.back().m_Column = m_ColumnNumber;
+                m_Tokens.back().ColumnNumber= m_ColumnNumber;
                 Report(m_Contents.back(), DiagnosticCode_UnterminatedString, Severity::High);
                 return;
             }
@@ -473,7 +474,7 @@ namespace clear
 
         if (m_Position >= m_Contents.size() || m_Contents[m_Position] != '\'') 
         {
-            m_Tokens.back().m_Column = m_ColumnNumber-4; //TODO: fix this hard coded value
+            m_Tokens.back().ColumnNumber= m_ColumnNumber - 4; //TODO: fix this hard coded value
             Report(m_Tokens.back(), DiagnosticCode_InvalidCharLiteral, Severity::High);
             AbortCurrent();
 

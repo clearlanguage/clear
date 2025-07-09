@@ -3,15 +3,11 @@
 #include "Core/Log.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Lexing/TokenDefinitions.h"
-#include "Symbols/TypeRegistry.h"
-#include "Core/Utils.h"
 #include "Lexing/Token.h"
-#include <cstring>
 #include "Symbols/Module.h"
 
-#include <stack>
 #include <print>
-
+#include <stack>
 
 namespace clear 
 {
@@ -19,7 +15,7 @@ namespace clear
     #define EXPECT_TOKEN(type, code) \
     if (!Match(type)) { \
     auto location = (m_Position > 0 ? Prev() : Peak()); \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code,getExpectedLength(type)); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
     SkipUntil(TokenType::EndLine); \
     return; \
     }
@@ -27,7 +23,7 @@ namespace clear
     #define EXPECT_TOKEN_RETURN(type, code, returnValue) \
     if (!Match(type)) { \
     auto location = (m_Position > 0 ? Prev() : Peak()); \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code,getExpectedLength(type)); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
     SkipUntil(TokenType::EndLine); \
     return returnValue; \
     }
@@ -310,10 +306,10 @@ namespace clear
 
         std::string traitName = Consume().GetData();
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
+        EXPECT_TOKEN(TokenType::Colon,  DiagnosticCode_ExpectedIndentation);
         Consume();
 
-        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
+        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
     
         std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);

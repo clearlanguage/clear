@@ -3,10 +3,8 @@
 #include "TokenDefinitions.h"
 
 #include <inttypes.h>
-#include <bitset>
 #include <string>
 #include <string_view>
-#include <map>
 #include <filesystem>
 
 namespace clear 
@@ -14,9 +12,13 @@ namespace clear
     class Token 
     {
     public:
+        size_t LineNumber = 0;
+        size_t ColumnNumber = 0;
+
+    public:
         Token() = default;
         Token(TokenType type, const std::string& data, const std::filesystem::path& path = "", size_t line = 0, size_t col = 0) 
-            : m_Type(type), m_Data(data), m_SourceFile(path), m_Line(line), m_Column(col) {}
+            : m_Type(type), m_Data(data), m_SourceFile(path), LineNumber(line), ColumnNumber(col) {}
         
         ~Token() = default;
 
@@ -31,82 +33,15 @@ namespace clear
         TokenType GetType()          const { return m_Type; }
 
         const std::filesystem::path& GetSourceFile() const { return m_SourceFile; }
-        size_t GetLineNumber()   const { return m_Line; }
-        size_t GetColumnNumber() const { return m_Column;}
-        
-        std::string_view GetTypeAsString() const
-        {
-            switch (m_Type)
-            {
-                case TokenType::None:               return "None";
-            
-                case TokenType::Identifier:         return "Identifier";
-                case TokenType::Keyword:            return "Keyword";
-                case TokenType::Number:             return "Number";
-                case TokenType::String:             return "String";
-            
-                case TokenType::Colon:              return "Colon";
-                case TokenType::Semicolon:          return "Semicolon";
-                case TokenType::Comma:              return "Comma";
-                case TokenType::Dot:                return "Dot";
-                case TokenType::Equals:             return "Equals";
-                case TokenType::Plus:               return "Plus";
-                case TokenType::Minus:              return "Minus";
-                case TokenType::Star:               return "Star";
-                case TokenType::Ampersand:          return "Ampersand";
-                case TokenType::Pipe:               return "Pipe";
-                case TokenType::ForwardSlash:       return "ForwardSlash";
-                case TokenType::Percent:            return "Percent";
-                case TokenType::Hat:                return "Hat";
-                case TokenType::Telda:              return "Telda";
-            
-                case TokenType::LeftParen:          return "LeftParen";
-                case TokenType::RightParen:         return "RightParen";
-                case TokenType::LeftBrace:          return "LeftBrace";
-                case TokenType::RightBrace:         return "RightBrace";
-                case TokenType::LeftBracket:        return "LeftBracket";
-                case TokenType::RightBracket:       return "RightBracket";
-                case TokenType::LessThan:           return "LessThan";
-                case TokenType::GreaterThan:        return "GreaterThan";
-                case TokenType::Bang:               return "Bang";
-                case TokenType::RightThinArrow:     return "RightThinArrow";
-                case TokenType::LeftThinArrow:      return "LeftThinArrow";
-                case TokenType::PlusEquals:         return "PlusEquals";
-                case TokenType::MinusEquals:        return "MinusEquals";
-                case TokenType::StarEquals:         return "StarEquals";
-                case TokenType::SlashEquals:        return "SlashEquals";
-                case TokenType::PercentEquals:      return "PercentEquals";
-                case TokenType::EqualsEquals:       return "EqualsEquals";
-                case TokenType::BangEquals:         return "BangEquals";
-                case TokenType::LessThanEquals:     return "LessThanEquals";
-                case TokenType::GreaterThanEquals:  return "GreaterThanEquals";
-                case TokenType::AmpersandEquals:    return "AmpersandEquals";
-                case TokenType::PipeEquals:         return "PipeEquals";
-                case TokenType::HatEquals:          return "HatEquals";
-                case TokenType::LeftShift:          return "LeftShift";
-                case TokenType::RightShift:         return "RightShift";
-                case TokenType::LeftShiftEquals:    return "LeftShiftEquals";
-                case TokenType::RightShiftEquals:   return "RightShiftEquals";
-                case TokenType::LogicalAnd:         return "LogicalAnd";
-                case TokenType::LogicalOr:          return "LogicalOr";
-                case TokenType::Increment:          return "Increment";
-                case TokenType::Decrement:          return "Decrement";
-                case TokenType::Ellipses:           return "Ellipses";
-                
-                case TokenType::EndLine:            return "EndLine";
-                case TokenType::EndScope:           return "EndScope";
-                case TokenType::EndOfFile:          return "EndOfFile";
-                default:                            return "Unknown";
-            }
-        }
-        size_t m_Column = 0;
+
+        std::string_view GetTypeAsString() const;
 
     private:
         TokenType m_Type = TokenType::None;
+        
         std::string m_Data;
         std::filesystem::path m_SourceFile;
-        size_t m_Line = 0;
     };
 
-    size_t getExpectedLength(TokenType type);
+    size_t GetExpectedLength(TokenType type);
 }
