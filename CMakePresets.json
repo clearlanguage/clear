@@ -59,6 +59,7 @@
         },
         {
             "name": "clear-debug-preset",
+            "generator": "Ninja",
             "displayName": "clear-debug-preset clang",
             "description": "Using compilers: C = /usr/bin/clang, CXX = /usr/bin/clang++",
             "binaryDir": "${sourceDir}/build/",

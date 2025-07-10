@@ -108,7 +108,7 @@ namespace clear
         "switch", "case", "default", "import", "as", "module", "endmodule",
 
         "struct", "function", "class", "restriction",
-        "trait", "property", "declare", "block", "enum",
+        "trait", "property", "declare", "enum",
         "export",
 
         "not","and","or",

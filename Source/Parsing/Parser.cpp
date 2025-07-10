@@ -215,7 +215,6 @@ namespace clear
             {"class",     [this]() { ParseClass(); }},
             {"enum",      [this]() { ParseEnum(); }},
             {"trait",     [this]() { ParseTrait(); }},
-            {"block",     [this]() { ParseBlock(); }},
             {"module",    [this]() { ParseModule(); }},
             {"endmodule", [this]() { ParseEndModule(); }},
             {"break",     [this]() { ParseLoopControls();}},
@@ -243,6 +242,12 @@ namespace clear
 
     void Parser::ParseGeneral()
     {
+        if(Match(TokenType::Identifier) && Next().IsType(TokenType::Colon))
+        {
+            ParseBlock();
+            return;
+        }
+
         bool isDeclaration = IsDeclaration();
 
         // parse either expression or declerations, allowing for multiple on the same line seperated by commas
@@ -528,7 +533,7 @@ namespace clear
         Root()->Push(ifExpr);
         m_RootStack.push_back(base); 
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
@@ -547,7 +552,7 @@ namespace clear
             
         m_RootStack.push_back(base); 
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation)
         Consume();
     }
 
@@ -621,7 +626,7 @@ namespace clear
 
         m_RootStack.push_back(base); 
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation);
         Consume();
     }
 
@@ -762,11 +767,10 @@ namespace clear
             return;
         }
 
-        EXPECT_TOKEN(TokenType::RightThinArrow,DiagnosticCode_ExpectedFunctionReturnType);
+        EXPECT_TOKEN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType);
         Consume();
         
         returnType = ParseTypeResolver();
-
         Flush();
     }
 
@@ -867,13 +871,13 @@ namespace clear
 
     void Parser::ParseBlock()
     {
-        EXPECT_DATA("block",DiagnosticCode_None);
+        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
         Consume();
 
-        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
+        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
 
         auto block = std::make_shared<ASTNodeBase>();
