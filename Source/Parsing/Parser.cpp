@@ -47,8 +47,8 @@ namespace clear
     }
 
 
-    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> rootModule,DiagnosticsBuilder& builder)
-        : m_Tokens(tokens), m_Context(context), m_DiagnosticsBuilder(builder)
+    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule,DiagnosticsBuilder& builder)
+        : m_Tokens(tokens), m_DiagnosticsBuilder(builder)
     {
         m_Modules.push_back(rootModule);
         m_RootStack.push_back(rootModule->GetRoot());
@@ -219,7 +219,9 @@ namespace clear
             {"endmodule", [this]() { ParseEndModule(); }},
             {"break",     [this]() { ParseLoopControls();}},
             {"continue",  [this]() { ParseLoopControls();}},
-            {"switch",    [this]() { ParseSwitch();}}
+            {"switch",    [this]() { ParseSwitch();}}, 
+            {"pass",      [this]() { Consume(); }}
+            
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -372,16 +374,10 @@ namespace clear
 
     void Parser::ParseConstDecleration()
     {       
-        EXPECT_DATA("const",DiagnosticCode_None);
+        EXPECT_DATA("const", DiagnosticCode_None);
         Consume();
 
-        if(!Match(TokenType::Identifier))
-        {
-            Undo();
-            Root()->Push(ParseVariableDecleration());
-
-            return;
-        }
+        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
 
         while(Match(TokenType::Identifier))
         {

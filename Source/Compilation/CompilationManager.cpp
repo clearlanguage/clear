@@ -34,7 +34,7 @@ namespace clear
         if (m_DiagnosticsBuilder.IsFatal())
         {
             m_DiagnosticsBuilder.Dump();
-            throw std::exception();
+            CLEAR_UNREACHABLE("");
         }
     }
 
@@ -53,6 +53,7 @@ namespace clear
         
 
         Lexer lexer(path, m_DiagnosticsBuilder);
+
         CheckErrors();
 
         CLEAR_LOG_INFO("Tokens For ", path);
@@ -64,7 +65,7 @@ namespace clear
 
         CLEAR_LOG_INFO("End of tokens for ", path);
 
-        Parser parser(lexer.GetTokens(), m_MainModule->GetContext(), m_MainModule, m_DiagnosticsBuilder);
+        Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
     }
 
     void CompilationManager::PropagateSymbolTables()

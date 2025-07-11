@@ -2763,10 +2763,6 @@ namespace clear
 		// deal with first few tokens to get the base type
 
 		size_t i = 0;
-
-		if(m_Tokens[i].GetData() == "const")
-			i++;
-
 		auto symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
 
 		if(symbol.Kind == SymbolKind::None)

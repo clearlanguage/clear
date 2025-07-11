@@ -18,7 +18,7 @@ namespace clear
     {        
     public:
         Parser() = delete;
-        Parser(const std::vector<Token>& tokens, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> root,DiagnosticsBuilder& builder);
+        Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> root, DiagnosticsBuilder& builder);
         ~Parser() = default;
 
         std::shared_ptr<ASTNodeBase> GetResult();
@@ -107,7 +107,6 @@ namespace clear
         TokenSet m_AssignmentOperators;
         TokenSet m_Literals;
 
-        std::shared_ptr<llvm::LLVMContext> m_Context;
         std::vector<std::shared_ptr<Module>> m_Modules;
         DiagnosticsBuilder& m_DiagnosticsBuilder;
     };
