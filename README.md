@@ -232,6 +232,7 @@ print(Direction.Up)     // outputs 2
 * Async/await
 * Package manager
 * Lambdas
-* Runtime and compile time saftey checks when indexing, derefencing and more
+* Compile time saftey checks when indexing, derefencing and more
+* Optional runtime saftey checks when doing the same as above
 ---
 
