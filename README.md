@@ -8,7 +8,7 @@ Clear is a modern **compiled programming language** that combines the **simplici
 
 ## 🚀 Why Clear?
 
-* **Simple, readable syntax** inspired by Python
+* **Simple, readable syntax** inspired by C and Python
 * **Compiled performance** approaching C/C++
 * **Hybrid memory management** model
 * **Powerful type system** with optional inference
@@ -18,19 +18,40 @@ Clear is a modern **compiled programming language** that combines the **simplici
 
 ---
 
-## 📦 Example
+## 📦 Build Instructions 
 
-```clear
-import "io.cl"
+### Requirements 
+* Clang compiler 
+* CMake 
+* LLVM built and cmake installed. See https://llvm.org/docs/CMake.html
+* Currently only tested on linux and macos
 
-function main() -> int:
-    print("Hello, world!")
-    return 0
+
+### Building
+
+* First clone the repository
+
+```
+git clone https://github.com/clearlanguage/clear.git
+```
+
+* Create a build directory 
+
+```
+mkdir build
+cd build
+```
+
+* Use IDE CMake integration or call cmake directly 
+
+```
+cmake path/to/clear
+cmake --build .
 ```
 
 ---
 
-## 🧠 Key Language Features
+## 🧠 Key Planned Language Features
 
 ### ✅ Type Inference and Declarations
 
