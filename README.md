@@ -39,28 +39,6 @@ cmake --build .
 
 ---
 
-## ⚙️ How to Run
-
-To run a Clear program:
-
-1. Compile the `.cl` file using the Clear compiler.
-2. Execute the resulting binary.
-
-```bash
-clearc main.cl -o main
-./main
-```
-
-> *Note: Replace `clearc` with the name of your compiler binary.*
-
----
-
-## 🧹 Memory Management
-
-Clear uses a **hybrid memory model**, combining automatic memory management with the ability to manually manage memory when performance or control is needed.
-
----
-
 ## 🌍 Open Source
 
 Clear is open source and welcomes contributions!
