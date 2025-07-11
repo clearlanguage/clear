@@ -6,18 +6,6 @@ Clear is a modern **compiled programming language** that combines the **simplici
 
 ---
 
-## 🚀 Why Clear?
-
-* **Simple, readable syntax** inspired by C and Python
-* **Compiled performance** approaching C/C++
-* **Hybrid memory management** model
-* **Powerful type system** with optional inference
-* **Support for traits, structs, variadic functions, and more**
-* **Modules and header file imports**
-* **Built-in string interpolation, modern loops, and more**
-
----
-
 ## 📦 Build Instructions 
 
 ### Requirements 
