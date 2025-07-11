@@ -2,17 +2,17 @@
 
 # Clear Programming Language
 
-Clear is a modern **compiled programming language** that combines the **simplicity of Python** with the **performance and control of low-level languages**. Designed with clarity, safety, and flexibility in mind, Clear is ideal for everything from systems programming to scripting — without sacrificing readability.
+Clear is a modern **compiled programming language** that combines the **simplicity of Python** with the **performance and control of low-level languages**. Designed with clarity, safety, and flexibility in mind, Clear is ideal for building high-performance applications—ranging from games and simulations to real-time trading systems and beyond.
 
 ---
 
 ## 📦 Build Instructions 
 
 ### Requirements 
-* Clang compiler 
-* CMake 
-* LLVM built and cmake installed. See https://llvm.org/docs/CMake.html
-* Currently only tested on linux and macos
+* Clang compiler with C++23 support (Clang 16 or later recommended)
+* CMake (version ≥ 3.20.0 recommended)
+* LLVM (built from source with CMake installed) → See the [LLVM CMake build guide](https://llvm.org/docs/CMake.html) for setup instructions.
+* Linux or macOS (currently only tested on these platforms)
 
 
 ### Building
@@ -33,7 +33,7 @@ cd build
 * Use IDE CMake integration or call cmake directly 
 
 ```
-cmake path/to/clear
+cmake path/to/clearc
 cmake --build .
 ```
 
