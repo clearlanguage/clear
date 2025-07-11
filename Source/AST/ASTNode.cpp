@@ -1093,7 +1093,7 @@ namespace clear
 				llvm::Constant* zero = llvm::ConstantAggregateZero::get(ty->Get()); // zero initalize all elements.
 		    	ctx.Builder.CreateStore(zero, temporary.Alloca);
 
-				ASTDefaultInitializer::RecursiveCallConstructors(temporary.Alloca, ty, ctx, GetSymbolTable()); // call constructors recursively.
+				ASTDefaultInitializer::RecursiveCallConstructors(temporary.Alloca, ty, ctx, GetSymbolTable()); 
 
 				return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type); // return value of temporary
 			}
@@ -1169,8 +1169,6 @@ namespace clear
 		}
 
 		// instantiate and call
-
-		
 		FunctionInstance& instance = ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
 
 		if(temporary.Alloca)

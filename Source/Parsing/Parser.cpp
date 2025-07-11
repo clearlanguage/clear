@@ -441,7 +441,7 @@ namespace clear
 
         auto ConstructType = [&](const std::shared_ptr<ASTNodeBase>& type)
         {   
-            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
+            EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
             std::string memberName = Consume().GetData();
 
             auto member = std::make_shared<ASTTypeSpecifier>(memberName);

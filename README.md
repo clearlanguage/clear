@@ -51,90 +51,6 @@ cmake --build .
 
 ---
 
-## 🧠 Key Planned Language Features
-
-### ✅ Type Inference and Declarations
-
-```clear
-let x = 10          // inferred as int
-let y = 'd'         // inferred as char
-const int a = 5     // constant with explicit type
-const b = 3.14      // constant with inferred type
-```
-
-### 🔁 Control Flow
-
-```clear
-if (x == 10 and y == 5) or not c:
-    print("Matched")
-elif x == 200:
-    print("Another match")
-else:
-    print("Fallback")
-```
-
-### 🧱 Classes, Traits, Structs
-
-```clear
-class Car inherits Vehicle:
-    int RegistrationNumber
-
-    function hash():
-        Object.hash(this.color + this.model)
-
-    function __construct__(int x):
-        this.RegistrationNumber = x
-```
-
-```clear
-trait Shape:
-    function area() -> float
-    function draw()
-    string fillColor
-```
-
-```clear
-struct Hello:
-    int data = 10
-    string test
-    Hello* next
-```
-
-### 🧮 Arrays
-
-```clear
-int[...] o = {1,2,3,4}   // infer array size
-int[5] o = {1,2,3,4}     // fixed-size array
-int[] o = {1,2,3,4}      // dynamic array
-
-print(...o)             // unpack with variadic
-```
-
-### 📦 Variadic Functions
-
-```clear
-function print(args...):
-    for i in args:
-        _print(i)
-```
-
-### 🧵 String Interpolation
-
-```clear
-string x = `hello {user.name}`
-```
-
-### 📚 Modules and Imports
-
-```clear
-import "main.cl"
-import "math.cl"
-import "test/test.cl"
-import "math.h"    // C-style header
-```
-
----
-
 ## ⚙️ How to Run
 
 To run a Clear program:
@@ -162,12 +78,172 @@ Clear uses a **hybrid memory model**, combining automatic memory management with
 Clear is open source and welcomes contributions!
 ---
 
-## 🛣 Roadmap (Planned Features)
+## Roadmap
 
-* [ ] Operator overloading
-* [ ] Properties
-* [ ] Async/await
-* [ ] Module/package manager
-* [ ] Lambdas
+### Completed Features 
+* Variables 
+```
+int a = 5
+float y = 2.0
+char const* name = "alice"
+```
+* Functions 
+```
+function add(int a, int b) -> int:
+    return a + b
+
+function main():
+    int result = add(5, 10)
+```
+* Operators
+```
+int sum = 5 + 3
+int product = 4 * 2
+bool isEqual = (sum == product)
+```
+* Pointers/Dereferencing 
+```
+int x = 42;
+int* ptr = &x;   // pointer to x
+int y = *ptr;    // dereference ptr
+```
+* Arrays 
+```
+int[5] nums = {1, 2, 3, 4, 5}
+int first = nums[0]
+```
+* If/ElseIf/Else 
+```
+if x > 10:
+    print("Greater than 10")
+elseif x == 10:
+    print("Exactly 10")
+else:
+    print("Less than 10");
+```
+* While loops
+```
+int i = 0;
+while i < 5:
+    print(i)
+    i++
+```
+* Type Inference 
+```
+let i = 0 // int
+const number = 2.0 // float const
+```
+* Structs 
+```
+struct Point:
+    float x, float y
+    float z
+
+Point p = { 1.0, 2.0 }
+```
+* Basic Classes 
+```
+class Person:
+    string name
+
+    function greet():
+        print("Hello ", this.name)
+
+
+Person p = { "Bob" }
+p.greet() // outputs "Hello bob"
+```
+
+* Traits 
+```
+trait Drawable:
+    function draw()
+
+class Circle:
+    function draw():
+        print("Drawing Circle")
+
+
+function draw_object(Drawable drawable):
+    drawable.draw()
+
+Circle c
+draw_object(c)
+
+```
+
+* Function Overloading
+```
+function _print(int64 a):
+    printf("%i", a)
+
+function _print(float64 a):
+    printf("%d", a)
+```
+* Variadic Arguments 
+```
+function println(args...):
+    for arg in args:
+        _print(arg)
+    
+    printf("\n")
+```
+* Defer 
+```
+function test():
+    defer print("Cleaning up!")
+    print("Doing work...")
+    // "Cleaning up!" will print when leaving this scope
+
+```
+* Named Blocks
+```
+outer:
+    defer print("i am leaving outer block")
+    print("Inside outer block")
+
+    inner:
+        defer print("i am leaving inner block")
+        print("Inside inner block")
+
+        // outputs i am leaving inner block when inner scope is finished
+    
+    // outputs i am leaving outer block when outer scope is finished
+```
+* Switch Statements
+```
+int a = ...
+switch a:
+    case 20, 30, 40:
+        print("a was either 20, 30, or 40")
+    default:
+        print("not a valid input")
+```
+* Basic Enums 
+```
+enum Direction:
+    Left, Right, Up, Down 
+
+print(Direction.Left)   // outputs 0
+print(Direction.Right)  // outputs 1
+print(Direction.Up)     // outputs 2
+
+```
+
+### Planned Features
+
+* Unions
+* Variants
+* Generics 
+* Modules
+* Inheritence 
+* More Developed Enums
+* Unpack Operator 
+* Operator overloading
+* Properties
+* Async/await
+* Package manager
+* Lambdas
 
 ---
+

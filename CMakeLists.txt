@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.20.0)
 include(FetchContent)
 
-project(clear)
+project(clearc)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -13,14 +13,14 @@ endif()
 set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
-add_executable(clear "${MY_SOURCES}"
+add_executable(clearc "${MY_SOURCES}"
         Source/Compilation/CompilationManager.cpp
         Source/Lexing/Token.cpp)
 
 find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)
 
-add_custom_command(TARGET clear PRE_BUILD 
+add_custom_command(TARGET clearc PRE_BUILD 
                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/Build.py
                    VERBATIM
 )
@@ -62,7 +62,7 @@ FetchContent_MakeAvailable(fast_float tomlplusplus)
 include_directories(${LLVM_INCLUDE_DIRS} ${CLEAR_INCLUDE_DIRS})
 separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
 add_definitions(${LLVM_DEFINITIONS_LIST})
-target_link_libraries(clear PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlplusplus)
+target_link_libraries(clearc PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlplusplus)
 
 link_directories(${LLVM_LIBRARY_DIRS})
 
