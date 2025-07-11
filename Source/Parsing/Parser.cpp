@@ -632,10 +632,10 @@ namespace clear
 
     void Parser::ParseFunctionDefinition(const std::string& className,  bool descriptionOnly)
     {
-        EXPECT_DATA("function",DiagnosticCode_None);
+        EXPECT_DATA("function", DiagnosticCode_None);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
         std::string name = Consume().GetData();
 
         if(!className.empty())
@@ -646,7 +646,21 @@ namespace clear
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
         funcNode->CreateSymbolTable();
 
-        EXPECT_TOKEN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition);
+        if(Match(TokenType::LessThan))
+        {
+            while(!Match(TokenType::GreaterThan))
+            {
+                Consume();
+
+                EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
+                funcNode->AddGeneric(Consume().GetData());
+            }  
+
+            Consume();
+        }
+
+
+        EXPECT_TOKEN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition);
 
         Consume();
 
@@ -655,7 +669,6 @@ namespace clear
         std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         std::shared_ptr<ASTNodeBase> returnType;
-
 
         if(!className.empty())
         {

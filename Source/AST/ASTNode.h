@@ -10,6 +10,7 @@
 #include "Symbols/Symbol.h"
 #include "Symbols/TypeRegistry.h"
 
+#include <llvm/ADT/SmallVector.h>
 #include <memory>
 #include <string>
 #include <filesystem>
@@ -238,14 +239,24 @@ namespace clear
 
 		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
 
+		void AddGeneric(const std::string& genericName)
+		{
+			m_GenericTypes.push_back(genericName);
+		}
+
 		const auto& GetParameters() const { return m_ResolvedParams; }
 		const auto& GetReturnType() const { return m_ResolvedReturnType; }
+
+		void RegisterGenerics(CodegenContext& ctx);
+		void RemoveGenerics(CodegenContext& ctx);
 
 	private:
 		std::string m_Name;
 
 		std::vector<Parameter> m_ResolvedParams;
 		std::shared_ptr<Type> m_ResolvedReturnType;
+
+		llvm::SmallVector<std::string> m_GenericTypes;
 	};
 
 	class ASTFunctionCall : public ASTNodeBase
@@ -425,14 +436,13 @@ namespace clear
 	class ASTTypeSpecifier : public ASTNodeBase
 	{
 	public:
-		bool IsVariadic = false;
-
-	public:
 		ASTTypeSpecifier(const std::string& name);
 		virtual ~ASTTypeSpecifier() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
+	public:
+		bool IsVariadic = false;
 
 	private:
 		std::string m_Name;

@@ -170,7 +170,18 @@ namespace clear
 
         return Symbol();
     }
+
+    void Module::CreateAlias(const std::string& aliasName, const std::string& symbolName)
+    {
+        Symbol symbol = Lookup(symbolName);
+        m_TypeRegistry->RegisterType(aliasName, symbol.GetType());
+    }
     
+    void Module::RemoveAlias(const std::string& aliasName)
+    {
+        m_TypeRegistry->RemoveType(aliasName);
+    }
+
     std::shared_ptr<Type> Module::GetTypeFromToken(const Token& token)
     {
         if(auto ty = m_TypeRegistry->GetTypeFromToken(token))

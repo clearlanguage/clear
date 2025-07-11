@@ -58,6 +58,11 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Enum);
     }
 
+    bool Type::IsGeneric()
+    {
+        return m_Flags.test((size_t)TypeFlags::Generic);
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
         m_Flags.flip((size_t)flag);
@@ -343,6 +348,12 @@ namespace clear
     {
         CLEAR_VERIFY(m_EnumValues.contains(name), "invalid enum value ", "name");
         return m_EnumValues.at(name);
+    }
+
+    GenericType::GenericType(std::string_view name)
+        : m_Name(name)
+    {
+        Toggle(TypeFlags::Generic);
     }
 }
  

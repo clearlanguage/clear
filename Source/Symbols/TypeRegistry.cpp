@@ -55,6 +55,11 @@ namespace clear
         m_Types[name] = type;
     }
 
+    void TypeRegistry::RemoveType(const std::string& name)
+    {
+        m_Types.erase(name);
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetType(const std::string& name) const
     {
         if(m_Types.contains(name)) 

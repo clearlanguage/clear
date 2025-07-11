@@ -62,7 +62,9 @@ namespace clear
 		{
 			bool isContinue = child->GetType() == ASTNodeType::LoopControlFlow;
 			value = child->Codegen(ctx);
-			if(isContinue) break;
+
+			if(isContinue) 
+				break;
 		}
 
 		GetSymbolTable()->FlushScope(ctx);
@@ -101,6 +103,7 @@ namespace clear
     void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
     {
 		CLEAR_VERIFY(registry, "dont take in null");
+		
 		if(m_SymbolTable == registry) // already done
 		{
 			return;
@@ -889,6 +892,8 @@ namespace clear
 
 		bool isVariadic = false;
 
+		RegisterGenerics(ctx);
+
 		// resolve parameters
 		size_t i = 0;
 		for(; i < children.size(); i++)
@@ -907,6 +912,7 @@ namespace clear
 			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), fnParam->IsVariadic });
 		}
 
+
 		if(!children[i])
 			i++;
 
@@ -919,6 +925,8 @@ namespace clear
 			i++;
 		}
 
+
+		RemoveGenerics(ctx);
 		
 		// resolve default arguments
 		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_ResolvedParams.size(), nullptr);
@@ -965,9 +973,9 @@ namespace clear
 		builder.SetInsertPoint(entry);
 
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
-		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(m_ResolvedReturnType->Get(), nullptr, "return_value") : nullptr;
+		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(functionData.ReturnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ValueRestoreGuard guard1(ctx.ReturnType,   m_ResolvedReturnType ? m_ResolvedReturnType : ctx.TypeReg->GetType("void"));
+		ValueRestoreGuard guard1(ctx.ReturnType,   functionData.ReturnType);
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
@@ -988,7 +996,7 @@ namespace clear
 
 			auto type = param.Type;
 
-			if(type->IsTrait())
+			if(type->IsTrait() || type->IsGeneric())
 			{
 				type = functionData.Parameters[k].Type;
 			}
@@ -1065,6 +1073,23 @@ namespace clear
 		builder.restoreIP(ip);
 		s_InsertPoints.pop();
     }
+
+	void ASTFunctionDefinition::RegisterGenerics(CodegenContext& ctx)
+	{
+		for(const auto& generic : m_GenericTypes)
+		{
+			ctx.TypeReg->CreateType<GenericType>(generic, generic);
+		}
+	}
+
+	void ASTFunctionDefinition::RemoveGenerics(CodegenContext& ctx)
+	{
+		for(const auto& generic : m_GenericTypes)
+		{
+			ctx.TypeReg->RemoveType(generic);
+		}
+	}
+
 
     ASTFunctionCall::ASTFunctionCall(const std::string& name)
 		: m_Name(name)
@@ -1177,7 +1202,7 @@ namespace clear
 			return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type);
 		}
 
-		return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), data.ReturnType);
+		return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType);
 	}
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
@@ -1215,7 +1240,8 @@ namespace clear
 			auto& param1 = params[i];
 			auto& param2 = i < fnTemplate.Parameters.size() ? fnTemplate.Parameters[i] : fnTemplate.Parameters.back();
 
-			if(!param2.Type) continue;
+			if(!param2.Type || param2.Type->IsGeneric()) 
+				continue;
 
 			if((param1.Type->Get() != param2.Type->Get()) || param2.Type->IsTrait()) 
 			{
@@ -1930,7 +1956,15 @@ namespace clear
 		if(m_Type == OperatorType::Negation)
 		{			
 			Symbol result = children[0]->Codegen(ctx);
-			return SymbolOps::Neg(result, ctx.Builder); 
+
+			auto signedType = result.GetType();
+
+			if(!signedType->IsSigned()) // uint... -> int...
+			{
+				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).GetType();
+			}
+
+			return SymbolOps::Neg(result, ctx.Builder, signedType); 
 		}
 
 		if(m_Type == OperatorType::Not)
@@ -2070,7 +2104,9 @@ namespace clear
 				ValueRestoreGuard guard(ctx.WantAddress, false);
 				condition = children[branch.ExpressionIdx]->Codegen(ctx);
 			}
+
 			auto [conditionValue, conditionType] = condition.GetValue();
+
 			if (conditionType->IsIntegral() && conditionType->GetSize() > 1)
 			{
 				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
@@ -2807,6 +2843,7 @@ namespace clear
 		{
 			Symbol type = Symbol::CreateType(nullptr);
 			type.Metadata = m_Name;
+
 			return type;
 		}
 

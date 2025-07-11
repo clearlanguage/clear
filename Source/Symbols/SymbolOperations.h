@@ -31,7 +31,7 @@ namespace clear
         static Symbol Gt(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType,  llvm::IRBuilder<>& builder);
         static Symbol Gte(Symbol& lhs, Symbol& rhs, std::shared_ptr<Type> booleanType, llvm::IRBuilder<>& builder);
 
-        static Symbol Neg(Symbol& operand, llvm::IRBuilder<>& builder);
+        static Symbol Neg(Symbol& operand, llvm::IRBuilder<>& builder, std::shared_ptr<Type> signedType);
         static Symbol Not(Symbol& operand, llvm::IRBuilder<>& builder);
 
         static Symbol Call(Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder);

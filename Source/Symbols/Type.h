@@ -36,7 +36,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Trait, Enum, Count
+        Trait, Enum, Generic, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -63,6 +63,7 @@ namespace clear
         bool IsConst();
         bool IsTrait();
         bool IsEnum();
+        bool IsGeneric();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -272,6 +273,20 @@ namespace clear
         std::string m_Name;
         std::shared_ptr<Type> m_Type;
         std::unordered_map<std::string, int64_t> m_EnumValues;
+    };
+
+    class GenericType : public Type 
+    {
+    public:
+        GenericType(std::string_view name);
+        ~GenericType() = default;
+
+        virtual llvm::Type* Get() const override { return nullptr; }
+        virtual std::string GetHash() const override { return m_Name; };
+        virtual std::string GetShortHash() const override { return m_Name; };
+        
+    private:
+        std::string m_Name;
     };
 
     template <typename To, typename From>

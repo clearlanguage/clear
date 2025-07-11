@@ -320,10 +320,7 @@ namespace clear
             return;
         }
 
-        std::ostringstream oss;
-        oss << std::setprecision(17) << value;
-
-        EmplaceBack(TokenType::Number, oss.str());
+        EmplaceBack(TokenType::Number, word);
     }
         
     void Lexer::FlushScopes()

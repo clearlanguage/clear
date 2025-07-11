@@ -41,6 +41,10 @@ namespace clear
         Symbol Lookup(const std::string& symbol);
         Symbol Lookup(const std::string& fn, const std::vector<Parameter>& params);
 
+        // NOTE: for now only types but may be extended to support more symbols
+        void CreateAlias(const std::string& aliasName, const std::string& symbolName);
+        void RemoveAlias(const std::string& aliasName);
+
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
 
     private:

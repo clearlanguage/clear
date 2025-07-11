@@ -165,15 +165,15 @@ namespace clear {
                 return false;
             };
 
-        if (!isFloatingPoint && testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{}))
+        
+        if (!isFloatingPoint && (testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{})))
             return info;
 
-        if (!isFloatingPoint && testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{}))
+        if (!isFloatingPoint && (testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{})))
             return info;
 
         if (testTypeAgainst(float{}) || testTypeAgainst(double{}))
             return info;
-
 
         return info;
     }

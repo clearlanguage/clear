@@ -17,6 +17,8 @@ namespace clear
 
         void RegisterBuiltinTypes();
         void RegisterType(const std::string& name, std::shared_ptr<Type> type);
+        void RemoveType(const std::string& name);
+
 
         std::shared_ptr<Type> GetType(const std::string& name) const; 
         std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);

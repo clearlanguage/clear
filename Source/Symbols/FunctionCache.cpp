@@ -5,7 +5,9 @@
 #include "AST/ASTNode.h"
 #include "AST/TypeCasting.h"
 #include "Module.h"
+#include "Symbols/Type.h"
 
+#include <llvm/ADT/SmallVector.h>
 #include <queue>
 
 namespace clear 
@@ -51,20 +53,45 @@ namespace clear
         auto it1 = params.begin();
         auto it2 = functionTemplate.Parameters.begin();
 
-        bool useTemplateParams = true;
+        bool regenerateMangledName = false;
+
+        llvm::SmallVector<std::pair<std::string, Parameter>> aliases;
 
         while(it1 != params.end() && it2 != functionTemplate.Parameters.end())
         {
             // in future transferring of types from generics to real will happen here.
             if(it2->IsVariadic) 
             {
-                useTemplateParams = false;
+                regenerateMangledName = true;
                 break;
+            }
+            else if (it2->Type->IsGeneric())
+            {
+                regenerateMangledName = true;
+
+                auto genericType = dyn_cast<GenericType>(it2->Type);
+
+                auto it = std::find_if(aliases.begin(), aliases.end(), [&](const auto& alias)
+                {
+                    return alias.first == genericType->GetHash();
+                });
+
+                if(it == aliases.end())
+                {
+                    aliases.push_back(std::make_pair(genericType->GetHash(), *it1));
+                    context.ClearModule->CreateAlias(genericType->GetHash(), it1->Type->GetHash());
+                    types.push_back(*it1);
+                }
+                else 
+                {
+                    types.push_back(it->second);
+                }
+               
             }
             else if(it2->Type->IsTrait())
             {
+                regenerateMangledName = true;
                 types.push_back(*it1);
-                useTemplateParams = false;
             }
             else 
             {
@@ -86,17 +113,28 @@ namespace clear
             it1++;
         }
 
+        if(returnType && returnType->IsGeneric())
+        {
+            auto it = std::find_if(aliases.begin(), aliases.end(), [&](const auto& alias)
+            {
+                return alias.first == returnType->GetHash();
+            });
+
+            returnType = it->second.Type;
+        }
+
         std::vector<llvm::Type*> parameterTypes;
         std::transform(types.begin(), types.end(), std::back_inserter(parameterTypes), [](auto& a) { return a.Type->Get(); });
 
 		llvm::FunctionType* functionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context.Context), parameterTypes, false);
 
-        if(useTemplateParams)
+        if(regenerateMangledName)
         {
-            mangledName = GetMangledName(templateName, functionTemplate.Parameters, functionTemplate.ReturnType);
+            mangledName = GetMangledName(templateName, types, returnType);
+            
+            if(m_Instances.contains(mangledName))
+                return GetInstance(mangledName);
         }
-
-
 
         CodegenContext ctx = functionTemplate.SourceModule->GetCodegenContext();
 
@@ -120,6 +158,12 @@ namespace clear
         if(ctx.ClearModule != context.ClearModule)
         {
             m_Instances[mangledName].Function = llvm::cast<llvm::Function>(context.Module.getOrInsertFunction(mangledName, functionType).getCallee());
+        }
+
+        while(!aliases.empty())
+        {
+            context.ClearModule->RemoveAlias(aliases.back().first);
+            aliases.pop_back();
         }
         
         return m_Instances[mangledName];
@@ -209,7 +253,7 @@ namespace clear
                     continue;
                 }
 
-                if(param1.Type == param2.Type)
+                if(param1.Type == param2.Type || param2.Type->IsGeneric())
                 {
                     score += 100;
                 }

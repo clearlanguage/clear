@@ -295,11 +295,11 @@ namespace clear
         );
     }
     
-    Symbol SymbolOps::Neg(Symbol& operand, llvm::IRBuilder<>& builder)
+    Symbol SymbolOps::Neg(Symbol& operand, llvm::IRBuilder<>& builder, std::shared_ptr<Type> signedType)
     {
         auto [value, type] = operand.GetValue();
 
-        return Symbol::CreateValue(builder.CreateNeg(value, "neg"), type);
+        return Symbol::CreateValue(builder.CreateNeg(value, "neg"), signedType);
     }
     
     Symbol SymbolOps::Not(Symbol& operand, llvm::IRBuilder<>& builder)
