@@ -10,6 +10,7 @@ namespace clear
     class Type;
     class FunctionInstance;
     class FunctionTemplate;
+    class ASTNodeBase;
 
     using String = llvm::SmallString<64>;
     using StringRef = llvm::StringRef;
@@ -22,7 +23,8 @@ namespace clear
         Module, 
         Type,
         Value, 
-        Identifier
+        Identifier, 
+        ClassTemplate
     };
 
     struct FunctionSymbol 
@@ -51,6 +53,12 @@ namespace clear
         std::shared_ptr<Type> Type_;
     };
 
+    struct ClassTemplate
+    {
+        std::shared_ptr<ASTNodeBase> Class;
+        llvm::SmallVector<std::string> Generics;
+    };
+
     using SymbolData = std::variant<
         std::monostate,
         FunctionSymbol,
@@ -58,7 +66,8 @@ namespace clear
         ValueSymbol,
         ModuleSymbol, 
         TypeSymbol, 
-        String>;
+        String, 
+        ClassTemplate>;
 
     struct Symbol 
     {
@@ -74,6 +83,7 @@ namespace clear
         static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
+        static Symbol CreateClassTemplate(const ClassTemplate& classTemplate);
 
         llvm::Value* GetLLVMValue();
         std::shared_ptr<Type>   GetType() const;
@@ -82,5 +92,6 @@ namespace clear
         FunctionInstance* GetFunction() const;
         FunctionTemplate* GetFunctionTemplate() const;
         const ValueSymbol& GetValueTuple() const;
+        ClassTemplate GetClassTemplate();
     };
 }

@@ -12,10 +12,6 @@ namespace clear
     class Token 
     {
     public:
-        size_t LineNumber = 0;
-        size_t ColumnNumber = 0;
-
-    public:
         Token() = default;
         Token(TokenType type, const std::string& data, const std::filesystem::path& path = "", size_t line = 0, size_t col = 0) 
             : m_Type(type), m_Data(data), m_SourceFile(path), LineNumber(line), ColumnNumber(col) {}
@@ -35,6 +31,10 @@ namespace clear
         const std::filesystem::path& GetSourceFile() const { return m_SourceFile; }
 
         std::string_view GetTypeAsString() const;
+
+    public:
+        size_t LineNumber = 0;
+        size_t ColumnNumber = 0;
 
     private:
         TokenType m_Type = TokenType::None;

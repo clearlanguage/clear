@@ -24,19 +24,19 @@ namespace clear
 
     struct BuildConfig
     {
-        std::string ApplicationName;
+        std::string ApplicationName = "Application name";
 
-        std::vector<std::filesystem::path> SourceDirectories;
-        std::vector<std::filesystem::path> SourceFiles;
-        std::vector<std::filesystem::path> LibraryDirectories;
-        std::vector<std::filesystem::path> LibraryNames;
-        std::vector<std::filesystem::path> LibraryFilePaths;
+        std::vector<std::filesystem::path> SourceDirectories = { "Source directories go here" };
+        std::vector<std::filesystem::path> SourceFiles = { "Source files go here" };
+        std::vector<std::filesystem::path> LibraryDirectories = { "Any library directories go here" };
+        std::vector<std::filesystem::path> LibraryNames = { "Library names go here" };
+        std::vector<std::filesystem::path> LibraryFilePaths = {" Library file paths go here " };
 
         std::filesystem::path TargetExtension = ".cl";
         
-        std::filesystem::path OutputPath;
-        std::filesystem::path OutputFilename;
-        std::filesystem::path StandardLibrary;
+        std::filesystem::path OutputPath = "Output path goes here";
+        std::filesystem::path OutputFilename = "Output filename goes here";
+        std::filesystem::path StandardLibrary = "Input standard library path here";
         
         enum class OptimizationLevelType
         {

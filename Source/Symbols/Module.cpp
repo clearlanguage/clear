@@ -125,7 +125,10 @@ namespace clear
     {
         if(auto ty = m_TypeRegistry->GetType(symbolName))
             return Symbol::CreateType(ty);
-    
+
+        if(auto classTemplate = m_TypeRegistry->GetClassTemplate(symbolName))
+            return Symbol::CreateClassTemplate(classTemplate.value());
+
         // TODO: any function/variable should be exported which will move it to the modules symbol table
         // for now everything is public
         
@@ -137,7 +140,6 @@ namespace clear
         {
             return Symbol::CreateValue(alloca.Alloca, m_TypeRegistry->GetPointerTo(alloca.Type));
         }
-
 
         for(const auto& [name, containedModule] : m_ContainedModules)
         {

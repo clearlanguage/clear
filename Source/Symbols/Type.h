@@ -308,7 +308,6 @@ namespace clear
             }
         }
         
-
         return std::dynamic_pointer_cast<To>(val);
     }
 }

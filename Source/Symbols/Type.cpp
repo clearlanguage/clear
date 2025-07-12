@@ -223,7 +223,7 @@ namespace clear
 
     std::string ClassType::ConvertFunctionToClassFunction(const std::string& name)
     {
-        //_CLRfunction_name$args%rt -> _CLRClassName.function_name$ClassNamePargs%rt
+        //_CLRfunction_name$args%rt -> _CLRClassName.function_name$ClassName*args%rt
     
         CLEAR_VERIFY(name.starts_with("_CLR"), "Not a valid mangled name");
     
@@ -322,7 +322,7 @@ namespace clear
             size_t argBegin = function.find_first_of('$');
 
             std::string name = function.substr(4, argBegin - 4);
-            std::string rest = function.substr(argBegin+1);
+            std::string rest = function.substr(argBegin + 1);
 
             std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
             if(!classFunctions.contains(classFunctionName))

@@ -866,7 +866,7 @@ namespace clear
 
     void Parser::ParseDefer()
     {
-        EXPECT_DATA("defer",DiagnosticCode_None);
+        EXPECT_DATA("defer", DiagnosticCode_None);
         Consume();
 
         auto defer = std::make_shared<ASTDefer>();
@@ -1630,7 +1630,7 @@ namespace clear
                 continue;
             }           
 
-            CLEAR_LOG_WARNING("ignoring token ", Consume().GetData(), " in class ", className);
+            Consume();
         }
 
         Flush();

@@ -1,5 +1,7 @@
 #include "BuildConfig.h"
+#include "Core/Log.h"
 
+#include <filesystem>
 #include <toml++/toml.h>
 #include <map>
 
@@ -7,10 +9,7 @@ namespace clear
 {
     BuildConfig BuildConfig::BuildConfigFromToml(const std::filesystem::path& path)
     {
-        if (!std::filesystem::exists(path)) 
-        {
-            throw std::runtime_error("TOML config not found: " + path.string());
-        }
+        CLEAR_VERIFY(std::filesystem::exists(path), "TOML config not found: ", path);
 
         toml::table tbl = toml::parse_file(path.string());
 

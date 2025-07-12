@@ -1,9 +1,13 @@
-﻿#include "Lexing/Lexer.h"
+﻿#include "Compilation/BuildConfig.h"
+#include "Lexing/Lexer.h"
 #include "Compilation/CompilationManager.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include "Core/Log.h"
-#include <chrono>
+#include "CommandLine/CommandLineParsing.h"
 
+#include <chrono>
+#include <llvm/Config/llvm-config.h>
+#include <llvm/MC/MCSection.h>
 #include <toml++/toml.h>
 #include <iostream>
 #include <filesystem>
@@ -12,55 +16,52 @@
 
 using namespace clear;
 
+
 int main(int argc, char* argv[])
 {
-    if (false) 
+    CommandLine::ParsingResult result = CommandLine::Parse(argc, argv);
+
+    switch (result.Options) 
     {
-        std::filesystem::path current = __FILE__;
-        std::filesystem::current_path(current.parent_path());
-
-        std::cout << "------PARSER TESTS--------" << std::endl;
-
-        DiagnosticsBuilder builder;
-
-        Lexer parser("Tests/test.cl", builder);
-        
-        for(const auto& token : parser.GetTokens())
+        case CommandLine::ProgramMode::ShowHelp:
         {
-            std::cout<< "TYPE: " << token.GetTypeAsString() <<  " DATA: " << token.GetData() << std::endl;
+            std::println("help is still being developed");
+            return 0;
+        }   
+        case CommandLine::ProgramMode::BuildTemplateConfig:
+        {
+            BuildConfig config;
+            config.Serialize(result.Directory / "build.toml");
+
+            std::println("Created build.config at {}", result.Directory.string());
+
+            return 0;
         }
+        case CommandLine::ProgramMode::Compile:
+        {
+            std::println("Using llvm version {}", LLVM_VERSION_STRING);
 
-        builder.Dump();
+            BuildConfig config = BuildConfig::BuildConfigFromToml(result.Directory / "build.toml");
+
+            std::println("Compiling application {}",  config.ApplicationName);
+            std::println("Using standard library {}", config.StandardLibrary.string());
+
+            CompilationManager manager(config);
+            manager.LoadSources();
+            manager.PropagateSymbolTables();
+            manager.GenerateIRAndObjectFiles();
+            manager.Emit();
+
+            std::println("Finished compilation");
+
+            return 0;
+
+        }
+        default:
+        {
+            std::println("Not a valid option");
+            return -1;
+        }
     }
-    else 
-    {
-        auto start = std::chrono::high_resolution_clock::now();
-        std::filesystem::current_path(std::filesystem::path(__FILE__).parent_path());
-        std::cout << std::filesystem::current_path() << std::endl;
-        
-        CLEAR_LOG_INFO(LLVM_VERSION_STRING);
-
-        BuildConfig config = BuildConfig::BuildConfigFromToml("Tests/build.toml");
-        std::cout << "Compiling " <<config.ApplicationName << std::endl;
-
-        config.StandardLibrary = std::filesystem::current_path().parent_path() / "Standard";
-        CLEAR_LOG_INFO(config.StandardLibrary);
-        
-        CompilationManager manager(config); // comp
-        manager.LoadSources();
-        manager.PropagateSymbolTables();
-        manager.GenerateIRAndObjectFiles();
-        manager.Emit();
-
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> duration = end - start;
-        std::cout << "Finished compiling " <<        config.ApplicationName << std::endl;
-        std::cout << "Compilation took " << duration.count()/1000 << " s\n";
-
-        config.Serialize("Tests/build.toml");
-    }
-
-
-
-    return 0;
+    
 }

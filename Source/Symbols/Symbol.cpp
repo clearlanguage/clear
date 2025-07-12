@@ -89,6 +89,14 @@ namespace clear
             .Data = String(identifierName)
         };
     }
+
+    Symbol Symbol::CreateClassTemplate(const ClassTemplate& classTemplate)
+    {
+        return Symbol {
+            .Kind = SymbolKind::ClassTemplate,
+            .Data = classTemplate
+        };
+    }
     
     llvm::Value* Symbol::GetLLVMValue()
     {
@@ -131,12 +139,18 @@ namespace clear
     const ValueSymbol& Symbol::GetValueTuple() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValueTuple() when kind is not Value");
-        return std::get<ValueSymbol>(Data);;
+        return std::get<ValueSymbol>(Data);
     }
     
     FunctionTemplate* Symbol::GetFunctionTemplate() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::FunctionTemplate, "cannot call Symbol::GetFunctionTemplate() when kind is not FunctionTemplate");
         return std::get<FunctionTemplateSymbol>(Data).Template;
+    }
+
+    ClassTemplate Symbol::GetClassTemplate()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::FunctionTemplate, "cannot call Symbol::GetFunctionTemplate() when kind is not FunctionTemplate");
+        return std::get<ClassTemplate>(Data);
     }
 }

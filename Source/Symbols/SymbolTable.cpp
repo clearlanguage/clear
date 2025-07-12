@@ -190,7 +190,6 @@ namespace clear
             ptr = ptr->m_Previous;
         }
 
-        CLEAR_LOG_WARNING("unable to find variable ", name);
         return {};
     }
 

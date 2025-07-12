@@ -30,7 +30,7 @@ namespace clear
         void Codegen(const BuildConfig& config);
         void Link();
 
-        llvm::Module* GetModule()   { return m_Module.get(); }
+        llvm::Module* GetModule()  { return m_Module.get(); }
         std::unique_ptr<llvm::Module> TakeModule() { return std::move(m_Module); }
         
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }

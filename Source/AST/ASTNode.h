@@ -481,8 +481,11 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
+		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
+
 	private:
 		std::string m_Name;
+		llvm::SmallVector<std::string> m_Generics;
 	};
 
 	class ASTTrait : public ASTNodeBase

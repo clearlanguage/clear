@@ -56,6 +56,7 @@ namespace clear
 
         CheckErrors();
 
+    #if 0
         CLEAR_LOG_INFO("Tokens For ", path);
 
         for(auto& token : lexer.GetTokens())
@@ -64,6 +65,7 @@ namespace clear
         }
 
         CLEAR_LOG_INFO("End of tokens for ", path);
+    #endif
 
         Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
     }
@@ -155,7 +157,6 @@ namespace clear
     {
         std::string errorStr;
 		llvm::raw_string_ostream errorStream(errorStr);
-
 
 		llvm::InitializeNativeTarget();
 		llvm::InitializeNativeTargetAsmPrinter();

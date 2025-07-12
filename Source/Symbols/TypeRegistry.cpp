@@ -1,8 +1,13 @@
 #include "TypeRegistry.h"
 
 #include "API/LLVM/LLVMInclude.h"
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Core/Utils.h"
+#include "Symbols/Type.h"
+#include <emmintrin.h>
+#include <optional>
+#include <string>
 
 namespace clear 
 {
@@ -160,11 +165,17 @@ namespace clear
         return GetType(token.GetData());
     }
 
-    std::shared_ptr<Type> TypeRegistry::CreateStruct(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
+    void TypeRegistry::CreateClassTemplate(std::string_view name, std::shared_ptr<ASTNodeBase> classNode, llvm::ArrayRef<std::string> generics)
     {
-        std::shared_ptr<StructType> structType = std::make_shared<StructType>(name, members);
-        m_Types[name] = structType;
-        return structType;
+        m_ClassTemplates[std::string(name)] = ClassTemplate { classNode, llvm::SmallVector<std::string>(generics) };
+    }
+
+    std::optional<ClassTemplate> TypeRegistry::GetClassTemplate(std::string_view name)
+    {
+        if(m_ClassTemplates.contains(std::string(name)))
+            return m_ClassTemplates.at(std::string(name));
+
+        return std::nullopt;
     }
 
     std::string TypeRegistry::GuessTypeNameFromNumber(const std::string& number)

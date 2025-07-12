@@ -10,6 +10,7 @@
 #include "Symbols/SymbolOperations.h"
 #include "Symbols/Module.h"
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -2351,6 +2352,28 @@ namespace clear
 
     Symbol ASTClass::Codegen(CodegenContext& ctx)
     {
+		if(m_Generics.empty())
+		{
+			Instantiate(ctx);
+		}
+		else  
+		{
+			ctx.TypeReg->CreateClassTemplate(m_Name, std::dynamic_pointer_cast<ASTClass>(shared_from_this()), m_Generics);
+		}
+
+		return {};
+    }
+
+	void ASTClass::Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes)
+	{
+		ValueRestoreGuard guard1(m_Name, m_Name);
+
+		for(size_t i = 0; i < m_Generics.size(); i++)
+		{
+			CLEAR_VERIFY(i <= aliasTypes.size(), "index out of bounds");
+			ctx.ClearModule->CreateAlias(m_Generics[i], aliasTypes[i]->GetHash());
+		}
+
 		auto& children = GetChildren();
 
 		// create the struct type
@@ -2375,7 +2398,7 @@ namespace clear
 
 		// set its default values
 
-		ValueRestoreGuard guard(ctx.WantAddress, false);
+		ValueRestoreGuard guard2(ctx.WantAddress, false);
 
 		for(const auto& [memberName, memberType] : members)
 		{
@@ -2419,8 +2442,11 @@ namespace clear
 			classTy->PushFunction(mangledName);
 		}
 
-        return {};
-    }
+		for(size_t i = 0; i < m_Generics.size(); i++)
+		{
+			ctx.ClearModule->RemoveAlias(m_Generics[i]);
+		}
+	}
 
     ASTTrait::ASTTrait(const std::string& name)
 		: m_Name(name)
@@ -2756,6 +2782,7 @@ namespace clear
 		if(m_Type.has_value())
 			return m_Type.value();
 
+		size_t k = 0;
 		auto& children = GetChildren();
 
 		std::shared_ptr<Type> type;
@@ -2763,38 +2790,41 @@ namespace clear
 		// deal with first few tokens to get the base type
 
 		size_t i = 0;
-		auto symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
+		Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
 
 		if(symbol.Kind == SymbolKind::None)
 		{
 			symbol = Symbol::CreateModule(ctx.ClearModule->Return(m_Tokens[i].GetData()));
-		}
 
-		while(symbol.Kind == SymbolKind::Module) // TODO: nested types
-		{
-			i++; // .
-			i++; // identifier
-
-			Symbol lookup = symbol.GetModule()->Lookup(m_Tokens[i].GetData());
-
-			if(lookup.Kind == SymbolKind::None)
+			while(symbol.Kind == SymbolKind::Module) // TODO: nested types
 			{
-				lookup = Symbol::CreateModule(symbol.GetModule()->Return(m_Tokens[i].GetData()));
+				i++; // .
+				i++; // identifier
+
+				Symbol lookup = symbol.GetModule()->Lookup(m_Tokens[i].GetData());
+
+				if(lookup.Kind == SymbolKind::None)
+				{
+					lookup = Symbol::CreateModule(symbol.GetModule()->Return(m_Tokens[i].GetData()));
+				}
+
+				symbol = lookup;
 			}
 
-			symbol = lookup;
+			type = symbol.GetType();
+		}
+		else if (symbol.Kind == SymbolKind::Type)
+		{
+			type = symbol.GetType();
+		}
+		else if (symbol.Kind == SymbolKind::ClassTemplate)
+		{
+			// TODO:
 		}
 
-		type = symbol.GetType();
-
-		if(m_Tokens[0].GetData() == "const")
-			type = ctx.TypeReg->GetConstFrom(type);
-
+		
 		i++;
 		
-		size_t k = 0;
-
-
 		for(; i < m_Tokens.size(); i++)
 		{
 			if(m_Tokens[i].IsType(TokenType::Star))
