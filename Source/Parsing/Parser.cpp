@@ -17,7 +17,6 @@ namespace clear
     auto location = (m_Position > 0 ? Prev() : Peak()); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
     m_Tokens.insert(m_Tokens.begin() + m_Position, Token(type, "")); \
-    return; \
     }
 
     #define EXPECT_TOKEN_RETURN(type, code, returnValue) \
@@ -1567,7 +1566,7 @@ namespace clear
         EXPECT_DATA("class",DiagnosticCode_None);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier);
         std::string className = Consume().GetData();
 
         EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);

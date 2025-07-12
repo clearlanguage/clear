@@ -21,6 +21,7 @@ namespace clear
         {
             ProgramMode Options = ProgramMode::None;
             std::filesystem::path Directory;
+            bool Successful = false;
         };  
 
         ParsingResult Parse(int argc, char* argv[]);

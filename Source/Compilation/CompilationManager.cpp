@@ -54,7 +54,6 @@ namespace clear
             return;
         }
         
-
         std::println("Loading source file {}" , path.string());
 
         Lexer lexer(path, m_DiagnosticsBuilder);

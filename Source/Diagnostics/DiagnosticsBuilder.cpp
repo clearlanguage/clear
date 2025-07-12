@@ -40,6 +40,9 @@ namespace clear
 
     void DiagnosticsBuilder::Report(Stage stage, Severity severity, const Token& token, DiagnosticCode code, size_t expectedLength)
     {
+        if(token.GetSourceFile() == "") // means dummy token hence we don't want to report extra errors
+            return;
+
         auto [it, success] = m_LoadedFiles.try_emplace(token.GetSourceFile(), FileReference());
         auto& fileRef = it->second;
 
