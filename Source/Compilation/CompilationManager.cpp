@@ -1,6 +1,7 @@
 #include "CompilationManager.h"
 
 #include "Core/Log.h"
+#include <iterator>
 #include <llvm/IR/LLVMContext.h>
 #include <memory>
 
@@ -25,8 +26,6 @@ namespace clear
         {
             LoadSourceFile(filename);
         }
-
-        CheckErrors();
     }
 
     void CompilationManager::CheckErrors() 
@@ -34,13 +33,17 @@ namespace clear
         if (m_DiagnosticsBuilder.IsFatal())
         {
             m_DiagnosticsBuilder.Dump();
-            CLEAR_UNREACHABLE("");
         }
     }
 
 
     void CompilationManager::LoadSourceFile(const std::filesystem::path& path)
     {
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            return;
+        }
+
         if(m_Modules.contains(path))
         {
             return;
@@ -52,26 +55,32 @@ namespace clear
         }
         
 
+        std::println("Loading source file {}" , path.string());
+
         Lexer lexer(path, m_DiagnosticsBuilder);
 
-        CheckErrors();
-
-    #if 0
-        CLEAR_LOG_INFO("Tokens For ", path);
-
-        for(auto& token : lexer.GetTokens())
+        if(m_DiagnosticsBuilder.IsFatal())
         {
-            CLEAR_LOG_INFO("TOKEN: ", token.GetTypeAsString(), " DATA: ", token.GetData()); // " Line Number: ", token.Location.line);
+            m_DiagnosticsBuilder.Dump();
+            return;
         }
 
-        CLEAR_LOG_INFO("End of tokens for ", path);
-    #endif
-
         Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
+
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            m_DiagnosticsBuilder.Dump();
+            return;
+        }
     }
 
     void CompilationManager::PropagateSymbolTables()
     {
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            return;
+        }
+
         for(auto& [filepath, mod] : m_Modules)
         {
             mod->PropagateSymbolTables();
@@ -82,16 +91,32 @@ namespace clear
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
-        m_MainModule->Codegen(m_Config);
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            // need to link all modules together before freeing otherwise llvm will try to free modules that have already deleted
+            m_MainModule->Link(); 
+            m_MainModule.reset();
+
+            return;
+        }
+
+        m_MainModule->Codegen(m_Config); //TODO: need to implement diagnostics builder within codegeneration
+
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            m_DiagnosticsBuilder.Dump();
+            return;
+        }
+
         m_MainModule->Link();
 
-        /* for(auto& [filepath, mod] : m_Modules)
+        if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
-            CodegenModule(filepath);
-        } */
+            std::println("failed to build module");
+            m_MainModule->GetModule()->print(llvm::errs(), nullptr);
 
-        //m_MainModule->GetModule()->print(llvm::errs(), nullptr);
-        CLEAR_VERIFY(!llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()), "module verification failed");
+            return;
+        }
 
         if(m_Config.EmitIntermiediateIR)
         {
@@ -109,6 +134,11 @@ namespace clear
 
     void CompilationManager::Emit()
     {
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            return;
+        }
+
         if(m_Config.OutputFormat == BuildConfig::OutputFormatType::DynamicLibrary || 
            m_Config.OutputFormat == BuildConfig::OutputFormatType::Executable)
         {
@@ -141,6 +171,13 @@ namespace clear
         CLEAR_VERIFY(std::filesystem::exists(path), "directory does not exist");
         CLEAR_VERIFY(std::filesystem::is_directory(path), "not a valid directory");
 
+        std::println("Loading directory {}", path.string());
+
+        if(m_DiagnosticsBuilder.IsFatal())
+        {
+            return;
+        }
+
         for(const auto& entry : std::filesystem::directory_iterator(path))
         {
             if(std::filesystem::is_directory(entry))
@@ -149,7 +186,13 @@ namespace clear
                 continue;
             }
 
+        
             LoadSourceFile(entry);
+
+            if(m_DiagnosticsBuilder.IsFatal())
+            {
+                return;
+            }
         }
     }
 

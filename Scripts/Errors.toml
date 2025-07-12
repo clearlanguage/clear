@@ -52,7 +52,7 @@ Advice  = "‘{}’ is not a recognized escape sequence. Use sequences like \n, 
 
 [UnmatchedBracket]
 Message = "Unmatched closing or opening bracket."
-Advice  = "There is an unmatched ‘{}’. Check your use of (), {}, and []."
+Advice  = "There is an unmatched ‘{}’."
 
 [UnexpectedToken]
 Message = "Unexpected token encountered."

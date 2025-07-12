@@ -16,7 +16,7 @@ namespace clear
     if (!Match(type)) { \
     auto location = (m_Position > 0 ? Prev() : Peak()); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
-    SkipUntil(TokenType::EndLine); \
+    m_Tokens.insert(m_Tokens.begin() + m_Position, Token(type, "")); \
     return; \
     }
 
@@ -38,12 +38,20 @@ namespace clear
     }
 
 
-    #define VERIFY_OR_RAISE(cond, code)                             \
+    #define VERIFY(cond, code)                             \
     if (!(cond)) {                                               \
     auto location = (m_Position > 0 ? Prev() : Peak());        \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine);  \
     return;                                                      \
+    }
+
+    #define VERIFY_WITH_RETURN(cond, code, returnValue)                             \
+    if (!(cond)) {                                               \
+    auto location = (m_Position > 0 ? Prev() : Peak());        \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
+    SkipUntil(TokenType::EndLine);  \
+    return returnValue;                                                      \
     }
 
 
@@ -108,19 +116,25 @@ namespace clear
 
     Token Parser::Consume()
     {
-        CLEAR_VERIFY(m_Position + 1 < m_Tokens.size(), "what are you doing?");
+        if(m_Position >= m_Tokens.size())
+            return m_Tokens.back();
+
         return m_Tokens[m_Position++];
     }
 
     Token Parser::Peak()
     {
-        CLEAR_VERIFY(m_Position < m_Tokens.size(), "what are you doing?");
+        if(m_Position >= m_Tokens.size())
+            return m_Tokens.back();
+
         return m_Tokens[m_Position];
     }
 
     Token Parser::Next()
     {
-        CLEAR_VERIFY(m_Position + 1 < m_Tokens.size(), "what are you doing?");
+        if(m_Position + 1 >= m_Tokens.size())
+            return m_Tokens.back();
+
         return m_Tokens[m_Position + 1];
     }
 
@@ -540,7 +554,7 @@ namespace clear
 
         auto& last = Root()->GetChildren().back();
         std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        VERIFY_OR_RAISE(ifExpr, DiagnosticCode_ElseNotInIfBlock);
+        VERIFY(ifExpr, DiagnosticCode_ElseNotInIfBlock);
         
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         base->CreateSymbolTable();
@@ -611,7 +625,7 @@ namespace clear
 
         auto& last = Root()->GetChildren().back();
         std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        VERIFY_OR_RAISE(ifExpr, DiagnosticCode_ElseNotInIfBlock);
+        VERIFY(ifExpr, DiagnosticCode_ElseNotInIfBlock);
 
         ifExpr->Push(ParseExpression());
 
@@ -790,10 +804,10 @@ namespace clear
 
         std::string enumName = Consume().GetData();
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
         Consume();
 
-        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation)
+        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation)
         Consume();
 
         std::vector<std::string> names;
@@ -967,7 +981,7 @@ namespace clear
         }
 
         EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
-        VERIFY_OR_RAISE(m_Position == terminationIndex, DiagnosticCode_None);
+        VERIFY(m_Position == terminationIndex, DiagnosticCode_None);
 
         Consume();
 
@@ -983,7 +997,7 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        Expect(TokenType::Identifier);
+        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 
         std::string functionName = Consume().GetData();
 
@@ -996,7 +1010,6 @@ namespace clear
 
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
-
             call->Push(ParseExpression(terminationIndex));
 
             if(m_Position < terminationIndex)
@@ -1554,10 +1567,10 @@ namespace clear
         EXPECT_DATA("class",DiagnosticCode_None);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
         std::string className = Consume().GetData();
 
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
         Consume();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
@@ -1711,7 +1724,7 @@ namespace clear
 
             m_Position++;
 
-            CLEAR_VERIFY(m_Position < m_Tokens.size(), "mismatched brackets");
+            VERIFY_WITH_RETURN(m_Position < m_Tokens.size(), DiagnosticCode_UnmatchedBracket, m_Position);
         }
 
         terminationIndex = m_Position - 1;

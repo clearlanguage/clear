@@ -79,7 +79,7 @@ namespace clear
 		"‘{}’ is not defined in the current scope. Check for typos or missing declarations.",
 		"Cannot assign or operate on incompatible types like ‘{}’. Check for implicit casts or incorrect types.",
 		"‘{}’ is not a recognized escape sequence. Use sequences like \\n, \\t, \".",
-		"There is an unmatched ‘{}’. Check your use of (), {}, and [].",
+		"There is an unmatched ‘{}’.",
 		"The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed.",
 		"Add a colon ':' after {} to begin an indented code block",
 		"Add a line break after ':' and indent the next line to start the block",

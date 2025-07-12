@@ -16,7 +16,6 @@
 
 using namespace clear;
 
-
 int main(int argc, char* argv[])
 {
     CommandLine::ParsingResult result = CommandLine::Parse(argc, argv);
