@@ -5,7 +5,7 @@
 #include "Core/Log.h"
 #include "Core/Utils.h"
 #include "Symbols/Type.h"
-#include <emmintrin.h>
+// #include <emmintrin.h>
 #include <optional>
 #include <string>
 
