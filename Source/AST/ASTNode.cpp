@@ -1177,11 +1177,10 @@ namespace clear
 
 			if(!value) return {};
 
-			if(m_Name == "sizeof") return Symbol::CreateValue(value, ctx.TypeReg->GetType("int64"));
-			if(m_Name == "len")    return Symbol::CreateValue(value, ctx.TypeReg->GetType("int64"));
+			if(m_Name == "sizeof") return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
+			if(m_Name == "len")    return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
 
-
-			return Symbol::CreateValue(value, ctx.TypeReg->GetType(m_Name));
+			return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
 		}
 
 
