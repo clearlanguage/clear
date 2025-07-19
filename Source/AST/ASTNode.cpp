@@ -1,6 +1,7 @@
 #include "ASTNode.h"
 
 #include "Core/Log.h"
+#include "Symbols/FunctionCache.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
 #include "TypeCasting.h"
@@ -18,6 +19,7 @@
 #include <llvm/Support/Casting.h>
 #include <memory>
 #include <stack>
+#include <utility>
 
 
 namespace clear
@@ -414,16 +416,15 @@ namespace clear
 		if(rhsType->GetSize() != 64) 
 		{
 			rhsValue = TypeCasting::Cast(rhsValue, 
-												rhsType, 
-												ctx.TypeReg->GetType("int64"), 
-												ctx.Builder);
+										rhsType, 
+										ctx.TypeReg->GetType("int64"), 
+										ctx.Builder);
 
 			rhsType = ctx.TypeReg->GetType("int64");
 		}
 		
-		std::shared_ptr<PointerType> ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
 
-		auto symPtrType = Symbol::CreateType(ptrType);
+		auto symPtrType = Symbol::CreateType(lhsType->As<PointerType>());
 
 		if(type == OperatorType::Add)
 		{
@@ -895,7 +896,18 @@ namespace clear
 
 		RegisterGenerics(ctx);
 
+		m_ResolvedParams.clear();
+
 		// resolve parameters
+
+		for(auto& param : m_PrefixParams)
+		{
+			m_ResolvedParams.push_back(param);
+		}
+
+		m_PrefixParams.clear();
+
+
 		size_t i = 0;
 		for(; i < children.size(); i++)
 		{
@@ -947,7 +959,7 @@ namespace clear
 		// erase no longer needed children (params, return type and default args)
 		children.erase(children.begin(), children.begin() + i);
 
-		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, shared_from_this(), ctx.ClearModule);
+		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, ShallowCopy(), ctx.ClearModule);
 		
 		// main needs to be instantiated immedietly as nothing calls it.
 		if(m_Name == "main")
@@ -1091,6 +1103,25 @@ namespace clear
 		}
 	}
 
+
+	std::shared_ptr<ASTFunctionDefinition> ASTFunctionDefinition::ShallowCopy()
+	{
+		std::shared_ptr<ASTFunctionDefinition> functionDefinition = std::make_shared<ASTFunctionDefinition>(m_Name);
+		functionDefinition->SetSymbolTable(GetSymbolTable());
+
+		functionDefinition->m_GenericTypes = m_GenericTypes;
+		functionDefinition->m_PrefixParams = m_PrefixParams;
+		functionDefinition->m_ResolvedParams = m_ResolvedParams;
+		functionDefinition->m_ResolvedReturnType = m_ResolvedReturnType;
+		functionDefinition->m_GenericTypes = m_GenericTypes;
+
+		for(const auto& child : GetChildren())
+		{
+			functionDefinition->Push(child);
+		}
+
+		return functionDefinition;
+	}
 
     ASTFunctionCall::ASTFunctionCall(const std::string& name)
 		: m_Name(name)
@@ -2372,6 +2403,7 @@ namespace clear
 		{
 			CLEAR_VERIFY(i <= aliasTypes.size(), "index out of bounds");
 			ctx.ClearModule->CreateAlias(m_Generics[i], aliasTypes[i]->GetHash());
+			m_Name += aliasTypes[i]->GetHash();
 		}
 
 		auto& children = GetChildren();
@@ -2394,6 +2426,8 @@ namespace clear
 			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
 		}
 
+		// we need to reverse members so they are in correct order as written in the language
+		std::reverse(members.begin(), members.end());
 		structTy->SetBody(members);
 
 		// set its default values
@@ -2423,8 +2457,11 @@ namespace clear
 			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
+		// create ClassName* this pointer type
+		std::shared_ptr<Type> classThis = ctx.TypeReg->GetPointerTo(classTy);
 
 		// handle all function definitions
+
 		for(const auto& definition : GetChildren())
 		{
 			if(!definition || definition->GetType() != ASTNodeType::FunctionDefinition)
@@ -2433,12 +2470,19 @@ namespace clear
 			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
 		
 			std::string functionName = functionDefinition->GetName();
+			std::string qualifiedFunctionName = m_Name + "." + functionName;
+
+			functionDefinition->SetName(qualifiedFunctionName);
+
+			functionDefinition->AddPrefixParam(Parameter { .Name = "this", .Type = classThis });
 			functionDefinition->Codegen(ctx);
+
+			functionDefinition->SetName(functionName);
 	
 			const auto& returnType = functionDefinition->GetReturnType();
 			const auto& params = functionDefinition->GetParameters();
 
-			std::string mangledName = FunctionCache::GetMangledName(functionName, params, returnType);
+			std::string mangledName = FunctionCache::GetMangledName(qualifiedFunctionName, params, returnType);
 			classTy->PushFunction(mangledName);
 		}
 
@@ -2779,9 +2823,6 @@ namespace clear
 
     Symbol ASTTypeResolver::Codegen(CodegenContext& ctx)
     {
-		if(m_Type.has_value())
-			return m_Type.value();
-
 		size_t k = 0;
 		auto& children = GetChildren();
 
@@ -2819,7 +2860,35 @@ namespace clear
 		}
 		else if (symbol.Kind == SymbolKind::ClassTemplate)
 		{
-			// TODO:
+			// child type resolvers
+			
+			ClassTemplate classTemplate = symbol.GetClassTemplate();
+
+			std::string typeName = classTemplate.Name;
+
+			llvm::SmallVector<std::shared_ptr<Type>> types;
+
+			for(; k < children.size(); k++)
+			{
+				if(children[k]->GetType() != ASTNodeType::TypeResolver)
+					break;
+
+				std::shared_ptr<Type> subType = children[k]->Codegen(ctx).GetType();
+				typeName += subType->GetHash();
+				types.push_back(subType);
+			}
+
+			type = ctx.TypeReg->GetType(typeName);
+
+			if(!type)
+			{
+				auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
+				classNode->Instantiate(ctx, types);
+
+				type = ctx.TypeReg->GetType(typeName);
+			}
+
+			
 		}
 
 		
@@ -2857,8 +2926,7 @@ namespace clear
 			}
 		}
 
-		m_Type = Symbol::CreateType(type);
-        return m_Type.value();
+        return Symbol::CreateType(type);
     }
 
 	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 

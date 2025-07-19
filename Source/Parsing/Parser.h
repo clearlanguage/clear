@@ -49,7 +49,7 @@ namespace clear
 
         void ParseStatement();
         void ParseGeneral();
-        void ParseFunctionDefinition(const std::string& className = "", bool descriptionOnly = false);
+        void ParseFunctionDefinition(bool descriptionOnly = false);
         void ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
         void ParseLetDecleration();
         void ParseConstDecleration();

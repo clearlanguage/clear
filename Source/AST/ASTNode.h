@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Symbols/FunctionCache.h"
 #include "Symbols/Type.h"
 #include "Core/Value.h"
 
@@ -244,16 +245,24 @@ namespace clear
 			m_GenericTypes.push_back(genericName);
 		}
 
+		void AddPrefixParam(const Parameter& param)
+		{
+			m_PrefixParams.push_back(param);
+		}
+
 		const auto& GetParameters() const { return m_ResolvedParams; }
 		const auto& GetReturnType() const { return m_ResolvedReturnType; }
 
 		void RegisterGenerics(CodegenContext& ctx);
 		void RemoveGenerics(CodegenContext& ctx);
 
+		std::shared_ptr<ASTFunctionDefinition> ShallowCopy();
+
 	private:
 		std::string m_Name;
 
 		std::vector<Parameter> m_ResolvedParams;
+		llvm::SmallVector<Parameter> m_PrefixParams;
 		std::shared_ptr<Type> m_ResolvedReturnType;
 
 		llvm::SmallVector<std::string> m_GenericTypes;
@@ -481,6 +490,11 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
+		void AddGeneric(std::string_view name)
+		{
+			m_Generics.push_back(std::string(name));
+		}
+
 		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
 
 	private:
@@ -597,7 +611,6 @@ namespace clear
 			
 	private:
 		std::vector<Token> m_Tokens;
-		std::optional<Symbol> m_Type;
 	};	
 
 	class ASTSwitch : public ASTNodeBase 

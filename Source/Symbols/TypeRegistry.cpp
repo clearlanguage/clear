@@ -167,7 +167,8 @@ namespace clear
 
     void TypeRegistry::CreateClassTemplate(std::string_view name, std::shared_ptr<ASTNodeBase> classNode, llvm::ArrayRef<std::string> generics)
     {
-        m_ClassTemplates[std::string(name)] = ClassTemplate { classNode, llvm::SmallVector<std::string>(generics) };
+        std::string sname = std::string(name);
+        m_ClassTemplates[sname] = ClassTemplate { sname, classNode, llvm::SmallVector<std::string>(generics) };
     }
 
     std::optional<ClassTemplate> TypeRegistry::GetClassTemplate(std::string_view name)

@@ -55,6 +55,7 @@ namespace clear
 
     struct ClassTemplate
     {
+        std::string Name;
         std::shared_ptr<ASTNodeBase> Class;
         llvm::SmallVector<std::string> Generics;
     };

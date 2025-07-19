@@ -338,7 +338,7 @@ namespace clear
 
         while (Match("function") || Match(TokenType::Keyword) || Match(TokenType::Identifier))
         {
-            if(Match("function")) // parse function decleration
+            if(Match("function")) // parse as function decleration
             {
                 ParseFunctionDeclaration("function");
             }
@@ -639,18 +639,13 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseFunctionDefinition(const std::string& className,  bool descriptionOnly)
+    void Parser::ParseFunctionDefinition(bool descriptionOnly)
     {
         EXPECT_DATA("function", DiagnosticCode_None);
         Consume();
 
         EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
         std::string name = Consume().GetData();
-
-        if(!className.empty())
-        {
-            name = className + "." + name;
-        }
 
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
         funcNode->CreateSymbolTable();
@@ -678,23 +673,6 @@ namespace clear
         std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
         std::shared_ptr<ASTNodeBase> returnType;
-
-        if(!className.empty())
-        {
-            Token classNameToken(TokenType::Identifier, className);
-            Token pointerToken(TokenType::Star, "*");
-
-            auto classPointer = std::make_shared<ASTTypeSpecifier>("this");
-            auto typeResolver = std::make_shared<ASTTypeResolver>();
-
-            // className*
-            typeResolver->PushToken(classNameToken);
-            typeResolver->PushToken(pointerToken);
-
-            classPointer->Push(typeResolver);
-
-            params.push_back(classPointer);
-        }
 
         auto Flush = [&]()
         {
@@ -1524,9 +1502,6 @@ namespace clear
     {
         std::shared_ptr<ASTTypeResolver> resolver = std::make_shared<ASTTypeResolver>();
 
-        if(Match("const"))
-            resolver->PushToken(Consume());
-        
         resolver->PushToken(Consume());
 
         while(Match(TokenType::Dot))
@@ -1536,6 +1511,23 @@ namespace clear
             EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 
             resolver->PushToken(Consume());
+        }
+
+        if(Match(TokenType::LessThan))
+        {
+            Consume();
+
+            while(!Match(TokenType::GreaterThan))
+            {
+                resolver->Push(ParseTypeResolver());
+
+                if(Match(TokenType::Comma))
+                {
+                    Consume();
+                }
+            }
+
+            Consume();
         }
 
         while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
@@ -1563,17 +1555,30 @@ namespace clear
 
     void Parser::ParseClass()
     {
-        EXPECT_DATA("class",DiagnosticCode_None);
+        EXPECT_DATA("class", DiagnosticCode_None);
         Consume();
 
         EXPECT_TOKEN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier);
         std::string className = Consume().GetData();
 
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
-        Consume();
-
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
         Root()->Push(classNode);
+
+        if(Match(TokenType::LessThan))
+        {
+            while(!Match(TokenType::GreaterThan))
+            {   
+                Consume();
+
+                std::string genericName = Consume().GetData();
+                classNode->AddGeneric(genericName);
+            }
+
+            Consume();
+        }
+
+        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
+        Consume();
 
         m_RootStack.push_back(classNode);
 
@@ -1602,7 +1607,7 @@ namespace clear
             {
                 size_t rootLevel = m_RootStack.size();
 
-                ParseFunctionDefinition(className);
+                ParseFunctionDefinition();
 
                 // continue parsing as normal until end of function definition
                 while(rootLevel < m_RootStack.size())

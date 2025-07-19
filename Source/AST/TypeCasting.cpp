@@ -66,7 +66,7 @@ namespace clear
         }
         else 
         {
-            CLEAR_UNREACHABLE("unsupported type conversion");
+            CLEAR_UNREACHABLE("unsupported type conversion between ", src->GetHash(), " and ", dst->GetHash());
         }
 
         return castedValue;

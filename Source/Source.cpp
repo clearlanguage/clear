@@ -1,15 +1,10 @@
 ﻿#include "Compilation/BuildConfig.h"
-#include "Lexing/Lexer.h"
 #include "Compilation/CompilationManager.h"
-#include "Diagnostics/DiagnosticsBuilder.h"
-#include "Core/Log.h"
 #include "CommandLine/CommandLineParsing.h"
 
-#include <chrono>
 #include <llvm/Config/llvm-config.h>
 #include <llvm/MC/MCSection.h>
 #include <toml++/toml.h>
-#include <iostream>
 #include <filesystem>
 #include <cstdlib>
 #include <print>

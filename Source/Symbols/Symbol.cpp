@@ -150,7 +150,7 @@ namespace clear
 
     ClassTemplate Symbol::GetClassTemplate()
     {
-        CLEAR_VERIFY(Kind == SymbolKind::FunctionTemplate, "cannot call Symbol::GetFunctionTemplate() when kind is not FunctionTemplate");
+        CLEAR_VERIFY(Kind == SymbolKind::ClassTemplate, "cannot call Symbol::GetClassTemplate() when kind is not ClassTemplate");
         return std::get<ClassTemplate>(Data);
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Log.h"
 #include "Lexing/Token.h"
 
 #include "llvm/IR/LLVMContext.h"
@@ -41,7 +42,34 @@ namespace clear
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
 
-    class Type 
+    class Type;
+    class ConstantType;
+    class StructType;
+    class ClassType;
+
+    template <typename To, typename From>
+    std::shared_ptr<To> dyn_cast(std::shared_ptr<From> val) requires std::is_base_of_v<Type, From>
+    {
+        if(auto constTy = std::dynamic_pointer_cast<ConstantType>(val))
+        {
+            if constexpr (std::is_same_v<To, ConstantType>)
+                return constTy;
+
+            return std::dynamic_pointer_cast<To>(constTy->GetBaseType());
+        }
+
+        if constexpr (std::is_same_v<To, StructType>)
+        {
+            if(auto classTy = std::dynamic_pointer_cast<ClassType>(val))
+            {
+                return classTy->GetBaseType();
+            }
+        }
+        
+        return std::dynamic_pointer_cast<To>(val);
+    }
+
+    class Type : public std::enable_shared_from_this<Type>
     {
     public:
         Type() = default;
@@ -66,6 +94,15 @@ namespace clear
         bool IsGeneric();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
+
+        template<typename T>
+        std::shared_ptr<T> As() 
+        {
+            auto ty = dyn_cast<T>(shared_from_this());
+            CLEAR_VERIFY(ty, "failed to cast");
+
+            return ty;
+        }
 
     protected:
         void Toggle(TypeFlags flag);
@@ -288,27 +325,5 @@ namespace clear
     private:
         std::string m_Name;
     };
-
-    template <typename To, typename From>
-    std::shared_ptr<To> dyn_cast(std::shared_ptr<From> val) requires std::is_base_of_v<Type, From>
-    {
-        if(auto constTy = std::dynamic_pointer_cast<ConstantType>(val))
-        {
-            if constexpr (std::is_same_v<To, ConstantType>)
-                return constTy;
-
-            return std::dynamic_pointer_cast<To>(constTy->GetBaseType());
-        }
-
-        if constexpr (std::is_same_v<To, StructType>)
-        {
-            if(auto classTy = std::dynamic_pointer_cast<ClassType>(val))
-            {
-                return classTy->GetBaseType();
-            }
-        }
-        
-        return std::dynamic_pointer_cast<To>(val);
-    }
 }
 
