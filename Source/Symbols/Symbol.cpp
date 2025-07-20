@@ -3,6 +3,7 @@
 #include "Module.h"
 #include "Type.h"
 #include "FunctionCache.h"
+#include <llvm/IR/IRBuilder.h>
 
 
 namespace clear 
@@ -98,6 +99,19 @@ namespace clear
         };
     }
     
+    Symbol Symbol::CreateInferType(bool IsConst)
+    {
+        return Symbol {
+            .Kind = SymbolKind::InferType, 
+            .Data = InferTypeSymbol { IsConst }
+        };
+    }
+
+    Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
+    {
+        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").GetType());
+    }
+    
     llvm::Value* Symbol::GetLLVMValue()
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");
@@ -152,5 +166,11 @@ namespace clear
     {
         CLEAR_VERIFY(Kind == SymbolKind::ClassTemplate, "cannot call Symbol::GetClassTemplate() when kind is not ClassTemplate");
         return std::get<ClassTemplate>(Data);
+    }
+    
+    InferTypeSymbol Symbol::GetInferType()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::InferType, "cannot call Symbol::GetInferType() when kind is not InferType");
+        return std::get<InferTypeSymbol>(Data);
     }
 }

@@ -1,8 +1,11 @@
 #include "SymbolOperations.h"
 
 #include "Symbols/FunctionCache.h"
+#include "Symbols/Symbol.h"
 #include "Type.h"
 #include "Core/Log.h"
+#include "TypeCasting.h"
+
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Support/Casting.h>
@@ -323,6 +326,22 @@ namespace clear
         auto ptrType = dyn_cast<PointerType>(type);
         return Symbol::CreateValue(builder.CreateLoad(ptrType->GetBaseType()->Get(), value, "load"), ptrType->GetBaseType());
     }
+
+    void SymbolOps::Memcpy(Symbol& dst, Symbol& src, Symbol& size, llvm::IRBuilder<>& builder)
+    {
+        auto dstPtr = dst.GetType()->As<PointerType>();
+        auto srcPtr = src.GetType()->As<PointerType>();
+
+        CLEAR_VERIFY(dstPtr && srcPtr, "cannot do memcpy on non pointer types ", dstPtr->GetHash(), " ", srcPtr->GetHash());
+
+        builder.CreateMemCpy(
+		    dst.GetLLVMValue(),
+		    llvm::MaybeAlign(),
+		    src.GetLLVMValue(),
+		    llvm::MaybeAlign(),
+		    size.GetLLVMValue()
+		);
+    }
     
     void SymbolOps::Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, llvm::Module& module,  bool isFirstTime)
     {
@@ -398,6 +417,11 @@ namespace clear
         return Symbol::CreateValue(gep, resPtrType.GetType());
     }
     
+    Symbol SymbolOps::Cast(Symbol& value, Symbol& dstType, llvm::IRBuilder<>& builder)
+    {
+        llvm::Value* casted = TypeCasting::Cast(value.GetLLVMValue(), value.GetType(), dstType.GetType(), builder);
+        return Symbol::CreateValue(casted, dstType.GetType());
+    }
     
     void SymbolOps::Promote(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder)
     {

@@ -29,7 +29,7 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch 
+		Switch, ListExpr
 	};
 
 	struct CodegenResult
@@ -177,21 +177,6 @@ namespace clear
 		std::shared_ptr<Type> m_Type;
 	};
 
-	class ASTInferredDecleration : public ASTNodeBase 
-	{
-	public:
-		ASTInferredDecleration(const std::string& name, bool isConst = false);
-		virtual ~ASTInferredDecleration() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::InferredDecleration; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-		const auto& GetName() const { return m_Name; }
-
-	private:
-		std::string m_Name;
-		bool m_IsConst;
-	};
-
 	class ASTVariable : public ASTNodeBase
 	{
 	public:
@@ -320,6 +305,15 @@ namespace clear
 		ASTExpression() = default;
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
+		virtual Symbol Codegen(CodegenContext&) override;
+	};
+
+	class ASTListExpr: public ASTNodeBase 
+	{	
+	public:
+		ASTListExpr() = default;
+		virtual ~ASTListExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ListExpr; };
 		virtual Symbol Codegen(CodegenContext&) override;
 	};
 
@@ -608,7 +602,11 @@ namespace clear
 		{
 			m_Tokens.push_back(token);
 		}
-			
+
+	private:
+		Symbol Inferred();
+		std::shared_ptr<Type> ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k);
+	
 	private:
 		std::vector<Token> m_Tokens;
 	};	

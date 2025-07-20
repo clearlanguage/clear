@@ -51,8 +51,6 @@ namespace clear
         void ParseGeneral();
         void ParseFunctionDefinition(bool descriptionOnly = false);
         void ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
-        void ParseLetDecleration();
-        void ParseConstDecleration();
         void ParseStruct();
         void ParseImport();
         void ParseReturn();
@@ -72,13 +70,19 @@ namespace clear
         void ParseEndModule();
         void ParseSwitch();
 
+        struct VariableDecleration
+        {
+            std::shared_ptr<ASTNodeBase> Node;
+            bool HasBeenInitialized = false;
+        };
+
         std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseInitializer(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
-        std::shared_ptr<ASTNodeBase> ParseVariableDecleration();
         std::shared_ptr<ASTNodeBase> ParseTypeResolver();
+        VariableDecleration ParseVariableDecleration();
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 

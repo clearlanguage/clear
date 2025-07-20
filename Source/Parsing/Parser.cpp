@@ -5,6 +5,7 @@
 #include "Lexing/TokenDefinitions.h"
 #include "Lexing/Token.h"
 #include "Symbols/Module.h"
+#include "Symbols/SymbolTable.h"
 
 #include <print>
 #include <stack>
@@ -72,7 +73,8 @@ namespace clear
             TokenType::PercentEquals, 
             TokenType::Colon,
             TokenType::RightBrace,
-            TokenType::EndOfFile
+            TokenType::EndOfFile, 
+            TokenType::Semicolon
         });
 
          m_AssignmentOperators = CreateTokenSet({
@@ -216,9 +218,7 @@ namespace clear
             {"function",  [this]() { ParseFunctionDefinition(); }},
             {"while",     [this]() { ParseWhile(); }},
             {"for",       [this]() { ParseFor(); }},
-            {"let",       [this]() { ParseLetDecleration(); }},
             {"declare",   [this]() { ParseFunctionDeclaration(); }}, 
-            {"const",     [this]() { ParseConstDecleration(); }}, 
             {"struct",    [this]() { ParseStruct(); }}, 
             {"return",    [this]() { ParseReturn(); }}, 
             {"if",        [this]() { ParseIf(); }},
@@ -234,7 +234,6 @@ namespace clear
             {"continue",  [this]() { ParseLoopControls();}},
             {"switch",    [this]() { ParseSwitch();}}, 
             {"pass",      [this]() { Consume(); }}
-            
         };
         
         static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
@@ -293,14 +292,14 @@ namespace clear
         {
             auto decleration = ParseVariableDecleration();
 
-            if(MatchAny(m_AssignmentOperators))
+            if(decleration.HasBeenInitialized)
             {
-                Root()->Push(ParseAssignment(decleration, true));
+                Root()->Push(decleration.Node);
             }
             else 
             {
                 auto initializer = std::make_shared<ASTDefaultInitializer>();
-                initializer->Push(decleration);
+                initializer->Push(decleration.Node);
 
                 Root()->Push(initializer);
             }
@@ -358,59 +357,6 @@ namespace clear
             Consume(); 
     }
 
-    void Parser::ParseLetDecleration()
-    {
-        EXPECT_DATA("let",DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-
-        while(Match(TokenType::Identifier))
-        {
-            std::string variableName = Consume().GetData();
-
-            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment);
-            Consume();
-
-            auto inferredType = std::make_shared<ASTInferredDecleration>(variableName);
-            inferredType->Push(ParseExpression());
-
-            Root()->Push(inferredType);
-
-            if(Match(TokenType::Comma))
-            {
-                Consume();
-                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-            }
-        }
-     }
-
-    void Parser::ParseConstDecleration()
-    {       
-        EXPECT_DATA("const", DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
-
-        while(Match(TokenType::Identifier))
-        {
-            std::string variableName = Consume().GetData();
-        
-            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment);
-            Consume();
-        
-            auto inferredType = std::make_shared<ASTInferredDecleration>(variableName, true);
-            inferredType->Push(ParseExpression());
-        
-            Root()->Push(inferredType);
-        
-            if(Match(TokenType::Comma))
-            {
-                Consume();
-                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-            }
-        }
-    }
 
     void Parser::ParseStruct()
     {
@@ -1023,6 +969,23 @@ namespace clear
             return std::make_shared<ASTVariable>(Consume().GetData());
         }
 
+        if(Match(TokenType::LeftBrace))
+        {
+            Consume();
+            auto listExpr = std::make_shared<ASTListExpr>();
+
+            while(!Match(TokenType::RightBrace))
+            {
+                listExpr->Push(ParseExpression());
+                
+                if(Match(TokenType::Comma) || Match(TokenType::EndLine))
+                    Consume();
+            }
+
+            Consume();
+            return listExpr;
+        }
+
 
         CLEAR_UNREACHABLE("unimplemented");
         return {};
@@ -1103,7 +1066,7 @@ namespace clear
         return assign;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseVariableDecleration()
+    Parser::VariableDecleration Parser::ParseVariableDecleration()
     {
         auto type = ParseTypeResolver();
 
@@ -1112,7 +1075,16 @@ namespace clear
         auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
         variableDecleration->Push(type);
 
-        return variableDecleration;
+        bool hasBeenInitialized = false;
+
+        if(Match(TokenType::Equals))
+        {
+            Consume();
+            variableDecleration->Push(ParseExpression());
+            hasBeenInitialized = true;
+        }
+
+        return Parser::VariableDecleration { variableDecleration, hasBeenInitialized };
     }
 
     void Parser::ParseSwitch() 
@@ -1222,7 +1194,8 @@ namespace clear
         {
             bool isBasicType = token.IsType(TokenType::Identifier) ||
                                token.IsType(TokenType::Number) ||
-                               token.IsType(TokenType::String);
+                               token.IsType(TokenType::String) || 
+                               token.IsType(TokenType::LeftBrace);
         
             bool isSpecialKeyword =  token.GetData() == "true" ||
                                      token.GetData() == "false" ||
@@ -1502,6 +1475,43 @@ namespace clear
     {
         std::shared_ptr<ASTTypeResolver> resolver = std::make_shared<ASTTypeResolver>();
 
+        if(Match("let"))
+        {
+            resolver->PushToken(Consume());
+            EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
+
+            return resolver;
+        }
+
+        if(Match("const"))
+        {
+            resolver->PushToken(Consume());
+
+            if(Peak().IsType(TokenType::Identifier) && Next().IsType(TokenType::Equals))
+            {
+                return resolver;
+            }
+        }
+
+        while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
+        {
+            resolver->PushToken(Consume());
+
+            if(Prev().IsType(TokenType::LeftBracket))
+            {                
+                resolver->Push(ParseExpression());
+
+                EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_None, resolver);
+                Consume();
+
+                resolver->Push(ParseTypeResolver());
+                EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_None, resolver);
+               
+                resolver->PushToken(Consume()); // can't be anything after ]
+                return resolver;
+            }
+        }
+
         resolver->PushToken(Consume());
 
         while(Match(TokenType::Dot))
@@ -1528,19 +1538,6 @@ namespace clear
             }
 
             Consume();
-        }
-
-        while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
-        {
-            resolver->PushToken(Consume());
-
-            if(Prev().IsType(TokenType::LeftBracket))
-            {
-                size_t terminationIndex = GetLastBracket(TokenType::LeftBracket, TokenType::RightBracket);
-                
-                resolver->Push(ParseExpression(terminationIndex));
-                resolver->PushToken(Consume());
-            }
         }
 
         return resolver;

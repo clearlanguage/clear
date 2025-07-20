@@ -4,22 +4,27 @@
 #include "Symbols/FunctionCache.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
-#include "TypeCasting.h"
+#include "Symbols/TypeCasting.h"
 
 #include "Symbols/TypeRegistry.h"
 #include "Intrinsics.h"
 #include "Symbols/SymbolOperations.h"
 #include "Symbols/Module.h"
 
+#include <alloca.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
+
 #include <memory>
 #include <stack>
 #include <utility>
+#include <stack>
 
 
 namespace clear
@@ -485,7 +490,7 @@ namespace clear
 		std::shared_ptr<PointerType> type = std::dynamic_pointer_cast<PointerType>(lhsType);
 		CLEAR_VERIFY(type, "invalid type");
 		
-		std::shared_ptr<ArrayType> arrType = std::dynamic_pointer_cast<ArrayType>(type->GetBaseType());
+		std::shared_ptr<ArrayType> arrType = type->GetBaseType()->As<ArrayType>();
 		CLEAR_VERIFY(arrType, "invalid base type ", type->GetBaseType()->GetHash());
 
 		llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
@@ -690,65 +695,102 @@ namespace clear
 
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
-		std::shared_ptr<SymbolTable> registry = GetSymbolTable();
-		
-		auto& typeResolver = GetChildren()[0];
-
-		Symbol resolvedType = typeResolver->Codegen(ctx);
-		m_Type = resolvedType.GetType();
-
-        bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
-
-		Allocation alloca;
-
-		if(isGlobal)
-		{
-			alloca = registry->CreateGlobal(m_Name, m_Type, ctx.Module);
-		}
-		else 
-		{
-			alloca = registry->CreateAlloca(m_Name, m_Type, ctx.Builder);
-		}
-
-		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-    }
-
-	ASTInferredDecleration::ASTInferredDecleration(const std::string& name, bool isConst)
-		: m_Name(name), m_IsConst(isConst)
-    {
-    }
-
-	Symbol ASTInferredDecleration::Codegen(CodegenContext& ctx)
-	{
 		auto& children = GetChildren();
-		CLEAR_VERIFY(children.size() == 1, "invalid child size");
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-		Symbol result = children[0]->Codegen(ctx);
 
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
-		auto [resultValue, resultType] = result.GetValue();
-	
-		if(m_IsConst)
-			resultType = ctx.TypeReg->GetConstFrom(resultType);
 		
-		bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
+		auto& typeResolver = children[0];
 
+		Symbol resolvedType = typeResolver->Codegen(ctx);
+
+        bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 		Allocation alloca;
 
-		if(isGlobal)
+		switch (resolvedType.Kind) 
 		{
-			alloca = tbl->CreateGlobal(m_Name, resultType, ctx.Module, resultValue);
-		}
-		else 
-		{
-			alloca = tbl->CreateAlloca(m_Name, resultType, ctx.Builder);
-			ctx.Builder.CreateStore(resultValue, alloca.Alloca);
+			case SymbolKind::Type:
+			{
+				m_Type = resolvedType.GetType();
+
+				alloca = isGlobal ? tbl->CreateGlobal(m_Name, m_Type, ctx.Module) : tbl->CreateAlloca(m_Name, m_Type, ctx.Builder);
+
+				if(children.size() == 2)
+				{
+					ValueRestoreGuard guard(ctx.WantAddress, false);
+
+					Symbol value = children[1]->Codegen(ctx);
+				
+					Symbol allocaSymbol = Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
+
+					if(value.GetType() == allocaSymbol.GetType())
+					{
+						size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSize() / 8;
+						Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
+						SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
+					}
+					else 
+					{
+						Symbol casted = SymbolOps::Cast(value, resolvedType, ctx.Builder);
+						SymbolOps::Store(allocaSymbol, casted, ctx.Builder, ctx.Module,  /* isFirstTime = */ true);
+					}
+
+				}
+
+				break;
+			}
+			case SymbolKind::InferType: 
+			{
+				bool isConst = resolvedType.GetInferType().IsConst;
+
+				CLEAR_VERIFY(children.size() == 2, "cannot have an inferred type without value");
+
+				ValueRestoreGuard guard(ctx.WantAddress, false);
+				Symbol value = children[1]->Codegen(ctx);
+				m_Type = value.GetType();
+
+				bool shouldMemcpy = false;
+
+				if(value.GetType()->IsPointer())
+				{
+					auto baseTy = value.GetType()->As<PointerType>()->GetBaseType();
+					
+					if(baseTy->IsArray())
+					{
+						m_Type = baseTy;
+						shouldMemcpy = true;
+					}
+				}
+				
+				if(isConst)
+				{
+					m_Type = ctx.TypeReg->GetConstFrom(m_Type);
+				}
+
+				alloca = isGlobal ? tbl->CreateGlobal(m_Name, m_Type, ctx.Module) : tbl->CreateAlloca(m_Name, m_Type, ctx.Builder);
+			
+				Symbol allocaSymbol = Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
+
+				if(shouldMemcpy)
+				{
+					size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSize() / 8;
+					Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
+					SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
+				}
+				else 
+				{
+					SymbolOps::Store(allocaSymbol, value, ctx.Builder, ctx.Module, /* isFirstTime = */ true);
+				}
+
+				break;
+			}
+			default: 
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+			}
 		}
 
-		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(resultType));
-	}
+		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(m_Type));
+    }
 
 	ASTVariable::ASTVariable(const std::string& name)
 		: m_Name(name)
@@ -1403,7 +1445,8 @@ namespace clear
 			return child->GetType() == ASTNodeType::Literal || 
 				   child->GetType() == ASTNodeType::Variable ||
 				   child->GetType() == ASTNodeType::FunctionCall || 
-				   child->GetType() == ASTNodeType::Member;
+				   child->GetType() == ASTNodeType::Member || 
+				   child->GetType() == ASTNodeType::ListExpr;
 		};
 		
 		for (const auto& child : children)
@@ -1712,6 +1755,106 @@ namespace clear
 
         return std::make_pair(elemPtr, innerType);
     }
+
+	Symbol ASTListExpr::Codegen(CodegenContext& ctx)
+	{
+		auto& children = GetChildren();
+		
+		if(children.size() == 0)
+		{
+			return Symbol();
+		}
+
+		// collect all the values
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+		Symbol first = children[0]->Codegen(ctx);
+		
+		llvm::SmallVector<llvm::Value*> values;
+
+		values.push_back(first.GetLLVMValue());
+
+		for(size_t i = 1; i < children.size(); i++)
+		{
+			Symbol value = children[i]->Codegen(ctx);
+			value = SymbolOps::Cast(value, first, ctx.Builder);
+
+			values.push_back(value.GetLLVMValue());
+		}
+
+		// create static default array and assign any constants
+		std::shared_ptr<Type> arrayType = ctx.TypeReg->GetArrayFrom(first.GetType(), values.size());
+
+		llvm::SmallVector<llvm::Constant*> constantValues;
+		constantValues.resize(values.size(), llvm::ConstantAggregateZero::get(first.GetType()->Get()));
+		
+		bool isConst = true;
+
+		for(size_t i = 0; i < values.size(); i++)
+		{
+			llvm::Constant* constant = llvm::dyn_cast<llvm::Constant>(values[i]);
+			
+			if(constant)
+			{
+				constantValues[i] = constant;
+				continue;
+			}
+
+			isConst = false;
+		}
+
+
+		llvm::ArrayType* llvmArrayType = llvm::dyn_cast<llvm::ArrayType>(arrayType->Get());
+
+		llvm::Constant* initializer = llvm::ConstantArray::get(llvmArrayType, constantValues);
+
+		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
+		    ctx.Module,
+		    llvmArrayType,
+		    /* isConstant = */ true,
+		    llvm::GlobalValue::PrivateLinkage,
+		    initializer,
+		    "const.array"
+		);
+
+		if(isConst)
+		{
+			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType));
+		}
+
+		// allocate array, copy from static to local alloca, assign any dynamic values
+
+		llvm::Value* arrayAlloc = ctx.Builder.CreateAlloca(llvmArrayType, nullptr, "list.alloc");
+			
+		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType);
+		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);
+			
+		ctx.Builder.CreateMemCpy(
+		    arrayAlloc,
+		    llvm::MaybeAlign(),
+		    staticGlobal,
+		    llvm::MaybeAlign(),
+		    size
+		);
+
+		for (size_t i = 0; i < values.size(); ++i)
+		{
+		    if (!llvm::isa<llvm::Constant>(values[i]))
+		    {
+		        llvm::Value* gep = ctx.Builder.CreateInBoundsGEP(llvmArrayType, arrayAlloc,
+		            {
+		                ctx.Builder.getInt64(0),
+		                ctx.Builder.getInt64((uint64_t) i)
+		            }
+		        );
+			
+		        ctx.Builder.CreateStore(values[i], gep);
+		    }
+		}
+
+		return Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType));
+	}
 
   /*   ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
 		: m_Filepath(filepath), m_Alias(alias)
@@ -2822,76 +2965,34 @@ namespace clear
 
     Symbol ASTTypeResolver::Codegen(CodegenContext& ctx)
     {
-		size_t k = 0;
+		CLEAR_VERIFY(m_Tokens.size() > 0, "not a valid type resolver");
+
+		if(Symbol inferred = Inferred(); inferred.Kind != SymbolKind::None)
+		{
+			return inferred;
+		}
+
 		auto& children = GetChildren();
+
+		int64_t k = (size_t)children.size() - 1;
+		size_t i = 0;
+
+		std::reverse(m_Tokens.begin(), m_Tokens.end());
 
 		std::shared_ptr<Type> type;
 
-		// deal with first few tokens to get the base type
-
-		size_t i = 0;
-		Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
-
-		if(symbol.Kind == SymbolKind::None)
+		if(m_Tokens[i].IsType(TokenType::RightBracket))
 		{
-			symbol = Symbol::CreateModule(ctx.ClearModule->Return(m_Tokens[i].GetData()));
-
-			while(symbol.Kind == SymbolKind::Module) // TODO: nested types
-			{
-				i++; // .
-				i++; // identifier
-
-				Symbol lookup = symbol.GetModule()->Lookup(m_Tokens[i].GetData());
-
-				if(lookup.Kind == SymbolKind::None)
-				{
-					lookup = Symbol::CreateModule(symbol.GetModule()->Return(m_Tokens[i].GetData()));
-				}
-
-				symbol = lookup;
-			}
+			type = ResolveArray(ctx, i, k);
+		}
+		else
+		{
+			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
+			CLEAR_VERIFY(symbol.Kind == SymbolKind::Type, "others are currently unimplemented");
 
 			type = symbol.GetType();
+			i++;
 		}
-		else if (symbol.Kind == SymbolKind::Type)
-		{
-			type = symbol.GetType();
-		}
-		else if (symbol.Kind == SymbolKind::ClassTemplate)
-		{
-			// child type resolvers
-			
-			ClassTemplate classTemplate = symbol.GetClassTemplate();
-
-			std::string typeName = classTemplate.Name;
-
-			llvm::SmallVector<std::shared_ptr<Type>> types;
-
-			for(; k < children.size(); k++)
-			{
-				if(children[k]->GetType() != ASTNodeType::TypeResolver)
-					break;
-
-				std::shared_ptr<Type> subType = children[k]->Codegen(ctx).GetType();
-				typeName += subType->GetHash();
-				types.push_back(subType);
-			}
-
-			type = ctx.TypeReg->GetType(typeName);
-
-			if(!type)
-			{
-				auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
-				classNode->Instantiate(ctx, types);
-
-				type = ctx.TypeReg->GetType(typeName);
-			}
-
-			
-		}
-
-		
-		i++;
 		
 		for(; i < m_Tokens.size(); i++)
 		{
@@ -2899,21 +3000,10 @@ namespace clear
 			{
 				type = ctx.TypeReg->GetPointerTo(type);
 			}
-			else if (m_Tokens[i].IsType(TokenType::LeftBracket))
+			else if (m_Tokens[i].IsType(TokenType::RightBracket))
 			{
-				CLEAR_VERIFY(k < children.size(), "k is out of bounds");
-
-				Symbol arraySizeRes = children[k++]->Codegen(ctx); // expression stored in children
-
-				i++; // skip the Right Bracket as expression is stored in child
-
-				llvm::ConstantInt* constant = llvm::dyn_cast<llvm::ConstantInt>(arraySizeRes.GetValue().first);
-				CLEAR_VERIFY(constant, "array expression must be a constant int");
-
-				int64_t arraySize = constant->getSExtValue();
-				CLEAR_VERIFY(arraySize > 0, "cannot have an array size with negative value ", arraySize);
-
-				type = ctx.TypeReg->GetArrayFrom(type, arraySize);
+				type = ResolveArray(ctx, i, k);
+				i--;
 			}
 			else if (m_Tokens[i].GetData() == "const")
 			{
@@ -2927,6 +3017,44 @@ namespace clear
 
         return Symbol::CreateType(type);
     }
+
+	Symbol ASTTypeResolver::Inferred()
+	{
+		if(m_Tokens[0].GetData() == "let") 
+		{
+			CLEAR_VERIFY(m_Tokens.size() == 1, "cannot have anything past let");
+			return Symbol::CreateInferType(/* isConst = */ false);
+		}
+
+		if(m_Tokens[0].GetData() == "const" && m_Tokens.size() == 1)
+		{
+			return Symbol::CreateInferType(/* isConst = */ true);
+		} 
+
+		return Symbol();
+	}
+
+	std::shared_ptr<Type> ASTTypeResolver::ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k)
+	{
+		auto& children = GetChildren();
+
+		Symbol baseType = children[k]->Codegen(ctx);
+		CLEAR_VERIFY(k > 0 && baseType.Kind == SymbolKind::Type, "");
+		
+		k--;
+
+		Symbol size = children[k]->Codegen(ctx);
+		CLEAR_VERIFY(size.Kind == SymbolKind::Value, "");
+
+		k--;
+
+		i += 2; // []
+
+		llvm::ConstantInt* value = llvm::dyn_cast<llvm::ConstantInt>(size.GetLLVMValue());
+		CLEAR_VERIFY(value, "cannot define an array of dynamic size, consider using a dynamic list instead");
+
+		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());
+	}
 
 	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 
 	{

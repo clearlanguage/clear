@@ -2,6 +2,7 @@
 
 #include <API/LLVM/LLVMInclude.h>
 
+#include <llvm/IR/IRBuilder.h>
 #include <variant>
 
 namespace clear 
@@ -24,7 +25,8 @@ namespace clear
         Type,
         Value, 
         Identifier, 
-        ClassTemplate
+        ClassTemplate, 
+        InferType
     };
 
     struct FunctionSymbol 
@@ -53,6 +55,11 @@ namespace clear
         std::shared_ptr<Type> Type_;
     };
 
+    struct InferTypeSymbol 
+    {
+        bool IsConst = false;
+    };
+
     struct ClassTemplate
     {
         std::string Name;
@@ -68,7 +75,8 @@ namespace clear
         ModuleSymbol, 
         TypeSymbol, 
         String, 
-        ClassTemplate>;
+        ClassTemplate, 
+        InferTypeSymbol>;
 
     struct Symbol 
     {
@@ -85,6 +93,10 @@ namespace clear
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
         static Symbol CreateClassTemplate(const ClassTemplate& classTemplate);
+        static Symbol CreateInferType(bool IsConst);
+
+        // helpers
+        static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
 
         llvm::Value* GetLLVMValue();
         std::shared_ptr<Type>   GetType() const;
@@ -94,5 +106,6 @@ namespace clear
         FunctionTemplate* GetFunctionTemplate() const;
         const ValueSymbol& GetValueTuple() const;
         ClassTemplate GetClassTemplate();
+        InferTypeSymbol GetInferType();
     };
 }

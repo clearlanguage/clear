@@ -1,7 +1,7 @@
 #include "Intrinsics.h"
 
 #include "Core/Log.h"
-#include "TypeCasting.h"
+#include "Symbols/TypeCasting.h"
 
 namespace clear 
 {

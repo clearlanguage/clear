@@ -158,6 +158,7 @@ namespace clear
         
         virtual ~ArrayType() = default;
 
+        virtual size_t GetSize() const override { return m_Count * m_BaseType->GetSize(); }
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual std::string GetHash() const override;
         virtual std::string GetShortHash() const override;

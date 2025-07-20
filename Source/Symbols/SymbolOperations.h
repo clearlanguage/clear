@@ -38,9 +38,12 @@ namespace clear
 
         static Symbol Load(Symbol& ptr, llvm::IRBuilder<>& builder);
         static void   Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, llvm::Module& module, bool isFirstTime = false);
+        static void   Memcpy(Symbol& dst, Symbol& src, Symbol& size, llvm::IRBuilder<>& builder);
         
         static Symbol GEPStruct(Symbol& basePtr, Symbol& resPtrType, size_t index, llvm::IRBuilder<>& builder);
         static Symbol GEP(Symbol& basePtr, Symbol& resPtrType, const llvm::SmallVector<llvm::Value*>& indices, llvm::IRBuilder<>& builder);
+
+        static Symbol Cast(Symbol& value, Symbol& dstType, llvm::IRBuilder<>& builder);
 
         static void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder);
 

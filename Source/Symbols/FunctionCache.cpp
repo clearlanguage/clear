@@ -3,7 +3,7 @@
 #include "Core/Log.h"
 
 #include "AST/ASTNode.h"
-#include "AST/TypeCasting.h"
+#include "TypeCasting.h"
 #include "Module.h"
 #include "Symbols/Type.h"
 
