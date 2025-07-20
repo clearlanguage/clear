@@ -4,6 +4,7 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Core/Utils.h"
+#include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
 // #include <emmintrin.h>
 #include <optional>
@@ -163,6 +164,28 @@ namespace clear
         }
 
         return GetType(token.GetData());
+    }
+
+    std::shared_ptr<Type> TypeRegistry::GetTypeFromClassTemplate(const ClassTemplate& classTemplate, CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> types)
+    {
+		std::string typeName = classTemplate.Name;
+
+        for(auto& ty : types)
+		{
+			typeName += ty->GetHash();
+		}
+
+		std::shared_ptr<Type> type = GetType(typeName);
+
+		if(!type)
+		{
+			auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
+			classNode->Instantiate(ctx, types);
+
+			type = ctx.TypeReg->GetType(typeName);
+		}
+
+		return type;
     }
 
     void TypeRegistry::CreateClassTemplate(std::string_view name, std::shared_ptr<ASTNodeBase> classNode, llvm::ArrayRef<std::string> generics)

@@ -418,7 +418,7 @@ namespace clear
 		CLEAR_VERIFY(lhsType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhsType->IsIntegral(), "invalid pointer arithmetic");
 
-		if(rhsType->GetSize() != 64) 
+		if(rhsType->GetSizeInBytes(ctx.Module) != 64) 
 		{
 			rhsValue = TypeCasting::Cast(rhsValue, 
 										rhsType, 
@@ -724,7 +724,7 @@ namespace clear
 
 					if(value.GetType() == allocaSymbol.GetType())
 					{
-						size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSize() / 8;
+						size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module);
 						Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
 						SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
 					}
@@ -754,7 +754,7 @@ namespace clear
 				{
 					auto baseTy = value.GetType()->As<PointerType>()->GetBaseType();
 					
-					if(baseTy->IsArray())
+					if(baseTy->IsArray() || baseTy->IsCompound())
 					{
 						m_Type = baseTy;
 						shouldMemcpy = true;
@@ -772,7 +772,7 @@ namespace clear
 
 				if(shouldMemcpy)
 				{
-					size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSize() / 8;
+					size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module);
 					Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
 					SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
 				}
@@ -1446,7 +1446,8 @@ namespace clear
 				   child->GetType() == ASTNodeType::Variable ||
 				   child->GetType() == ASTNodeType::FunctionCall || 
 				   child->GetType() == ASTNodeType::Member || 
-				   child->GetType() == ASTNodeType::ListExpr;
+				   child->GetType() == ASTNodeType::ListExpr || 
+				   child->GetType() == ASTNodeType::StructExpr;
 		};
 		
 		for (const auto& child : children)
@@ -1489,272 +1490,6 @@ namespace clear
 
 		return {};
 	}
-
-
-	Symbol ASTInitializerList::Codegen(CodegenContext& ctx)
-	{
-		auto& builder = ctx.Builder;
-		auto& context = ctx.Context;
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() > 0, "invalid array initializer");
-
-		Symbol storage;
-
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			storage = children[0]->Codegen(ctx);
-		}
-
-		auto [storageValue, stType] = storage.GetValue();
-
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
-		CLEAR_VERIFY(storageType, "invalid storage type");
-
-		CLEAR_VERIFY(children.size() - 1 == m_Indices.size(), "sizes don't match!");
-		llvm::Type* intTy = llvm::Type::getInt64Ty(context);
-
-
-		if(auto baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType()))
-		{
-			DoInitForArray(ctx, storage);
-		}
-		else if (auto baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType()))
-		{
-			DoInitForStruct(ctx, storage);
-		}
-		else if (auto baseType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType()))
-		{
-			DoInitForStruct(ctx, storage);
-		}
-		else if (storageType->GetBaseType()->IsConst())
-		{
-			CLEAR_VERIFY(m_FirstTimeInitialized, "cannot reinitialize constant type");
-			auto constType = std::dynamic_pointer_cast<ConstantType>(storageType->GetBaseType());
-			CLEAR_VERIFY(constType, "invalid constant type");
-
-			std::shared_ptr<Type> innerType = GetElementType(constType->GetBaseType());
-			
-			if(auto baseType = std::dynamic_pointer_cast<ArrayType>(innerType))
-			{
-				DoInitForArray(ctx, storage);
-			}
-			else if (auto baseType = std::dynamic_pointer_cast<StructType>(innerType))
-			{
-				DoInitForStruct(ctx, storage);
-			}
-			else if (auto baseType = std::dynamic_pointer_cast<ClassType>(innerType))
-			{
-				DoInitForStruct(ctx, storage);
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("invalid constant type for initializer list");
-			}
-		}
-		else 
-		{
-			CLEAR_UNREACHABLE("invalid initializer list type ", storageType->GetBaseType()->GetHash());
-		}
-		
-		return {};
-	}
-
-    void ASTInitializerList::SetIndices(const std::vector<std::vector<size_t>>& indices)
-    {
-		m_Indices = indices;
-    }
-
-    void ASTInitializerList::DoInitForArray(CodegenContext& ctx, Symbol storage)
-    {
-		auto& children = GetChildren();
-
-		llvm::Type* intTy = llvm::Type::getInt64Ty(ctx.Context);
-
-		auto [storageValue, stType] = storage.GetValue();
-
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
-		std::shared_ptr<ArrayType> baseType = std::dynamic_pointer_cast<ArrayType>(storageType->GetBaseType());
-		CLEAR_VERIFY(baseType, "base type is not an array type");
-
-		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
-		ctx.Builder.CreateStore(zeroArray, storage.GetValue().first);
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
-		auto Store = [&](llvm::Value* value, std::shared_ptr<Type> type, size_t i, size_t offset)
-		{
-			llvm::Value* elemPtr = ctx.Builder.CreateInBoundsGEP(baseType->Get(), 
-													 		     storage.GetValue().first, ctx.Builder.getInt64(0),
-													 		     "gep");
-
-			auto [elemPtr1, innerType] = GetBasePointer(i, elemPtr, baseType, 1, ctx, offset);
-			elemPtr = elemPtr1;
-			
-			if(type->Get() != innerType->Get())
-			{
-				value = TypeCasting::Cast(value, type, innerType, ctx.Builder);
-			}
-
-			ctx.Builder.CreateStore(value, elemPtr);
-		};
-
-		size_t k = 1;
-		size_t offset = 0;
-		for(size_t i = 0; i < m_Indices.size(); i++)
-		{
-			Symbol valueToStore = children[k++]->Codegen(ctx);
-
-			size_t j = 0;
-
-			auto [tupleValues, tupleTypes] = valueToStore.GetValueTuple();
-
-			for(; j < tupleTypes.size(); j++)
-			{
-				Store(tupleValues[j], tupleTypes[j], i, offset);
-				offset++;
-			}
-
-			if(offset > 0)
-				offset--;
-
-		}
-    }
-
-    void ASTInitializerList::DoInitForStruct(CodegenContext& ctx, Symbol storage)
-    {
-		auto& children = GetChildren();
-
-		auto [storageValue, stType] = storage.GetValue();
-
-		std::shared_ptr<PointerType> storageType = std::dynamic_pointer_cast<PointerType>(stType);
-		std::shared_ptr<StructType> baseType = std::dynamic_pointer_cast<StructType>(storageType->GetBaseType());
-
-		if(!baseType)
-		{
-			if(auto classType = std::dynamic_pointer_cast<ClassType>(storageType->GetBaseType()))
-			{
-				baseType = classType->GetBaseType();
-			}
-
-			if(auto constType = std::dynamic_pointer_cast<ConstantType>(storageType->GetBaseType()))
-			{
-				if(constType->IsClass())
-				{
-					auto classType = std::dynamic_pointer_cast<ClassType>(constType->GetBaseType());
-					baseType = std::dynamic_pointer_cast<StructType>(classType->GetBaseType());
-				}
-				else 
-				{
-					baseType = std::dynamic_pointer_cast<StructType>(constType->GetBaseType());
-				}
-			}
-		}
-
-		CLEAR_VERIFY(baseType, "base type is not a struct type");
-
-		llvm::Constant* zeroArray = llvm::ConstantAggregateZero::get(baseType->Get());
-		ctx.Builder.CreateStore(zeroArray, storage.GetValue().first);
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
-		for(size_t i = 0; i < m_Indices.size(); i++)
-		{
-			CLEAR_VERIFY(m_Indices[i].size() >= 2, "");
-
-			llvm::Value* elemPtr = ctx.Builder.CreateStructGEP(baseType->Get(), storage.GetValue().first, m_Indices[i][1], "gep");
-			std::shared_ptr<Type> innerType = baseType->GetMemberAtIndex(m_Indices[i][1]);
-
-			auto [elemPtr2, innerType2] = GetBasePointer(i, elemPtr, innerType, 2, ctx);
-
-			elemPtr = elemPtr2;
-			innerType = innerType2;
-
-			Symbol valueToStore = children[i + 1]->Codegen(ctx);
-
-			auto [value, type] = valueToStore.GetValue();
-
-			if(type != innerType)
-			{
-				value = TypeCasting::Cast(value, type, innerType, ctx.Builder);
-			}
-
-			ctx.Builder.CreateStore(valueToStore.GetValue().first, elemPtr);
-		}
-		
-    }
-
-    std::shared_ptr<Type> ASTInitializerList::GetElementType(std::shared_ptr<Type> type)
-    {
-		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
-		{
-			type = base->GetBaseType();
-		}
-
-        return type;
-    }
-    std::shared_ptr<Type> ASTInitializerList::GetInnerType(std::shared_ptr<Type> type, size_t index)
-    {
-		while(auto base = std::dynamic_pointer_cast<ArrayType>(type))
-		{
-			if(index == 0) break;
-
-			index--;
-			type = base->GetBaseType();
-		}
-
-		CLEAR_VERIFY(!index, "out of bounds");
-        return type;
-    }
-
-    std::pair<llvm::Value*, std::shared_ptr<Type>> ASTInitializerList::GetBasePointer(size_t index, llvm::Value* elemPtr, std::shared_ptr<Type> innerType, size_t startingIndex, CodegenContext& ctx, size_t offset)
-    {	
-		for(size_t j = startingIndex; j < m_Indices[index].size(); j++)
-		{
-			if(innerType->IsCompound())
-			{
-				auto tmp = std::dynamic_pointer_cast<StructType>(innerType);
-
-				if(!tmp)
-				{
-					auto classType = std::dynamic_pointer_cast<ClassType>(innerType);
-					CLEAR_VERIFY(classType, "invalid type");
-					tmp = classType->GetBaseType();
-				}
-
-				size_t structIndex = m_Indices[index][j];
-
-				if(j + 1 == m_Indices[index].size())
-				{
-					structIndex += offset;
-				}
-
-				CLEAR_VERIFY(structIndex < tmp->GetMemberTypes().size(), "struct index out of bounds");
-
-				elemPtr = ctx.Builder.CreateStructGEP(innerType->Get(), elemPtr, structIndex, "gep");
-				innerType = tmp->GetMemberAtIndex(structIndex);
-			}
-			else 
-			{
-				CLEAR_VERIFY(innerType->IsArray(), "invalid type");
-				auto tmp = std::dynamic_pointer_cast<ArrayType>(innerType);
-
-				size_t arrayIndex = m_Indices[index][j];
-
-				if(j + 1 == m_Indices[index].size())
-				{
-					arrayIndex += offset;
-				}
-
-				CLEAR_VERIFY(arrayIndex < tmp->GetArraySize(), "array index out of bounds");
-
-				elemPtr = ctx.Builder.CreateGEP(tmp->GetBaseType()->Get(), elemPtr, ctx.Builder.getInt64(arrayIndex), "gep");
-				innerType = tmp->GetBaseType();
-			}
-		}
-
-        return std::make_pair(elemPtr, innerType);
-    }
 
 	Symbol ASTListExpr::Codegen(CodegenContext& ctx)
 	{
@@ -1825,8 +1560,8 @@ namespace clear
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
 
-		llvm::Value* arrayAlloc = ctx.Builder.CreateAlloca(llvmArrayType, nullptr, "list.alloc");
-			
+		llvm::Value* arrayAlloc = ctx.Builder.CreateAlloca(llvmArrayType, nullptr, "array.alloc");
+
 		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType);
 		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);
 			
@@ -1856,173 +1591,138 @@ namespace clear
 		return Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType));
 	}
 
-  /*   ASTImport::ASTImport(const std::filesystem::path& filepath, const std::string& alias)
-		: m_Filepath(filepath), m_Alias(alias)
-    {
-    }
-
-	Symbol ASTImport::Codegen(CodegenContext& ctx)
+	Symbol ASTStructExpr::Codegen(CodegenContext& ctx)
 	{
-		std::filesystem::path completeFilePath = ctx.CurrentDirectory / m_Filepath;
+		auto& children = GetChildren();
+		CLEAR_VERIFY(children.size() >= 1, "invalid struct expr");
 
-		if(completeFilePath.extension() == ".h")
+		Symbol ty = children[0]->Codegen(ctx);
+
+		std::shared_ptr<StructType> structTy = nullptr;
+
+		llvm::SmallVector<llvm::Value*> values;
+		llvm::SmallVector<std::shared_ptr<Type>> types;
+
+		ValueRestoreGuard guard(ctx.WantAddress, false);
+
+		for(size_t i = 1; i < children.size(); i++) 
 		{
-			CLEAR_VERIFY(std::filesystem::exists(completeFilePath), completeFilePath, " doesn't exist");
-			ProcessCImport(completeFilePath, ctx);
+			Symbol value = children[i]->Codegen(ctx);
+			values.push_back(value.GetLLVMValue());
+			types.push_back(value.GetType());
+		}		
 
-			return {};
-		}
-
-		if(!ctx.LookupTable.contains(completeFilePath))
+		switch (ty.Kind) 
 		{
-			completeFilePath = ctx.StdLibraryDirectory / m_Filepath;
-		}
+			case SymbolKind::Type: 
+			{
+				structTy = ty.GetType()->As<StructType>();
 
-		CLEAR_VERIFY(ctx.LookupTable.contains(completeFilePath), "cannot find ", completeFilePath);
+				for(size_t i = 0; i < values.size(); i++)
+				{
+					auto baseTy = Symbol::CreateType(structTy->GetMemberAtIndex(i));
+					Symbol value = Symbol::CreateValue(values[i], types[i]);
+					values[i] = SymbolOps::Cast(value, baseTy, ctx.Builder).GetLLVMValue();
+				}
+
+				break;
+			}
+			case SymbolKind::ClassTemplate: 
+			{
+				structTy = ctx.TypeReg->GetTypeFromClassTemplate(ty.GetClassTemplate(), ctx, types)->As<StructType>();
+				break;
+			}
+			default: 
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+			}
+		}
 		
-		ProcessTypes(completeFilePath, ctx);
+		
+		llvm::SmallVector<llvm::Constant*> constantValues;
+		constantValues.resize(values.size());
+		
+		bool isConst = true;
 
-		auto& lookupInfo = ctx.LookupTable.at(completeFilePath);
-
-		auto& rootChildren = lookupInfo.Node->GetChildren();
-		auto rootSymbolTable = lookupInfo.Node->GetSymbolTable();
-
-
-		for(const auto& child : rootChildren)
+		for(size_t i = 0; i < values.size(); i++)
 		{
-			std::shared_ptr<ASTFunctionDefinition> fun = std::dynamic_pointer_cast<ASTFunctionDefinition>(child);
+			llvm::Constant* constant = llvm::dyn_cast<llvm::Constant>(values[i]);
 			
-			if(!fun) 
+			if(constant)
+			{
+				constantValues[i] = constant;
 				continue;
-
-			auto tbl = GetSymbolTable();
-			
-			if(rootSymbolTable->HasInstance(fun->GetName()))
-			{
-				FunctionInstance& importedData = rootSymbolTable->GetInstance(fun->GetName());
-
-				llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(importedData.MangledName, importedData.FunctionType);
-
-				FunctionInstance registeredData;
-				registeredData.FunctionType = importedData.FunctionType;
-				registeredData.Function = llvm::cast<llvm::Function>(callee.getCallee());
-				registeredData.Parameters = importedData.Parameters;
-				
-				if(!m_Alias.empty())
-					registeredData.MangledName = std::format("{}.{}", m_Alias, fun->GetName());
-				else 
-					registeredData.MangledName = fun->GetName();
-
-				registeredData.ReturnType = importedData.ReturnType;
-
-				bool isVariadic = registeredData.Parameters.size() > 0 && !registeredData.Parameters.back().Type;
-				tbl->RegisterDecleration(registeredData, isVariadic);
 			}
-			else if (rootSymbolTable->HasTemplate(fun->GetName()))
-			{
-				if(!m_Alias.empty())
-					tbl->RegisterTemplate(std::format("{}.{}", m_Alias, fun->GetName()), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
-				else 
-					tbl->RegisterTemplate(fun->GetName(), rootSymbolTable->GetTemplate(fun->GetName(), fun->GetParameters()));
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("uhhh what");
-			}
+
+			constantValues[i] = GetDefaultValue(structTy->GetMemberAtIndex(i)->Get());
+			isConst = false;
 		}
 
-		return {};
+		llvm::StructType* llvmStructTy = llvm::dyn_cast<llvm::StructType>(structTy->Get());
+
+		llvm::Constant* initializer = llvm::ConstantStruct::get(llvmStructTy, constantValues);
+
+		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
+		    ctx.Module,
+		    structTy->Get(),
+		    /* isConstant = */ true,
+		    llvm::GlobalValue::PrivateLinkage,
+		    initializer,
+		    "const.struct"
+		);
+
+		if(isConst)
+		{
+			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy));
+		}
+
+		llvm::Value* structAlloc = ctx.Builder.CreateAlloca(llvmStructTy, nullptr, "struct.alloc");
+			
+		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmStructTy);
+		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);
+			
+		ctx.Builder.CreateMemCpy(
+		    structAlloc,
+		    llvm::MaybeAlign(),
+		    staticGlobal,
+		    llvm::MaybeAlign(),
+		    size
+		);
+
+		for (size_t i = 0; i < values.size(); ++i)
+		{
+		    if (!llvm::isa<llvm::Constant>(values[i]))
+		    {
+		        llvm::Value* gep = ctx.Builder.CreateStructGEP(llvmStructTy, structAlloc, i);
+		        ctx.Builder.CreateStore(values[i], gep);
+		    }
+		}
+
+		return Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy));
 	}
 
-    void ASTImport::ProcessCImport(const std::filesystem::path& path, CodegenContext& ctx)
-    {
-		auto functions = ExtractFunctions(path);
-
-		for(const auto& header : functions)
+	llvm::Constant* ASTStructExpr::GetDefaultValue(llvm::Type* type)
+	{
+		if (type->isIntegerTy()) 
 		{
-			FunctionInstance function = ParseHeader(header, ctx);
-
-			if(!m_Alias.empty())
-				function.MangledName = std::format("{}.{}", m_Alias, header.name);
-			else 
-				function.MangledName = header.name;
-
-			std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
-			bool isVariadic = function.Parameters.size() > 0 && !function.Parameters.back().Type;
-			tbl->RegisterDecleration(function, isVariadic);
-
-		}
-    }
-
-    FunctionInstance ASTImport::ParseHeader(const HeaderFunc& function, CodegenContext& ctx)
-    {
-		FunctionInstance functionData;
-		functionData.MangledName = function.name;
-
-		for(const auto& arg : function.args)
+        	return llvm::ConstantInt::get(type, 0);
+    	} 
+		else if (type->isFloatingPointTy()) 
 		{
-			functionData.Parameters.push_back(GetInfoFromArg(arg, ctx));
-		}
-
-		functionData.ReturnType = GetInfoFromArg(function.returnType, ctx).Type;
-
-		std::vector<llvm::Type*> parameterTypes;
-        std::transform(functionData.Parameters.begin(), functionData.Parameters.end(), std::back_inserter(parameterTypes), [](Parameter& a) { return a.Type->Get(); });
-		llvm::FunctionType* functionType = llvm::FunctionType::get(functionData.ReturnType ? functionData.ReturnType->Get() : llvm::FunctionType::getVoidTy(ctx.Context), parameterTypes, false);
-		llvm::FunctionCallee callee = ctx.Module.getOrInsertFunction(function.name, functionType);
-
-		functionData.FunctionType = functionType;
-		functionData.Function = llvm::dyn_cast<llvm::Function>(callee.getCallee());
-
-		CLEAR_VERIFY(!llvm::verifyFunction(*functionData.Function, &llvm::errs()), "failed to verify function");	
-        return functionData;
-    }
-
-    Parameter ASTImport::GetInfoFromArg(const std::vector<Token>& arg, CodegenContext &ctx)
-    {
-		CLEAR_VERIFY(arg.size() >= 1, "args not valid");
-		Parameter param;
-		param.Name = "__unamed_c_parm";
-
-		if(arg[0].IsType(TokenType::Ellipses))
+    	    return llvm::ConstantFP::get(type, 0.0);
+    	} 
+		else if (type->isPointerTy()) 
 		{
-			return param;
-		}
-
-		param.Type = GetSymbolTable()->GetTypeFromToken(arg[0]);
-		
-		for(size_t i = 1; i < arg.size(); i++)
+    	    return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(type));
+    	} 
+		else if (type->isArrayTy() || type->isStructTy() || type->isVectorTy()) 
 		{
-			if(arg[i].TokenType == TokenType::PointerDef)
-				param.Type = ctx.TypeReg->GetPointerTo(param.Type);
-			else if (arg[i].TokenType == TokenType::StaticArrayDef)
-				param.Type = ctx.TypeReg->GetArrayFrom(param.Type, std::stoull(arg[i].Data));
-			else
-				CLEAR_UNREACHABLE("invalid token");
-		}
+    	    return llvm::ConstantAggregateZero::get(type);
+    	}
 
-        return param;
-    }
+    	return nullptr;
+	}
 
-    void ASTImport::ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx)
-    {
-		auto& lookupInfo = ctx.LookupTable.at(path);
-
-		auto& rootChildren = lookupInfo.Node->GetChildren();
-		auto rootSymbolTable = lookupInfo.Node->GetSymbolTable();
-
-		for(const auto& [typeName, type] : lookupInfo.Registry.GetTypeTable())
-		{
-			if(type->IsCompound())
-			{
-				if(!m_Alias.empty())
-					ctx.TypeReg->RegisterType(m_Alias + "." + typeName, type);
-				else 
-					ctx.TypeReg->RegisterType(typeName, type);
-			}
-		}
-    } */
 
     ASTMember::ASTMember(const std::string& name)
 		: m_MemberName(name)
@@ -2281,7 +1981,7 @@ namespace clear
 
 			auto [conditionValue, conditionType] = condition.GetValue();
 
-			if (conditionType->IsIntegral() && conditionType->GetSize() > 1)
+			if (conditionType->IsIntegral() && conditionType->GetSizeInBytes(ctx.Module) > 1)
 			{
 				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
 			}
@@ -2980,6 +2680,9 @@ namespace clear
 
 			if(symbol.Kind == SymbolKind::ClassTemplate)
 			{
+				if(m_Tokens.size() == i)
+					return symbol;
+			
 				type = ResolveGeneric(symbol, ctx, i, k);
 			}
 			else 

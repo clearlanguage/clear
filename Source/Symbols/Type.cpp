@@ -77,12 +77,10 @@ namespace clear
     {
         m_LLVMType = llvm::Type::getVoidTy(context);
         Toggle(TypeFlags::Void);
-
-        m_Size = 0;
     }
 
     PrimitiveType::PrimitiveType(llvm::Type* type, TypeFlagSet flags, const std::string& name)
-        : m_LLVMType(type), m_Size(type->getScalarSizeInBits()), m_Name(name)
+        : m_LLVMType(type), m_Name(name)
     {
         CLEAR_VERIFY(m_LLVMType, "null type not allowed");
         Toggle(flags);
@@ -116,11 +114,6 @@ namespace clear
     std::string ArrayType::GetHash() const
     {
         return m_BaseType->GetHash() + "[" + std::to_string(m_Count) + "]";
-    }
-
-    std::string ArrayType::GetShortHash() const
-    {
-        return m_BaseType->GetShortHash() + "A" + std::to_string(m_Count);
     }
 
     void ArrayType::SetBaseType(std::shared_ptr<Type> type)

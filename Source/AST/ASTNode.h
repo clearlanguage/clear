@@ -29,17 +29,7 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr
-	};
-
-	struct CodegenResult
-	{
-		llvm::Value* CodegenValue = nullptr;
-		std::shared_ptr<Type> CodegenType;
-		std::vector<std::shared_ptr<Type>> TupleTypes;
-		std::vector<llvm::Value*> TupleValues;
-		bool IsTuple = false;
-		std::string Data; // used for accessing enums currently 
+		Switch, ListExpr, StructExpr
 	};
 
 	class ASTNodeBase;
@@ -307,43 +297,25 @@ namespace clear
 		virtual Symbol Codegen(CodegenContext&) override;
 	};
 
-	class ASTListExpr: public ASTNodeBase 
+	class ASTListExpr : public ASTNodeBase 
 	{	
 	public:
 		ASTListExpr() = default;
 		virtual ~ASTListExpr() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ListExpr; };
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ListExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
 	};
 
-	class ASTInitializerList : public ASTNodeBase
+	class ASTStructExpr : public ASTNodeBase 
 	{
 	public:
-		ASTInitializerList(bool firstTime = false) : m_FirstTimeInitialized(firstTime) {};
-		virtual ~ASTInitializerList() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::InitializerList; }
+		ASTStructExpr() = default;
+		virtual ~ASTStructExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::StructExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
-		void SetIndices(const std::vector<std::vector<size_t>>& indices);
-
 	private:
-		void DoInitForArray(CodegenContext& ctx, Symbol storage);
-		void DoInitForStruct(CodegenContext& ctx, Symbol storage);
-
-		std::shared_ptr<Type> GetElementType(std::shared_ptr<Type> type);
-		std::shared_ptr<Type> GetInnerType(std::shared_ptr<Type> type, size_t index);
-
-
-		std::pair<llvm::Value*, std::shared_ptr<Type>> GetBasePointer(size_t index, 
-																	  llvm::Value* elemPtr, 
-																	  std::shared_ptr<Type> innerType,
-																	  size_t startingIndex, 
-																	  CodegenContext& ctx, 
-																	  size_t offset = 0);
-
-	private:
-		std::vector<std::vector<size_t>> m_Indices;
-		bool m_FirstTimeInitialized; 
+		llvm::Constant* GetDefaultValue(llvm::Type* type);
 	};
 
 	/* class ASTImport : public ASTNodeBase

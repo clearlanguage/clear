@@ -94,10 +94,34 @@ namespace clear
         size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
 
     private:
-        static constexpr size_t s_MaxMatchSize = 15;
-        bool LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match);
-
         bool IsDeclaration();
+
+        template<typename T>
+        std::shared_ptr<T> ParseList(std::shared_ptr<ASTNodeBase> ty = nullptr)
+        {
+            Consume();
+
+            auto expr = std::make_shared<T>();
+            expr->Push(ty);
+
+            while(!Match(TokenType::RightBrace))
+            {
+                while(Match(TokenType::EndLine) || Match(TokenType::EndScope))
+                    Consume();
+
+                if(Match(TokenType::RightBrace))
+                    break;
+
+                expr->Push(ParseExpression());
+
+                if(Match(TokenType::Comma))
+                    Consume();
+            }
+
+            Consume();
+
+            return expr;
+        }
 
     private:    
         std::vector<Token> m_Tokens;

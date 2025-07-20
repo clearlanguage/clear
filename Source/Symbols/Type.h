@@ -5,6 +5,7 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/DerivedTypes.h"
 
 #include <bitset>
@@ -76,9 +77,9 @@ namespace clear
         virtual ~Type() = default;
 
         virtual llvm::Type* Get()      const = 0;
-        virtual size_t      GetSize()  const { return 0; };
         virtual std::string GetHash()  const = 0;
-        virtual std::string GetShortHash() const = 0;
+
+        size_t GetSizeInBytes(llvm::Module& module_) const { return module_.getDataLayout().getTypeAllocSize(Get()); };
 
         bool IsSigned();
         bool IsFloatingPoint();
@@ -122,13 +123,10 @@ namespace clear
         virtual ~PrimitiveType() = default;
 
         virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual size_t GetSize() const override { return m_Size; }
         virtual std::string GetHash() const override { return m_Name; }
-        virtual std::string GetShortHash() const override { return m_Name[0] + std::to_string(GetSize()); }
 
     private:
         llvm::Type* m_LLVMType;
-        size_t m_Size;
         std::string m_Name = "void";
     };
 
@@ -141,7 +139,7 @@ namespace clear
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
-        virtual std::string GetShortHash() const override { return m_BaseType->GetShortHash() + "*"; }
+       
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -158,10 +156,8 @@ namespace clear
         
         virtual ~ArrayType() = default;
 
-        virtual size_t GetSize() const override { return m_Count * m_BaseType->GetSize(); }
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual std::string GetHash() const override;
-        virtual std::string GetShortHash() const override;
 
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -186,7 +182,6 @@ namespace clear
             
         virtual llvm::Type* Get() const override { return m_LLVMType; }
         virtual std::string GetHash() const override { return m_Name; };
-        virtual std::string GetShortHash() const override { return m_Name; };
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);
@@ -215,7 +210,6 @@ namespace clear
 
         virtual llvm::Type* Get() const override { return m_StructType->Get(); }
         virtual std::string GetHash() const override { return m_StructType->GetHash(); };
-        virtual std::string GetShortHash() const override { return m_StructType->GetShortHash(); };
 
         size_t GetMemberIndex(const std::string& member);
         std::shared_ptr<Type> GetMemberType(const std::string& member);
@@ -248,8 +242,7 @@ namespace clear
         virtual ~VariadicArgumentsHolder() = default;
 
         virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual std::string GetHash() const override { return "variadic"; };
-        virtual std::string GetShortHash() const override { return "va"; };
+        virtual std::string GetHash() const override { return "__clrt_variadic"; };
 
     private:
         llvm::Type* m_LLVMType = nullptr;
@@ -263,7 +256,6 @@ namespace clear
 
         virtual llvm::Type* Get() const override { return m_Base->Get(); }
         virtual std::string GetHash() const override { return m_Base->GetHash() + "const"; };
-        virtual std::string GetShortHash() const override { return m_Base->GetShortHash() + "c"; };
 
         std::shared_ptr<Type> GetBaseType() { return m_Base; }
 
@@ -282,7 +274,6 @@ namespace clear
 
         virtual llvm::Type* Get() const override { return nullptr; }
         virtual std::string GetHash() const override { return m_Name; };
-        virtual std::string GetShortHash() const override { return m_Name; };
 
         bool DoesClassImplementTrait(std::shared_ptr<ClassType> classTy);
 
@@ -302,10 +293,8 @@ namespace clear
 
         int64_t GetEnumValue(const std::string& name);
 
-        virtual size_t GetSize() const override { return m_Type->GetSize(); }
         virtual llvm::Type* Get() const override { return m_Type->Get(); }
         virtual std::string GetHash() const override { return m_Type->GetHash(); };
-        virtual std::string GetShortHash() const override { return m_Type->GetHash(); };
         
     private:
         std::string m_Name;
@@ -321,7 +310,6 @@ namespace clear
 
         virtual llvm::Type* Get() const override { return nullptr; }
         virtual std::string GetHash() const override { return m_Name; };
-        virtual std::string GetShortHash() const override { return m_Name; };
         
     private:
         std::string m_Name;

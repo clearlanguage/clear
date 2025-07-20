@@ -263,9 +263,11 @@ namespace clear
                 }
                 else if (TypeCasting::CanBeCasted(param1.Type, param2.Type))
                 {
+                    llvm::Module& mod = *functionTemplate.SourceModule->GetModule();
+
                     // scoring system to decide best candidate to cast to
-                    size_t min = std::min(param1.Type->GetSize(), param2.Type->GetSize());
-                    size_t max = std::max(param1.Type->GetSize(), param2.Type->GetSize());
+                    size_t min = std::min(param1.Type->GetSizeInBytes(mod), param2.Type->GetSizeInBytes(mod));
+                    size_t max = std::max(param1.Type->GetSizeInBytes(mod), param2.Type->GetSizeInBytes(mod));
 
                     float similarity = (float)min / max;
                     float contribution = 10.0f * similarity + 25.0f * (param1.Type->GetFlags() == param2.Type->GetFlags());
@@ -404,13 +406,13 @@ namespace clear
                 break;
             }
 
-            mangledName += param.Type->GetShortHash();
+            mangledName += param.Type->GetHash();
         }   
 
         mangledName += "%";
 
         if(returnType)
-            mangledName += returnType->GetShortHash();
+            mangledName += returnType->GetHash();
 
         return mangledName;
     }

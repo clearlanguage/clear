@@ -956,6 +956,17 @@ namespace clear
 
         if(Match(TokenType::Identifier))
         {
+            SavePosition();
+
+            auto ty = ParseTypeResolver();
+
+            if(Match(TokenType::LeftBrace))
+            {
+                return ParseList<ASTStructExpr>(ty);
+            }
+
+            RestorePosition();
+
             if(Next().IsType(TokenType::LeftParen))
             {
                 return ParseFunctionCall();
@@ -971,19 +982,7 @@ namespace clear
 
         if(Match(TokenType::LeftBrace))
         {
-            Consume();
-            auto listExpr = std::make_shared<ASTListExpr>();
-
-            while(!Match(TokenType::RightBrace))
-            {
-                listExpr->Push(ParseExpression());
-                
-                if(Match(TokenType::Comma) || Match(TokenType::EndLine))
-                    Consume();
-            }
-
-            Consume();
-            return listExpr;
+            return ParseList<ASTListExpr>();
         }
 
 
@@ -1733,23 +1732,6 @@ namespace clear
         RestorePosition();
 
         return terminationIndex;
-    }
-
-    bool Parser::LookAheadMatches(const std::function<bool(const Token&)>& terminator, const std::array<TokenType, s_MaxMatchSize>& match)
-    {
-        size_t pos = m_Position; 
-        size_t k = 0;
-
-        while (pos < m_Tokens.size() && !terminator(m_Tokens[pos]) && k < s_MaxMatchSize && match[k] != TokenType::None)
-        {
-            if (m_Tokens[pos].IsType(match[k]))
-                k++; 
-
-            pos++;
-        }
-
-        // if we matched all tokens in match (until None), return true
-        return k == s_MaxMatchSize || match[k] == TokenType::None;
     }
     
     bool Parser::IsDeclaration()

@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
             config.Serialize(result.Directory / "build.toml");
 
             std::println("Created build.config at {}", result.Directory.string());
-
+            
             return 0;
         }
         case CommandLine::ProgramMode::Compile:
