@@ -134,7 +134,6 @@ namespace clear
 		static Symbol HandleMathExpressionUI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 		static Symbol HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 
-
 	private:
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
@@ -606,6 +605,7 @@ namespace clear
 	private:
 		Symbol Inferred();
 		std::shared_ptr<Type> ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k);
+		std::shared_ptr<Type> ResolveGeneric(Symbol& classTemplate, CodegenContext& ctx, size_t& i, int64_t& k);
 	
 	private:
 		std::vector<Token> m_Tokens;

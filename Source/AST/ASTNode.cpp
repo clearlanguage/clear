@@ -2697,13 +2697,13 @@ namespace clear
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 		Symbol variable = children[0]->Codegen(ctx);
 		
-		auto [VarValue, VarType] = variable.GetValue();
-		CLEAR_VERIFY(VarType->IsPointer(), "cannot assign to a value");
+		auto [varValue, varType] = variable.GetValue();
+		CLEAR_VERIFY(varType->IsPointer(), "cannot assign to a value");
 
-		auto pointerTy = dyn_cast<PointerType>(VarType);
+		auto pointerTy = dyn_cast<PointerType>(varType);
 		auto baseTy = pointerTy->GetBaseType();
 
-		bool isGlobal = llvm::isa<llvm::GlobalVariable>(VarValue);
+		bool isGlobal = llvm::isa<llvm::GlobalVariable>(varValue);
 
 		if (baseTy->IsPointer()) 
 		{
@@ -2713,38 +2713,25 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(nullPtr);
+		        llvm::cast<llvm::GlobalVariable>(varValue)->setInitializer(nullPtr);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(nullPtr, VarValue);
+		        ctx.Builder.CreateStore(nullPtr, varValue);
 		    }
 		}
-		else if (baseTy->IsCompound())
+		else if (baseTy->IsCompound() || baseTy->IsArray())
 		{
-		    RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
-		}
-		else if (baseTy->IsArray())
-		{
-			auto arrayTy = dyn_cast<ArrayType>(baseTy);
+			llvm::ConstantAggregateZero* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
 
-			if(arrayTy->GetBaseType()->IsCompound())
-			{
-				RecursiveCallConstructors(VarValue, baseTy, ctx, tbl, isGlobal);
-			}
-			else 
-			{
-				llvm::Constant* zero = llvm::ConstantAggregateZero::get(baseTy->Get());
-		
-		    	if (isGlobal)
-		    	{
-		    	    llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
-		    	}
-		    	else
-		    	{
-		    	    ctx.Builder.CreateStore(zero, VarValue);
-		    	}
-			}
+			if (isGlobal)
+		    {
+		        llvm::cast<llvm::GlobalVariable>(varValue)->setInitializer(zero);
+		    }
+			else
+		    {
+		        ctx.Builder.CreateStore(zero, varValue);
+		    }
 		}
 		else if (baseTy->IsIntegral())
 		{
@@ -2752,11 +2739,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(varValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, VarValue);
+		        ctx.Builder.CreateStore(zero, varValue);
 		    }
 		}
 		else if (baseTy->IsFloatingPoint())
@@ -2765,11 +2752,11 @@ namespace clear
 		
 		    if (isGlobal)
 		    {
-		        llvm::cast<llvm::GlobalVariable>(VarValue)->setInitializer(zero);
+		        llvm::cast<llvm::GlobalVariable>(varValue)->setInitializer(zero);
 		    }
 		    else
 		    {
-		        ctx.Builder.CreateStore(zero, VarValue);
+		        ctx.Builder.CreateStore(zero, varValue);
 		    }
 		}
 
@@ -2988,11 +2975,20 @@ namespace clear
 		else
 		{
 			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
-			CLEAR_VERIFY(symbol.Kind == SymbolKind::Type, "others are currently unimplemented");
 
-			type = symbol.GetType();
 			i++;
+
+			if(symbol.Kind == SymbolKind::ClassTemplate)
+			{
+				type = ResolveGeneric(symbol, ctx, i, k);
+			}
+			else 
+			{
+				type = symbol.GetType();
+			}
 		}
+
+
 		
 		for(; i < m_Tokens.size(); i++)
 		{
@@ -3054,6 +3050,45 @@ namespace clear
 		CLEAR_VERIFY(value, "cannot define an array of dynamic size, consider using a dynamic list instead");
 
 		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());
+	}
+
+	std::shared_ptr<Type> ASTTypeResolver::ResolveGeneric(Symbol& symbol, CodegenContext& ctx, size_t& i, int64_t& k)
+	{		
+		auto& children = GetChildren();
+
+		ClassTemplate classTemplate = symbol.GetClassTemplate();
+
+		std::string typeName = classTemplate.Name;
+
+		llvm::SmallVector<std::shared_ptr<Type>> types;
+
+		for(; k >= 0; k--)
+		{
+			if(children[k]->GetType() != ASTNodeType::TypeResolver)
+				break;
+			
+			std::shared_ptr<Type> subType = children[k]->Codegen(ctx).GetType();
+			types.push_back(subType);
+		}
+
+		std::reverse(types.begin(), types.end());
+
+		for(auto& ty : types)
+		{
+			typeName += ty->GetHash();
+		}
+
+		std::shared_ptr<Type> type = ctx.TypeReg->GetType(typeName);
+
+		if(!type)
+		{
+			auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
+			classNode->Instantiate(ctx, types);
+
+			type = ctx.TypeReg->GetType(typeName);
+		}
+
+		return type;
 	}
 
 	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 

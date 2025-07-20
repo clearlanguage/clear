@@ -229,7 +229,8 @@ namespace clear
 
     void SymbolTable::RecursiveCallDestructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, bool isGlobal)
     {
-        if(type->IsArray())
+        //TODO:
+        /* if(type->IsArray())
 		{
 			auto arrayTy = dyn_cast<ArrayType>(type);
 			auto baseTy  = arrayTy->GetBaseType();
@@ -360,7 +361,7 @@ namespace clear
 			}
 
 			RecursiveCallDestructors(gep, subType, ctx, isGlobal);
-		}
+		} */
     }
 
     FunctionInstance& SymbolTable::GetInstance(const std::string& instanceName)
