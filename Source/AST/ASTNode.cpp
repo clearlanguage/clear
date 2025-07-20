@@ -862,6 +862,17 @@ namespace clear
 			data    = children[1]->Codegen(ctx);
 		}
 
+		ValueSymbol value = data.GetValueSymbol();
+
+		if(value.ShouldMemcpy)
+		{
+			CLEAR_VERIFY(storage.GetType() == data.GetType(), "");
+			Symbol size = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, data.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module));
+			SymbolOps::Memcpy(storage, data, size, ctx.Builder);
+
+			return Symbol();
+		}
+
 		HandleDifferentTypes(storage, data, ctx);
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
@@ -1555,7 +1566,7 @@ namespace clear
 
 		if(isConst)
 		{
-			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType));
+			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
 		}
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
@@ -1588,7 +1599,7 @@ namespace clear
 		    }
 		}
 
-		return Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType));
+		return Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
 	}
 
 	Symbol ASTStructExpr::Codegen(CodegenContext& ctx)
@@ -1673,7 +1684,7 @@ namespace clear
 
 		if(isConst)
 		{
-			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy));
+			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
 		}
 
 		llvm::Value* structAlloc = ctx.Builder.CreateAlloca(llvmStructTy, nullptr, "struct.alloc");
@@ -1698,7 +1709,7 @@ namespace clear
 		    }
 		}
 
-		return Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy));
+		return Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
 	}
 
 	llvm::Constant* ASTStructExpr::GetDefaultValue(llvm::Type* type)

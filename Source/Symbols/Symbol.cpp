@@ -28,13 +28,13 @@ namespace clear
         };
     }
 
-    Symbol Symbol::CreateValue(llvm::Value* value, std::shared_ptr<Type> type)
+    Symbol Symbol::CreateValue(llvm::Value* value, std::shared_ptr<Type> type, bool shouldMemcpy)
     {
         ValueSymbol symbol;
 
         symbol.Values.push_back(value);
         symbol.Types.push_back(type);
-
+        symbol.ShouldMemcpy = shouldMemcpy;
 
         return Symbol {
             .Kind = SymbolKind::Value,
@@ -148,6 +148,12 @@ namespace clear
     {
         CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
         return std::get<FunctionSymbol>(Data).Instance;
+    }
+    
+    ValueSymbol Symbol::GetValueSymbol()
+    {
+        CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValueSymbol() when kind is not Value");
+        return std::get<ValueSymbol>(Data);
     }
 
     const ValueSymbol& Symbol::GetValueTuple() const

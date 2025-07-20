@@ -43,6 +43,7 @@ namespace clear
     {
         llvm::SmallVector<llvm::Value*> Values;
         llvm::SmallVector<std::shared_ptr<Type>> Types;
+        bool ShouldMemcpy = false;
     };
 
     struct ModuleSymbol 
@@ -86,7 +87,7 @@ namespace clear
 
         static Symbol CreateType(std::shared_ptr<Type> type);
         static Symbol CreateModule(std::shared_ptr<Module> module_);
-        static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type);
+        static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type, bool shouldMemcpy = false);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
         static Symbol CreateFunction(FunctionInstance* instance);
         static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
@@ -102,6 +103,7 @@ namespace clear
         std::shared_ptr<Type>   GetType() const;
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;
+        ValueSymbol GetValueSymbol();
         FunctionInstance* GetFunction() const;
         FunctionTemplate* GetFunctionTemplate() const;
         const ValueSymbol& GetValueTuple() const;

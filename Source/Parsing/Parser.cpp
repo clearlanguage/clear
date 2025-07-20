@@ -990,63 +990,13 @@ namespace clear
         return {};
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseInitializer(std::shared_ptr<ASTNodeBase> storageOrType, bool initialize)
-    {
-        Expect(TokenType::LeftBrace);
-
-        std::vector<std::vector<size_t>> indices;
-        std::vector<size_t> currentIndex = { 0 };
-
-        std::shared_ptr<ASTInitializerList> initializer = std::make_shared<ASTInitializerList>(initialize);
-        initializer->Push(storageOrType);
-
-        while(!Match(TokenType::EndLine))
-        {
-            if(Match(TokenType::LeftBrace))
-            {
-                currentIndex.push_back(0);
-                Consume();
-            }
-            else if (Match(TokenType::RightBrace))
-            {
-                currentIndex.pop_back();
-                currentIndex.back()++;
-
-                Consume();
-            }
-            else if (Match(TokenType::Comma))
-            {
-                Consume();
-            }
-            else 
-            {
-                initializer->Push(ParseExpression());
-                indices.push_back(currentIndex);
-
-                currentIndex.back()++;
-            }
-        }
-
-        initializer->SetIndices(indices);
-        Consume();
-
-        return initializer;
-
-    }
-
     std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
     {
         ExpectAny(m_AssignmentOperators);
 
         Token assignmentToken = Consume();
         auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.GetType());
-
-        if(Match(TokenType::LeftBrace))
-        {
-            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid assignment");
-            return ParseInitializer(storage, initialize);
-        }
-        
+   
         std::shared_ptr<ASTAssignmentOperator> assign;
 
         if(initialize)
