@@ -524,6 +524,23 @@ namespace clear
 				if(ty->IsEnum())
 					return HandleMemberEnum(lhs, right, ctx);
 
+				if(right->GetType() == ASTNodeType::FunctionCall)
+				{
+					CLEAR_VERIFY(ty->IsClass(), "cannot call a function on a type that is not a class");
+
+					auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
+					CLEAR_VERIFY(funcCall, "invalid function call");
+
+					std::string name = funcCall->GetName();
+
+					funcCall->SetName(std::format("{}.{}", ty->As<ClassType>()->GetHash(), name));
+					Symbol result = funcCall->Codegen(ctx);
+
+					funcCall->SetName(name);
+
+					return result;
+				}
+
 				CLEAR_UNREACHABLE("unimplemented");
 			}
 			case SymbolKind::Module:
@@ -1458,7 +1475,8 @@ namespace clear
 				   child->GetType() == ASTNodeType::FunctionCall || 
 				   child->GetType() == ASTNodeType::Member || 
 				   child->GetType() == ASTNodeType::ListExpr || 
-				   child->GetType() == ASTNodeType::StructExpr;
+				   child->GetType() == ASTNodeType::StructExpr || 
+				   child->GetType() == ASTNodeType::TypeResolver;
 		};
 		
 		for (const auto& child : children)
@@ -2679,27 +2697,29 @@ namespace clear
 		{
 			type = ResolveArray(ctx, i, k);
 		}
+		else if (m_Tokens[i].IsType(TokenType::GreaterThan))
+		{
+			i += 2; // <>
+
+			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
+			CLEAR_VERIFY(symbol.Kind == SymbolKind::ClassTemplate, "not a valid template");
+
+			i++;
+		
+			type = ResolveGeneric(symbol, ctx, i, k);
+		}
 		else
 		{
 			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
 
-			i++;
-
 			if(symbol.Kind == SymbolKind::ClassTemplate)
-			{
-				if(m_Tokens.size() == i)
-					return symbol;
-			
-				type = ResolveGeneric(symbol, ctx, i, k);
-			}
-			else 
-			{
-				type = symbol.GetType();
-			}
+				return symbol;
+
+			type = symbol.GetType();
+			i++;
 		}
 
 
-		
 		for(; i < m_Tokens.size(); i++)
 		{
 			if(m_Tokens[i].IsType(TokenType::Star))

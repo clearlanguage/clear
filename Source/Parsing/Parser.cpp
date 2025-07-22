@@ -964,6 +964,11 @@ namespace clear
                 return ParseList<ASTStructExpr>(ty);
             }
 
+            if(Match(TokenType::Dot))
+            {
+                return ty;
+            }
+
             RestorePosition();
 
             if(Next().IsType(TokenType::LeftParen))
@@ -1471,6 +1476,8 @@ namespace clear
         if(Match(TokenType::LeftBracket))
         {
             Consume();
+             // hack to allow the ASTTypeResolver to differentiate between an array and a template
+            resolver->PushToken(Token(TokenType::LessThan, "<"));
 
             while(!Match(TokenType::RightBracket))
             {
@@ -1483,6 +1490,7 @@ namespace clear
             }
 
             Consume();
+            resolver->PushToken(Token(TokenType::GreaterThan, ">"));
         }
 
         return resolver;
