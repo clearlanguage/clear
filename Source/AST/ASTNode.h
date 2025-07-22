@@ -51,7 +51,7 @@ namespace clear
 		llvm::BasicBlock* LoopEndBlock = nullptr;
 
 		std::shared_ptr<clear::Module> ClearModule;
-		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls
+		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls where a function is being called from another module
 		std::shared_ptr<TypeRegistry> TypeReg;
 
 		bool WantAddress;

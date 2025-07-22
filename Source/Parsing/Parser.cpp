@@ -363,7 +363,6 @@ namespace clear
         EXPECT_DATA("struct",DiagnosticCode_None);
         Consume();
 
-
         EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string structName = Consume().GetData();
 
@@ -596,9 +595,9 @@ namespace clear
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
         funcNode->CreateSymbolTable();
 
-        if(Match(TokenType::LessThan))
+        if(Match(TokenType::LeftBracket))
         {
-            while(!Match(TokenType::GreaterThan))
+            while(!Match(TokenType::RightBracket))
             {
                 Consume();
 
@@ -1347,10 +1346,7 @@ namespace clear
                 int precedence = g_Precedence.at(operatorType);
 
                 PopOperatorsUntil([&](const Operator& op) 
-                {
-                    if(op.OperatorExpr == OperatorType::Power)
-                        return op.IsOpenBracket || precedence >= op.Precedence;
-                    
+                { 
                     return op.IsOpenBracket || precedence > op.Precedence;
                 });
 
@@ -1472,11 +1468,11 @@ namespace clear
             resolver->PushToken(Consume());
         }
 
-        if(Match(TokenType::LessThan))
+        if(Match(TokenType::LeftBracket))
         {
             Consume();
 
-            while(!Match(TokenType::GreaterThan))
+            while(!Match(TokenType::RightBracket))
             {
                 resolver->Push(ParseTypeResolver());
 
@@ -1510,9 +1506,9 @@ namespace clear
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
         Root()->Push(classNode);
 
-        if(Match(TokenType::LessThan))
+        if(Match(TokenType::LeftBracket))
         {
-            while(!Match(TokenType::GreaterThan))
+            while(!Match(TokenType::RightBracket))
             {   
                 Consume();
 
@@ -1665,7 +1661,7 @@ namespace clear
 
         SavePosition();
 
-        size_t bracketCount = 1;
+        int64_t bracketCount = 1;
 
         while(bracketCount)
         {
@@ -1674,7 +1670,7 @@ namespace clear
 
             m_Position++;
 
-            VERIFY_WITH_RETURN(m_Position < m_Tokens.size(), DiagnosticCode_UnmatchedBracket, m_Position);
+            VERIFY_WITH_RETURN(m_Position < m_Tokens.size() && bracketCount >= 0, DiagnosticCode_UnmatchedBracket, m_Position);
         }
 
         terminationIndex = m_Position - 1;

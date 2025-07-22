@@ -2310,9 +2310,6 @@ namespace clear
 			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
-		// create ClassName* this pointer type
-		std::shared_ptr<Type> classThis = ctx.TypeReg->GetPointerTo(classTy);
-
 		// handle all function definitions
 
 		for(const auto& definition : GetChildren())
@@ -2326,8 +2323,7 @@ namespace clear
 			std::string qualifiedFunctionName = m_Name + "." + functionName;
 
 			functionDefinition->SetName(qualifiedFunctionName);
-
-			functionDefinition->AddPrefixParam(Parameter { .Name = "this", .Type = classThis });
+	
 			functionDefinition->Codegen(ctx);
 
 			functionDefinition->SetName(functionName);

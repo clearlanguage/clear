@@ -56,7 +56,7 @@ namespace clear
             if constexpr (std::is_same_v<To, ConstantType>)
                 return constTy;
 
-            return std::dynamic_pointer_cast<To>(constTy->GetBaseType());
+            return dyn_cast<To>(constTy->GetBaseType());
         }
 
         if constexpr (std::is_same_v<To, StructType>)
