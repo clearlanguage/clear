@@ -112,6 +112,11 @@ namespace clear
         return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").GetType());
     }
     
+    Symbol Symbol::GetBooleanType(std::shared_ptr<Module> module_)
+    {
+        return Symbol::CreateType(module_->Lookup("bool").GetType());
+    }
+    
     llvm::Value* Symbol::GetLLVMValue()
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");

@@ -1,6 +1,7 @@
 #include "ASTNode.h"
 
 #include "Core/Log.h"
+#include "Core/Operator.h"
 #include "Symbols/FunctionCache.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
@@ -25,6 +26,7 @@
 #include <stack>
 #include <utility>
 #include <stack>
+#include <print>
 
 
 namespace clear
@@ -188,6 +190,27 @@ namespace clear
 		return {};
     }
 
+
+	void ASTBinaryExpression::Print()
+	{
+		if(m_Expression == OperatorType::Add)
+		{
+			std::print("+ ");
+		}
+		else if(m_Expression == OperatorType::Sub)
+		{
+			std::print("- ");
+		}
+		else if (m_Expression == OperatorType::LessThan)
+		{
+			std::print("< ");
+		}
+		else if (m_Expression == OperatorType::GreaterThan)
+		{
+			std::print("> ");
+		}
+	}
+
     bool ASTBinaryExpression::IsMathExpression() const
     {
         switch (m_Expression)
@@ -305,7 +328,7 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
-		auto booleanType = ctx.TypeReg->GetType("bool");
+		auto booleanType = ctx.ClearModule->Lookup("bool").GetType();
 
     	switch (m_Expression)
 		{
@@ -856,6 +879,11 @@ namespace clear
 	
 		return Symbol();
     }
+
+	void ASTVariable::Print()
+	{
+		std::print("{} ", m_Name);
+	}
 
 	ASTAssignmentOperator::ASTAssignmentOperator(AssignmentOperatorType type)
 		: m_Type(type)
@@ -1472,6 +1500,8 @@ namespace clear
 
 		std::vector<std::shared_ptr<ASTNodeBase>> stack;
 
+		//TODO: move this back into ParseExpression so we don't have to keep doing this every time this class's codegen gets called
+
 		auto IsOperand = [](const std::shared_ptr<ASTNodeBase>& child) 
 		{
 			return child->GetType() == ASTNodeType::Literal || 
@@ -1501,17 +1531,37 @@ namespace clear
 				stack.push_back(unaryExpression);
 				continue;
 			}
+			else if (std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child))
+			{
+				binExp->GetChildren().clear();
 
-			std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child);
-			binExp->GetChildren().clear();
+				binExp->Push(stack.back());
+				stack.pop_back();
 
-			binExp->Push(stack.back());
-			stack.pop_back();
+				binExp->Push(stack.back());
+				stack.pop_back();
 
-			binExp->Push(stack.back());
-			stack.pop_back();
+				stack.push_back(binExp);
+			}
+			else if (std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::dynamic_pointer_cast<ASTTernaryExpression>(child))
+			{
+				ternaryExpr->GetChildren().clear();	
 
-			stack.push_back(binExp);
+				ternaryExpr->Push(stack.back());
+				stack.pop_back();
+
+				ternaryExpr->Push(stack.back());
+				stack.pop_back();
+
+				ternaryExpr->Push(stack.back());
+				stack.pop_back();
+
+				stack.push_back(ternaryExpr);
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+			}			
 		}
 
 		if(stack.size() > 0)
@@ -1993,15 +2043,15 @@ namespace clear
 		for (size_t i = 0; i + 1 < children.size(); i += 2)
 		{
 			Branch branch;
-			branch.ConditionBlock = llvm::BasicBlock::Create(ctx.Context, "if_condition");
-			branch.BodyBlock      = llvm::BasicBlock::Create(ctx.Context, "if_body");
+			branch.ConditionBlock = llvm::BasicBlock::Create(ctx.Context, "if.condition");
+			branch.BodyBlock      = llvm::BasicBlock::Create(ctx.Context, "if.body");
 			branch.ExpressionIdx  = i;
 
 			branches.push_back(branch);
 		}
 
-		llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(ctx.Context, "else");
-		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx.Context, "merge");
+		llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(ctx.Context, "if.else");
+		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx.Context, "if.merge");
 
 		if(!ctx.Builder.GetInsertBlock()->getTerminator())
 			ctx.Builder.CreateBr(branches[0].ConditionBlock);
@@ -2071,16 +2121,66 @@ namespace clear
     {
     }
 
-	ASTTernaryExpression::ASTTernaryExpression() {
+	ASTTernaryExpression::ASTTernaryExpression() 
+	{
 
 	}
 
-	Symbol ASTTernaryExpression::Codegen(CodegenContext &) {
-		return {};
+	Symbol ASTTernaryExpression::Codegen(CodegenContext& ctx) 
+	{
+		auto& children = GetChildren();
+
+		CLEAR_VERIFY(children.size() == 3, "invalid node");
+
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		Symbol condition = children.back()->Codegen(ctx);
+
+		llvm::BasicBlock* incomingBlock  = llvm::BasicBlock::Create(ctx.Context, "ternary.incoming",  function);
+		llvm::BasicBlock* falseBlock = llvm::BasicBlock::Create(ctx.Context, "ternary.false", function);
+		llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx.Context, "ternary.merge", function);
+
+		Symbol trueValue, falseValue;
+
+		Symbol trueType = Symbol::GetBooleanType(ctx.ClearModule); 
+		condition = SymbolOps::Cast(condition, trueType, ctx.Builder);
+
+		ctx.Builder.CreateCondBr(condition.GetLLVMValue(), incomingBlock, falseBlock);
+		ctx.Builder.SetInsertPoint(incomingBlock);
+
+		trueValue  = children[1]->Codegen(ctx);
+		auto ip = ctx.Builder.saveIP();
+
+		ctx.Builder.CreateBr(mergeBlock);
+		incomingBlock = ctx.Builder.GetInsertBlock();
+
+		ctx.Builder.SetInsertPoint(falseBlock);
+		
+		falseValue = children[0]->Codegen(ctx);
+
+		SymbolOps::Promote(trueValue, falseValue, ctx.Builder, &ip);
+
+		ctx.Builder.CreateBr(mergeBlock);	
+		falseBlock = ctx.Builder.GetInsertBlock();
+
+		ctx.Builder.SetInsertPoint(mergeBlock);
+
+		// cond true false :?
+		// cond true false
+		// false true cond
+		
+		auto phiNode = ctx.Builder.CreatePHI(trueValue.GetType()->Get(), 2);
+
+		phiNode->addIncoming(trueValue.GetLLVMValue(), incomingBlock);
+		phiNode->addIncoming(falseValue.GetLLVMValue(), falseBlock);
+
+		return Symbol::CreateValue(phiNode, trueValue.GetType());
 	}
 
-
-
+	void ASTTernaryExpression::Print()
+	{
+		std::print("?: ");
+	}
 
     Symbol ASTWhileExpression::Codegen(CodegenContext &ctx)
     {
@@ -2093,9 +2193,9 @@ namespace clear
 
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
-		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "while_condition", function);
-		llvm::BasicBlock* body  = llvm::BasicBlock::Create(ctx.Context, "while_body");
-		llvm::BasicBlock* end   = llvm::BasicBlock::Create(ctx.Context, "while_end");
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "while.condition", function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(ctx.Context, "while.body");
+		llvm::BasicBlock* end   = llvm::BasicBlock::Create(ctx.Context, "while.merge");
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 			ctx.Builder.CreateBr(conditionBlock);

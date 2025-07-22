@@ -45,7 +45,9 @@ namespace clear
 
         static Symbol Cast(Symbol& value, Symbol& dstType, llvm::IRBuilder<>& builder);
 
-        static void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder);
+        static void Promote(Symbol& value1, Symbol& value2, llvm::IRBuilder<>& builder, 
+                            llvm::IRBuilderBase::InsertPoint* insert1 = nullptr, 
+                            llvm::IRBuilderBase::InsertPoint* insert2 = nullptr);
 
 
         static llvm::Function* GetInitGlobalsFunction(llvm::Module& module);

@@ -74,6 +74,8 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&);
 
+		virtual void Print() {}
+
 		void Push(const std::shared_ptr<ASTNodeBase>& child);
 		void Remove(const std::shared_ptr<ASTNodeBase>& child);
 
@@ -114,6 +116,7 @@ namespace clear
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Print() override;
 
 		inline const OperatorType GetExpression() const { return m_Expression; }
 
@@ -173,6 +176,7 @@ namespace clear
 		virtual ~ASTVariable() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Print() override;
 
 		const std::string& GetName() const { return m_Name; }
 
@@ -405,6 +409,7 @@ namespace clear
 		virtual ~ASTTernaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TernaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Print() override;
 	};
 
 	class ASTTypeSpecifier : public ASTNodeBase

@@ -28,7 +28,7 @@ namespace clear
         PostDecrement, PostIncrement,      
 
         Negation, Dot, Index, 
-        Pow,
+        Pow, Ternary,
 
         Count
     };
@@ -92,16 +92,17 @@ namespace clear
         {OperatorType::BitwiseXor,         1}, // x ^ y
         {OperatorType::BitwiseOr,          1}, // x | y
 
-        {OperatorType::LessThan,           0},
-        {OperatorType::GreaterThan,        0},
-        {OperatorType::LessThanEqual,      0},
-        {OperatorType::GreaterThanEqual,   0},
-        {OperatorType::IsEqual,            0},
-        {OperatorType::NotEqual,           0},
-        {OperatorType::Ellipsis,           0},
+        {OperatorType::LessThan,           0}, // x < y
+        {OperatorType::GreaterThan,        0}, // x > y
+        {OperatorType::LessThanEqual,      0}, // x <= y 
+        {OperatorType::GreaterThanEqual,   0}, // x >= y
+        {OperatorType::IsEqual,            0}, // x == y
+        {OperatorType::NotEqual,           0}, // x != y 
+        {OperatorType::Ellipsis,           0}, // ...x
 
         {OperatorType::And,               -1}, // x and y
         {OperatorType::Or,                -2}, // x or y
+        {OperatorType::Ternary,           -3}, // x ? y : z
     }; 
 
     struct Operator
@@ -111,7 +112,14 @@ namespace clear
         bool IsUnary        = false;
         bool IsBinary       = false;
         bool IsOpenBracket  = false;
+        bool IsBeginTernary = false;
 
         int Precedence = 0;
+
+        bool IsRightAssociative() const
+        {
+            return OperatorExpr == OperatorType::Power || 
+                   OperatorExpr == OperatorType::Ternary;
+        }
     };
 }

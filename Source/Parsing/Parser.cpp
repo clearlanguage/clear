@@ -1,6 +1,7 @@
 #include "Parser.h"
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
+#include "Core/Operator.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Lexing/TokenDefinitions.h"
 #include "Lexing/Token.h"
@@ -71,7 +72,6 @@ namespace clear
             TokenType::PlusEquals, 
             TokenType::MinusEquals, 
             TokenType::PercentEquals, 
-            TokenType::Colon,
             TokenType::RightBrace,
             TokenType::EndOfFile, 
             TokenType::Semicolon
@@ -478,7 +478,7 @@ namespace clear
         Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
-        ifExpr->Push(ParseExpression());
+        ifExpr->Push(ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon)));
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         base->CreateSymbolTable();
@@ -516,7 +516,7 @@ namespace clear
         Consume();
 
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
-        whileExp->Push(ParseExpression());
+        whileExp->Push(ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon)));
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         base->CreateSymbolTable();
@@ -538,7 +538,7 @@ namespace clear
         EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
         std::string name = Consume().GetData();
 
-        EXPECT_DATA("in",DiagnosticCode_InvalidForLoop);
+        EXPECT_DATA("in", DiagnosticCode_InvalidForLoop);
         Consume();
 
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
@@ -568,10 +568,11 @@ namespace clear
         Consume();
 
         auto& last = Root()->GetChildren().back();
+
         std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
         VERIFY(ifExpr, DiagnosticCode_ElseNotInIfBlock);
 
-        ifExpr->Push(ParseExpression());
+        ifExpr->Push(ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon)));
 
         std::shared_ptr<ASTNodeBase> base = std::make_shared<ASTNodeBase>();
         base->CreateSymbolTable();
@@ -1136,8 +1137,10 @@ namespace clear
 
                 if (currentOperator.IsBinary)
                     expression->Push(std::make_shared<ASTBinaryExpression>(currentOperator.OperatorExpr));
-                else 
+                else if (currentOperator.IsUnary)
                     expression->Push(std::make_shared<ASTUnaryExpression>(currentOperator.OperatorExpr));
+                else
+                    expression->Push(std::make_shared<ASTTernaryExpression>());
                 
                 operators.pop();
             }
@@ -1292,7 +1295,7 @@ namespace clear
             return OperatorType::None;
         };
 
-        auto HandleOperator = [&](OperatorType operatorType) 
+        auto HandleBinaryOperator = [&](OperatorType operatorType) 
         {
             if(operatorType == OperatorType::None)
             {
@@ -1304,6 +1307,9 @@ namespace clear
 
             PopOperatorsUntil([&](const Operator& op) 
             {
+                if(op.IsRightAssociative())
+                    return op.IsOpenBracket || precedence >= op.Precedence;
+                
                 return op.IsOpenBracket || precedence > op.Precedence;
             });
 
@@ -1327,7 +1333,10 @@ namespace clear
 
                 PopOperatorsUntil([&](const Operator& op) 
                 {
-                    return op.IsOpenBracket || precedence >= op.Precedence;
+                    if(op.IsRightAssociative())
+                        return op.IsOpenBracket || precedence >= op.Precedence;
+                    
+                    return op.IsOpenBracket || precedence > op.Precedence;
                 });
 
                 operators.push({
@@ -1352,6 +1361,9 @@ namespace clear
 
                 PopOperatorsUntil([&](const Operator& op) 
                 { 
+                     if(op.IsRightAssociative())
+                        return op.IsOpenBracket || precedence >= op.Precedence;
+
                     return op.IsOpenBracket || precedence > op.Precedence;
                 });
 
@@ -1369,12 +1381,7 @@ namespace clear
         {
             for(const auto& expr : expression->GetChildren())
             {
-                if(auto e = std::dynamic_pointer_cast<ASTBinaryExpression>(expr))
-                    std::print("binary_op ");
-                else if(auto e = std::dynamic_pointer_cast<ASTUnaryExpression>(expr))
-                    std::print("unary_op ");
-                else 
-                    std::print("operand ");
+                expr->Print();
             }  
             
             std::println();
@@ -1401,7 +1408,7 @@ namespace clear
             }
             else if (operatorType != OperatorType::None)
             {
-                HandleOperator(operatorType);
+                HandleBinaryOperator(operatorType);
 
                 if(operatorType == OperatorType::Index) 
                 {
@@ -1409,6 +1416,30 @@ namespace clear
                 }
 
                 Consume();
+            }
+            else if (Match("?")) 
+            {
+                PopOperatorsUntil([](const Operator& op) { return op.OperatorExpr == OperatorType::Ternary || op.IsOpenBracket; });
+
+                operators.push({ .IsBeginTernary = true });
+                Consume();
+            }
+            else if (Match(":"))
+            {
+                PopOperatorsUntil([](const Operator& op)
+                {
+                    return op.IsBeginTernary;
+                });
+
+                if (!operators.empty()) 
+                    operators.pop(); // remove the start ternary
+
+                Consume();
+
+                operators.push({
+                    .OperatorExpr = OperatorType::Ternary, 
+                    .Precedence = g_Precedence.at(OperatorType::Ternary)
+                });
             }
             
             HandlePostUnaryOperators();

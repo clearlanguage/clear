@@ -423,11 +423,12 @@ namespace clear
         return Symbol::CreateValue(casted, dstType.GetType());
     }
     
-    void SymbolOps::Promote(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder)
+    void SymbolOps::Promote(Symbol& lhs, Symbol& rhs, llvm::IRBuilder<>& builder, 
+                            llvm::IRBuilderBase::InsertPoint* insert1, 
+                            llvm::IRBuilderBase::InsertPoint* insert2)
     {
         auto [valuel, typel] = lhs.GetValue();
         auto [valuer, typer] = rhs.GetValue();
-
 
         llvm::Type* lhsType = typel->Get();
         llvm::Type* rhsType = typer->Get();
@@ -436,17 +437,26 @@ namespace clear
         if (lhsType == rhsType)
             return;
 
+
+        auto currIp = builder.saveIP();
+
         // int -> float
         if (lhsType->isIntegerTy() && rhsType->isFloatingPointTy())
         {
+            if(insert1)
+                builder.restoreIP(*insert1);
+
 			if(typel->IsSigned())
             	lhs = Symbol::CreateValue(builder.CreateSIToFP(valuel, rhsType, "cast"), typer);
 			else
             	lhs = Symbol::CreateValue(builder.CreateUIToFP(valuel, rhsType, "cast"), typer);
-
+            
         }
         else if (lhsType->isFloatingPointTy() && rhsType->isIntegerTy())
         {
+             if(insert2)
+                builder.restoreIP(*insert2);
+
 			if(typer->IsSigned())
             	rhs = Symbol::CreateValue(builder.CreateSIToFP(valuer, lhsType, "cast"), typel);
 			else
@@ -456,10 +466,16 @@ namespace clear
         // float -> double
         else if (lhsType->isFloatTy() && rhsType->isDoubleTy())
         {
+             if(insert1)
+                builder.restoreIP(*insert1);
+
             lhs = Symbol::CreateValue(builder.CreateFPExt(valuel, rhsType, "cast"), typer);
         }
         else if (lhsType->isDoubleTy() && rhsType->isFloatTy())
         {
+            if(insert2)
+                builder.restoreIP(*insert2);
+
             rhs = Symbol::CreateValue(builder.CreateFPExt(valuer, lhsType, "cast"), typel);
         }
         // small int -> big int
@@ -470,6 +486,9 @@ namespace clear
 
             if (lhsBits < rhsBits)
             {
+                if(insert1)
+                    builder.restoreIP(*insert1);
+
                 if(typel->IsSigned())
                 {
                     lhs = Symbol::CreateValue(builder.CreateSExt(valuel, rhsType, "cast"), typer);
@@ -481,6 +500,9 @@ namespace clear
             }
             else
             {
+                if(insert2)
+                    builder.restoreIP(*insert2);
+
                 if(typer->IsSigned())
                 {
                     rhs = Symbol::CreateValue(builder.CreateSExt(valuer, lhsType, "cast"), typel);
@@ -489,13 +511,15 @@ namespace clear
                 {
                     rhs = Symbol::CreateValue(builder.CreateZExt(valuer, lhsType, "cast"), typel);
                 }
-
             }
         }
         else
         {
             CLEAR_UNREACHABLE("unsupported type promotion");
         }
+
+        
+        builder.restoreIP(currIp);
     }
     
     llvm::Function* SymbolOps::GetInitGlobalsFunction(llvm::Module& module)

@@ -65,6 +65,7 @@ namespace clear
         Increment,           // ++
         Decrement,           // --
         Ellipses,            // ...
+        QuestionMark,        // ?
 
         EndLine,
         EndScope,
@@ -127,7 +128,7 @@ namespace clear
         "=", "<", ">",
         "!", "&", "|",
         "^", "~",
-        "."
+        ".", "?"
     };
 
     inline map<std::string, TokenType> g_OperatorMappings = {
@@ -146,6 +147,7 @@ namespace clear
             {"~",    TokenType::Telda},
             {".",    TokenType::Dot},
             {"...",  TokenType::Ellipses},
+            {"?",    TokenType::QuestionMark},
 
             {"++",   TokenType::Increment},
             {"--",   TokenType::Decrement},
