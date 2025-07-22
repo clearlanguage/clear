@@ -543,6 +543,10 @@ namespace clear
 
 				CLEAR_UNREACHABLE("unimplemented");
 			}
+			case SymbolKind::ClassTemplate:
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+			}
 			case SymbolKind::Module:
 			{
 				return HandleModuleAccess(lhs, right, ctx);
@@ -1702,7 +1706,12 @@ namespace clear
 
 		if(isConst)
 		{
-			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
+			Symbol valuePtr = Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
+
+			if(!ctx.WantAddress)
+				return SymbolOps::Load(valuePtr, ctx.Builder);
+
+			return valuePtr;
 		}
 
 		llvm::Value* structAlloc = ctx.Builder.CreateAlloca(llvmStructTy, nullptr, "struct.alloc");
@@ -1727,7 +1736,12 @@ namespace clear
 		    }
 		}
 
-		return Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
+		Symbol valuePtr = Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
+
+		if(!ctx.WantAddress)
+			return SymbolOps::Load(valuePtr, ctx.Builder);
+
+		return valuePtr;
 	}
 
 	llvm::Constant* ASTStructExpr::GetDefaultValue(llvm::Type* type)
