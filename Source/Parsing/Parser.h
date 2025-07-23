@@ -101,7 +101,9 @@ namespace clear
             Consume();
 
             auto expr = std::make_shared<T>();
-            expr->Push(ty);
+
+            if(ty)
+                expr->Push(ty);
 
             while(!Match(TokenType::RightBrace))
             {
