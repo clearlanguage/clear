@@ -1638,7 +1638,12 @@ namespace clear
 
 		if(isConst)
 		{
-			return Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
+			Symbol valuePtr = Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
+
+			if(!ctx.WantAddress)
+				return SymbolOps::Load(valuePtr, ctx.Builder);
+
+			return valuePtr;
 		}
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
@@ -1671,7 +1676,12 @@ namespace clear
 		    }
 		}
 
-		return Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
+		Symbol valuePtr = Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
+
+		if(!ctx.WantAddress)
+			return SymbolOps::Load(valuePtr, ctx.Builder);
+
+		return valuePtr;
 	}
 
 	Symbol ASTStructExpr::Codegen(CodegenContext& ctx)

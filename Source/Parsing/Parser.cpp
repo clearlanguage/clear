@@ -1493,6 +1493,9 @@ namespace clear
             }
         }
 
+        if(!(Match(TokenType::Keyword) || Match(TokenType::Identifier)))
+            return resolver;
+
         resolver->PushToken(Consume());
 
         while(Match(TokenType::Dot))
@@ -1510,6 +1513,8 @@ namespace clear
              // hack to allow the ASTTypeResolver to differentiate between an array and a template
             resolver->PushToken(Token(TokenType::LessThan, "<"));
 
+            size_t prev = m_Position;
+
             while(!Match(TokenType::RightBracket))
             {
                 resolver->Push(ParseTypeResolver());
@@ -1518,6 +1523,11 @@ namespace clear
                 {
                     Consume();
                 }
+
+                if(m_Position == prev)
+                    return resolver;
+
+                prev = m_Position;
             }
 
             Consume();
@@ -1584,6 +1594,9 @@ namespace clear
 
         while(!Match(TokenType::EndScope))
         {
+            while(Match(TokenType::EndLine))
+                Consume();
+
             if(Match("function"))
             {
                 size_t rootLevel = m_RootStack.size();
@@ -1599,34 +1612,29 @@ namespace clear
                 continue;
             }
 
-            if(Match(TokenType::Keyword) || Match(TokenType::Identifier))
+            auto type = ParseTypeResolver();
+
+            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
+
+            auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
+            typeSpec->Push(type);
+
+            if(Match(TokenType::Equals))
             {
-                auto type = ParseTypeResolver();
-
-                EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-
-                auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
-                typeSpec->Push(type);
-
-                if(Match(TokenType::Equals))
-                {
-                    Consume();
-                    defaultValues.push_back(ParseExpression());
-                }
-                else 
-                {
-                    defaultValues.push_back(nullptr);
-                }
-
-                types.push_back(typeSpec);
-
-                if(Match(TokenType::Comma))
-                    Consume();
-
-                EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
                 Consume();
-                continue;
-            }           
+                defaultValues.push_back(ParseExpression());
+            }
+            else 
+            {
+                defaultValues.push_back(nullptr);
+            }
+
+            types.push_back(typeSpec);
+
+            if(Match(TokenType::Comma))
+                Consume();
+            
+            EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
 
             Consume();
         }
