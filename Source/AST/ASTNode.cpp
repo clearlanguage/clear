@@ -62,38 +62,6 @@ namespace clear
     {
     }
 
-    Symbol ASTNodeBase::Codegen(CodegenContext& ctx)
-    {
-		PushScopeMarker(ctx);
-
-        Symbol value;
-
-		for (auto& child : GetChildren())
-		{
-			bool isContinue = child->GetType() == ASTNodeType::LoopControlFlow;
-			value = child->Codegen(ctx);
-
-			if(isContinue) 
-				break;
-		}
-
-		GetSymbolTable()->FlushScope(ctx);
-
-		return value;
-    }
-
-    void ASTNodeBase::Push(const std::shared_ptr<ASTNodeBase>& child)
-    {
-        m_Children.push_back(child);
-    }
-
-    void ASTNodeBase::Remove(const std::shared_ptr<ASTNodeBase>& child)
-    {
-        auto pos = std::find(m_Children.begin(), m_Children.end(), child);
-    	if(pos != m_Children.end())
-    	    m_Children.erase(pos);
-    }
-
     void ASTNodeBase::PropagateSymbolTableToChildren()
     {
 		for(auto& child : m_Children)
@@ -135,6 +103,28 @@ namespace clear
 		}
 
     }
+	
+	Symbol ASTBlock::Codegen(CodegenContext& ctx)
+	{
+		for (auto child : m_Children)
+			child->Codegen(ctx);
+
+		return Symbol();
+	}
+
+
+	void ASTBlock::Push(std::shared_ptr<ASTNodeBase> child)
+	{
+		m_Children.push_back(child);
+	}
+
+	void ASTBlock::Erase(std::shared_ptr<ASTNodeBase> child)
+	{
+		auto it = std::find(m_Children.begin(), m_Children.end(), child);
+		if (it != m_Children.back())
+			m_Children.erase(it);
+
+	}
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
 		: m_Token(data)
@@ -157,14 +147,10 @@ namespace clear
 
 	Symbol ASTBinaryExpression::Codegen(CodegenContext& ctx)
 	{
-		auto& builder = ctx.Builder;
-		auto& context = ctx.Context;
-		auto& children = GetChildren();
+		CLEAR_VERIFY(LeftSide && RightSide, "Cannot be null");
 
-		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
-
-		auto& leftChild  = children[1];
-		auto& rightChild = children[0];
+		auto& leftChild  = LeftSide;
+		auto& rightChild = RightSide;
 
 		if(IsMathExpression())
 			return HandleMathExpression(leftChild, rightChild, ctx);
@@ -739,13 +725,9 @@ namespace clear
 
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
-		auto& children = GetChildren();
-
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
 		
-		auto& typeResolver = children[0];
-
-		Symbol resolvedType = typeResolver->Codegen(ctx);
+		Symbol resolvedType = TypeResolver->Codegen(ctx);
 
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 		Allocation alloca;
@@ -758,11 +740,11 @@ namespace clear
 
 				alloca = isGlobal ? tbl->CreateGlobal(m_Name, m_Type, ctx.Module) : tbl->CreateAlloca(m_Name, m_Type, ctx.Builder);
 
-				if(children.size() == 2)
+				if (Initializer) 
 				{
 					ValueRestoreGuard guard(ctx.WantAddress, false);
 
-					Symbol value = children[1]->Codegen(ctx);
+					Symbol value = Initializer->Codegen(ctx);
 				
 					Symbol allocaSymbol = Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
 
@@ -786,10 +768,10 @@ namespace clear
 			{
 				bool isConst = resolvedType.GetInferType().IsConst;
 
-				CLEAR_VERIFY(children.size() == 2, "cannot have an inferred type without value");
+				CLEAR_VERIFY(Initializer, "cannot have an inferred type without value");
 
 				ValueRestoreGuard guard(ctx.WantAddress, false);
-				Symbol value = children[1]->Codegen(ctx);
+				Symbol value = Initializer->Codegen(ctx);
 				m_Type = value.GetType();
 
 				bool shouldMemcpy = false;
@@ -848,7 +830,8 @@ namespace clear
 		Symbol result;
 
 		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
+		//TODO: make semantic analyzer add the variable reference here instead of node searching for it.
+		
 		if(tbl->HasAlloca(m_Name))
 		{
 			Allocation alloca = tbl->GetAlloca(m_Name);
@@ -894,25 +877,25 @@ namespace clear
     {
 		auto& builder = ctx.Builder;
 		auto& context = ctx.Context;
-		auto& children = GetChildren();
 
-		CLEAR_VERIFY(children.size() == 2, "incorrect dimensions");
+		CLEAR_VERIFY(Storage && Value, "Assigment operator must have a storage and value");
 	
 		Symbol storage;
 		
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, true);
-			storage = children[0]->Codegen(ctx);
+			storage = Storage->Codegen(ctx);
 		}
 
 		Symbol data;
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, false);
-			data    = children[1]->Codegen(ctx);
+			data    = Value->Codegen(ctx);
 		}
 
 		ValueSymbol value = data.GetValueSymbol();
 
+		//TODO: remove should be handled by semantic analyzer
 		if(value.ShouldMemcpy)
 		{
 			CLEAR_VERIFY(storage.GetType() == data.GetType(), "");
@@ -922,6 +905,7 @@ namespace clear
 			return Symbol();
 		}
 
+		//TODO: this will be handled by semantic analyzer
 		HandleDifferentTypes(storage, data, ctx);
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)

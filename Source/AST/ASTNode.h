@@ -29,7 +29,7 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr, StructExpr
+		Switch, ListExpr, StructExpr, Block
 	};
 
 	class ASTNodeBase;
@@ -72,12 +72,9 @@ namespace clear
 		ASTNodeBase();
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
-		virtual Symbol Codegen(CodegenContext&);
+		virtual Symbol Codegen(CodegenContext&) = 0;
 
 		virtual void Print() {}
-
-		void Push(const std::shared_ptr<ASTNodeBase>& child);
-		void Remove(const std::shared_ptr<ASTNodeBase>& child);
 
 		void PropagateSymbolTableToChildren();
 
@@ -86,14 +83,26 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
-		auto& GetChildren() { return m_Children; }
-	
 	private:
 		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
 
 	private:
-		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
 		std::shared_ptr<SymbolTable> m_SymbolTable;
+	};
+	
+	class ASTBlock : public ASTNodeBase
+	{
+	public:
+		ASTBlock() = default;
+		virtual ~ASTBlock() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+		void Push(std::shared_ptr<ASTNodeBase> child);
+		void Erase(std::shared_ptr<ASTNodeBase> child);
+
+	private:
+		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
 	};
 
 	class ASTNodeLiteral : public ASTNodeBase
@@ -127,6 +136,11 @@ namespace clear
 		static Symbol HandleMathExpressionUI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 		static Symbol HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 
+
+	public:
+		std::shared_ptr<ASTNodeBase> LeftSide;
+		std::shared_ptr<ASTNodeBase> RightSide;
+
 	private:
 		bool IsMathExpression()    const;
 		bool IsCmpExpression()     const;
@@ -150,7 +164,7 @@ namespace clear
 		Symbol HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
 	private:
-		OperatorType m_Expression;
+		OperatorType m_Expression;	
 	};
 
 	class ASTVariableDeclaration : public ASTNodeBase
@@ -163,6 +177,11 @@ namespace clear
 
 		const auto& GetName() const { return m_Name; }
 		const auto& GetResolvedType() const { return m_Type; }
+	
+	public:
+		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<ASTNodeBase> Initializer;
+
 
 	private:
 		std::string m_Name;
@@ -182,6 +201,7 @@ namespace clear
 
 	private:
 		std::string m_Name;
+		int64_t m_ID = 0;
 	};
 
 	enum class AssignmentOperatorType 
@@ -196,6 +216,10 @@ namespace clear
 		virtual ~ASTAssignmentOperator() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::AssignmentOperator; }
 		virtual Symbol Codegen(CodegenContext&);
+
+	public:
+		std::shared_ptr<ASTNodeBase> Storage;
+		std::shared_ptr<ASTNodeBase> Value;
 
 	private:
 		void HandleDifferentTypes(Symbol& storage, Symbol& data, CodegenContext& ctx);
