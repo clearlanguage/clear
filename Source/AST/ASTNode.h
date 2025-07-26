@@ -73,7 +73,7 @@ namespace clear
 		ASTNodeBase();
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
-		virtual Symbol Codegen(CodegenContext&) = 0;
+		virtual Symbol Codegen(CodegenContext&); 
 
 		virtual void Print() {}
 
@@ -83,6 +83,9 @@ namespace clear
 		void SetSymbolTable(std::shared_ptr<SymbolTable> tbl);
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Children;
 
 	private:
 		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
@@ -99,11 +102,8 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
-		void Push(std::shared_ptr<ASTNodeBase> child);
-		void Erase(std::shared_ptr<ASTNodeBase> child);
-
-	private:
-		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Children;
 	};
 
 	class ASTNodeLiteral : public ASTNodeBase
@@ -420,6 +420,9 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
+	public:
+		std::shared_ptr<ASTNodeBase> ReturnValue;
+
 	private:
 		void EmitDefaultReturn(CodegenContext& ctx);
 	};
@@ -431,6 +434,9 @@ namespace clear
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
 
 	private: 
 		OperatorType m_Type;
@@ -649,4 +655,4 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Switch; }
 		virtual Symbol Codegen(CodegenContext&) override; 
 	};	
-}
+} 

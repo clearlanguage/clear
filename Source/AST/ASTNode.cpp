@@ -20,6 +20,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
+#include <llvm/MC/MCInstrDesc.h>
 #include <llvm/Support/Casting.h>
 
 #include <memory>
@@ -62,9 +63,19 @@ namespace clear
     {
     }
 
+	Symbol ASTNodeBase::Codegen(CodegenContext& ctx)
+	{
+		for (auto child : Children)
+		{
+			child->Codegen(ctx);
+		}
+
+		return Symbol();
+	}
+
     void ASTNodeBase::PropagateSymbolTableToChildren()
     {
-		for(auto& child : m_Children)
+		for(auto child : Children)
 			child->PropagateSymbolTable(m_SymbolTable);
     }
 
@@ -96,7 +107,7 @@ namespace clear
 			m_SymbolTable = registry;
 		}
 
-		for(auto& child : m_Children)
+		for(auto child : Children)
 		{
 			if(child)
 				child->PropagateSymbolTable(m_SymbolTable);
@@ -106,24 +117,10 @@ namespace clear
 	
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
 	{
-		for (auto child : m_Children)
+		for (auto child : Children)
 			child->Codegen(ctx);
 
 		return Symbol();
-	}
-
-
-	void ASTBlock::Push(std::shared_ptr<ASTNodeBase> child)
-	{
-		m_Children.push_back(child);
-	}
-
-	void ASTBlock::Erase(std::shared_ptr<ASTNodeBase> child)
-	{
-		auto it = std::find(m_Children.begin(), m_Children.end(), child);
-		if (it != m_Children.back())
-			m_Children.erase(it);
-
 	}
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
@@ -1754,21 +1751,19 @@ namespace clear
 
 	Symbol ASTReturn::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
-
 		llvm::BasicBlock* currentBlock = ctx.Builder.GetInsertBlock();
 
 		if(currentBlock->getTerminator()) 
 			return {};
 
-		if(children.size() == 0) 
+		if (!ReturnValue)
 		{
 			EmitDefaultReturn(ctx);
 			return {};
 		}
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
-		Symbol codegen = children[0]->Codegen(ctx);
+		Symbol codegen = ReturnValue->Codegen(ctx);
 
 		if(codegen.Kind == SymbolKind::None)
 		{
@@ -1814,9 +1809,7 @@ namespace clear
 
 	Symbol ASTUnaryExpression::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() == 1, "incorrect dimensions");
+		CLEAR_VERIFY(Operand, "incorrect dimensions");
 
 		if(m_Type == OperatorType::Dereference)
 		{
@@ -1824,7 +1817,7 @@ namespace clear
 
 			{
 				ValueRestoreGuard guard(ctx.WantAddress, false);
-				result = children[0]->Codegen(ctx);
+				result = Operand->Codegen(ctx);
 			}
 
 			auto [resultValue, resultType] = result.GetValue();
@@ -1842,12 +1835,12 @@ namespace clear
 		if(m_Type == OperatorType::Address)
 		{		
 			ValueRestoreGuard guard(ctx.WantAddress, true);
-			return children[0]->Codegen(ctx);;
+			return Operand->Codegen(ctx);;
 		}
 
 		if(m_Type == OperatorType::Negation)
 		{			
-			Symbol result = children[0]->Codegen(ctx);
+			Symbol result = Operand->Codegen(ctx);
 
 			auto signedType = result.GetType();
 
@@ -1861,15 +1854,15 @@ namespace clear
 
 		if(m_Type == OperatorType::Not)
 		{
-			Symbol result = children[0]->Codegen(ctx);
+			Symbol result = Operand->Codegen(ctx);
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
 		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.TypeReg->GetType("int32"));
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
-
-		Symbol result = children[0]->Codegen(ctx);
+		
+		Symbol result = Children[0]->Codegen(ctx);
 		auto [resultValue, resultType] = result.GetValue();
 
 		CLEAR_VERIFY(resultType->IsPointer(), "not valid type for increment");
