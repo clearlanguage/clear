@@ -1848,7 +1848,7 @@ namespace clear
 			{
 				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).GetType();
 			}
-// random comment
+
 			return SymbolOps::Neg(result, ctx.Builder, signedType); 
 		}
 
