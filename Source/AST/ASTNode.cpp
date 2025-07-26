@@ -813,6 +813,8 @@ namespace clear
 
 		const Symbol& sym = ResolvedSymbol.value();
 
+		if (ResolvedAllocation.has_value()) {
+
 		if (ctx.WantAddress) {
 			auto& alloca = ResolvedAllocation.value();
 			if(alloca.Type->IsVariadic())  // special case
@@ -820,9 +822,10 @@ namespace clear
 				return ResolvedSymbol.value();
 			}
 			return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-		}else {
+		}
 			auto& alloca = ResolvedAllocation.value();
 			return Symbol::CreateValue(builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name.GetData()), alloca.Type);
+
 		}
 
 
