@@ -20,7 +20,6 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
-#include <llvm/MC/MCInstrDesc.h>
 #include <llvm/Support/Casting.h>
 
 #include <memory>
@@ -63,19 +62,9 @@ namespace clear
     {
     }
 
-	Symbol ASTNodeBase::Codegen(CodegenContext& ctx)
-	{
-		for (auto child : Children)
-		{
-			child->Codegen(ctx);
-		}
-
-		return Symbol();
-	}
-
     void ASTNodeBase::PropagateSymbolTableToChildren()
     {
-		for(auto child : Children)
+		for(auto& child : Children)
 			child->PropagateSymbolTable(m_SymbolTable);
     }
 
@@ -107,7 +96,7 @@ namespace clear
 			m_SymbolTable = registry;
 		}
 
-		for(auto child : Children)
+		for(auto& child : Children)
 		{
 			if(child)
 				child->PropagateSymbolTable(m_SymbolTable);
@@ -156,8 +145,6 @@ namespace clear
 			return HandleCmpExpression(leftChild, rightChild, ctx);
 
 		if(m_Expression == OperatorType::Index)
-			return HandleArrayIndex(leftChild, rightChild, ctx);
-
     	if (IsBitwiseExpression())
 			return HandleBitwiseExpression(leftChild, rightChild, ctx);
 
@@ -913,6 +900,8 @@ namespace clear
 
 		Symbol loadedValue = SymbolOps::Load(storage, ctx.Builder);		
 
+		Symbol loadedValue = SymbolOps::Load(storage, ctx.Builder);		
+
 		Symbol tmp;
 
 		if(m_Type == AssignmentOperatorType::Add)
@@ -989,21 +978,52 @@ namespace clear
 		m_PrefixParams.clear();
 
 
-		for (auto arg : Arguments)
+		size_t i = 0;
+		for(auto arg : Arguments)
 		{
-			Symbol result = arg->Codegen(ctx);
-			isVariadic = arg->IsVariadic;
+			auto fnParam = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
 
-			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), arg->IsVariadic });
+			Symbol result = fnParam->Codegen(ctx);
+			isVariadic = fnParam->IsVariadic;
+
+			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), fnParam->IsVariadic });
 		}
 
-		if (ReturnType)
-			m_ResolvedReturnType = ReturnType->Codegen(ctx).GetType();
+
+		if(!children[i])
+			i++;
+
+		// resolve return type
+		if(i < children.size() && children[i]->GetType() == ASTNodeType::TypeResolver)
+		{
+			if(children[i])
+				m_ResolvedReturnType = children[i]->Codegen(ctx).GetType();
 		
+			i++;
+		}
+
+
 		RemoveGenerics(ctx);
 		
+		// resolve default arguments
+		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_ResolvedParams.size(), nullptr);
 
-		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, DefaultArguments, ShallowCopy(), ctx.ClearModule);
+		for(; i < children.size(); i++)
+		{
+			if(children[i]->GetType() != ASTNodeType::DefaultArgument) 
+				break;
+
+			auto arg = std::dynamic_pointer_cast<ASTDefaultArgument>(children[i]);
+			size_t argIndex = arg->GetIndex();
+
+			CLEAR_VERIFY(argIndex < defaultArgs.size(), "invalid arg index!");
+			defaultArgs[argIndex] = arg;
+		}
+
+		// erase no longer needed children (params, return type and default args)
+		children.erase(children.begin(), children.begin() + i);
+
+		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, ShallowCopy(), ctx.ClearModule);
 		
 		// main needs to be instantiated immedietly as nothing calls it.
 		if(m_Name == "main")
@@ -1014,47 +1034,6 @@ namespace clear
 		return {};
 	}
 
-    void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
-    {
-		PushScopeMarker(ctx);
-
-		auto& module  = ctx.Module;
-		auto& context = ctx.Context;
-		auto& builder = ctx.Builder;
-
-		s_InsertPoints.push(builder.saveIP());
-
-		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionData.Function);
-		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "body");
-		
-		builder.SetInsertPoint(entry);
-
-		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
-		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(functionData.ReturnType->Get(), nullptr, "return_value") : nullptr;
-		
-		ValueRestoreGuard guard1(ctx.ReturnType,   functionData.ReturnType);
-		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
-		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
-		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
-
-		uint32_t k = 0;
-
-		bool hasVaArgs = false;
-
-		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
-		for (const auto& param : m_ResolvedParams)
-		{
-			if(param.IsVariadic)
-			{
-				hasVaArgs = true;
-				break;
-			}
-
-			auto type = param.Type;
-
-			if(type->IsTrait() || type->IsGeneric())
-			{
 				type = functionData.Parameters[k].Type;
 			}
 
@@ -1352,20 +1331,20 @@ namespace clear
 		}
     }
 
-    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name)
+    ASTFunctionDeclaration::ASTFunctionDeclaration(const std::string& name)
 		: m_Name(name)
     {
     }
 
-	Symbol ASTFunctionDecleration::Codegen(CodegenContext& ctx)
+	Symbol ASTFunctionDeclaration::Codegen(CodegenContext& ctx)
 	{
 		auto& module = ctx.Module;
-
+    ASTFunctionDecleration::ASTFunctionDecleration(const std::string& name)
 		std::vector<llvm::Type*> types;
 
 		for (auto arg : Arguments)
 		{
-			Symbol param = arg->Codegen(ctx);
+	Symbol ASTFunctionDecleration::Codegen(CodegenContext& ctx)
 
 			m_Parameters.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = arg->IsVariadic });
 		} 
@@ -1449,7 +1428,7 @@ namespace clear
 
 			if (std::shared_ptr<ASTUnaryExpression> unaryExpression = std::dynamic_pointer_cast<ASTUnaryExpression>(child))
 			{
-				unaryExpression->Push(stack.back());
+				unaryExpression->Operand = stack.back();
 				stack.pop_back();
 
 				stack.push_back(unaryExpression);
@@ -1467,13 +1446,13 @@ namespace clear
 			}
 			else if (std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::dynamic_pointer_cast<ASTTernaryExpression>(child))
 			{
-				ternaryExpr->Push(stack.back());
+				ternaryExpr->Falsy = stack.back();
 				stack.pop_back();
 
-				ternaryExpr->Push(stack.back());
+				ternaryExpr->Truthy = stack.back();
 				stack.pop_back();
 
-				ternaryExpr->Push(stack.back());
+				ternaryExpr->Condition = stack.back();
 				stack.pop_back();
 
 				stack.push_back(ternaryExpr);
@@ -1862,7 +1841,7 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
 		
-		Symbol result = Children[0]->Codegen(ctx);
+		Symbol result = Operand->Codegen(ctx);
 		auto [resultValue, resultType] = result.GetValue();
 
 		CLEAR_VERIFY(resultType->IsPointer(), "not valid type for increment");
@@ -1941,10 +1920,6 @@ namespace clear
 
 	Symbol ASTIfExpression::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() > 1, "size must be greater than 1");
-
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
 		struct Branch
@@ -1954,11 +1929,10 @@ namespace clear
 			int64_t ExpressionIdx = 0;
 		};
 
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "");
 
 		std::vector<Branch> branches;
 
-		for (size_t i = 0; i + 1 < children.size(); i += 2)
+		for (size_t i = 0; ConditionalBlocks.size(); i++)
 		{
 			Branch branch;
 			branch.ConditionBlock = llvm::BasicBlock::Create(ctx.Context, "if.condition");
@@ -1987,10 +1961,11 @@ namespace clear
 
 			{
 				ValueRestoreGuard guard(ctx.WantAddress, false);
-				condition = children[branch.ExpressionIdx]->Codegen(ctx);
+				condition = ConditionalBlocks[i].Condition->Codegen(ctx);
 			}
 
 			auto [conditionValue, conditionType] = condition.GetValue();
+			//TODO: sema pass should insert casts, these casts should be handled by sema pass
 
 			if (conditionType->IsIntegral() && conditionType->GetSizeInBytes(ctx.Module) > 1)
 			{
@@ -2011,8 +1986,7 @@ namespace clear
 			function->insert(function->end(), branch.BodyBlock);
 			ctx.Builder.SetInsertPoint(branch.BodyBlock);
 			
-			CLEAR_VERIFY(branch.ExpressionIdx + 1 < children.size(), "");
-			children[branch.ExpressionIdx + 1]->Codegen(ctx);
+			ConditionalBlocks[i].CodeBlock->Codegen(ctx);
 			
 			if (!ctx.Builder.GetInsertBlock()->getTerminator())
 				ctx.Builder.CreateBr(mergeBlock);
@@ -2021,10 +1995,9 @@ namespace clear
 		function->insert(function->end(), elseBlock);
 		ctx.Builder.SetInsertPoint(elseBlock);
 
-		size_t last = children.size() - 1;
 
-		if (children.size() > 2 && children[last]->GetType() == children[last - 1]->GetType())
-			children[last]->Codegen(ctx);
+		if (ElseBlock)
+			ElseBlock->Codegen(ctx);
 	
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 			ctx.Builder.CreateBr(mergeBlock);
@@ -2038,21 +2011,73 @@ namespace clear
     ASTWhileExpression::ASTWhileExpression()
     {
     }
+	
+    Symbol ASTWhileExpression::Codegen(CodegenContext& ctx)
+    {
+		PushScopeMarker(ctx);
+
+		CLEAR_VERIFY(WhileBlock.Condition && WhileBlock.CodeBlock, "Cannot have null values here");
+
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "while.condition", function);
+		llvm::BasicBlock* body  = llvm::BasicBlock::Create(ctx.Context, "while.body");
+		llvm::BasicBlock* end   = llvm::BasicBlock::Create(ctx.Context, "while.merge");
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(conditionBlock);
+
+		ctx.Builder.SetInsertPoint(conditionBlock);
+
+		Symbol condition;
+			
+		{
+			ValueRestoreGuard guard(ctx.WantAddress, false);
+			condition = WhileBlock.Condition->Codegen(ctx);
+		}
+
+		auto [conditionValue, conditionType] = condition.GetValue();
+		
+		//TODO: Move casting to semantic analyzer
+		if (conditionType->IsIntegral())
+			conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
+			
+		else if (conditionType->IsFloatingPoint())
+			conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateCondBr(conditionValue, body, end);
+
+		function->insert(function->end(), body);
+		ctx.Builder.SetInsertPoint(body);
+
+    	ValueRestoreGuard guard1(ctx.LoopConditionBlock, conditionBlock);
+    	ValueRestoreGuard guard2(ctx.LoopEndBlock,       end);
+
+		WhileBlock.CodeBlock->Codegen(ctx);
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+		{
+			GetSymbolTable()->FlushScope(ctx);
+			ctx.Builder.CreateBr(conditionBlock);
+		}
+		
+		function->insert(function->end(), end);
+		ctx.Builder.SetInsertPoint(end);
+		
+		return {};
+	}
+
 
 	ASTTernaryExpression::ASTTernaryExpression() 
 	{
-
 	}
 
 	Symbol ASTTernaryExpression::Codegen(CodegenContext& ctx) 
 	{
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() == 3, "invalid node");
-
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
-		Symbol condition = children.back()->Codegen(ctx);
+		Symbol condition = Condition->Codegen(ctx);
 
 		llvm::BasicBlock* incomingBlock  = llvm::BasicBlock::Create(ctx.Context, "ternary.incoming",  function);
 		llvm::BasicBlock* falseBlock = llvm::BasicBlock::Create(ctx.Context, "ternary.false", function);
@@ -2066,7 +2091,7 @@ namespace clear
 		ctx.Builder.CreateCondBr(condition.GetLLVMValue(), incomingBlock, falseBlock);
 		ctx.Builder.SetInsertPoint(incomingBlock);
 
-		trueValue  = children[1]->Codegen(ctx);
+		trueValue  = Truthy->Codegen(ctx);
 		auto ip = ctx.Builder.saveIP();
 
 		ctx.Builder.CreateBr(mergeBlock);
@@ -2074,7 +2099,7 @@ namespace clear
 
 		ctx.Builder.SetInsertPoint(falseBlock);
 		
-		falseValue = children[0]->Codegen(ctx);
+		falseValue = Falsy->Codegen(ctx);
 
 		SymbolOps::Promote(trueValue, falseValue, ctx.Builder, &ip);
 
@@ -2100,66 +2125,6 @@ namespace clear
 		std::print("?: ");
 	}
 
-    Symbol ASTWhileExpression::Codegen(CodegenContext &ctx)
-    {
-		PushScopeMarker(ctx);
-
-		auto& children = GetChildren();
-
-		CLEAR_VERIFY(children.size() == 2, "incorrect dimension");
-		CLEAR_VERIFY(children[0]->GetType() == ASTNodeType::Expression, "incorrect node type");
-
-		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
-
-		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "while.condition", function);
-		llvm::BasicBlock* body  = llvm::BasicBlock::Create(ctx.Context, "while.body");
-		llvm::BasicBlock* end   = llvm::BasicBlock::Create(ctx.Context, "while.merge");
-
-		if (!ctx.Builder.GetInsertBlock()->getTerminator())
-			ctx.Builder.CreateBr(conditionBlock);
-
-		ctx.Builder.SetInsertPoint(conditionBlock);
-
-		Symbol condition;
-			
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, false);
-			condition = children[0]->Codegen(ctx);
-		}
-		auto [conditionValue, conditionType] = condition.GetValue();
-
-
-		if (conditionType->IsIntegral())
-			conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
-			
-		else if (conditionType->IsFloatingPoint())
-			conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
-
-		if (!ctx.Builder.GetInsertBlock()->getTerminator())
-			ctx.Builder.CreateCondBr(conditionValue, body, end);
-
-		function->insert(function->end(), body);
-		ctx.Builder.SetInsertPoint(body);
-
-    	ValueRestoreGuard guard1(ctx.LoopConditionBlock, conditionBlock);
-    	ValueRestoreGuard guard2(ctx.LoopEndBlock,       end);
-
-		children[1]->Codegen(ctx);
-
-
-		if (!ctx.Builder.GetInsertBlock()->getTerminator())
-		{
-			GetSymbolTable()->FlushScope(ctx);
-			ctx.Builder.CreateBr(conditionBlock);
-		}
-		
-		function->insert(function->end(), end);
-		ctx.Builder.SetInsertPoint(end);
-		
-
-		return {};
-	}
-
     ASTForExpression::ASTForExpression(const std::string& name)
 		: m_Name(name)
     {
@@ -2167,14 +2132,11 @@ namespace clear
 
     Symbol ASTForExpression::Codegen(CodegenContext& ctx)
     {
-		auto& children = GetChildren();
-		CLEAR_VERIFY(children.size() == 2, "invalid for loop");
-
 		Symbol iterator;
 
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, true);
-			iterator = children[0]->Codegen(ctx);
+			iterator = Iterator->Codegen(ctx);
 		}	
 
 		auto tbl = GetSymbolTable();
@@ -2188,7 +2150,7 @@ namespace clear
 			for(size_t i = 0; i < args.size(); i++)
 			{
 				tbl->TrackAllocation(m_Name, args[i]);
-				children[1]->Codegen(ctx);
+				CodeBlock->Codegen(ctx);
 			}
 
 			return {};
@@ -2211,21 +2173,13 @@ namespace clear
 
     Symbol ASTStruct::Codegen(CodegenContext& ctx)
     {
-		auto& children = GetChildren();
-
 		// create the struct type
 		auto structTy = ctx.TypeReg->CreateType<StructType>(m_Name, m_Name, ctx.Context);
 		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
 
-		size_t i = 0;
-		for(; i < children.size(); i++)
+		for (auto value : Members)
 		{
-			if(!children[i]) break;
-			if(children[i]->GetType() != ASTNodeType::TypeSpecifier) break;
-
-			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
-			Symbol result = typeSpec->Codegen(ctx);
-
+			Symbol result = value->Codegen(ctx);
 			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
 		}
 
@@ -2235,24 +2189,24 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
+		size_t i = 0;
 		for(const auto& [memberName, memberType] : members)
 		{
-			CLEAR_VERIFY(i < children.size(), "haven't added all the default values");
-
-			if(!children[i])
+			if(!DefaultValues[i])
 			{
 				i++;
 				structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
 				continue;
 			}
 
-			Symbol result = 	children[i++]->Codegen(ctx);
+			Symbol result = DefaultValues[i++]->Codegen(ctx);
+
 			auto [resultValue, resultType] = result.GetValue();
 			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
 			structTy->AddDefaultValue(memberName, resultValue);
 		}
 
-		return {};
+		return Symbol::CreateType(structTy);
 	}
 
 	Symbol ASTLoopControlFlow::Codegen(CodegenContext& ctx) 
@@ -2272,11 +2226,10 @@ namespace clear
 
     Symbol ASTDefaultArgument::Codegen(CodegenContext& ctx)
     {
-		auto& children = GetChildren();
-		CLEAR_VERIFY(children.size() == 1, "invalid argument");
+		CLEAR_VERIFY(Value, "invalid argument");
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-        return children[0]->Codegen(ctx);
+        return Value->Codegen(ctx);
     }
     
 	ASTClass::ASTClass(const std::string& name)
@@ -2297,99 +2250,22 @@ namespace clear
 
 		return {};
     }
-
+	
+	//TODO: type substitution should be handled by sema, in future node will be deep copied before instantiation
 	void ASTClass::Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes)
 	{
-		ValueRestoreGuard guard1(m_Name, m_Name);
-
-		for(size_t i = 0; i < m_Generics.size(); i++)
-		{
-			CLEAR_VERIFY(i <= aliasTypes.size(), "index out of bounds");
-			ctx.ClearModule->CreateAlias(m_Generics[i], aliasTypes[i]->GetHash());
-			m_Name += aliasTypes[i]->GetHash();
-		}
-
-		auto& children = GetChildren();
-
-		// create the struct type
-		auto structTy = std::make_shared<StructType>(m_Name, ctx.Context);
+		auto structTy = Struct->Codegen(ctx).GetType();
 		auto classTy  = ctx.TypeReg->CreateType<ClassType>(m_Name, structTy);
-
-		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-		int64_t i = children.size() - 1; // params start from back so we walk backwards from end
-		for(; i >= 0; i--)
-		{
-			if(!children[i]) break;
-			if(children[i]->GetType() != ASTNodeType::TypeSpecifier) break;
-
-			auto typeSpec = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
-			Symbol result = typeSpec->Codegen(ctx);
-
-			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
-		}
-
-		// we need to reverse members so they are in correct order as written in the language
-		std::reverse(members.begin(), members.end());
-		structTy->SetBody(members);
-
-		// set its default values
-
-		ValueRestoreGuard guard2(ctx.WantAddress, false);
-
-		for(const auto& [memberName, memberType] : members)
-		{
-			CLEAR_VERIFY(i >= 0, "haven't added all the default values");
-
-			if(!children[i])
-			{
-				i--;
-				structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
-
-				continue;
-			}
-
-			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::Expression, "haven't added all the default values");
-			
-
-			Symbol result = children[i--]->Codegen(ctx);
-
-			auto [resultValue, resultType] = result.GetValue();
-
-			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, resultValue);
-		}
-
-		// handle all function definitions
-
-		for(const auto& definition : GetChildren())
-		{
-			if(!definition || definition->GetType() != ASTNodeType::FunctionDefinition)
-				continue;
-
-			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
 		
-			std::string functionName = functionDefinition->GetName();
-			std::string qualifiedFunctionName = m_Name + "." + functionName;
-
-			functionDefinition->SetName(qualifiedFunctionName);
-	
+		for(auto definition : MemberFunctions)
+		{
+			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
 			functionDefinition->Codegen(ctx);
 
-			functionDefinition->SetName(functionName);
-	
-			const auto& returnType = functionDefinition->GetReturnType();
-			const auto& params = functionDefinition->GetParameters();
-
-			std::string mangledName = FunctionCache::GetMangledName(qualifiedFunctionName, params, returnType);
-			classTy->PushFunction(mangledName);
-		}
-
-		for(size_t i = 0; i < m_Generics.size(); i++)
-		{
-			ctx.ClearModule->RemoveAlias(m_Generics[i]);
+			classTy->PushFunction(functionDefinition->GetName());
 		}
 	}
+
 
     ASTTrait::ASTTrait(const std::string& name)
 		: m_Name(name)
@@ -2398,32 +2274,19 @@ namespace clear
 
     Symbol ASTTrait::Codegen(CodegenContext& ctx)
     {
-		auto& children = GetChildren();
-
 		std::vector<std::string> functions;
         std::vector<std::pair<std::string, std::shared_ptr<Type>>> members; 
 
-		for(const auto& child : children)
+		for (auto child : VariableDeclarations)
+			members.emplace_back(child->GetName(), child->GetResolvedType());
+		
+		for (auto child : FunctionDeclaration)
 		{
-			if(child->GetType() == ASTNodeType::VariableDecleration)
-			{
-				auto decleration = std::dynamic_pointer_cast<ASTVariableDeclaration>(child);
-				members.emplace_back(decleration->GetName(), decleration->GetResolvedType());
-			}
-			else if(child->GetType() == ASTNodeType::FunctionDecleration)
-			{
-				auto decleration = std::dynamic_pointer_cast<ASTFunctionDecleration>(child);
-				decleration->InsertDecleration = false;
-
-				decleration->Codegen(ctx);
-				functions.push_back(FunctionCache::GetMangledName(decleration->GetName(), 
-																  decleration->GetParameters(), 
-																  decleration->GetReturnType()));
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("unimplemented type");
-			}
+			child->InsertDeclaration = false;
+			child->Codegen(ctx);
+			functions.push_back(FunctionCache::GetMangledName(child->GetName(), 
+															  child->GetParameters(), 
+															  child->GetReturnType()));
 		}
 
 		ctx.TypeReg->CreateType<TraitType>(m_Name, functions, members, m_Name);
@@ -2809,6 +2672,185 @@ namespace clear
 		i += 2; // []
 
 		llvm::ConstantInt* value = llvm::dyn_cast<llvm::ConstantInt>(size.GetLLVMValue());
+		CLEAR_VERIFY(value, "cannot define an array of dynamic size, consider using a dynamic list instead");
+
+		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());
+	}
+
+	std::shared_ptr<Type> ASTTypeResolver::ResolveGeneric(Symbol& symbol, CodegenContext& ctx, size_t& i, int64_t& k)
+	{		
+		auto& children = GetChildren();
+
+		ClassTemplate classTemplate = symbol.GetClassTemplate();
+
+		std::string typeName = classTemplate.Name;
+
+		llvm::SmallVector<std::shared_ptr<Type>> types;
+
+		for(; k >= 0; k--)
+		{
+			if(children[k]->GetType() != ASTNodeType::TypeResolver)
+				break;
+			
+			std::shared_ptr<Type> subType = children[k]->Codegen(ctx).GetType();
+			types.push_back(subType);
+		}
+
+		std::reverse(types.begin(), types.end());
+
+		for(auto& ty : types)
+		{
+			typeName += ty->GetHash();
+		}
+
+		std::shared_ptr<Type> type = ctx.TypeReg->GetType(typeName);
+
+		if(!type)
+		{
+			auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
+			classNode->Instantiate(ctx, types);
+
+			type = ctx.TypeReg->GetType(typeName);
+		}
+
+		return type;
+	}
+
+	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 
+	{
+		auto& children = GetChildren();
+
+		if(children.empty())
+		{
+			Symbol type = Symbol::CreateType(nullptr);
+			type.Metadata = m_Name;
+
+			return type;
+		}
+
+		CLEAR_VERIFY(children.size() == 1, "invalid parameter node");
+
+		Symbol type = children[0]->Codegen(ctx);
+		type.Metadata = m_Name;
+		return type;
+	}
+
+	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)
+		 : m_Name(name)
+	{
+	}
+
+	Symbol ASTSwitch::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		auto& children = GetChildren(); 
+
+		// default case must be at back
+		llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(ctx.Context, "continue");
+		llvm::BasicBlock* defaultCase   = llvm::BasicBlock::Create(ctx.Context, "default");
+		auto defaultCaseCode = children.back();
+
+		auto savedIp = ctx.Builder.saveIP();
+
+		ctx.Builder.SetInsertPoint(defaultCase);
+		defaultCaseCode->Codegen(ctx);
+		
+		if(!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(continueBlock);
+
+		ctx.Builder.restoreIP(savedIp);
+
+		// first child must be value
+		Symbol value = children[0]->Codegen(ctx);
+
+		llvm::SwitchInst* switchStatement = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultCase);
+		function->insert(function->end(), defaultCase);
+
+		llvm::SmallVector<llvm::Value*> values;
+
+		// rest should be value ... code
+		for(size_t i = 1; i < children.size() - 1; i++)
+		{
+			auto child = children[i];
+
+			if(child->GetType() == ASTNodeType::Expression)
+			{
+				ValueRestoreGuard guard(ctx.WantAddress, false);
+				values.push_back(child->Codegen(ctx).GetLLVMValue());
+				continue;
+			}
+
+			llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "switch_case", function);
+			ctx.Builder.SetInsertPoint(block);
+			child->Codegen(ctx);
+			
+			if(!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(continueBlock);
+
+			while(!values.empty())
+			{
+				llvm::ConstantInt* casted = llvm::dyn_cast<llvm::ConstantInt>(values.back());
+				CLEAR_VERIFY(casted, "not a constant int!");
+
+				switchStatement->addCase(casted, block);
+				values.pop_back();
+			}
+		}
+
+		function->insert(function->end(), continueBlock);
+		ctx.Builder.SetInsertPoint(continueBlock);
+
+		return Symbol();
+	}
+}
+#include "ASTNode.h"
+
+#include "Compilation/BuildConfig.h"
+#include "Core/Log.h"
+#include "Core/Operator.h"
+#include "Symbols/FunctionCache.h"
+#include "Symbols/Symbol.h"
+#include "Symbols/Type.h"
+#include "Symbols/TypeCasting.h"
+
+#include "Symbols/TypeRegistry.h"
+#include "Intrinsics.h"
+#include "Symbols/SymbolOperations.h"
+#include "Symbols/Module.h"
+
+#include <alloca.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Metadata.h>
+#include <llvm/MC/MCInstrDesc.h>
+#include <llvm/Support/Casting.h>
+
+#include <memory>
+#include <stack>
+#include <utility>
+#include <stack>
+#include <print>
+
+
+namespace clear
+{
+	template <typename T>
+	class ValueRestoreGuard 
+	{
+	public:
+	    ValueRestoreGuard(T& variable, T newValue)
+	        : m_Reference(variable), m_OldValue(variable)
+	    {
+	        m_Reference = newValue;
+	    }
+
+	    ~ValueRestoreGuard()
+	    {
 		CLEAR_VERIFY(value, "cannot define an array of dynamic size, consider using a dynamic list instead");
 
 		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());

@@ -868,7 +868,7 @@ namespace clear
         Consume();
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
-        auto decleration = std::make_shared<ASTFunctionDecleration>(functionName);
+        auto decleration = std::make_shared<ASTFunctionDeclaration>(functionName);
 
         // params
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
