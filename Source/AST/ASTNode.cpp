@@ -824,40 +824,23 @@ namespace clear
     {
 		auto& builder = ctx.Builder;
 
-		Symbol result;
+		const Symbol& sym = ResolvedSymbol.value();
 
-		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-		//TODO: make semantic analyzer add the variable reference here instead of node searching for it.
-		
-		if(tbl->HasAlloca(m_Name))
-		{
-			Allocation alloca = tbl->GetAlloca(m_Name);
-
+		if (ctx.WantAddress) {
+			auto& alloca = ResolvedAllocation.value();
 			if(alloca.Type->IsVariadic())  // special case
 			{
-				return Symbol::CreateValue(nullptr, alloca.Type); 
+				return ResolvedSymbol.value();
 			}
+			return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
+		}else {
+			auto& alloca = ResolvedAllocation.value();
+			return Symbol::CreateValue(builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name.GetData()), alloca.Type);
+		}
 
-			if(ctx.WantAddress)
-			{
-				return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-			}
-			else 
-			{
-				return Symbol::CreateValue(builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name), alloca.Type);
-	
-			}
-		}
-		else if (auto ty = ctx.TypeReg->GetType(m_Name))
-		{
-			return Symbol::CreateType(ty);
-		}
-		else if (auto module = ctx.ClearModule->Return(m_Name)) 
-		{
-			return Symbol::CreateModule(module);
-		}
-	
-		return Symbol();
+
+		return sym;
+
     }
 
 	void ASTVariable::Print()

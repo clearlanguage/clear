@@ -198,10 +198,18 @@ namespace clear
 		virtual Symbol Codegen(CodegenContext&) override;
 		virtual void Print() override;
 
-		const std::string& GetName() const { return m_Name; }
+
+		const Token& GetName() const { return m_Name; }
 
 	private:
-		std::string m_Name;
+		Token m_Name;
+
+
+	public:
+		std::optional<Symbol> ResolvedSymbol;  // set by Sema
+		std::optional<Allocation> ResolvedAllocation;
+
+
 	};
 
 	enum class AssignmentOperatorType 
