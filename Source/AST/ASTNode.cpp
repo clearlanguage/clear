@@ -973,8 +973,6 @@ namespace clear
 
 	Symbol ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
-		auto& children = GetChildren();
-
 		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
 		CLEAR_VERIFY(prev, "prev was null");
 
@@ -994,58 +992,21 @@ namespace clear
 		m_PrefixParams.clear();
 
 
-		size_t i = 0;
-		for(; i < children.size(); i++)
+		for (auto arg : Arguments)
 		{
-			if(!children[i])
-				break;
+			Symbol result = arg->Codegen(ctx);
+			isVariadic = arg->IsVariadic;
 
-			if(children[i]->GetType() != ASTNodeType::TypeSpecifier)
-				break;
-
-			auto fnParam = std::dynamic_pointer_cast<ASTTypeSpecifier>(children[i]);
-
-			Symbol result = fnParam->Codegen(ctx);
-			isVariadic = fnParam->IsVariadic;
-
-			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), fnParam->IsVariadic });
+			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), arg->IsVariadic });
 		}
 
-
-		if(!children[i])
-			i++;
-
-		// resolve return type
-		if(i < children.size() && children[i]->GetType() == ASTNodeType::TypeResolver)
-		{
-			if(children[i])
-				m_ResolvedReturnType = children[i]->Codegen(ctx).GetType();
+		if (ReturnType)
+			m_ResolvedReturnType = ReturnType->Codegen(ctx).GetType();
 		
-			i++;
-		}
-
-
 		RemoveGenerics(ctx);
 		
-		// resolve default arguments
-		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_ResolvedParams.size(), nullptr);
 
-		for(; i < children.size(); i++)
-		{
-			if(children[i]->GetType() != ASTNodeType::DefaultArgument) 
-				break;
-
-			auto arg = std::dynamic_pointer_cast<ASTDefaultArgument>(children[i]);
-			size_t argIndex = arg->GetIndex();
-
-			CLEAR_VERIFY(argIndex < defaultArgs.size(), "invalid arg index!");
-			defaultArgs[argIndex] = arg;
-		}
-
-		// erase no longer needed children (params, return type and default args)
-		children.erase(children.begin(), children.begin() + i);
-
-		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, ShallowCopy(), ctx.ClearModule);
+		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, DefaultArguments, ShallowCopy(), ctx.ClearModule);
 		
 		// main needs to be instantiated immedietly as nothing calls it.
 		if(m_Name == "main")
@@ -1137,10 +1098,7 @@ namespace clear
 		functionData.Function->insert(functionData.Function->end(), body);
 		builder.SetInsertPoint(body);
 
-		for (const auto& child : GetChildren())
-		{
-			child->Codegen(ctx);
-		}
+		CodeBlock->Codegen(ctx);
 
 		auto currip = builder.saveIP();
 
@@ -1200,11 +1158,10 @@ namespace clear
 		functionDefinition->m_ResolvedParams = m_ResolvedParams;
 		functionDefinition->m_ResolvedReturnType = m_ResolvedReturnType;
 		functionDefinition->m_GenericTypes = m_GenericTypes;
-
-		for(const auto& child : GetChildren())
-		{
-			functionDefinition->Push(child);
-		}
+		functionDefinition->Arguments = Arguments;
+		functionDefinition->DefaultArguments = DefaultArguments;
+		functionDefinition->CodeBlock = CodeBlock;
+		functionDefinition->ReturnType = ReturnType;
 
 		return functionDefinition;
 	}
@@ -1219,7 +1176,6 @@ namespace clear
 		auto& builder  = ctx.Builder;
 		auto& module   = ctx.Module;
 		auto& context  = ctx.Context;
-		auto& children = GetChildren();
 
 		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
 
@@ -1231,7 +1187,7 @@ namespace clear
 
 			temporary = symbolTable->RequestTemporary(ty, builder);
 
-			if(children.size() == 0) // empty constructor so construct all children
+			if(Arguments.size() == 0) // empty constructor so construct all children
 			{
 				llvm::Constant* zero = llvm::ConstantAggregateZero::get(ty->Get()); // zero initalize all elements.
 		    	ctx.Builder.CreateStore(zero, temporary.Alloca);
@@ -1332,7 +1288,7 @@ namespace clear
 			params.push_back({ "", type });
 		}
 
-		for (auto& child : GetChildren())	
+		for (auto& child : Arguments)	
 		{
 			Symbol gen = child->Codegen(ctx);
 
@@ -1406,24 +1362,15 @@ namespace clear
 
 	Symbol ASTFunctionDecleration::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
 		auto& module = ctx.Module;
 
 		std::vector<llvm::Type*> types;
 
-		size_t i = 0;
-		for(; i < children.size(); i++)
+		for (auto arg : Arguments)
 		{
-			auto& child = children[i];
+			Symbol param = arg->Codegen(ctx);
 
-			if(child->GetType() != ASTNodeType::TypeSpecifier)
-				break; 
-			
-			auto fnParam = std::dynamic_pointer_cast<ASTTypeSpecifier>(child);
-
-			Symbol param = fnParam->Codegen(ctx);
-
-			m_Parameters.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = fnParam->IsVariadic });
+			m_Parameters.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = arg->IsVariadic });
 		} 
 
 		bool isVariadic = false;
@@ -1441,11 +1388,8 @@ namespace clear
 
 		m_ReturnType = ctx.TypeReg->GetType("void");
 
-		if (i < children.size())
-		{
-			CLEAR_VERIFY(children[i]->GetType() == ASTNodeType::TypeResolver, "not a valid return type node");
-			m_ReturnType = children[i]->Codegen(ctx).GetType();
-		}
+		if (ReturnType)
+			m_ReturnType = ReturnType->Codegen(ctx).GetType();
 
 		if(InsertDecleration)
 		{
@@ -1479,14 +1423,15 @@ namespace clear
 
     Symbol ASTExpression::Codegen(CodegenContext& ctx)
 	{
-		auto& builder  = ctx.Builder;
-		auto& children = GetChildren();
+		CLEAR_VERIFY(RootExpr, "root expr cannot be null");
+		return RootExpr->Codegen(ctx);
+	}
 
-		std::vector<std::shared_ptr<ASTNodeBase>> stack;
+	std::shared_ptr<ASTExpression> AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes)
+	{
+		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> stack;
 
-		//TODO: move this back into ParseExpression so we don't have to keep doing this every time this class's codegen gets called
-
-		auto IsOperand = [](const std::shared_ptr<ASTNodeBase>& child) 
+		auto IsOperand = [](std::shared_ptr<ASTNodeBase> child) 
 		{
 			return child->GetType() == ASTNodeType::Literal || 
 				   child->GetType() == ASTNodeType::Variable ||
@@ -1497,7 +1442,7 @@ namespace clear
 				   child->GetType() == ASTNodeType::TypeResolver;
 		};
 		
-		for (const auto& child : children)
+		for (auto child : nodes)
 		{
 			if (IsOperand(child))
 			{
@@ -1507,8 +1452,6 @@ namespace clear
 
 			if (std::shared_ptr<ASTUnaryExpression> unaryExpression = std::dynamic_pointer_cast<ASTUnaryExpression>(child))
 			{
-				unaryExpression->GetChildren().clear();
-
 				unaryExpression->Push(stack.back());
 				stack.pop_back();
 
@@ -1517,20 +1460,16 @@ namespace clear
 			}
 			else if (std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child))
 			{
-				binExp->GetChildren().clear();
-
-				binExp->Push(stack.back());
+				binExp->RightSide = stack.back();
 				stack.pop_back();
 
-				binExp->Push(stack.back());
+				binExp->LeftSide = stack.back();
 				stack.pop_back();
 
 				stack.push_back(binExp);
 			}
 			else if (std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::dynamic_pointer_cast<ASTTernaryExpression>(child))
 			{
-				ternaryExpr->GetChildren().clear();	
-
 				ternaryExpr->Push(stack.back());
 				stack.pop_back();
 
@@ -1548,21 +1487,16 @@ namespace clear
 			}			
 		}
 
-		if(stack.size() > 0)
-		{
-			CLEAR_VERIFY(stack.size() == 1, "wot");
-			return stack.back()->Codegen(ctx);
-		}
+		CLEAR_VERIFY(stack.size() == 1, "wot");
 
-
-		return {};
+		std::shared_ptr<ASTExpression> expr = std::make_shared<ASTExpression>();
+		expr->RootExpr = stack.back();
+		return expr;
 	}
 
 	Symbol ASTListExpr::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
-		
-		if(children.size() == 0)
+		if(Values.size() == 0)
 		{
 			return Symbol();
 		}
@@ -1571,15 +1505,15 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-		Symbol first = children[0]->Codegen(ctx);
+		Symbol first = Values[0]->Codegen(ctx);
 		
 		llvm::SmallVector<llvm::Value*> values;
 
 		values.push_back(first.GetLLVMValue());
 
-		for(size_t i = 1; i < children.size(); i++)
+		for(size_t i = 1; i < Values.size(); i++)
 		{
-			Symbol value = children[i]->Codegen(ctx);
+			Symbol value = Values[i]->Codegen(ctx);
 			value = SymbolOps::Cast(value, first, ctx.Builder);
 
 			values.push_back(value.GetLLVMValue());
@@ -1670,10 +1604,7 @@ namespace clear
 
 	Symbol ASTStructExpr::Codegen(CodegenContext& ctx)
 	{
-		auto& children = GetChildren();
-		CLEAR_VERIFY(children.size() >= 1, "invalid struct expr");
-
-		Symbol ty = children[0]->Codegen(ctx);
+		Symbol ty = TargetType->Codegen(ctx);
 
 		std::shared_ptr<StructType> structTy = nullptr;
 
@@ -1682,11 +1613,11 @@ namespace clear
 
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 
-		for(size_t i = 1; i < children.size(); i++) 
+		for (auto value : Values)
 		{
-			Symbol value = children[i]->Codegen(ctx);
-			values.push_back(value.GetLLVMValue());
-			types.push_back(value.GetType());
+			Symbol valueSymbol = value->Codegen(ctx);
+			values.push_back(valueSymbol.GetLLVMValue());
+			types.push_back(valueSymbol.GetType());
 		}		
 
 		switch (ty.Kind) 

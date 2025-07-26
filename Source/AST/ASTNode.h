@@ -11,6 +11,7 @@
 #include "Symbols/Symbol.h"
 #include "Symbols/TypeRegistry.h"
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <memory>
 #include <string>
@@ -201,7 +202,6 @@ namespace clear
 
 	private:
 		std::string m_Name;
-		int64_t m_ID = 0;
 	};
 
 	enum class AssignmentOperatorType 
@@ -228,6 +228,11 @@ namespace clear
 		AssignmentOperatorType m_Type;
 	};
 
+
+	
+	class ASTTypeSpecifier;
+	class ASTTypeResolver;
+	class ASTDefaultArgument;
 
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
@@ -260,6 +265,12 @@ namespace clear
 
 		std::shared_ptr<ASTFunctionDefinition> ShallowCopy();
 
+	public:
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
+		std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
+		std::shared_ptr<ASTTypeResolver> ReturnType;
+		std::shared_ptr<ASTBlock> CodeBlock;	
+	
 	private:
 		std::string m_Name;
 
@@ -286,6 +297,9 @@ namespace clear
 			m_PrefixArguments.emplace_back(value, type); 
 		}
 
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
+
 	private:
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params);
 		void CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate&);
@@ -298,9 +312,6 @@ namespace clear
 	class ASTFunctionDecleration : public ASTNodeBase
 	{
 	public:
-		bool InsertDecleration = true;
-
-	public:
 		ASTFunctionDecleration(const std::string& name);
 		virtual ~ASTFunctionDecleration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
@@ -309,6 +320,11 @@ namespace clear
 		const auto& GetParameters() { return m_Parameters; }
 		const auto& GetReturnType() { return m_ReturnType; }
 		const auto& GetName() 		{ return m_Name; }
+
+	public:
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
+		std::shared_ptr<ASTTypeResolver> ReturnType;
+		bool InsertDecleration = true;
 
 	private:
 		std::vector<Parameter> m_Parameters;
@@ -323,6 +339,11 @@ namespace clear
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		static std::shared_ptr<ASTExpression> AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes);
+		
+	public:
+		std::shared_ptr<ASTNodeBase> RootExpr;
 	};
 
 	class ASTListExpr : public ASTNodeBase 
@@ -332,6 +353,10 @@ namespace clear
 		virtual ~ASTListExpr() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ListExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<ASTTypeResolver> TargetType; // TODO: for semantic analyzer
 	};
 
 	class ASTStructExpr : public ASTNodeBase 
@@ -341,6 +366,10 @@ namespace clear
 		virtual ~ASTStructExpr() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::StructExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<ASTTypeResolver> TargetType; 
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);
