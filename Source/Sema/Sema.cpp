@@ -21,7 +21,7 @@ namespace clear
 
 
     void Sema::SemaPass(std::shared_ptr<ASTVariable> variable) {
-        const std::string& name = variable->GetName().GetData();
+        std::string name = "";//variable->GetName().GetData();
         auto tbl = variable->GetSymbolTable();
 
         if (tbl->HasAlloca(name)) {
@@ -49,9 +49,9 @@ namespace clear
 
     void Sema::SemaPass(std::shared_ptr<ASTNodeBase> ast) {
         //magic
-        for (auto i : ast->Children) {
-            SemaPass(i);
-        }
+        //for (auto i : ast->Children) {
+         //   SemaPass(i);
+       // }
     }
 
 }

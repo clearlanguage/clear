@@ -24,7 +24,7 @@ namespace clear
         std::shared_ptr<ASTNodeBase> GetResult();
 
     private:
-        std::shared_ptr<ASTNodeBase> Root();
+        std::shared_ptr<ASTBlock> Root();
         std::shared_ptr<Module> RootModule();
 
         Token Consume();
@@ -80,7 +80,7 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
-        std::shared_ptr<ASTNodeBase> ParseTypeResolver();
+        std::shared_ptr<ASTTypeResolver> ParseTypeResolver();
         VariableDecleration ParseVariableDecleration();
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
@@ -96,14 +96,16 @@ namespace clear
         bool IsDeclaration();
 
         template<typename T>
-        std::shared_ptr<T> ParseList(std::shared_ptr<ASTNodeBase> ty = nullptr)
+        std::shared_ptr<T> ParseList(std::shared_ptr<ASTTypeResolver> ty = nullptr)
         {
             Consume();
 
             auto expr = std::make_shared<T>();
 
-            if(ty)
-                expr->Push(ty);
+            if constexpr (std::is_same_v<T, ASTStructExpr>)
+			{
+				expr->TargetType = ty;
+			}
 
             while(!Match(TokenType::RightBrace))
             {
@@ -113,7 +115,7 @@ namespace clear
                 if(Match(TokenType::RightBrace))
                     break;
 
-                expr->Push(ParseExpression());
+                expr->Values.push_back(ParseExpression());
 
                 if(Match(TokenType::Comma))
                     Consume();
@@ -129,7 +131,7 @@ namespace clear
         std::set<std::string> m_Aliases;
         size_t m_Position = 0;
 
-        std::vector<std::shared_ptr<ASTNodeBase>> m_RootStack;
+        std::vector<std::shared_ptr<ASTBlock>> m_RootStack;
         std::vector<size_t> m_RestorePoints;
 
         TokenSet m_Terminators;

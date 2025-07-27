@@ -77,6 +77,7 @@ namespace clear
 
 		virtual void Print() {}
 
+		void AddChild(std::shared_ptr<ASTNodeBase> node);
 		void PropagateSymbolTableToChildren();
 
 		void CreateSymbolTable();
@@ -84,12 +85,9 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
-	public:
-		std::vector<std::shared_ptr<ASTNodeBase>> Children;
-
 	private:
 		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
-
+	
 	private:
 		std::shared_ptr<SymbolTable> m_SymbolTable;
 	};
@@ -97,7 +95,11 @@ namespace clear
 	class ASTBlock : public ASTNodeBase
 	{
 	public:
-		ASTBlock() = default;
+		ASTBlock()
+		{
+			CreateSymbolTable();
+		}
+
 		virtual ~ASTBlock() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
 		virtual Symbol Codegen(CodegenContext&) override;
@@ -198,18 +200,16 @@ namespace clear
 		virtual Symbol Codegen(CodegenContext&) override;
 		virtual void Print() override;
 
-
-		const Token& GetName() const { return m_Name; }
-
-	private:
-		Token m_Name;
-
-
+		const auto& GetName() const { return m_Name; }
+	
 	public:
 		std::optional<Symbol> ResolvedSymbol;  // set by Sema
 		std::optional<Allocation> ResolvedAllocation;
 
+	private:
+		std::string m_Name;
 
+	
 	};
 
 	enum class AssignmentOperatorType 
@@ -508,6 +508,7 @@ namespace clear
 
 	public:
 		bool IsVariadic = false;
+		std::shared_ptr<ASTNodeBase> TypeResolver;
 
 	private:
 		std::string m_Name;
@@ -643,6 +644,8 @@ namespace clear
 
 		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal = false);
 
+	public:
+		std::shared_ptr<ASTNodeBase> Storage;
 	};
 
 	class ASTEnum : public ASTNodeBase
@@ -658,6 +661,9 @@ namespace clear
 			m_Names.push_back(name);
 		}
 
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> EnumValues;
+
 	private:
 		std::string m_EnumName;
 		std::vector<std::string> m_Names;
@@ -670,6 +676,10 @@ namespace clear
 		virtual ~ASTDefer() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Defer; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Expr;
+		
 	};
 
 	class ASTTypeResolver : public ASTNodeBase 
@@ -690,9 +700,18 @@ namespace clear
 		std::shared_ptr<Type> ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k);
 		std::shared_ptr<Type> ResolveGeneric(Symbol& classTemplate, CodegenContext& ctx, size_t& i, int64_t& k);
 	
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Children;
+
 	private:
 		std::vector<Token> m_Tokens;
 	};	
+
+	struct SwitchCase
+	{
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<ASTBlock> CodeBlock;
+	};
 
 	class ASTSwitch : public ASTNodeBase 
 	{
@@ -701,5 +720,10 @@ namespace clear
 		virtual ~ASTSwitch() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Switch; }
 		virtual Symbol Codegen(CodegenContext&) override; 
+
+	public:
+		std::shared_ptr<ASTBlock> DefaultCaseCodeBlock;
+		std::vector<SwitchCase> Cases;
+		std::shared_ptr<ASTNodeBase> Value;
 	};	
 } 
