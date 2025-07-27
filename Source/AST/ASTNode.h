@@ -66,6 +66,8 @@ namespace clear
 		{
 		}
 	};
+	
+	class Sema;
 
     class ASTNodeBase : public std::enable_shared_from_this<ASTNodeBase>
 	{
@@ -74,7 +76,7 @@ namespace clear
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&); 
-
+		virtual void Accept(Sema& sema) {}; // TODO: change this to pure virtual and implement for each node type. Each node should do sema.Visit(shared_from_this())
 		virtual void Print() {}
 
 		void AddChild(std::shared_ptr<ASTNodeBase> node);

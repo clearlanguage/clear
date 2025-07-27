@@ -1,20 +1,21 @@
 #pragma once 
-#include "AST/ASTNode.h"
 
+#include "Symbols/SymbolTable.h"
+#include "AST/ASTNode.h"
 
 namespace clear 
 {
     class Sema
     {
-    Sema(std::shared_ptr<Module> module);
+	public:
+		Sema();
+		~Sema() = default;
 
+		void Visit(std::shared_ptr<ASTBlock> ast);
+		void Visit(std::shared_ptr<ASTVariable> variable);
+		void Visit(std::shared_ptr<ASTNodeBase> ast);
+		
     private:
-       std::shared_ptr<Module> m_Module;
-    public:
-    void SemaPass(std::shared_ptr<ASTBlock> ast);
-    void SemaPass(std::shared_ptr<ASTVariable> variable);
-    void SemaPass(std::shared_ptr<ASTNodeBase> ast);
-
-    Sema();
+		std::vector<std::shared_ptr<SymbolTable>> m_ScopeStack;
     };
 }

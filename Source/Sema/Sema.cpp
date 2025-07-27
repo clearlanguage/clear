@@ -1,57 +1,19 @@
 #include "Sema.h"
-
-#include <Symbols/Module.h>
-
-#include "AST/ASTNode.h"
+#include "Core/Log.h"
 
 namespace clear
 {
-    Sema::Sema(std::shared_ptr<Module> module){
-        m_Module = module;
+    Sema::Sema()
+	{
     }
 
+	void Sema::Visit(std::shared_ptr<ASTBlock> ast)
+	{
+		m_ScopeStack.push_back(std::make_shared<SymbolTable>());
+		
+		for(auto node : ast->Children)
+			node->Accept(*this);
 
-    void Sema::SemaPass(std::shared_ptr<ASTBlock> ast) {
-        // magic
-
-        for (auto i: ast->Children){
-            SemaPass(i);
-        }
-    }
-
-
-    void Sema::SemaPass(std::shared_ptr<ASTVariable> variable) {
-        std::string name = "";//variable->GetName().GetData();
-        auto tbl = variable->GetSymbolTable();
-
-        if (tbl->HasAlloca(name)) {
-            Allocation alloca = tbl->GetAlloca(name);
-            variable->ResolvedSymbol = Symbol::CreateValue(nullptr, alloca.Type);
-            variable->ResolvedAllocation = alloca;
-
-            return;
-        }
-
-        if (auto ty = m_Module->Lookup(name).GetType()) {
-            variable->ResolvedSymbol = Symbol::CreateType(ty);
-            return;
-        }
-
-        if (auto mod = m_Module->Return(name)) {
-            variable->ResolvedSymbol = Symbol::CreateModule(mod);
-            return;
-        }
-
-
-    }
-
-
-
-    void Sema::SemaPass(std::shared_ptr<ASTNodeBase> ast) {
-        //magic
-        //for (auto i : ast->Children) {
-         //   SemaPass(i);
-       // }
-    }
-
+		m_ScopeStack.pop_back();
+	}
 }
