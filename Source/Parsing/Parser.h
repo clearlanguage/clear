@@ -80,7 +80,7 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
-        std::shared_ptr<ASTTypeResolver> ParseTypeResolver();
+        std::shared_ptr<ASTType> ParseTypeResolver();
         VariableDecleration ParseVariableDecleration();
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
@@ -96,7 +96,7 @@ namespace clear
         bool IsDeclaration();
 
         template<typename T>
-        std::shared_ptr<T> ParseList(std::shared_ptr<ASTTypeResolver> ty = nullptr)
+        std::shared_ptr<T> ParseList(std::shared_ptr<ASTType> ty = nullptr)
         {
             Consume();
 

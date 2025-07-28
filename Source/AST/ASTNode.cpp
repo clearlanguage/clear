@@ -11,6 +11,7 @@
 #include "Intrinsics.h"
 #include "Symbols/SymbolOperations.h"
 #include "Symbols/Module.h"
+#include "Sema/Sema.h"
 
 #include <alloca.h>
 #include <llvm/ADT/ArrayRef.h>
@@ -101,12 +102,22 @@ namespace clear
 		}
     }
 	
+	ASTBlock::ASTBlock()
+	{
+		CreateSymbolTable();
+	}
+
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
 	{
 		for (auto child : Children)
 			child->Codegen(ctx);
 
 		return Symbol();
+	}
+
+	void ASTBlock::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTBlock>(shared_from_this()));
 	}
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
@@ -2575,12 +2586,12 @@ namespace clear
         return Symbol();
     }
 
-    ASTTypeResolver::ASTTypeResolver(const std::vector<Token>& tokens)
+    ASTType::ASTType(const std::vector<Token>& tokens)
 		: m_Tokens(tokens)
     {
     }
 
-    Symbol ASTTypeResolver::Codegen(CodegenContext& ctx)
+    Symbol ASTType::Codegen(CodegenContext& ctx)
     {
 		CLEAR_VERIFY(m_Tokens.size() > 0, "not a valid type resolver");
 
@@ -2649,7 +2660,7 @@ namespace clear
         return Symbol::CreateType(type);
     }
 
-	Symbol ASTTypeResolver::Inferred()
+	Symbol ASTType::Inferred()
 	{
 		if(m_Tokens[0].GetData() == "let") 
 		{
@@ -2665,7 +2676,7 @@ namespace clear
 		return Symbol();
 	}
 
-	std::shared_ptr<Type> ASTTypeResolver::ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k)
+	std::shared_ptr<Type> ASTType::ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k)
 	{
 		auto& children = Children;
 
@@ -2687,7 +2698,7 @@ namespace clear
 		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());
 	}
 
-	std::shared_ptr<Type> ASTTypeResolver::ResolveGeneric(Symbol& symbol, CodegenContext& ctx, size_t& i, int64_t& k)
+	std::shared_ptr<Type> ASTType::ResolveGeneric(Symbol& symbol, CodegenContext& ctx, size_t& i, int64_t& k)
 	{		
 		auto& children = Children;
 

@@ -1,4 +1,5 @@
 #include "Sema.h"
+
 #include "Core/Log.h"
 
 namespace clear
@@ -15,5 +16,16 @@ namespace clear
 			node->Accept(*this);
 
 		m_ScopeStack.pop_back();
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTType> type)
+	{
+		
+	}
+
+
+	void Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl)
+	{
+		
 	}
 }

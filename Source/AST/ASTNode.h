@@ -76,7 +76,7 @@ namespace clear
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&); 
-		virtual void Accept(Sema& sema) {}; // TODO: change this to pure virtual and implement for each node type. Each node should do sema.Visit(shared_from_this())
+		virtual void Accept(Sema&) {}; // TODO: change this to pure virtual and implement for each node type. Each node should do sema.Visit(shared_from_this())
 		virtual void Print() {}
 
 		void AddChild(std::shared_ptr<ASTNodeBase> node);
@@ -97,14 +97,11 @@ namespace clear
 	class ASTBlock : public ASTNodeBase
 	{
 	public:
-		ASTBlock()
-		{
-			CreateSymbolTable();
-		}
-
+		ASTBlock();
 		virtual ~ASTBlock() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Children;
@@ -241,7 +238,7 @@ namespace clear
 
 	
 	class ASTTypeSpecifier;
-	class ASTTypeResolver;
+	class ASTType;
 	class ASTDefaultArgument;
 
 	class ASTFunctionDefinition : public ASTNodeBase
@@ -278,7 +275,7 @@ namespace clear
 	public:
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
 		std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
-		std::shared_ptr<ASTTypeResolver> ReturnType;
+		std::shared_ptr<ASTType> ReturnType;
 		std::shared_ptr<ASTBlock> CodeBlock;	
 	
 	private:
@@ -333,7 +330,7 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
-		std::shared_ptr<ASTTypeResolver> ReturnType;
+		std::shared_ptr<ASTType> ReturnType;
 		bool InsertDecleration = true;
 
 	private:
@@ -366,7 +363,7 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Values;
-		std::shared_ptr<ASTTypeResolver> TargetType; // TODO: for semantic analyzer
+		std::shared_ptr<ASTType> TargetType; // TODO: for semantic analyzer
 	};
 
 	class ASTStructExpr : public ASTNodeBase 
@@ -379,7 +376,7 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Values;
-		std::shared_ptr<ASTTypeResolver> TargetType; 
+		std::shared_ptr<ASTType> TargetType; 
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);
@@ -684,11 +681,11 @@ namespace clear
 		
 	};
 
-	class ASTTypeResolver : public ASTNodeBase 
+	class ASTType : public ASTNodeBase 
 	{
 	public:
-		ASTTypeResolver(const std::vector<Token>& tokens = {});
-		virtual ~ASTTypeResolver() = default;
+		ASTType(const std::vector<Token>& tokens = {});
+		virtual ~ASTType() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
 		virtual Symbol Codegen(CodegenContext&) override; 
 

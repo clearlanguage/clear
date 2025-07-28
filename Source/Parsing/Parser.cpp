@@ -623,7 +623,7 @@ namespace clear
 
         std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
         std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
-        std::shared_ptr<ASTTypeResolver> returnType;
+        std::shared_ptr<ASTType> returnType;
 
         auto Flush = [&]()
         {
@@ -1464,9 +1464,9 @@ namespace clear
         return ASTExpression::AssembleFromRPN(expression);
     }
 
-    std::shared_ptr<ASTTypeResolver> Parser::ParseTypeResolver()
+    std::shared_ptr<ASTType> Parser::ParseTypeResolver()
     {
-        std::shared_ptr<ASTTypeResolver> resolver = std::make_shared<ASTTypeResolver>();
+        std::shared_ptr<ASTType> resolver = std::make_shared<ASTType>();
 
         if(Match("let"))
         {
@@ -1522,7 +1522,7 @@ namespace clear
         if(Match(TokenType::LeftBracket))
         {
             Consume();
-             // hack to allow the ASTTypeResolver to differentiate between an array and a template
+             // hack to allow the ASTType to differentiate between an array and a template
             resolver->PushToken(Token(TokenType::LessThan, "<"));
 
             size_t prev = m_Position;

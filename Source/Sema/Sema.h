@@ -12,6 +12,8 @@ namespace clear
 		~Sema() = default;
 
 		void Visit(std::shared_ptr<ASTBlock> ast);
+		void Visit(std::shared_ptr<ASTType> type);
+		void Visit(std::shared_ptr<ASTVariableDeclaration> decl);
 		void Visit(std::shared_ptr<ASTVariable> variable);
 		void Visit(std::shared_ptr<ASTNodeBase> ast);
 		
