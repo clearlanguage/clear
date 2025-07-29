@@ -3,6 +3,7 @@
 #include "ConstEval.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
+#include "Sema/Infer.h"
 #include "Symbols/SymbolTable.h"
 #include "AST/ASTNode.h"
 
@@ -31,5 +32,6 @@ namespace clear
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;
+		Infer m_TypeInferEngine;
     };
 }

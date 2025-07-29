@@ -6,12 +6,13 @@
 #include "Symbols/Module.h"
 #include "Symbols/Symbol.h"
 
+#include <memory>
 #include <optional>
 
 namespace clear
 {
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder)
-		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule)
+		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule)
 	{
     }
 
@@ -32,7 +33,31 @@ namespace clear
 
 	void Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl)
 	{
+		decl->TypeResolver->Accept(*this);
+		decl->Initializer->Accept(*this);
+
+		std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(decl->TypeResolver);
 		
+		std::shared_ptr<Type> inferredType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
+		
+		if (type->ConstructedType.Kind == SymbolKind::InferType)
+		{
+			auto inferTypeInfo = type->ConstructedType.GetInferType();
+	
+			type->ConstructedType = Symbol::CreateType(inferredType);
+
+			if(inferTypeInfo.IsConst)
+			{
+				type->ConstructedType = Symbol::CreateType(m_Module->GetTypeRegistry()->GetConstFrom(type->ConstructedType.GetType()));
+			}
+		}
+
+		//TODO if inferred type and constructed type aren't the same insert a cast instruction 
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTNodeBase> ast)
+	{
+		ast->Accept(*this);
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
@@ -45,6 +70,12 @@ namespace clear
 	{
 		std::vector<Token> tokens = std::move(type->TakeTokens());
 		
+		if (tokens[0].GetData() == "let")
+			return Symbol::CreateInferType(false);
+		
+		if (tokens[0].GetData() == "const" && tokens.size() == 1)
+			return Symbol::CreateInferType(true);
+
 		auto ConstructArray = [&](auto begin, size_t& childIndex) -> std::optional<Symbol>
 	 		{
 				if (childIndex + 2 >= type->Children.size())
@@ -55,6 +86,14 @@ namespace clear
 				}
 
 				m_ConstantEvaluator.Evaluate(type->Children[childIndex++]);
+				
+				if (!m_ConstantEvaluator.CurrentValue)
+				{
+					// DiagnosticCode_ArraySizeEvaluationFailed
+					Report(DiagnosticCode_None, *begin);
+					return std::nullopt;
+				}
+
 				int64_t size = m_ConstantEvaluator.GetValue<int64_t>();
 				m_ConstantEvaluator.CurrentValue = nullptr;	
 
