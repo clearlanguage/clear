@@ -114,6 +114,8 @@ namespace clear
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		const auto& GetData() const { return m_Token; }
 
 	private:
 		Token m_Token;
