@@ -17,9 +17,9 @@ namespace clear
 	{
 	}
 
-	void ConstEval::Evaluate(std::shared_ptr<ASTExpression> expression)
+	void ConstEval::Evaluate(std::shared_ptr<ASTNodeBase> expression)
 	{
-		CurrentValue = EvaluateExpr(expression);
+		CurrentValue = EvaluateGeneric(expression);
 	}
 	
 	llvm::Constant* ConstEval::EvaluateBinaryExpr(std::shared_ptr<ASTBinaryExpression> binaryExpr)

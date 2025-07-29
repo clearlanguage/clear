@@ -35,6 +35,7 @@ namespace clear
         
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
         std::shared_ptr<ASTNodeBase> GetRoot() { return m_Root; }
+		std::shared_ptr<TypeRegistry> GetTypeRegistry() { return m_TypeRegistry; }
 
         CodegenContext GetCodegenContext();
 

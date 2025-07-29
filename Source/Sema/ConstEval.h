@@ -12,7 +12,7 @@ namespace clear
 		ConstEval(std::shared_ptr<Module> module_);
 		~ConstEval() = default;
 		
-		void Evaluate(std::shared_ptr<ASTExpression> expression);
+		void Evaluate(std::shared_ptr<ASTNodeBase> expression);
 	
 		template<typename T>
 		T GetValue() requires std::is_arithmetic_v<T>
@@ -34,7 +34,7 @@ namespace clear
 		
 			
 			CLEAR_UNREACHABLE("unimplemented");
-			return (T)0;
+			return T {};
 		}
 
 	public:

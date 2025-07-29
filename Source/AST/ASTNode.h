@@ -696,6 +696,9 @@ namespace clear
 			m_Tokens.push_back(token);
 		}
 
+		const auto& GetTokens() const { return m_Tokens; }
+		auto TakeTokens() { return std::move(m_Tokens); }
+
 	private:
 		Symbol Inferred();
 		std::shared_ptr<Type> ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k);
@@ -703,6 +706,7 @@ namespace clear
 	
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Children;
+		Symbol ConstructedType;	
 
 	private:
 		std::vector<Token> m_Tokens;

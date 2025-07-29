@@ -2593,6 +2593,9 @@ namespace clear
 
     Symbol ASTType::Codegen(CodegenContext& ctx)
     {
+		return ConstructedType;
+		
+#if OLD
 		CLEAR_VERIFY(m_Tokens.size() > 0, "not a valid type resolver");
 
 		if(Symbol inferred = Inferred(); inferred.Kind != SymbolKind::None)
@@ -2658,7 +2661,8 @@ namespace clear
 		}
 
         return Symbol::CreateType(type);
-    }
+#endif   
+	}
 
 	Symbol ASTType::Inferred()
 	{
