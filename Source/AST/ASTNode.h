@@ -174,10 +174,11 @@ namespace clear
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name);
+		ASTVariableDeclaration(const Token& name);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 
 		const auto& GetName() const { return m_Name; }
 		const auto& GetResolvedType() const { return m_Type; }
@@ -185,30 +186,30 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> TypeResolver;
 		std::shared_ptr<ASTNodeBase> Initializer;
-
+		std::shared_ptr<Symbol> Variable;
 
 	private:
-		std::string m_Name;
+		Token m_Name;
 		std::shared_ptr<Type> m_Type;
 	};
 
 	class ASTVariable : public ASTNodeBase
 	{
 	public:
-		ASTVariable(const std::string& name);
+		ASTVariable(const Token& name);
 		virtual ~ASTVariable() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 		virtual void Print() override;
 
 		const auto& GetName() const { return m_Name; }
 	
 	public:
-		std::optional<Symbol> ResolvedSymbol;  // set by Sema
-		std::optional<Allocation> ResolvedAllocation;
+		std::shared_ptr<Symbol> Variable;
 
 	private:
-		std::string m_Name;
+		Token m_Name;
 
 	
 	};
@@ -690,7 +691,8 @@ namespace clear
 		virtual ~ASTType() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
 		virtual Symbol Codegen(CodegenContext&) override; 
-
+		virtual void Accept(Sema&) override;
+		
 		void PushToken(const Token& token)
 		{
 			m_Tokens.push_back(token);

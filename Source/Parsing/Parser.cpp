@@ -1036,7 +1036,7 @@ namespace clear
 
         Expect(TokenType::Identifier);
         
-        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume().GetData());
+        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume());
         variableDecleration->TypeResolver = type;
 
         bool hasBeenInitialized = false;

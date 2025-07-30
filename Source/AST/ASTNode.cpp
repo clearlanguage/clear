@@ -19,6 +19,7 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/MC/MCInstrDesc.h>
@@ -710,153 +711,70 @@ namespace clear
         return Symbol();
     }
 
-    ASTVariableDeclaration::ASTVariableDeclaration(const std::string& name)
+    ASTVariableDeclaration::ASTVariableDeclaration(const Token& name)
 		: m_Name(name)
     {
     }
 
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
-		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-		
 		Symbol resolvedType = TypeResolver->Codegen(ctx);
-
+		Symbol initializer = Initializer->Codegen(ctx);
+		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
-		Allocation alloca;
-
-		switch (resolvedType.Kind) 
+		
+		if (isGlobal)
 		{
-			case SymbolKind::Type:
+			llvm::Value* allocaInst = new llvm::GlobalVariable(
+				ctx.Module, 
+				resolvedType.GetType()->Get(),
+				resolvedType.GetType()->IsConst(),
+				llvm::GlobalValue::InternalLinkage,
+				llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()),
+				m_Name.GetData()
+			);
+
+			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
+
+			if (!llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()))
 			{
-				m_Type = resolvedType.GetType();
-
-				alloca = isGlobal ? tbl->CreateGlobal(m_Name, m_Type, ctx.Module) : tbl->CreateAlloca(m_Name, m_Type, ctx.Builder);
-
-				if (Initializer) 
-				{
-					ValueRestoreGuard guard(ctx.WantAddress, false);
-
-					Symbol value = Initializer->Codegen(ctx);
-				
-					Symbol allocaSymbol = Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-
-					if(value.GetType() == allocaSymbol.GetType())
-					{
-						size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module);
-						Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
-						SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
-					}
-					else 
-					{
-						Symbol casted = SymbolOps::Cast(value, resolvedType, ctx.Builder);
-						SymbolOps::Store(allocaSymbol, casted, ctx.Builder, ctx.Module,  /* isFirstTime = */ true);
-					}
-
-				}
-
-				break;
-			}
-			case SymbolKind::InferType: 
-			{
-				bool isConst = resolvedType.GetInferType().IsConst;
-
-				CLEAR_VERIFY(Initializer, "cannot have an inferred type without value");
-
-				ValueRestoreGuard guard(ctx.WantAddress, false);
-				Symbol value = Initializer->Codegen(ctx);
-				m_Type = value.GetType();
-
-				bool shouldMemcpy = false;
-
-				if(value.GetType()->IsPointer())
-				{
-					auto baseTy = value.GetType()->As<PointerType>()->GetBaseType();
-					
-					if(baseTy->IsArray() || baseTy->IsCompound())
-					{
-						m_Type = baseTy;
-						shouldMemcpy = true;
-					}
-				}
-				
-				if(isConst)
-				{
-					m_Type = ctx.TypeReg->GetConstFrom(m_Type);
-				}
-
-				alloca = isGlobal ? tbl->CreateGlobal(m_Name, m_Type, ctx.Module) : tbl->CreateAlloca(m_Name, m_Type, ctx.Builder);
-			
-				Symbol allocaSymbol = Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-
-				if(shouldMemcpy)
-				{
-					size_t size = value.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module);
-					Symbol sizeSymbol = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, (uint64_t)size);
-					SymbolOps::Memcpy(allocaSymbol, value, sizeSymbol, ctx.Builder);
-				}
-				else 
-				{
-					SymbolOps::Store(allocaSymbol, value, ctx.Builder, ctx.Module, /* isFirstTime = */ true);
-				}
-
-				break;
-			}
-			default: 
-			{
-				CLEAR_UNREACHABLE("unimplemented");
+				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
 			}
 		}
+		else
+		{
+			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get());
+			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
+			SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
+		}
+		
 
-		return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(m_Type));
+		return *Variable;
     }
 
-	ASTVariable::ASTVariable(const std::string& name)
+	void ASTVariableDeclaration::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(shared_from_this()));
+	}
+
+	ASTVariable::ASTVariable(const Token& name)
 		: m_Name(name)
     {
     }
 
 	Symbol ASTVariable::Codegen(CodegenContext& ctx)
     {
-		auto& builder = ctx.Builder;
-
-		Symbol result;
-
-		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
-		if(tbl->HasAlloca(m_Name))
-		{
-			Allocation alloca = tbl->GetAlloca(m_Name);
-
-			if(alloca.Type->IsVariadic())  // special case
-			{
-				return Symbol::CreateValue(nullptr, alloca.Type); 
-			}
-
-			if(ctx.WantAddress)
-			{
-				return Symbol::CreateValue(alloca.Alloca, ctx.TypeReg->GetPointerTo(alloca.Type));
-			}
-			else 
-			{
-				return Symbol::CreateValue(builder.CreateLoad(alloca.Type->Get(), alloca.Alloca, m_Name), alloca.Type);
+		return *Variable;
+	}
 	
-			}
-		}
-		else if (auto ty = ctx.TypeReg->GetType(m_Name))
-		{
-			return Symbol::CreateType(ty);
-		}
-		else if (auto module = ctx.ClearModule->Return(m_Name)) 
-		{
-			return Symbol::CreateModule(module);
-		}
-	
-		return Symbol();
+	void ASTVariable::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTVariable>(shared_from_this()));
 	}
 
 	void ASTVariable::Print()
 	{
-		std::print("{} ", m_Name);
+		std::print("{} ", m_Name.GetData());
 	}
 
 	ASTAssignmentOperator::ASTAssignmentOperator(AssignmentOperatorType type)
@@ -2305,7 +2223,7 @@ namespace clear
         std::vector<std::pair<std::string, std::shared_ptr<Type>>> members; 
 
 		for (auto child : VariableDeclarations)
-			members.emplace_back(child->GetName(), child->GetResolvedType());
+			members.emplace_back(child->GetName().GetData(), child->GetResolvedType());
 		
 		for (auto child : FunctionDeclarations)
 		{
@@ -2662,6 +2580,11 @@ namespace clear
 
         return Symbol::CreateType(type);
 #endif   
+	}
+
+	void ASTType::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTType>(shared_from_this()));
 	}
 
 	Symbol ASTType::Inferred()

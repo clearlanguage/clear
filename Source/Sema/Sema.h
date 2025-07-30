@@ -4,8 +4,8 @@
 #include "Diagnostics/DiagnosticCode.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include "Sema/Infer.h"
-#include "Symbols/SymbolTable.h"
 #include "AST/ASTNode.h"
+#include "Sema/SymbolTable.h"
 
 #include <memory>
 
@@ -28,7 +28,7 @@ namespace clear
 		std::optional<Symbol> ConstructType(std::shared_ptr<ASTType> type);	
 
     private:
-		std::vector<std::shared_ptr<SymbolTable>> m_ScopeStack;
+		std::vector<SemaSymbolTable> m_ScopeStack;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

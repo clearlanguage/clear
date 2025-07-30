@@ -18,7 +18,7 @@ namespace clear
 
 	void Sema::Visit(std::shared_ptr<ASTBlock> ast)
 	{
-		m_ScopeStack.push_back(std::make_shared<SymbolTable>());
+		m_ScopeStack.emplace_back();
 		
 		for(auto node : ast->Children)
 			node->Accept(*this);
@@ -51,8 +51,41 @@ namespace clear
 				type->ConstructedType = Symbol::CreateType(m_Module->GetTypeRegistry()->GetConstFrom(type->ConstructedType.GetType()));
 			}
 		}
+		
+		// TODO if inferred type and constructed type are not the same then insert a cast
+		
+		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData());
+		
+		if (symbol.has_value())
+		{
+			decl->Variable = symbol.value();
+			return;
+		}
+			
+		// DiagnosticCode_AlreadyDefinedVariable
+		Report(DiagnosticCode_None, decl->GetName());
+	}
 
-		//TODO if inferred type and constructed type aren't the same insert a cast instruction 
+	void Sema::Visit(std::shared_ptr<ASTVariable> variable)
+	{
+		std::optional<std::shared_ptr<Symbol>> symbol;
+
+		for (auto it = m_ScopeStack.rbegin(); it != m_ScopeStack.rend(); it++)
+		{
+			symbol = m_ScopeStack.back().Get(variable->GetName().GetData());
+			
+			if (symbol.has_value())
+				break;
+		}
+
+		if (symbol.has_value())
+		{
+			variable->Variable = symbol.value();
+			return;
+		}
+			
+		// DiagnosticCode_UndefinedVariable
+		Report(DiagnosticCode_None, variable->GetName());
 	}
 
 	void Sema::Visit(std::shared_ptr<ASTNodeBase> ast)
