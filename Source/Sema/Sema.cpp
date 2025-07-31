@@ -1,8 +1,10 @@
 #include "Sema.h"
 #include "Core/Log.h"
+#include "Core/Value.h"
 #include "Diagnostics/Diagnostic.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
+#include "Sema/SymbolTable.h"
 #include "Symbols/Module.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
@@ -16,7 +18,6 @@ namespace clear
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder)
 		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule)
 	{
-		m_ContextStack.emplace_back();
     }
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTBlock> ast, SemaContext context)
@@ -77,7 +78,7 @@ namespace clear
 		
 		// TODO if inferred type and constructed type are not the same then insert a cast
 		
-		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData());
+		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData(), SymbolEntryType::Variable);
 		
 		if (symbol.has_value())
 		{
@@ -92,7 +93,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariable> variable, SemaContext context)
 	{
-		std::optional<std::shared_ptr<Symbol>> symbol;
+		std::optional<SymbolEntry> symbol;
 
 		for (auto it = m_ScopeStack.rbegin(); it != m_ScopeStack.rend(); it++)
 		{
@@ -109,9 +110,9 @@ namespace clear
 			return nullptr;
 		}
 		
-		variable->Variable = symbol.value();
+		variable->Variable = symbol.value().Symbol;
 		
-		if (context.ValueReq == ValueRequired::RValue && variable->Variable->Kind == SymbolKind::Value)
+		if (context.ValueReq == ValueRequired::RValue && symbol.value().Type == SymbolEntryType::Variable)
 		{
 			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
 			loadNode->Operand = variable;
@@ -139,6 +140,11 @@ namespace clear
     		case ASTNodeType::Block:					return Visit(std::dynamic_pointer_cast<ASTBlock>(ast), context);
     		case ASTNodeType::VariableDecleration:		return Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(ast), context);
 			case ASTNodeType::Expression:				return Visit(std::dynamic_pointer_cast<ASTExpression>(ast), context);
+			case ASTNodeType::AssignmentOperator:		return Visit(std::dynamic_pointer_cast<ASTAssignmentOperator>(ast), context);
+			case ASTNodeType::FunctionDefinition:		return Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(ast), context);
+			case ASTNodeType::ReturnStatement:			return Visit(std::dynamic_pointer_cast<ASTReturn>(ast), context);
+			case ASTNodeType::BinaryExpression:			return Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(ast), context);
+			case ASTNodeType::Literal:					return Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast), context);
     		default:
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
@@ -162,7 +168,7 @@ namespace clear
 			Visit(func->ReturnType, context);
 	
 		std::string mangledName = m_NameMangler.MangleFunctionFromNode(func);
-		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName());
+		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), SymbolEntryType::Function);
 	
 		if (!symbol.has_value())
 		{
@@ -219,6 +225,17 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeLiteral> literal, SemaContext context)
 	{
 		return literal;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssignmentOperator> assignmentOp, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::LValue;
+		Visit(assignmentOp->Storage);
+
+		context.ValueReq = ValueRequired::RValue;
+		Visit(assignmentOp->Value);
+
+		return assignmentOp;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)

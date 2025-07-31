@@ -41,6 +41,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTNodeLiteral> literal, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTVariable> variable, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAssignmentOperator> assignment, SemaContext context);
 
 	private:
 		void Report(DiagnosticCode code, Token token);
@@ -48,7 +49,6 @@ namespace clear
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;
-		llvm::SmallVector<SemaContext> m_ContextStack;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;
