@@ -67,6 +67,8 @@ namespace clear
         void AbortCurrent();
 
         void EmplaceBack(TokenType type, const std::string& data);
+        void EmplaceBack(TokenType type, const std::string& data,const std::string& metadata);
+
 
     private:
         std::vector<Token> m_Tokens;
