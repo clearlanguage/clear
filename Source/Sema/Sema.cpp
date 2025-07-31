@@ -19,32 +19,38 @@ namespace clear
 		m_ContextStack.emplace_back();
     }
 
-	void Sema::Visit(std::shared_ptr<ASTBlock> ast)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTBlock> ast, SemaContext context)
 	{
 		m_ScopeStack.emplace_back();
 		
 		for(auto node : ast->Children)
-			Visit(node);
+			Visit(node, context);
 
 		m_ScopeStack.pop_back();
+
+		return ast;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTType> type)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTType> type, SemaContext context)
 	{
 		type->ConstructedType = ConstructType(type).value_or(Symbol());	
+		return type;
 	}
 	
-	void Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type, SemaContext context)
 	{
-		Visit(type->TypeResolver);
+		Visit(type->TypeResolver, context);
+		return type;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context)
 	{
-		Visit(decl->TypeResolver);
-		
+		Visit(decl->TypeResolver, context);
+			
+		context.ValueReq = ValueRequired::RValue;
+
 		if (decl->Initializer)
-			Visit(decl->Initializer);
+			Visit(decl->Initializer, context);
 
 		std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(decl->TypeResolver);
 		
@@ -56,7 +62,7 @@ namespace clear
 			{
 				// DiagnosticCode_InferredDeclarationMustHaveValue
 				Report(DiagnosticCode_None, Token());
-				return;
+				return decl;
 			}
 
 			auto inferTypeInfo = type->ConstructedType.GetInferType();
@@ -76,14 +82,15 @@ namespace clear
 		if (symbol.has_value())
 		{
 			decl->Variable = symbol.value();
-			return;
+			return decl;
 		}
 			
 		// DiagnosticCode_AlreadyDefinedVariable
 		Report(DiagnosticCode_None, decl->GetName());
+		return decl;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTVariable> variable)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariable> variable, SemaContext context)
 	{
 		std::optional<std::shared_ptr<Symbol>> symbol;
 
@@ -99,89 +106,60 @@ namespace clear
 		{
 			// DiagnosticCode_UndefinedVariable
 			Report(DiagnosticCode_None, variable->GetName());
-			return;
+			return nullptr;
 		}
 		
 		variable->Variable = symbol.value();
+		
+		if (context.ValueReq == ValueRequired::RValue && variable->Variable->Kind == SymbolKind::Value)
+		{
+			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			loadNode->Operand = variable;
+
+			return loadNode;
+		}
+		
+		return variable;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTExpression> expr)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTExpression> expr, SemaContext context)
 	{
-		Visit(expr->RootExpr);
+		Visit(expr->RootExpr, context);
+		return expr;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTNodeBase> ast)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context)
     {
-    	switch (ast->GetType()) {
-    		case ASTNodeType::FunctionCall: {
-    			Visit(std::dynamic_pointer_cast<ASTFunctionCall>(ast));
-    			break;
-    		}
-    		case ASTNodeType::Variable: {
-    			Visit(std::dynamic_pointer_cast<ASTVariable>(ast));
-    			break;
-    		}
-
-    		case ASTNodeType::TypeResolver: {
-    			Visit(std::dynamic_pointer_cast<ASTType>(ast));
-    			break;
-    		}
-
-    		case ASTNodeType::TypeSpecifier: {
-    			Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(ast));
-    			break;
-    		}
-
-    		case ASTNodeType::Block: {
-    			Visit(std::dynamic_pointer_cast<ASTBlock>(ast));
-    			break;
-    		}
-    		case ASTNodeType::Literal: {
-    			Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast));
-    			break;
-    		}
-    		case ASTNodeType::BinaryExpression: {
-    			Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(ast));
-    			break;
-    		}
-    		case ASTNodeType::VariableDecleration: {
-    			Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(ast));
-    			break;
-    		}
-    		case ASTNodeType::FunctionDefinition: {
-    			Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(ast));
-    			break;
-    		}
-
-    		case ASTNodeType::Expression: {
-    			Visit(std::dynamic_pointer_cast<ASTExpression>(ast));
-    			break;
-
-    		}
-    		case ASTNodeType::ReturnStatement: {
-    			Visit(std::dynamic_pointer_cast<ASTReturn>(ast));
-    			break;
-    		}
-
+    	switch (ast->GetType()) 
+		{
+    		case ASTNodeType::FunctionCall:				return Visit(std::dynamic_pointer_cast<ASTFunctionCall>(ast), context);
+    		case ASTNodeType::Variable:					return Visit(std::dynamic_pointer_cast<ASTVariable>(ast), context);
+    		case ASTNodeType::TypeResolver:				return Visit(std::dynamic_pointer_cast<ASTType>(ast), context);
+    		case ASTNodeType::TypeSpecifier:			return Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(ast), context);
+    		case ASTNodeType::Block:					return Visit(std::dynamic_pointer_cast<ASTBlock>(ast), context);
+    		case ASTNodeType::VariableDecleration:		return Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(ast), context);
+			case ASTNodeType::Expression:				return Visit(std::dynamic_pointer_cast<ASTExpression>(ast), context);
     		default:
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
     	}
+
+		return nullptr;
     }
 
-	void Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
 		if (func->GenericTypes.size() > 0)
 		{
 			//TODO: generic function so delay instantiation until function call
-			return;
+			return func;
 		}
 
 		for (auto arg : func->Arguments)
-			Visit(arg);
+			Visit(arg, context);
 		
 		if (func->ReturnType)
-			Visit(func->ReturnType);
+			Visit(func->ReturnType, context);
 	
 		std::string mangledName = m_NameMangler.MangleFunctionFromNode(func);
 		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName());
@@ -191,7 +169,7 @@ namespace clear
 			// DiagnosticCode_AlreadyDefinedFunction
 			Report(DiagnosticCode_None, Token());
 			m_ScopeStack.pop_back();
-			return;
+			return func;
 		}
 		
 		func->SetName(mangledName);
@@ -207,50 +185,40 @@ namespace clear
 		func->FunctionSymbol = fnSymbolPtr;
 		func->SourceModule = m_Module;	
 
-		Visit(func->CodeBlock);	
+		Visit(func->CodeBlock, context);	
+		return func;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		for (auto arg : funcCall->Arguments)
-			Visit(arg);
+			Visit(arg, context);
 		
-		Visit(funcCall->Callee);
+		Visit(funcCall->Callee, context);
+		return funcCall;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTReturn> returnStatement)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTReturn> returnStatement, SemaContext context)
 	{
-		Visit(returnStatement->ReturnValue);
+		Visit(returnStatement->ReturnValue, context);
 		//TODO: add type checking
+		return returnStatement;
 	}
 	
-	void Sema::Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
 	{	
-		Visit(binaryExpression->LeftSide);
-		Visit(binaryExpression->RightSide);
-		
-		// TODO: temporary solution
-		if (binaryExpression->LeftSide->GetType() == ASTNodeType::Variable)
-		{
-			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
-			loadNode->Operand = binaryExpression->LeftSide;
-		
-			binaryExpression->LeftSide = loadNode; 
-		}
+		context.ValueReq = ValueRequired::RValue;
 
-		if (binaryExpression->RightSide->GetType() == ASTNodeType::Variable)
-		{
-			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
-			loadNode->Operand = binaryExpression->RightSide;
-		
-			binaryExpression->RightSide = loadNode; 
-		}
+		binaryExpression->LeftSide = Visit(binaryExpression->LeftSide, context);
+		binaryExpression->RightSide = Visit(binaryExpression->RightSide, context);
 			
 		// TODO: check if types are compatible and perform casting if needed
+		return binaryExpression;
 	}
 
-	void Sema::Visit(std::shared_ptr<ASTNodeLiteral> literal)
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeLiteral> literal, SemaContext context)
 	{
+		return literal;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)

@@ -29,19 +29,19 @@ namespace clear
 		Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder);
 		~Sema() = default;
 
-		void Visit(std::shared_ptr<ASTBlock> ast);
-		void Visit(std::shared_ptr<ASTType> type);
-		void Visit(std::shared_ptr<ASTTypeSpecifier> typeSpec);
-		void Visit(std::shared_ptr<ASTVariableDeclaration> decl);
-		void Visit(std::shared_ptr<ASTExpression> expr);	
-		void Visit(std::shared_ptr<ASTVariable> variable);
-		void Visit(std::shared_ptr<ASTNodeBase> ast);
-		void Visit(std::shared_ptr<ASTFunctionDefinition> func);
-		void Visit(std::shared_ptr<ASTFunctionCall> funcCall);
-		void Visit(std::shared_ptr<ASTReturn> returnStatement);
-		void Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression);
-		void Visit(std::shared_ptr<ASTNodeLiteral> literal);
-	
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBlock> ast, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTType> type, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTypeSpecifier> typeSpec, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTExpression> expr, SemaContext context);	
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context = {});
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTReturn> returnStatement, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTNodeLiteral> literal, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTVariable> variable, SemaContext context);
+
 	private:
 		void Report(DiagnosticCode code, Token token);
 		std::optional<Symbol> ConstructType(std::shared_ptr<ASTType> type);	
