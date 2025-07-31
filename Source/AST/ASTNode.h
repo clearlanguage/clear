@@ -14,6 +14,7 @@
 
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/CodeGen/MachineOperand.h>
 #include <memory>
 #include <string>
 #include <filesystem>
@@ -440,6 +441,8 @@ namespace clear
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		OperatorType GetOperatorType() const { return m_Type; }
 
 	public:
 		std::shared_ptr<ASTNodeBase> Operand;

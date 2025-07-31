@@ -79,9 +79,10 @@ namespace clear
 		// TODO if inferred type and constructed type are not the same then insert a cast
 		
 		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData(), SymbolEntryType::Variable);
-		
+	
 		if (symbol.has_value())
 		{
+			*symbol.value() = Symbol::CreateValue(nullptr, type->ConstructedType.GetType());
 			decl->Variable = symbol.value();
 			return decl;
 		}
@@ -145,6 +146,7 @@ namespace clear
 			case ASTNodeType::ReturnStatement:			return Visit(std::dynamic_pointer_cast<ASTReturn>(ast), context);
 			case ASTNodeType::BinaryExpression:			return Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(ast), context);
 			case ASTNodeType::Literal:					return Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast), context);
+			case ASTNodeType::UnaryExpression:			return Visit(std::dynamic_pointer_cast<ASTUnaryExpression>(ast), context);
     		default:
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
@@ -166,8 +168,9 @@ namespace clear
 		
 		if (func->ReturnType)
 			Visit(func->ReturnType, context);
-	
-		std::string mangledName = m_NameMangler.MangleFunctionFromNode(func);
+		
+		//TODO: temporary, until we have the clear runtime make a main function we will have to ignore mangling for main
+		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : "main";
 		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), SymbolEntryType::Function);
 	
 		if (!symbol.has_value())
@@ -217,7 +220,7 @@ namespace clear
 
 		binaryExpression->LeftSide = Visit(binaryExpression->LeftSide, context);
 		binaryExpression->RightSide = Visit(binaryExpression->RightSide, context);
-			
+		
 		// TODO: check if types are compatible and perform casting if needed
 		return binaryExpression;
 	}
@@ -236,6 +239,29 @@ namespace clear
 		Visit(assignmentOp->Value);
 
 		return assignmentOp;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTUnaryExpression> unaryExpr, SemaContext context)
+	{
+		switch (unaryExpr->GetOperatorType())
+		{
+			case OperatorType::PostIncrement: // increment and decrement need to operate on an lvalue and always return an rvalue
+			case OperatorType::PostDecrement:
+			case OperatorType::Ellipsis:
+			case OperatorType::Increment: 
+			case OperatorType::Decrement:
+			{
+				unaryExpr->Operand = Visit(unaryExpr->Operand, { ValueRequired::LValue });
+				break;
+			}
+			default:
+			{
+				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+				break;
+			}
+		}
+
+		return unaryExpr;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)

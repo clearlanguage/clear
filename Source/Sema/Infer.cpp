@@ -40,6 +40,10 @@ namespace clear
 			{
 				return InferTypeFromFunctionCall(std::dynamic_pointer_cast<ASTFunctionCall>(node));
 			}
+			case ASTNodeType::UnaryExpression:
+			{
+				return InferTypeFromUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
+			}
 			default:
 			{
 				CLEAR_UNREACHABLE("unimplemented");
@@ -47,6 +51,11 @@ namespace clear
 		}
 
 		return nullptr;
+	}
+
+	std::shared_ptr<Type> Infer::InferTypeFromUnaryExpr(std::shared_ptr<ASTUnaryExpression> unaryExpr)
+	{
+		return InferTypeFromNode(unaryExpr->Operand);
 	}
 
 	std::shared_ptr<Type> Infer::InferTypeFromBinExpr(std::shared_ptr<ASTBinaryExpression> binExpr)
