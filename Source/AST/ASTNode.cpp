@@ -898,7 +898,7 @@ namespace clear
 		std::shared_ptr<Type> returnType = ReturnType ? ReturnType->Codegen(ctx).GetType() : nullptr;
 
 		functionSymbol.FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), argTypes, false);
-		functionSymbol.FunctionPtr = llvm::Function::Create(functionSymbol.FunctionType, llvm::Function::InternalLinkage, m_Name, ctx.Module);
+		functionSymbol.FunctionPtr = llvm::Function::Create(functionSymbol.FunctionType, Linkage, m_Name, ctx.Module);
 
 		s_InsertPoints.push(builder.saveIP());
 
@@ -1028,7 +1028,7 @@ namespace clear
 					functionSymbol.FunctionNode->GetName(),
 					ctx.Module
 				);
-			}
+		}
 		}
 
 		llvm::Value* returnValue = ctx.Builder.CreateCall(functionPtr, args);
@@ -1086,7 +1086,7 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		m_ReturnType = ctx.TypeReg->GetType("void");
+		m_ReturnType = ctx.ClearModule->Lookup("void").GetType();
 
 		if (ReturnType)
 			m_ReturnType = ReturnType->Codegen(ctx).GetType();
@@ -1095,27 +1095,18 @@ namespace clear
 		{
 			llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
 			llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
-
-			FunctionInstance data;
-			data.FunctionType = functionType;
-			data.Function = llvm::cast<llvm::Function>(callee.getCallee());
-			data.Parameters = m_Parameters;
-			data.ReturnType = m_ReturnType;
-			data.MangledName = m_Name;
 			
-			GetSymbolTable()->RegisterInstance(data);
-
-			FunctionTemplate functionTemplate;
-			functionTemplate.IsVariadic = m_Parameters.size() > 0 && !m_Parameters.back().Type;
-			functionTemplate.Parameters = m_Parameters;
-			functionTemplate.ReturnType = m_ReturnType;
-			functionTemplate.Root = nullptr; // external function so no root
-			functionTemplate.IsExternal = true;
-			functionTemplate.Valid = true;
-
-			GetSymbolTable()->RegisterTemplate(data.MangledName, functionTemplate);
-
-			return Symbol::CreateFunction(&GetSymbolTable()->GetInstance(m_Name));	
+			*DeclSymbol = Symbol::CreateFunction(nullptr);
+			auto& funcSymbol = DeclSymbol->GetFunctionSymbol();
+			
+			funcSymbol.FunctionPtr = llvm::dyn_cast<llvm::Function>(callee.getCallee());
+			funcSymbol.FunctionType = functionType;
+			funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
+			funcSymbol.FunctionNode->SourceModule = ctx.ClearModule;
+			funcSymbol.FunctionNode->ReturnType = std::make_shared<ASTType>();
+			funcSymbol.FunctionNode->ReturnType->ConstructedType = Symbol::CreateType(m_ReturnType);	
+			
+			return *DeclSymbol;
 		}
 
 		return {};

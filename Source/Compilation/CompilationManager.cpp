@@ -125,7 +125,6 @@ namespace clear
         }
 
         m_MainModule->Link();
-
         if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
             std::println("failed to build module");
