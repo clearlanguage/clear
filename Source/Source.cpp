@@ -13,22 +13,6 @@ using namespace clear;
 
 int main(int argc, char* argv[])
 {
-    std::filesystem::path current = __FILE__;
-    std::filesystem::current_path(current.parent_path());
-
-    std::cout << "------PARSER TESTS--------" << std::endl;
-
-    DiagnosticsBuilder builder;
-
-    Lexer parser("Tests/test.cl", builder);
-
-    for(const auto& token : parser.GetTokens())
-    {
-        std::cout<< "TYPE: " << token.GetTypeAsString() <<  " DATA: " << token.GetData() <<  " METADATA: " << token.Metadata << std::endl;
-    }
-
-    builder.Dump();
-    return 0;
     CommandLine::ParsingResult result = CommandLine::Parse(argc, argv);
 
     switch (result.Options) 
