@@ -11,7 +11,8 @@ namespace clear
 {
 	enum class SymbolEntryType
 	{
-		None = 0, Variable, Function, GenericFunction
+		None = 0, Variable, Function, GenericFunction,
+		FunctionDeclaration
 	};
 
 	struct SymbolEntry

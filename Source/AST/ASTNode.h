@@ -287,6 +287,7 @@ namespace clear
 		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
 		std::shared_ptr<Symbol> FunctionSymbol;	
 		std::shared_ptr<Module> SourceModule;
+		llvm::Function::LinkageTypes Linkage = llvm::Function::InternalLinkage;
 
 	private:
 		std::string m_Name;
@@ -329,6 +330,7 @@ namespace clear
 	public:
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
 		std::shared_ptr<ASTType> ReturnType;
+		std::shared_ptr<Symbol> DeclSymbol;
 		bool InsertDecleration = true;
 
 	private:

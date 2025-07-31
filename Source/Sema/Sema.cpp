@@ -39,7 +39,15 @@ namespace clear
 	}
 	
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type, SemaContext context)
-	{
+	{	
+		if (!type->TypeResolver)
+		{
+			if (!type->IsVariadic)
+				Report(DiagnosticCode_None, Token());
+			
+			return type;
+		}
+
 		Visit(type->TypeResolver, context);
 		return type;
 	}
@@ -112,7 +120,7 @@ namespace clear
 		}
 		
 		variable->Variable = symbol.value().Symbol;
-		
+
 		if (context.ValueReq == ValueRequired::RValue && symbol.value().Type == SymbolEntryType::Variable)
 		{
 			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
@@ -126,7 +134,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTExpression> expr, SemaContext context)
 	{
-		Visit(expr->RootExpr, context);
+		expr->RootExpr = Visit(expr->RootExpr, context);
 		return expr;
 	}
 
@@ -147,7 +155,8 @@ namespace clear
 			case ASTNodeType::BinaryExpression:			return Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(ast), context);
 			case ASTNodeType::Literal:					return Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast), context);
 			case ASTNodeType::UnaryExpression:			return Visit(std::dynamic_pointer_cast<ASTUnaryExpression>(ast), context);
-    		default:
+			case ASTNodeType::FunctionDecleration:		return Visit(std::dynamic_pointer_cast<ASTFunctionDeclaration>(ast), context);
+    		default:	
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
     	}
@@ -189,6 +198,10 @@ namespace clear
 		{
 			FunctionSymbol& functionSymbol = fnSymbolPtr->GetFunctionSymbol();
 			functionSymbol.FunctionNode = func;
+			
+			//TODO: temporary again
+			if (mangledName == "main")
+				functionSymbol.FunctionNode->Linkage = llvm::Function::ExternalLinkage;
 		}
 
 		func->FunctionSymbol = fnSymbolPtr;
@@ -200,8 +213,10 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
-		for (auto arg : funcCall->Arguments)
-			Visit(arg, context);
+		context.ValueReq = ValueRequired::RValue;
+
+		for (auto& arg : funcCall->Arguments)
+			arg = Visit(arg, context);
 		
 		Visit(funcCall->Callee, context);
 		return funcCall;
@@ -262,6 +277,37 @@ namespace clear
 		}
 
 		return unaryExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDeclaration> decl, SemaContext context)
+	{
+		size_t k = 0;
+		for (auto arg : decl->Arguments)
+		{
+			if (arg->IsVariadic)
+			{
+				if (k + 1 != decl->Arguments.size())
+					Report(DiagnosticCode_None, Token()); // DiagnosticCode_VariadicArgsMustAtTheEnd
+			}
+			
+			Visit(arg);
+			k++;
+		}
+		
+		if (decl->ReturnType)
+			Visit(decl->ReturnType);
+		
+		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName(), SymbolEntryType::FunctionDeclaration);
+
+		if (!symbol.has_value())
+		{
+			// DiagnosticCode_AlreadyDefinedSymbol
+			Report(DiagnosticCode_None, Token());
+			return decl;
+		}
+
+		decl->DeclSymbol = symbol.value();
+		return decl;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
