@@ -719,7 +719,7 @@ namespace clear
 		Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
 		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
-		
+			
 		if (isGlobal)
 		{
 		
@@ -741,9 +741,18 @@ namespace clear
 		}
 		else
 		{
+			llvm::BasicBlock* insertBlock = ctx.Builder.GetInsertBlock();
+        
+			CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
+			auto ip = ctx.Builder.saveIP(); 
+			llvm::Function* function = insertBlock->getParent();    
+			ctx.Builder.SetInsertPoint(&function->getEntryBlock());
+			
 			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get());
 			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
-			
+				
+			ctx.Builder.restoreIP(ip);
+
 			if (initializer.Kind != SymbolKind::None)
 				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
 		}
@@ -1526,10 +1535,6 @@ namespace clear
 			auto [resultValue, resultType] = result.GetValue();
 
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
-
-			if(ctx.WantAddress)
-				return result;
-
 			return SymbolOps::Load(result, ctx.Builder);
 		}	
 
@@ -1537,7 +1542,6 @@ namespace clear
 
 		if(m_Type == OperatorType::Address)
 		{		
-			ValueRestoreGuard guard(ctx.WantAddress, true);
 			return Operand->Codegen(ctx);;
 		}
 
@@ -1561,10 +1565,8 @@ namespace clear
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
-		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.TypeReg->GetType("int32"));
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.ClearModule->Lookup("int32").GetType());
 
-		ValueRestoreGuard guard(ctx.WantAddress, true);
-		
 		Symbol result = Operand->Codegen(ctx);
 		auto [resultValue, resultType] = result.GetValue();
 
