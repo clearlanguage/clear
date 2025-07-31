@@ -135,6 +135,11 @@ namespace clear
 		return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 	}
 
+	void ASTNodeLiteral::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(shared_from_this()));
+	}
+
     ASTBinaryExpression::ASTBinaryExpression(OperatorType type)
 		: m_Expression(type)
 	{
@@ -169,6 +174,10 @@ namespace clear
 		return {};
     }
 
+	void ASTBinaryExpression::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(shared_from_this()));
+	}
 
 	void ASTBinaryExpression::Print()
 	{
@@ -533,12 +542,12 @@ namespace clear
 					auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
 					CLEAR_VERIFY(funcCall, "invalid function call");
 
-					std::string name = funcCall->GetName();
+					//std::string name = funcCall->GetName();
 
-					funcCall->SetName(std::format("{}.{}", ty->As<ClassType>()->GetHash(), name));
+					//funcCall->SetName(std::format("{}.{}", ty->As<ClassType>()->GetHash(), name));
 					Symbol result = funcCall->Codegen(ctx);
 
-					funcCall->SetName(name);
+					//funcCall->SetName(name);
 
 					return result;
 				}
@@ -587,14 +596,14 @@ namespace clear
 					auto classType = dyn_cast<ClassType>(ptrType->GetBaseType());
 					CLEAR_VERIFY(classType, "invalid class type for function call");
 
-					std::string name = funcCall->GetName();
+					//std::string name = funcCall->GetName();
 
-					funcCall->PushPrefixArgument(lhs.GetValue().first, ptrType);
-					funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
+					//funcCall->PushPrefixArgument(lhs.GetValue().first, ptrType);
+					//funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
 
 					Symbol result = funcCall->Codegen(ctx);
 
-					funcCall->SetName(name);
+					//funcCall->SetName(name);
 
 					return result;
 				}
@@ -719,24 +728,25 @@ namespace clear
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
 		Symbol resolvedType = TypeResolver->Codegen(ctx);
-		Symbol initializer = Initializer->Codegen(ctx);
+		Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
 		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 		
 		if (isGlobal)
 		{
+		
 			llvm::Value* allocaInst = new llvm::GlobalVariable(
 				ctx.Module, 
 				resolvedType.GetType()->Get(),
 				resolvedType.GetType()->IsConst(),
 				llvm::GlobalValue::InternalLinkage,
-				llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()),
+				initializer.Kind != SymbolKind::None ? llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()) : nullptr,
 				m_Name.GetData()
 			);
 
 			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
 
-			if (!llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()))
+			if (initializer.Kind != SymbolKind::None && !llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()))
 			{
 				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
 			}
@@ -745,7 +755,9 @@ namespace clear
 		{
 			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get());
 			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
-			SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
+			
+			if (initializer.Kind != SymbolKind::None)
+				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
 		}
 		
 
@@ -882,143 +894,47 @@ namespace clear
 
 	Symbol ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
-		std::shared_ptr<SymbolTable> prev = GetSymbolTable()->GetPrevious();
-		CLEAR_VERIFY(prev, "prev was null");
-
-		bool isVariadic = false;
-
-		RegisterGenerics(ctx);
-
-		m_ResolvedParams.clear();
-
-		// resolve parameters
-
-		for(auto& param : m_PrefixParams)
-		{
-			m_ResolvedParams.push_back(param);
-		}
-
-		m_PrefixParams.clear();
-
-
-		size_t i = 0;
-		for(auto arg : Arguments)
-		{
-			Symbol result = arg->Codegen(ctx);
-			isVariadic = arg->IsVariadic;
-
-			m_ResolvedParams.push_back({ std::string(result.Metadata.value_or(String())), result.GetType(), arg->IsVariadic });
-		}
-		
-		if(ReturnType)
-			m_ResolvedReturnType = ReturnType->Codegen(ctx).GetType();
-
-		RemoveGenerics(ctx);
-		
-		// resolve default arguments
-		std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs(m_ResolvedParams.size(), nullptr);
-		
-
-		for(auto defaultArg : DefaultArguments)
-		{
-			auto arg = std::dynamic_pointer_cast<ASTDefaultArgument>(defaultArg);
-			size_t argIndex = arg->GetIndex();
-
-			CLEAR_VERIFY(argIndex < defaultArgs.size(), "invalid arg index!");
-			defaultArgs[argIndex] = arg;
-		
-		}
-
-		prev->CreateTemplate(m_Name, m_ResolvedReturnType, m_ResolvedParams, isVariadic, defaultArgs, ShallowCopy(), ctx.ClearModule);
-		
-		// main needs to be instantiated immedietly as nothing calls it.
-		if(m_Name == "main")
-		{
-			prev->InstantiateOrReturn(m_Name, m_ResolvedParams, m_ResolvedReturnType, ctx);
-		}		
-		
-		return {};
-	}
-
-	void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
-    {
-		PushScopeMarker(ctx);
-
 		auto& module  = ctx.Module;
 		auto& context = ctx.Context;
 		auto& builder = ctx.Builder;
+		
+		auto& functionSymbol = FunctionSymbol->GetFunctionSymbol();
+		
+		llvm::SmallVector<llvm::Type*> argTypes;
+		std::transform(Arguments.begin(), Arguments.end(), std::back_inserter(argTypes), [](std::shared_ptr<ASTVariableDeclaration> decl)
+				 {
+					return decl->TypeResolver->ConstructedType.GetType()->Get();
+				 });
+		
+		std::shared_ptr<Type> returnType = ReturnType ? ReturnType->Codegen(ctx).GetType() : nullptr;
+
+		functionSymbol.FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), argTypes, false);
+		functionSymbol.FunctionPtr = llvm::Function::Create(functionSymbol.FunctionType, llvm::Function::InternalLinkage, m_Name, ctx.Module);
 
 		s_InsertPoints.push(builder.saveIP());
 
-		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionData.Function);
+		llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", functionSymbol.FunctionPtr);
 		llvm::BasicBlock* body  = llvm::BasicBlock::Create(context, "body");
 		
 		builder.SetInsertPoint(entry);
 
 		llvm::BasicBlock* returnBlock  = llvm::BasicBlock::Create(context, "return");
-		llvm::AllocaInst* returnAlloca = m_ResolvedReturnType ? builder.CreateAlloca(functionData.ReturnType->Get(), nullptr, "return_value") : nullptr;
+		llvm::AllocaInst* returnAlloca = returnType ? builder.CreateAlloca(returnType->Get(), nullptr, "return_value") : nullptr;
 		
-		ValueRestoreGuard guard1(ctx.ReturnType,   functionData.ReturnType);
+		ValueRestoreGuard guard1(ctx.ReturnType,   returnType);
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
 
-		uint32_t k = 0;
-
-		bool hasVaArgs = false;
-
-		std::shared_ptr<SymbolTable> tbl = GetSymbolTable();
-
-		for (const auto& param : m_ResolvedParams)
+		size_t k = 0;
+		for (const auto& arg : Arguments)
 		{
-			if(param.IsVariadic)
-			{
-				hasVaArgs = true;
-				break;
-			}
-
-			auto type = param.Type;
-
-			if(type->IsTrait() || type->IsGeneric())
-			{
-				type = functionData.Parameters[k].Type;
-			}
-
-			llvm::AllocaInst* argAlloc = builder.CreateAlloca(type->Get(), nullptr, param.Name);
-			builder.CreateStore(functionData.Function->getArg(k), argAlloc);
-			
-			Allocation alloca;
-			alloca.Alloca = argAlloc;
-			alloca.Type   = type;
-
-			tbl->OwnAllocation(std::string(param.Name), alloca);
-			k++;
+			Symbol argAlloc = arg->Codegen(ctx);
+			Symbol argValue = Symbol::CreateValue(functionSymbol.FunctionPtr->getArg(k++), arg->TypeResolver->ConstructedType.GetType());
+			SymbolOps::Store(argAlloc, argValue, ctx.Builder, ctx.Module, true);
 		}
 
-		auto& varArgs = tbl->GetVariadicArguments();
-		varArgs.clear();
-		
-		if(hasVaArgs)
-		{
-			for(size_t i = k; i < functionData.Parameters.size(); i++)
-			{
-				llvm::AllocaInst* argAlloc = builder.CreateAlloca(functionData.Parameters[i].Type->Get(), nullptr, m_ResolvedParams[k].Name);
-				builder.CreateStore(functionData.Function->getArg(i), argAlloc);
-
-				Allocation alloca;
-				alloca.Alloca = argAlloc;
-				alloca.Type   = functionData.Parameters[i].Type;
-				varArgs.push_back(alloca);
-			}
-
-			Allocation dummy;
-			dummy.Alloca = nullptr;
-			dummy.Type = std::make_shared<VariadicArgumentsHolder>(); 
-
-			tbl->TrackAllocation(std::string(m_ResolvedParams[k].Name), dummy);
-		}
-
-		functionData.Function->insert(functionData.Function->end(), body);
+		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), body);
 		builder.SetInsertPoint(body);
 
 		CodeBlock->Codegen(ctx);
@@ -1033,26 +949,36 @@ namespace clear
 		if(!builder.GetInsertBlock()->getTerminator())
 			builder.CreateBr(returnBlock);
 
-		functionData.Function->insert(functionData.Function->end(), returnBlock);
+		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
 		builder.SetInsertPoint(returnBlock);
 		
 
-		if (functionData.Function->getReturnType()->isVoidTy())
+		if (functionSymbol.FunctionPtr->getReturnType()->isVoidTy())
 		{
-			tbl->FlushScope(ctx);
 			builder.CreateRetVoid();
 		}
 		else
 		{   
 			llvm::Value* load = builder.CreateLoad(returnAlloca->getAllocatedType(), returnAlloca, "loaded_value");
-			tbl->FlushScope(ctx);
 			builder.CreateRet(load);
 		}
 
 		auto& ip = s_InsertPoints.top();
 		builder.restoreIP(ip);
 		s_InsertPoints.pop();
-    }
+
+		return {};
+	}
+
+	void ASTFunctionDefinition::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(shared_from_this()));
+	}
+
+	void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
+    {
+		PushScopeMarker(ctx);
+	}
 
 	void ASTFunctionDefinition::RegisterGenerics(CodegenContext& ctx)
 	{
@@ -1082,198 +1008,70 @@ namespace clear
 		functionDefinition->m_ResolvedReturnType = m_ResolvedReturnType;
 		functionDefinition->m_GenericTypes = m_GenericTypes;
 		functionDefinition->Arguments = Arguments;
-		functionDefinition->DefaultArguments = DefaultArguments;
 		functionDefinition->CodeBlock = CodeBlock;
 		functionDefinition->ReturnType = ReturnType;
 
 		return functionDefinition;
 	}
 
-    ASTFunctionCall::ASTFunctionCall(const std::string& name)
-		: m_Name(name)
-    {
-    }
-
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
-		auto& builder  = ctx.Builder;
-		auto& module   = ctx.Module;
-		auto& context  = ctx.Context;
-
-		std::shared_ptr<SymbolTable> symbolTable = GetSymbolTable();
-
-		Allocation temporary;
-
-		if(auto ty = ctx.TypeReg->GetType(m_Name)) // if the name is a type, we construct a temporary to that type and call constructor
-		{
-			CLEAR_VERIFY(ctx.WantAddress == false, "cannot get an address to a temporary!");
-
-			temporary = symbolTable->RequestTemporary(ty, builder);
-
-			if(Arguments.size() == 0) // empty constructor so construct all children
-			{
-				llvm::Constant* zero = llvm::ConstantAggregateZero::get(ty->Get()); // zero initalize all elements.
-		    	ctx.Builder.CreateStore(zero, temporary.Alloca);
-
-				ASTDefaultInitializer::RecursiveCallConstructors(temporary.Alloca, ty, ctx, GetSymbolTable()); 
-
-				return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type); // return value of temporary
-			}
-
-			m_Name = std::format("{}.{}", m_Name, "__construct__");
-			m_PrefixArguments.push_back({ temporary.Alloca, ctx.TypeReg->GetPointerTo(ty) });
-		}
-
-		uint32_t k = 0;
-
 		std::vector<llvm::Value*> args;
-		std::vector<Parameter> params; // we only care about types here
+		std::vector<std::shared_ptr<Type>> types;
 
-		BuildArgs(ctx, args, params);
+		BuildArgs(ctx, args, types);
+				
+		auto functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
 
-		if(Intrinsics::IsIntrinsic(m_Name)) // if its an intrinsic then dispatch correct function and return correct type
+		if (!functionSymbol.FunctionPtr)
 		{
-			llvm::Value* value = nullptr;
+			CodegenContext contextFromOther = functionSymbol.FunctionNode->SourceModule->GetCodegenContext();
+			functionSymbol.FunctionNode->Codegen(contextFromOther);
+		}	
+	
+		llvm::Function* functionPtr = functionSymbol.FunctionPtr;
+		llvm::FunctionType* functionType = functionSymbol.FunctionType;
 
-			if(args.size() > 0)
-				value = Intrinsics::ApplyIntrinsic(m_Name, args[0], params[0].Type, ctx);
-			else
-				value = Intrinsics::ApplyIntrinsic(m_Name, nullptr, nullptr, ctx);
-
-			if(!value) return {};
-
-			if(m_Name == "sizeof") return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
-			if(m_Name == "len")    return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
-
-			return Symbol::CreateValue(value, ctx.ClearModule->Lookup("int64").GetType());
-		}
-
-
-		// ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable() hack for now until i can think of a better solution
-		FunctionTemplate& data = ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable()->GetTemplate(m_Name, params);
-		CLEAR_VERIFY(data.Valid, "failed to find template named ", m_Name);
-
-		// add any default arguments
-		for(size_t i = args.size(); i < data.DefaultArguments.size(); i++)
+		if (functionSymbol.FunctionNode->SourceModule != ctx.ClearModule)
 		{
-			if(!data.DefaultArguments[i]) 
+			functionPtr = ctx.Module.getFunction(functionSymbol.FunctionNode->GetName());
+			
+			if (!functionPtr)
 			{
-				break;
+				functionPtr = llvm::Function::Create(
+					functionType,
+					llvm::Function::ExternalLinkage,
+					functionSymbol.FunctionNode->GetName(),
+					ctx.Module
+				);
 			}
-
-			Symbol argument = data.DefaultArguments[i]->Codegen(ctx);
-
-			auto [argValue, argType] = argument.GetValue();
-
-			args.push_back(argValue);
-			params.push_back({ .Type=argType });
-		}
-		
-		// cast
-		CastArgs(ctx, args, params, data);
-
-		m_PrefixArguments.clear();
-
-		// if we already have a decleration then call (external/extern function)
-
-		if(symbolTable->HasDecleration(m_Name))
-		{
-			FunctionInstance& instance = symbolTable->GetDecleration(m_Name);
-
-			if(temporary.Alloca)
-			{
-				ctx.Builder.CreateCall(instance.Function, args);
-				return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type);
-			}
-
-			return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType);
 		}
 
-		// instantiate and call
-		FunctionInstance& instance = ctx.ClearModuleSecondary->GetRoot()->GetSymbolTable()->InstantiateOrReturn(m_Name, params, data.ReturnType, ctx);
-
-		if(temporary.Alloca)
-		{
-			ctx.Builder.CreateCall(instance.Function, args);
-			return Symbol::CreateValue(ctx.Builder.CreateLoad(temporary.Type->Get(), temporary.Alloca), temporary.Type);
-		}
-
-		return Symbol::CreateValue(ctx.Builder.CreateCall(instance.Function, args), instance.ReturnType);
+		llvm::Value* returnValue = ctx.Builder.CreateCall(functionPtr, args);
+		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnType->ConstructedType.GetType());
 	}
 
-    void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params)
+	void ASTFunctionCall::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTFunctionCall>(shared_from_this()));
+	}
+
+    void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
     {
 		ValueRestoreGuard guard(ctx.WantAddress, false);
 		
-		for(auto& [value, type] : m_PrefixArguments)
-		{
-			args.push_back(value);
-			params.push_back({ "", type });
-		}
-
 		for (auto& child : Arguments)	
 		{
 			Symbol gen = child->Codegen(ctx);
 
-			for (auto jj : gen.GetValueTuple().Values)
+			for (auto value : gen.GetValueTuple().Values)
 			{
-				args.push_back(jj);
+				args.push_back(value);
 			}
 
-			for (auto jt : gen.GetValueTuple().Types)
+			for (auto type : gen.GetValueTuple().Types)
 			{
-				params.push_back({"", jt });
-			}
-
-
-		}
-    }
-
-    void ASTFunctionCall::CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate& fnTemplate)
-    {
-		for(size_t i = 0; i < args.size(); i++)
-		{
-			auto& param1 = params[i];
-			auto& param2 = i < fnTemplate.Parameters.size() ? fnTemplate.Parameters[i] : fnTemplate.Parameters.back();
-
-			if(!param2.Type || param2.Type->IsGeneric()) 
-				continue;
-
-			if((param1.Type->Get() != param2.Type->Get()) || param2.Type->IsTrait()) 
-			{
-				if(param2.Type->IsTrait()) 
-				{
-					params[i].Type = param1.Type;
-					continue;
-				}
-
-				args[i] = TypeCasting::Cast(args[i], param1.Type, param2.Type, ctx.Builder);
-				params[i].Type = param2.Type;
-			}
-
-			if(param1.Type->IsPointer() && param2.Type->IsPointer())
-			{
-				// if both are pointers, we need to make sure that they point to the same type
-				auto ptr1 = std::dynamic_pointer_cast<PointerType>(param1.Type);
-				auto ptr2 = std::dynamic_pointer_cast<PointerType>(param2.Type);
-
-				if(!ptr1->GetBaseType())
-				{
-					params[i].Type = param2.Type;
-					continue;
-				}
-
-				if(!ptr2->GetBaseType()) // opaque pointer (which is not allowed)
-				{
-					CLEAR_UNREACHABLE("opaque pointer in function call, this should not happen");
-					continue;
-				}
-
-				if(ptr1 && ptr2 && ptr1->GetBaseType()->Get() != ptr2->GetBaseType()->Get())
-				{
-					// no need to cast pointers just switch the underlying type
-					params[i].Type = param2.Type;
-				}
+				types.push_back(type);
 			}
 		}
     }
@@ -1348,6 +1146,11 @@ namespace clear
 		return RootExpr->Codegen(ctx);
 	}
 
+	void ASTExpression::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTExpression>(shared_from_this()));
+	}
+
 	std::shared_ptr<ASTExpression> ASTExpression::AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes)
 	{
 		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> stack;
@@ -1356,7 +1159,6 @@ namespace clear
 		{
 			return child->GetType() == ASTNodeType::Literal || 
 				   child->GetType() == ASTNodeType::Variable ||
-				   child->GetType() == ASTNodeType::FunctionCall || 
 				   child->GetType() == ASTNodeType::Member || 
 				   child->GetType() == ASTNodeType::ListExpr || 
 				   child->GetType() == ASTNodeType::StructExpr || 
@@ -1378,6 +1180,13 @@ namespace clear
 
 				stack.push_back(unaryExpression);
 				continue;
+			}
+			else if (std::shared_ptr<ASTFunctionCall> functionCall = std::dynamic_pointer_cast<ASTFunctionCall>(child))
+			{
+				functionCall->Callee = stack.back();
+				stack.pop_back();
+
+				stack.push_back(functionCall);
 			}
 			else if (std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child))
 			{
@@ -1712,6 +1521,11 @@ namespace clear
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
 
 		return {};
+	}
+
+	void ASTReturn::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTReturn>(shared_from_this()));
 	}
 
     void ASTReturn::EmitDefaultReturn(CodegenContext& ctx)
@@ -2677,6 +2491,11 @@ namespace clear
 		Symbol type = TypeResolver->Codegen(ctx);
 		type.Metadata = m_Name;
 		return type;
+	}
+
+	void ASTTypeSpecifier::Accept(Sema& sema)
+	{
+		sema.Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(shared_from_this()));
 	}
 
 	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)

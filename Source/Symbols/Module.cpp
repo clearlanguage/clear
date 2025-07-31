@@ -14,8 +14,7 @@ namespace clear
 		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
         m_Module  = std::make_unique<llvm::Module>(name, *m_Context);
 
-        m_Root = std::make_shared<ASTNodeBase>();
-        m_Root->CreateSymbolTable();
+        m_Root = std::make_shared<ASTBlock>();
 
         m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
 
@@ -41,8 +40,7 @@ namespace clear
         m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
         m_ContainedModules["__clrt_internal"] = builtins;
 
-        m_Root = std::make_shared<ASTNodeBase>();
-        m_Root->CreateSymbolTable();
+        m_Root = std::make_shared<ASTBlock>();
         m_Root->GetSymbolTable()->SetPrevious(parent->GetRoot()->GetSymbolTable());
     }
 

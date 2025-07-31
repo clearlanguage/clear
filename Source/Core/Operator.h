@@ -2,10 +2,11 @@
 
 #include <bitset>
 #include <map>
+#include <memory>
 
 namespace clear 
 {
-     enum class OperatorType 
+    enum class OperatorType 
     {
         None = 0, Or, And, 
 
@@ -28,7 +29,7 @@ namespace clear
         PostDecrement, PostIncrement,      
 
         Negation, Dot, Index, 
-        Pow, Ternary,
+        Pow, Ternary, FunctionCall,
 
         Count
     };
@@ -61,9 +62,13 @@ namespace clear
             OperatorType::PostDecrement
     });
 
-    inline std::map<OperatorType, int> g_Precedence = {
+	struct ASTFunctionCall; 
+	class Parser;  
+
+	inline std::map<OperatorType, int> g_Precedence = {
         {OperatorType::Index,            7}, // x[y]
         {OperatorType::Dot,              7}, // x.y
+		{OperatorType::FunctionCall,     7}, // x.y
 
         {OperatorType::Negation,           6}, // -x
         {OperatorType::Increment,          6}, // ++x
@@ -105,6 +110,8 @@ namespace clear
         {OperatorType::Ternary,           -3}, // x ? y : z
     }; 
 
+	class ASTNodeBase;
+
     struct Operator
     {
         OperatorType OperatorExpr;
@@ -113,6 +120,8 @@ namespace clear
         bool IsBinary       = false;
         bool IsOpenBracket  = false;
         bool IsBeginTernary = false;
+		
+		std::shared_ptr<ASTNodeBase> OperatorNode;
 
         int Precedence = 0;
 

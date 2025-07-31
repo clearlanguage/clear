@@ -2,7 +2,9 @@
 
 #include <API/LLVM/LLVMInclude.h>
 
+#include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
+#include <system_error>
 #include <variant>
 
 namespace clear 
@@ -12,6 +14,7 @@ namespace clear
     class FunctionInstance;
     class FunctionTemplate;
     class ASTNodeBase;
+	class ASTFunctionDefinition;
 
     using String = llvm::SmallString<64>;
     using StringRef = llvm::StringRef;
@@ -32,6 +35,10 @@ namespace clear
     struct FunctionSymbol 
     {
         FunctionInstance* Instance;
+		
+		llvm::Function* FunctionPtr = nullptr;
+		llvm::FunctionType* FunctionType = nullptr;
+		std::shared_ptr<ASTFunctionDefinition> FunctionNode;
     };
 
     struct FunctionTemplateSymbol 
@@ -110,5 +117,6 @@ namespace clear
         const ValueSymbol& GetValueTuple() const;
         ClassTemplate GetClassTemplate();
         InferTypeSymbol GetInferType();
+		FunctionSymbol& GetFunctionSymbol();
     };
 }

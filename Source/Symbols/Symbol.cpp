@@ -1,5 +1,6 @@
 #include "Symbol.h"
 
+#include "Core/Log.h"
 #include "Module.h"
 #include "Type.h"
 #include "FunctionCache.h"
@@ -184,4 +185,10 @@ namespace clear
         CLEAR_VERIFY(Kind == SymbolKind::InferType, "cannot call Symbol::GetInferType() when kind is not InferType");
         return std::get<InferTypeSymbol>(Data);
     }
+
+	FunctionSymbol& Symbol::GetFunctionSymbol()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunctionSymbol() when kind is not Function");
+		return std::get<FunctionSymbol>(Data);
+	}
 }

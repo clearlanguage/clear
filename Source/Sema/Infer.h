@@ -15,6 +15,7 @@ namespace clear
 		std::shared_ptr<Type> InferTypeFromNode(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<Type> InferTypeFromExpr(std::shared_ptr<ASTExpression> expr);
 		std::shared_ptr<Type> InferTypeFromBinExpr(std::shared_ptr<ASTBinaryExpression> binExpr);
+		std::shared_ptr<Type> InferTypeFromFunctionCall(std::shared_ptr<ASTFunctionCall> funcCall);
 
 		std::shared_ptr<Type> GetCommonType(std::shared_ptr<Type> type1, std::shared_ptr<Type> type2);	
 

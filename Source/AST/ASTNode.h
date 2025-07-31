@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Log.h"
 #include "Symbols/FunctionCache.h"
 #include "Symbols/Type.h"
 #include "Core/Value.h"
@@ -76,7 +77,7 @@ namespace clear
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&); 
-		virtual void Accept(Sema&) {}; // TODO: change this to pure virtual and implement for each node type. Each node should do sema.Visit(shared_from_this())
+		virtual void Accept(Sema&) { CLEAR_UNREACHABLE("unimplemented"); } 
 		virtual void Print() {}
 
 		void AddChild(std::shared_ptr<ASTNodeBase> node);
@@ -114,6 +115,7 @@ namespace clear
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 		
 		const auto& GetData() const { return m_Token; }
 
@@ -129,6 +131,7 @@ namespace clear
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 		virtual void Print() override;
 
 		inline const OperatorType GetExpression() const { return m_Expression; }
@@ -170,6 +173,8 @@ namespace clear
 	private:
 		OperatorType m_Expression;	
 	};
+	
+	class ASTType;
 
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
@@ -184,7 +189,7 @@ namespace clear
 		const auto& GetResolvedType() const { return m_Type; }
 	
 	public:
-		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<ASTType> TypeResolver;
 		std::shared_ptr<ASTNodeBase> Initializer;
 		std::shared_ptr<Symbol> Variable;
 
@@ -251,6 +256,7 @@ namespace clear
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 
 		const std::string& GetName() const { return m_Name; }
 		void SetName(const std::string& name) { m_Name = name;}
@@ -276,11 +282,13 @@ namespace clear
 		std::shared_ptr<ASTFunctionDefinition> ShallowCopy();
 
 	public:
-		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
-		std::vector<std::shared_ptr<ASTNodeBase>> DefaultArguments;
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
 		std::shared_ptr<ASTType> ReturnType;
 		std::shared_ptr<ASTBlock> CodeBlock;	
-	
+		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
+		std::shared_ptr<Symbol> FunctionSymbol;	
+		std::shared_ptr<Module> SourceModule;
+
 	private:
 		std::string m_Name;
 
@@ -294,29 +302,18 @@ namespace clear
 	class ASTFunctionCall : public ASTNodeBase
 	{
 	public:
-		ASTFunctionCall(const std::string& name);
+		ASTFunctionCall() = default;
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema& sema) override;
 				
-		void SetName(const std::string& name) { m_Name = name; }
-		const std::string& GetName() const { return m_Name; }
-
-		void PushPrefixArgument(llvm::Value* value, std::shared_ptr<Type> type) 
-		{ 
-			m_PrefixArguments.emplace_back(value, type); 
-		}
-
 	public:
+		std::shared_ptr<ASTNodeBase> Callee;
 		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
 
 	private:
-		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params);
-		void CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate&);
-	
-	private:
-		std::string m_Name;
-		std::vector<std::pair<llvm::Value*, std::shared_ptr<Type>>> m_PrefixArguments; // value, type
+		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
 	};
 
 	class ASTFunctionDeclaration : public ASTNodeBase
@@ -349,6 +346,7 @@ namespace clear
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 		
 		static std::shared_ptr<ASTExpression> AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes);
 		
@@ -429,6 +427,7 @@ namespace clear
 		virtual ~ASTReturn() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 
 	public:
 		std::shared_ptr<ASTNodeBase> ReturnValue;
@@ -499,6 +498,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Truthy;
 		std::shared_ptr<ASTNodeBase> Falsy;
 	};
+	
+	class ASTType;
 
 	class ASTTypeSpecifier : public ASTNodeBase
 	{
@@ -507,10 +508,11 @@ namespace clear
 		virtual ~ASTTypeSpecifier() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		virtual void Accept(Sema&) override;
 
 	public:
 		bool IsVariadic = false;
-		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<ASTType> TypeResolver;
 
 	private:
 		std::string m_Name;

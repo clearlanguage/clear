@@ -61,7 +61,7 @@ namespace clear
         : m_Tokens(tokens), m_DiagnosticsBuilder(builder)
     {
         m_Modules.push_back(rootModule);
-        //m_RootStack.push_back(rootModule->GetRoot());
+        m_RootStack.push_back(rootModule->GetRoot());
 
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
@@ -398,7 +398,7 @@ namespace clear
             Consume();
         };
 
-        auto ConstructType = [&](const std::shared_ptr<ASTNodeBase>& type)
+        auto ConstructType = [&](std::shared_ptr<ASTType> type)
         {   
             EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
             std::string memberName = Consume().GetData();
@@ -552,7 +552,7 @@ namespace clear
         // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
 
         EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-        auto var = std::make_shared<ASTVariable>(Consume().GetData());
+        auto var = std::make_shared<ASTVariable>(Consume());
 
         auto forLoop = std::make_shared<ASTForExpression>(name);
         forLoop->Iterator = var;
@@ -621,8 +621,7 @@ namespace clear
 
         size_t i = 0;
 
-        std::vector<std::shared_ptr<ASTTypeSpecifier>> params;
-        std::vector<std::shared_ptr<ASTDefaultArgument>> defaultArgs;
+        std::vector<std::shared_ptr<ASTVariableDeclaration>> params;
         std::shared_ptr<ASTType> returnType;
 
         auto Flush = [&]()
@@ -634,13 +633,7 @@ namespace clear
 
             funcNode->ReturnType = returnType;
 
-            for(const auto& arg : defaultArgs)
-            {
-                funcNode->DefaultArguments.push_back(arg);
-            }
-
             Root()->Children.push_back(funcNode);
-			
 
             if(!descriptionOnly)
 			{
@@ -653,60 +646,12 @@ namespace clear
         };
 
         while (!Match(TokenType::RightParen))
-        {
-            if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
-            {
-                auto x = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
-                x->IsVariadic = true;
-
-                params.push_back(x);
-                Consume();
-            
-                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
-                break;
-            }
-           
-            auto type = ParseTypeResolver();
-            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-            std::string name = Consume().GetData();
-           
-            if(Match(TokenType::Equals)) 
-            {
-                Consume();
-            
-                std::shared_ptr<ASTDefaultArgument> arg = std::make_shared<ASTDefaultArgument>(i);
-                arg->Value = ParseExpression();
-            
-                defaultArgs.push_back(arg);
-            }
-           
-            if(Match(TokenType::Ellipses))
-            {
-                auto x = std::make_shared<ASTTypeSpecifier>(name);
-                x->IsVariadic = true;
-                x->TypeResolver = type;
-
-                params.push_back(x);
-
-                Consume();
-                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction);
-
-                break;
-            }
-           
-            if(!Match(TokenType::RightParen))
-            {
-                EXPECT_TOKEN(TokenType::Comma,DiagnosticCode_ExpectedCommaBetweenFunctionParams)
-                Consume();
-            }
-           
-            auto x = std::make_shared<ASTTypeSpecifier>(name);
-            x->TypeResolver = type;
-
-            params.push_back(x);
-
-            i++;
-        }
+		{
+			params.push_back(ParseVariableDecleration().Node);
+			
+			if (Match(TokenType::Comma))
+				Consume();  
+		}
        
         Consume();
 
@@ -930,16 +875,14 @@ namespace clear
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
     {
-        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
-
-        std::string functionName = Consume().GetData();
-
+        EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedIdentifier, nullptr);
+		
         Expect(TokenType::LeftParen);
         Consume();
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
 
-        auto call = std::make_shared<ASTFunctionCall>(functionName);
+        auto call = std::make_shared<ASTFunctionCall>();
 
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
@@ -982,17 +925,12 @@ namespace clear
 
             RestorePosition();
 
-            if(Next().IsType(TokenType::LeftParen))
-            {
-                return ParseFunctionCall();
-            }
-
             if(Prev().IsType(TokenType::Dot))
             {
                 return std::make_shared<ASTMember>(Consume().GetData());
             }
 
-            return std::make_shared<ASTVariable>(Consume().GetData());
+            return std::make_shared<ASTVariable>(Consume());
         }
 
         if(Match(TokenType::LeftBrace))
@@ -1146,14 +1084,7 @@ namespace clear
             while (!operators.empty() && !condition(operators.top())) 
             {
                 const auto& currentOperator = operators.top();
-				
-                if (currentOperator.IsBinary)
-                    expression.push_back(std::make_shared<ASTBinaryExpression>(currentOperator.OperatorExpr));
-                else if (currentOperator.IsUnary)
-                    expression.push_back(std::make_shared<ASTUnaryExpression>(currentOperator.OperatorExpr));
-                else
-                    expression.push_back(std::make_shared<ASTTernaryExpression>());
-                
+				expression.push_back(currentOperator.OperatorNode);
                 operators.pop();
             }
         };
@@ -1192,6 +1123,7 @@ namespace clear
 
             Consume();
         };
+
 
         auto GetOperatorTypeFromContext = [&]()
         {
@@ -1297,7 +1229,15 @@ namespace clear
                     CLEAR_UNREACHABLE("invalid increment");
                     return OperatorType::None;
                 }
+				case TokenType::LeftParen:
+				{
+					bool isFunctionCall = IsTokenOperand(Prev()) || Prev().IsType(TokenType::RightParen) || Prev().IsType(TokenType::RightBracket);
 
+					if (isFunctionCall)
+						return OperatorType::FunctionCall;
+					
+					return OperatorType::None;
+				}
                 default: 
                 {
                     break;
@@ -1329,7 +1269,8 @@ namespace clear
             operators.push({
                 .OperatorExpr = operatorType,
                 .IsBinary = true,
-                .Precedence = precedence
+				.OperatorNode = std::make_shared<ASTBinaryExpression>(operatorType),
+                .Precedence = precedence,
             });
         };
 
@@ -1354,6 +1295,7 @@ namespace clear
                 operators.push({
                     .OperatorExpr = operatorType, 
                     .IsUnary = true,
+					.OperatorNode = std::make_shared<ASTUnaryExpression>(operatorType),
                     .Precedence = precedence
                 });
 
@@ -1382,6 +1324,7 @@ namespace clear
                 operators.push({
                     .OperatorExpr = operatorType, 
                     .IsUnary = true,
+					.OperatorNode = std::make_shared<ASTUnaryExpression>(operatorType),
                     .Precedence = precedence
                 });
 
@@ -1410,6 +1353,14 @@ namespace clear
             {
                 expression.push_back(ParseOperand());
             }
+			else if (operatorType == OperatorType::FunctionCall)
+			{
+				operators.push({
+					.OperatorExpr = OperatorType::FunctionCall,
+					.OperatorNode = ParseFunctionCall(),
+                    .Precedence = g_Precedence.at(OperatorType::FunctionCall)
+				});
+			}
             else if (Match(TokenType::LeftParen)) 
             {
                 HandleOpenBracket();
@@ -1450,6 +1401,7 @@ namespace clear
 
                 operators.push({
                     .OperatorExpr = OperatorType::Ternary, 
+					.OperatorNode = std::make_shared<ASTTernaryExpression>(),
                     .Precedence = g_Precedence.at(OperatorType::Ternary)
                 });
             }

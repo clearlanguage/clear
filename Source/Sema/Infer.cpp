@@ -1,6 +1,7 @@
 #include "Infer.h"
 #include "Core/Log.h"
 #include "Symbols/Module.h"
+#include <memory>
 
 namespace clear 
 {
@@ -18,9 +19,26 @@ namespace clear
 				std::shared_ptr<ASTNodeLiteral> literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node);
 				return m_Module->GetTypeFromToken(literal->GetData());
 			}
+			case ASTNodeType::Variable:
+			{
+				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
+				
+				if (variable->Variable->Kind == SymbolKind::Function)
+					return variable->Variable->GetFunctionSymbol().FunctionNode->ReturnType->ConstructedType.GetType();
+				
+				return variable->Variable->GetType();
+			}
 			case ASTNodeType::BinaryExpression:
 			{
 				return InferTypeFromBinExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
+			}
+			case ASTNodeType::Expression:
+			{
+				return InferTypeFromExpr(std::dynamic_pointer_cast<ASTExpression>(node));
+			}
+			case ASTNodeType::FunctionCall:
+			{
+				return InferTypeFromFunctionCall(std::dynamic_pointer_cast<ASTFunctionCall>(node));
 			}
 			default:
 			{
@@ -37,6 +55,16 @@ namespace clear
 		std::shared_ptr<Type> rhsType = InferTypeFromNode(binExpr->RightSide);
 
 		return GetCommonType(lhsType, rhsType);
+	}
+
+	std::shared_ptr<Type> Infer::InferTypeFromFunctionCall(std::shared_ptr<ASTFunctionCall> funcCall)
+	{
+		return InferTypeFromNode(funcCall->Callee);
+	}
+
+	std::shared_ptr<Type> Infer::InferTypeFromExpr(std::shared_ptr<ASTExpression> expr)
+	{
+		return InferTypeFromNode(expr->RootExpr);
 	}
 	
 	std::shared_ptr<Type> Infer::GetCommonType(std::shared_ptr<Type> type1, std::shared_ptr<Type> type2)

@@ -34,8 +34,9 @@ namespace clear
         std::unique_ptr<llvm::Module> TakeModule() { return std::move(m_Module); }
         
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
-        std::shared_ptr<ASTNodeBase> GetRoot() { return m_Root; }
+        std::shared_ptr<ASTBlock> GetRoot() { return m_Root; }
 		std::shared_ptr<TypeRegistry> GetTypeRegistry() { return m_TypeRegistry; }
+		const auto& GetName() { return m_ModuleName; }
 
         CodegenContext GetCodegenContext();
 
@@ -56,7 +57,7 @@ namespace clear
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
         
         std::unordered_map<std::string, std::shared_ptr<Module>> m_ContainedModules;
-        std::shared_ptr<ASTNodeBase> m_Root;
+        std::shared_ptr<ASTBlock> m_Root;
 
         std::shared_ptr<TypeRegistry> m_TypeRegistry;
 

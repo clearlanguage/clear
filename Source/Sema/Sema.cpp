@@ -5,15 +5,18 @@
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include "Symbols/Module.h"
 #include "Symbols/Symbol.h"
+#include "Symbols/Type.h"
 
+#include <iterator>
 #include <memory>
 #include <optional>
 
 namespace clear
 {
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder)
-		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule)
+		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule)
 	{
+		m_ContextStack.emplace_back();
     }
 
 	void Sema::Visit(std::shared_ptr<ASTBlock> ast)
@@ -21,7 +24,7 @@ namespace clear
 		m_ScopeStack.emplace_back();
 		
 		for(auto node : ast->Children)
-			node->Accept(*this);
+			Visit(node);
 
 		m_ScopeStack.pop_back();
 	}
@@ -30,18 +33,32 @@ namespace clear
 	{
 		type->ConstructedType = ConstructType(type).value_or(Symbol());	
 	}
+	
+	void Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type)
+	{
+		Visit(type->TypeResolver);
+	}
 
 	void Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl)
 	{
-		decl->TypeResolver->Accept(*this);
-		decl->Initializer->Accept(*this);
+		Visit(decl->TypeResolver);
+		
+		if (decl->Initializer)
+			Visit(decl->Initializer);
 
 		std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(decl->TypeResolver);
 		
-		std::shared_ptr<Type> inferredType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
+		std::shared_ptr<Type> inferredType = decl->Initializer ? m_TypeInferEngine.InferTypeFromNode(decl->Initializer) : nullptr;
 		
 		if (type->ConstructedType.Kind == SymbolKind::InferType)
 		{
+			if (!inferredType)
+			{
+				// DiagnosticCode_InferredDeclarationMustHaveValue
+				Report(DiagnosticCode_None, Token());
+				return;
+			}
+
 			auto inferTypeInfo = type->ConstructedType.GetInferType();
 	
 			type->ConstructedType = Symbol::CreateType(inferredType);
@@ -72,25 +89,114 @@ namespace clear
 
 		for (auto it = m_ScopeStack.rbegin(); it != m_ScopeStack.rend(); it++)
 		{
-			symbol = m_ScopeStack.back().Get(variable->GetName().GetData());
+			symbol = it->Get(variable->GetName().GetData());
 			
 			if (symbol.has_value())
 				break;
 		}
-
-		if (symbol.has_value())
+		
+		if (!symbol.has_value())
 		{
-			variable->Variable = symbol.value();
+			// DiagnosticCode_UndefinedVariable
+			Report(DiagnosticCode_None, variable->GetName());
 			return;
 		}
-			
-		// DiagnosticCode_UndefinedVariable
-		Report(DiagnosticCode_None, variable->GetName());
+		
+		variable->Variable = symbol.value();
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTExpression> expr)
+	{
+		Visit(expr->RootExpr);
 	}
 
 	void Sema::Visit(std::shared_ptr<ASTNodeBase> ast)
 	{
 		ast->Accept(*this);
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func)
+	{	
+		if (func->GenericTypes.size() > 0)
+		{
+			//TODO: generic function so delay instantiation until function call
+			return;
+		}
+
+		for (auto arg : func->Arguments)
+			Visit(arg);
+		
+		if (func->ReturnType)
+			Visit(func->ReturnType);
+	
+		std::string mangledName = m_NameMangler.MangleFunctionFromNode(func);
+		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName());
+	
+		if (!symbol.has_value())
+		{
+			// DiagnosticCode_AlreadyDefinedFunction
+			Report(DiagnosticCode_None, Token());
+			m_ScopeStack.pop_back();
+			return;
+		}
+		
+		func->SetName(mangledName);
+
+		auto fnSymbolPtr = symbol.value();
+		*fnSymbolPtr = Symbol::CreateFunction(nullptr);
+		
+		{
+			FunctionSymbol& functionSymbol = fnSymbolPtr->GetFunctionSymbol();
+			functionSymbol.FunctionNode = func;
+		}
+
+		func->FunctionSymbol = fnSymbolPtr;
+		func->SourceModule = m_Module;	
+
+		Visit(func->CodeBlock);	
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall)
+	{
+		for (auto arg : funcCall->Arguments)
+			Visit(arg);
+		
+		Visit(funcCall->Callee);
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTReturn> returnStatement)
+	{
+		Visit(returnStatement->ReturnValue);
+		//TODO: add type checking
+	}
+	
+	void Sema::Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression)
+	{	
+		Visit(binaryExpression->LeftSide);
+		Visit(binaryExpression->RightSide);
+		
+		// TODO: temporary solution
+		if (binaryExpression->LeftSide->GetType() == ASTNodeType::Variable)
+		{
+			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			loadNode->Operand = binaryExpression->LeftSide;
+		
+			binaryExpression->LeftSide = loadNode; 
+		}
+
+		if (binaryExpression->RightSide->GetType() == ASTNodeType::Variable)
+		{
+			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			loadNode->Operand = binaryExpression->RightSide;
+		
+			binaryExpression->RightSide = loadNode; 
+		}
+			
+		// TODO: check if types are compatible and perform casting if needed
+	}
+
+	void Sema::Visit(std::shared_ptr<ASTNodeLiteral> literal)
+	{
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
@@ -206,7 +312,11 @@ namespace clear
 		
 		std::shared_ptr<Type> createdType = baseType.GetType();
 
+		if (pivot == tokens.begin())
+			return Symbol::CreateType(createdType);
+		
 		curr--;
+		
 		for(;; curr--)
 		{
 			if(curr->IsType(TokenType::Star))

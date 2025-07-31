@@ -5,6 +5,7 @@
 #include "Symbols/Type.h"
 #include "Core/Operator.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
+#include <functional>
 #include <memory>
 #include <vector>
 #include <set>
@@ -72,7 +73,7 @@ namespace clear
 
         struct VariableDecleration
         {
-            std::shared_ptr<ASTNodeBase> Node;
+            std::shared_ptr<ASTVariableDeclaration> Node;
             bool HasBeenInitialized = false;
         };
 
