@@ -116,10 +116,6 @@ namespace clear
 		return Symbol();
 	}
 
-	void ASTBlock::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTBlock>(shared_from_this()));
-	}
 
     ASTNodeLiteral::ASTNodeLiteral(const Token& data)
 		: m_Token(data)
@@ -135,10 +131,6 @@ namespace clear
 		return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 	}
 
-	void ASTNodeLiteral::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(shared_from_this()));
-	}
 
     ASTBinaryExpression::ASTBinaryExpression(OperatorType type)
 		: m_Expression(type)
@@ -174,10 +166,6 @@ namespace clear
 		return {};
     }
 
-	void ASTBinaryExpression::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(shared_from_this()));
-	}
 
 	void ASTBinaryExpression::Print()
 	{
@@ -764,11 +752,6 @@ namespace clear
 		return *Variable;
     }
 
-	void ASTVariableDeclaration::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(shared_from_this()));
-	}
-
 	ASTVariable::ASTVariable(const Token& name)
 		: m_Name(name)
     {
@@ -779,10 +762,7 @@ namespace clear
 		return *Variable;
 	}
 	
-	void ASTVariable::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTVariable>(shared_from_this()));
-	}
+
 
 	void ASTVariable::Print()
 	{
@@ -970,11 +950,6 @@ namespace clear
 		return {};
 	}
 
-	void ASTFunctionDefinition::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(shared_from_this()));
-	}
-
 	void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
     {
 		PushScopeMarker(ctx);
@@ -1051,10 +1026,7 @@ namespace clear
 		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnType->ConstructedType.GetType());
 	}
 
-	void ASTFunctionCall::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTFunctionCall>(shared_from_this()));
-	}
+
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
     {
@@ -1146,10 +1118,6 @@ namespace clear
 		return RootExpr->Codegen(ctx);
 	}
 
-	void ASTExpression::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTExpression>(shared_from_this()));
-	}
 
 	std::shared_ptr<ASTExpression> ASTExpression::AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes)
 	{
@@ -1523,10 +1491,7 @@ namespace clear
 		return {};
 	}
 
-	void ASTReturn::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTReturn>(shared_from_this()));
-	}
+
 
     void ASTReturn::EmitDefaultReturn(CodegenContext& ctx)
     {
@@ -2396,10 +2361,7 @@ namespace clear
 #endif   
 	}
 
-	void ASTType::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTType>(shared_from_this()));
-	}
+
 
 	Symbol ASTType::Inferred()
 	{
@@ -2493,10 +2455,6 @@ namespace clear
 		return type;
 	}
 
-	void ASTTypeSpecifier::Accept(Sema& sema)
-	{
-		sema.Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(shared_from_this()));
-	}
 
 	ASTTypeSpecifier::ASTTypeSpecifier(const std::string& name)
 		 : m_Name(name)

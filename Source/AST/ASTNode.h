@@ -76,8 +76,7 @@ namespace clear
 		ASTNodeBase();
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
-		virtual Symbol Codegen(CodegenContext&); 
-		virtual void Accept(Sema&) { CLEAR_UNREACHABLE("unimplemented"); } 
+		virtual Symbol Codegen(CodegenContext&);
 		virtual void Print() {}
 
 		void AddChild(std::shared_ptr<ASTNodeBase> node);
@@ -102,7 +101,7 @@ namespace clear
 		virtual ~ASTBlock() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Children;
@@ -115,7 +114,6 @@ namespace clear
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
 		
 		const auto& GetData() const { return m_Token; }
 
@@ -131,7 +129,7 @@ namespace clear
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 		virtual void Print() override;
 
 		inline const OperatorType GetExpression() const { return m_Expression; }
@@ -183,7 +181,7 @@ namespace clear
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 
 		const auto& GetName() const { return m_Name; }
 		const auto& GetResolvedType() const { return m_Type; }
@@ -205,7 +203,7 @@ namespace clear
 		virtual ~ASTVariable() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 		virtual void Print() override;
 
 		const auto& GetName() const { return m_Name; }
@@ -256,7 +254,7 @@ namespace clear
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 
 		const std::string& GetName() const { return m_Name; }
 		void SetName(const std::string& name) { m_Name = name;}
@@ -306,7 +304,6 @@ namespace clear
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema& sema) override;
 				
 	public:
 		std::shared_ptr<ASTNodeBase> Callee;
@@ -346,7 +343,7 @@ namespace clear
 		virtual ~ASTExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 		
 		static std::shared_ptr<ASTExpression> AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes);
 		
@@ -427,7 +424,7 @@ namespace clear
 		virtual ~ASTReturn() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 
 	public:
 		std::shared_ptr<ASTNodeBase> ReturnValue;
@@ -508,7 +505,7 @@ namespace clear
 		virtual ~ASTTypeSpecifier() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual Symbol Codegen(CodegenContext&) override;
-		virtual void Accept(Sema&) override;
+		
 
 	public:
 		bool IsVariadic = false;
@@ -693,7 +690,7 @@ namespace clear
 		virtual ~ASTType() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
 		virtual Symbol Codegen(CodegenContext&) override; 
-		virtual void Accept(Sema&) override;
+		
 		
 		void PushToken(const Token& token)
 		{

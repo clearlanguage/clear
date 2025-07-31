@@ -111,9 +111,63 @@ namespace clear
 	}
 
 	void Sema::Visit(std::shared_ptr<ASTNodeBase> ast)
-	{
-		ast->Accept(*this);
-	}
+    {
+    	switch (ast->GetType()) {
+    		case ASTNodeType::FunctionCall: {
+    			Visit(std::dynamic_pointer_cast<ASTFunctionCall>(ast));
+    			break;
+    		}
+    		case ASTNodeType::Variable: {
+    			Visit(std::dynamic_pointer_cast<ASTVariable>(ast));
+    			break;
+    		}
+
+    		case ASTNodeType::TypeResolver: {
+    			Visit(std::dynamic_pointer_cast<ASTType>(ast));
+    			break;
+    		}
+
+    		case ASTNodeType::TypeSpecifier: {
+    			Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(ast));
+    			break;
+    		}
+
+    		case ASTNodeType::Block: {
+    			Visit(std::dynamic_pointer_cast<ASTBlock>(ast));
+    			break;
+    		}
+    		case ASTNodeType::Literal: {
+    			Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast));
+    			break;
+    		}
+    		case ASTNodeType::BinaryExpression: {
+    			Visit(std::dynamic_pointer_cast<ASTBinaryExpression>(ast));
+    			break;
+    		}
+    		case ASTNodeType::VariableDecleration: {
+    			Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(ast));
+    			break;
+    		}
+    		case ASTNodeType::FunctionDefinition: {
+    			Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(ast));
+    			break;
+    		}
+
+    		case ASTNodeType::Expression: {
+    			Visit(std::dynamic_pointer_cast<ASTExpression>(ast));
+    			break;
+
+    		}
+    		case ASTNodeType::ReturnStatement: {
+    			Visit(std::dynamic_pointer_cast<ASTReturn>(ast));
+    			break;
+    		}
+
+    		default:
+				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
+    			break;
+    	}
+    }
 
 	void Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func)
 	{	
