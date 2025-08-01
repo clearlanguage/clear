@@ -1,5 +1,7 @@
 #include "Sema.h"
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
+#include "Core/Operator.h"
 #include "Core/Value.h"
 #include "Diagnostics/Diagnostic.h"
 #include "Diagnostics/DiagnosticCode.h"
@@ -166,21 +168,27 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
+		bool isGeneric = func->IsVariadic;
+			
 		if (func->GenericTypes.size() > 0)
 		{
 			//TODO: generic function so delay instantiation until function call
+			isGeneric = true;
 			return func;
 		}
 
 		for (auto arg : func->Arguments)
-			Visit(arg, context);
+		{
+			if (arg)	
+				Visit(arg, context);
+		}
 		
 		if (func->ReturnType)
 			Visit(func->ReturnType, context);
 		
 		//TODO: temporary, until we have the clear runtime make a main function we will have to ignore mangling for main
-		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : "main";
-		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), SymbolEntryType::Function);
+		std::string mangledName = func->GetName() != "main" || !isGeneric ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
+		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function);
 	
 		if (!symbol.has_value())
 		{
@@ -231,13 +239,30 @@ namespace clear
 	
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
 	{	
-		context.ValueReq = ValueRequired::RValue;
+		switch (binaryExpression->GetExpression()) 
+		{
+			case OperatorType::Add:
+			case OperatorType::Sub:
+			case OperatorType::Div:
+			case OperatorType::Mul:
+			{
+				VisitBinaryExprArithmetic(binaryExpression, context);
+				break;
+			}
+			case OperatorType::Dot:
+			{
+				VisitBinaryExprMemberAccess(binaryExpression, context);
+				break;
+			}
+			default:
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+				break;
+			}
+		}
 
-		binaryExpression->LeftSide = Visit(binaryExpression->LeftSide, context);
-		binaryExpression->RightSide = Visit(binaryExpression->RightSide, context);
-		
-		// TODO: check if types are compatible and perform casting if needed
 		return binaryExpression;
+		
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeLiteral> literal, SemaContext context)
@@ -450,5 +475,53 @@ namespace clear
 		}
 
 		return Symbol::CreateType(createdType);	
+	}
+
+	void Sema::VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::RValue;
+
+		binaryExpression->LeftSide = Visit(binaryExpression->LeftSide, context);
+		binaryExpression->RightSide = Visit(binaryExpression->RightSide, context);
+		
+		binaryExpression->ResultantType = m_TypeInferEngine.InferTypeFromNode(binaryExpression);
+
+		// TODO: check if types are compatible and perform casting if needed
+	}
+
+	void Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::LValue;
+
+		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
+		
+		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
+		CLEAR_VERIFY(lhsType, "");
+
+		if (!lhsType->IsCompound() && !lhsType->IsGeneric())
+		{
+			// DiagnosticCode_InvalidAccess
+			Report(DiagnosticCode_None, Token());
+			return;
+		}
+
+		if (binaryExpr->RightSide->GetType() != ASTNodeType::Member)
+		{
+			// DiagnosticCode_InvalidAccess
+			Report(DiagnosticCode_None, Token());
+			return;
+		}
+		
+		std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(binaryExpr->RightSide);
+
+		if (!lhsType->As<ClassType>()->GetMember(member->GetName()))
+		{
+			// DiagnosticCode_MissingMember
+			Report(DiagnosticCode_None, Token());
+			return;
+		}
+
+		binaryExpr->ResultantType = lhsType->As<ClassType>()->GetMember(member->GetName()).value()->GetType();
+		// TODO: check if has function, public and private members etc...
 	}
 }

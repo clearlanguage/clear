@@ -146,6 +146,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> LeftSide;
 		std::shared_ptr<ASTNodeBase> RightSide;
+		std::shared_ptr<Type> ResultantType;
 
 	private:
 		bool IsMathExpression()    const;
@@ -288,6 +289,7 @@ namespace clear
 		std::shared_ptr<Symbol> FunctionSymbol;	
 		std::shared_ptr<Module> SourceModule;
 		llvm::Function::LinkageTypes Linkage = llvm::Function::InternalLinkage;
+		bool IsVariadic = false;
 
 	private:
 		std::string m_Name;
@@ -313,6 +315,7 @@ namespace clear
 
 	private:
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
+		std::shared_ptr<ASTBinaryExpression> IsMemberFunction();
 	};
 
 	class ASTFunctionDeclaration : public ASTNodeBase

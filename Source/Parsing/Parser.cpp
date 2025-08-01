@@ -647,8 +647,32 @@ namespace clear
 
         while (!Match(TokenType::RightParen))
 		{
+			if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
+			{
+				funcNode->IsVariadic = true;
+				params.push_back(nullptr);
+
+				Consume();
+				Consume();
+				
+				// DiagnosticCode_VariadicArgsMustBeAtEnd
+				EXPECT_TOKEN(TokenType::RightParen, DiagnosticCode_None);
+				break;
+			}
+			
 			params.push_back(ParseVariableDecleration().Node);
 			
+			if (Match(TokenType::Ellipses))
+			{
+				funcNode->IsVariadic = true;
+				Consume();
+				
+				// DiagnosticCode_VariadicArgsMustBeAtEnd
+				EXPECT_TOKEN(TokenType::RightParen, DiagnosticCode_None);
+				break;
+			}
+		
+
 			if (Match(TokenType::Comma))
 				Consume();  
 		}
@@ -1355,10 +1379,20 @@ namespace clear
             }
 			else if (operatorType == OperatorType::FunctionCall)
 			{
+				int precedence = g_Precedence.at(OperatorType::FunctionCall);
+
+				PopOperatorsUntil([precedence](const Operator& op)
+					{
+						if(op.IsRightAssociative())
+							return op.IsOpenBracket || precedence >= op.Precedence;
+                    
+						return op.IsOpenBracket || precedence > op.Precedence;	
+					});
+				
 				operators.push({
 					.OperatorExpr = OperatorType::FunctionCall,
 					.OperatorNode = ParseFunctionCall(),
-                    .Precedence = g_Precedence.at(OperatorType::FunctionCall)
+                    .Precedence = precedence
 				});
 			}
             else if (Match(TokenType::LeftParen)) 
