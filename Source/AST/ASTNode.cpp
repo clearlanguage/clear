@@ -608,40 +608,9 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
-        CLEAR_VERIFY(right->GetType() == ASTNodeType::Member, "not a valid member");
-
-		auto member = std::dynamic_pointer_cast<ASTMember>(right);
-
-		while(auto ty = std::dynamic_pointer_cast<PointerType>(lhs.GetValue().second)) // automatic derefencing if pointer
-		{
-			if(ty->GetBaseType()->IsCompound())
-			{
-				break;
-			}
-
-			lhs = SymbolOps::Load(lhs, ctx.Builder);
-		}
-
-		auto [lhsValue, lhsType] = lhs.GetValue();
-		
-		auto ptrType = dyn_cast<PointerType>(lhsType);
-		auto structTy = dyn_cast<StructType>(ptrType->GetBaseType());
-		
-		CLEAR_VERIFY(structTy, "not a valid type ", lhsType->GetHash());
-
-		size_t index = structTy->GetMemberIndex(member->GetName());
-
-		auto resultantType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(structTy->GetMemberType(member->GetName())));
-		
-		Symbol gep = SymbolOps::GEPStruct(lhs, resultantType, index, ctx.Builder);
-
-        if(ctx.WantAddress)
-		{
-			return gep;
-		}
-
-		return SymbolOps::Load(gep, ctx.Builder);
-    }
+		CLEAR_UNREACHABLE("TODO");
+		return Symbol();
+	}
 
     Symbol ASTBinaryExpression::HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
     {
@@ -1004,8 +973,19 @@ namespace clear
 		std::vector<std::shared_ptr<Type>> types;
 
 		BuildArgs(ctx, args, types);
-				
-		auto functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
+		
+		FunctionSymbol functionSymbol;
+
+		if (auto memberAccess = IsMemberFunction())
+		{
+			auto ptr = memberAccess->LeftSide->Codegen(ctx);
+			args.push_back(ptr.GetLLVMValue());
+			types.push_back(ptr.GetType());
+		}
+		else 
+		{	
+			functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
+		}
 
 		if (!functionSymbol.FunctionPtr)
 		{
@@ -1056,6 +1036,14 @@ namespace clear
 			}
 		}
     }
+
+	std::shared_ptr<ASTBinaryExpression> ASTFunctionCall::IsMemberFunction()
+	{
+		if (auto memberAccess = std::dynamic_pointer_cast<ASTBinaryExpression>(Callee); memberAccess && memberAccess->GetExpression() == OperatorType::Dot)
+			return memberAccess;
+		
+		return nullptr;
+	}
 
     ASTFunctionDeclaration::ASTFunctionDeclaration(const std::string& name)
 		: m_Name(name)
@@ -1304,7 +1292,7 @@ namespace clear
 	{
 		Symbol ty = TargetType->Codegen(ctx);
 
-		std::shared_ptr<StructType> structTy = nullptr;
+		std::shared_ptr<ClassType> structTy = nullptr;
 
 		llvm::SmallVector<llvm::Value*> values;
 		llvm::SmallVector<std::shared_ptr<Type>> types;
@@ -1322,11 +1310,11 @@ namespace clear
 		{
 			case SymbolKind::Type: 
 			{
-				structTy = ty.GetType()->As<StructType>();
+				structTy = ty.GetType()->As<ClassType>();
 
 				for(size_t i = 0; i < values.size(); i++)
 				{
-					auto baseTy = Symbol::CreateType(structTy->GetMemberAtIndex(i));
+					auto baseTy = *structTy->GetMemberValueByIndex(i).value();
 					Symbol value = Symbol::CreateValue(values[i], types[i]);
 					values[i] = SymbolOps::Cast(value, baseTy, ctx.Builder).GetLLVMValue();
 				}
@@ -1335,7 +1323,8 @@ namespace clear
 			}
 			case SymbolKind::ClassTemplate: 
 			{
-				structTy = ctx.TypeReg->GetTypeFromClassTemplate(ty.GetClassTemplate(), ctx, types)->As<StructType>();
+				CLEAR_UNREACHABLE("TODO");
+				//structTy = ctx.TypeReg->GetTypeFromClassTemplate(ty.GetClassTemplate(), ctx, types)->As<StructType>();
 				break;
 			}
 			default: 
@@ -1360,7 +1349,7 @@ namespace clear
 				continue;
 			}
 
-			constantValues[i] = GetDefaultValue(structTy->GetMemberAtIndex(i)->Get());
+			constantValues[i] = GetDefaultValue(structTy->GetMemberValueByIndex(i).value()->GetType()->Get());
 			isConst = false;
 		}
 
@@ -1890,40 +1879,42 @@ namespace clear
 
     Symbol ASTStruct::Codegen(CodegenContext& ctx)
     {
-		// create the struct type
-		auto structTy = ctx.TypeReg->CreateType<StructType>(m_Name, m_Name, ctx.Context);
-		std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-
-		for (auto value : Members)
-		{
-			Symbol result = value->Codegen(ctx);
-			members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
-		}
-
-		structTy->SetBody(members);
-
-		// set its default values
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
-		size_t i = 0;
-		for(const auto& [memberName, memberType] : members)
-		{
-			if(!DefaultValues[i])
-			{
-				i++;
-				structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
-				continue;
-			}
-
-			Symbol result = DefaultValues[i++]->Codegen(ctx);
-
-			auto [resultValue, resultType] = result.GetValue();
-			resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
-			structTy->AddDefaultValue(memberName, resultValue);
-		}
-
-		return Symbol::CreateType(structTy);
+		// // create the struct type
+		// auto structTy = ctx.TypeReg->CreateType<StructType>(m_Name, m_Name, ctx.Context);
+		// std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
+		//
+		// for (auto value : Members)
+		// {
+		// 	Symbol result = value->Codegen(ctx);
+		// 	members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
+		// }
+		//
+		// structTy->SetBody(members);
+		//
+		// // set its default values
+		//
+		// ValueRestoreGuard guard(ctx.WantAddress, false);
+		//
+		// size_t i = 0;
+		// for(const auto& [memberName, memberType] : members)
+		// {
+		// 	if(!DefaultValues[i])
+		// 	{
+		// 		i++;
+		// 		structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
+		// 		continue;
+		// 	}
+		//
+		// 	Symbol result = DefaultValues[i++]->Codegen(ctx);
+		//
+		// 	auto [resultValue, resultType] = result.GetValue();
+		// 	resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
+		// 	structTy->AddDefaultValue(memberName, resultValue);
+		// }
+		//
+		// return Symbol::CreateType(structTy);
+		CLEAR_UNREACHABLE("TODO MOVE INTO CLASS NODE");	
+		return Symbol();
 	}
 
 	Symbol ASTLoopControlFlow::Codegen(CodegenContext& ctx) 
@@ -1966,23 +1957,13 @@ namespace clear
 		}
 
 		return {};
-    }
+   }
 	
 	//TODO: type substitution should be handled by sema, in future node will be deep copied before instantiation
 	void ASTClass::Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes)
 	{
-		auto structTy = std::dynamic_pointer_cast<StructType>(Struct->Codegen(ctx).GetType());
-		auto classTy  = ctx.TypeReg->CreateType<ClassType>(m_Name, structTy);
-		
-		for(auto definition : MemberFunctions)
-		{
-			auto functionDefinition = std::dynamic_pointer_cast<ASTFunctionDefinition>(definition);
-			functionDefinition->Codegen(ctx);
-
-			classTy->PushFunction(functionDefinition->GetName());
-		}
+		CLEAR_UNREACHABLE("TODO move this into sema");
 	}
-
 
     ASTTrait::ASTTrait(const std::string& name)
 		: m_Name(name)
@@ -2101,139 +2082,6 @@ namespace clear
 
     void ASTDefaultInitializer::RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal)
     {
-		if(type->IsArray())
-		{
-			auto arrayTy = dyn_cast<ArrayType>(type);
-			auto baseTy  = arrayTy->GetBaseType();
-
-			if(!baseTy->IsCompound())
-				return;
-
-			for(size_t i = 0; i < arrayTy->GetArraySize(); i++)
-			{
-				llvm::Value* gep = nullptr;
-
-				std::vector<llvm::Value*> indices = {
-				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
-				        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), i) 
-				};
-
-				if (isGlobal)
-				{
-					CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
-
-				    gep = llvm::ConstantExpr::getGetElementPtr(
-				        arrayTy->Get(),                           
-				        llvm::cast<llvm::Constant>(value),         
-				        indices
-				    );
-				}
-				else 
-				{
-				    gep = ctx.Builder.CreateGEP(
-				        arrayTy->Get(),  
-				        value,            
-				        indices             
-				    );
-				}
-
-				RecursiveCallConstructors(gep, baseTy, ctx, tbl, isGlobal);
-			}
-			
-			return;
-		}
-
-		CLEAR_VERIFY(type->IsCompound(), "compound type");
-
-		std::shared_ptr<StructType> structTy = nullptr;
-		std::string functionName;  
-
-		if(type->IsClass())
-		{
-			auto classTy = dyn_cast<ClassType>(type);
-			structTy = classTy->GetBaseType();
-
-			functionName = classTy->ConvertFunctionToClassFunction("_CLR__construct__$%");
-
-			if(!tbl->HasTemplateMangled(functionName))
-			{
-				return;
-			}
-		}
-		else 
-		{
-			structTy = dyn_cast<StructType>(type);
-		}
-
-		CLEAR_VERIFY(structTy, "not a valid type");
-
-		const auto& memberIndices = structTy->GetMemberIndices();
-		const auto& memberTypes   = structTy->GetMemberTypes();
-
-		for(const auto& [name, subType] : memberTypes)
-		{
-			size_t index = memberIndices.at(name);
-			llvm::Value* gep = nullptr;
-
-			if (isGlobal)
-			{
-			    std::vector<llvm::Constant*> indices = {
-			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), 0), 
-			        llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.Context), index) 
-				};
-				
-				CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "cannot have global that is not a constant");
-
-			    gep = llvm::ConstantExpr::getGetElementPtr(
-			        structTy->Get(),                           
-			        llvm::cast<llvm::Constant>(value),         
-			        indices
-			    );
-			}
-			else 
-			{
-			    gep = ctx.Builder.CreateStructGEP(
-			        structTy->Get(),  
-			        value,            
-			        index             
-			    );
-			}
-
-			if(!subType->IsCompound()) 
-			{
-				ctx.Builder.CreateStore(structTy->GetDefaultValue(name), gep);
-				continue;
-			}
-
-			RecursiveCallConstructors(gep, subType, ctx, tbl, isGlobal);
-		}
-
-		if(type->IsClass())
-		{
-			auto classTy = dyn_cast<ClassType>(type);
-
-			Parameter param;
-			param.Name = "this";
-			param.Type = ctx.TypeReg->GetPointerTo(classTy);
-
-			std::string name = classTy->GetHash() + "." + "__construct__";
-
-			auto function = tbl->InstantiateOrReturn(name, { param }, nullptr, ctx);
-
-			if(isGlobal)
-			{
-				CLEAR_UNREACHABLE("unimplemented");
-				static thread_local int32_t s_Index = 0;
-
-				CLEAR_VERIFY(llvm::cast<llvm::Constant>(value), "value not a constant");
-				llvm::appendToGlobalCtors(ctx.Module, function.Function, s_Index++, llvm::cast<llvm::Constant>(value));
-			}
-			else 
-			{
-				ctx.Builder.CreateCall(function.Function, { value });
-			}
-
-		}
     }
 
     ASTEnum::ASTEnum(const std::string& enumName, const std::vector<std::string>& names)

@@ -9,11 +9,39 @@
 #include "llvm/IR/DerivedTypes.h"
 
 #include <bitset>
+#include <llvm/ADT/MapVector.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <set>
+
+namespace llvm
+{
+	template <>
+	struct DenseMapInfo<std::string>
+	{
+		static inline std::string getEmptyKey()
+		{
+			return std::string("\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01", 16);
+		}
+
+		static inline std::string getTombstoneKey()
+		{
+			return std::string("\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02\x02", 16);
+		}
+
+		static unsigned getHashValue(const std::string &Val)
+		{
+			return static_cast<unsigned>(std::hash<std::string>{}(Val));
+		}
+
+		static bool isEqual(const std::string &LHS, const std::string &RHS)
+		{
+			return LHS == RHS;
+		}
+	};
+
+}
 
 namespace clear 
 {
@@ -45,7 +73,6 @@ namespace clear
 
     class Type;
     class ConstantType;
-    class StructType;
     class ClassType;
 
     template <typename To, typename From>
@@ -59,14 +86,6 @@ namespace clear
             return dyn_cast<To>(constTy->GetBaseType());
         }
 
-        if constexpr (std::is_same_v<To, StructType>)
-        {
-            if(auto classTy = std::dynamic_pointer_cast<ClassType>(val))
-            {
-                return classTy->GetBaseType();
-            }
-        }
-        
         return std::dynamic_pointer_cast<To>(val);
     }
 
@@ -140,7 +159,6 @@ namespace clear
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
         virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
        
-
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
 
@@ -153,7 +171,6 @@ namespace clear
     {
     public:
         ArrayType(std::shared_ptr<Type> baseType, size_t count);
-        
         virtual ~ArrayType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
@@ -169,70 +186,45 @@ namespace clear
         llvm::ArrayType* m_LLVMType;
         size_t m_Count;
     };
+	
 
-    class StructType : public Type 
-    {
-    public:
-        StructType(const std::string& name, llvm::LLVMContext& context);
-        StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
+	//TODO:
+	class FunctionType : public Type 
+	{
+	public:
+		FunctionType(llvm::ArrayRef<std::shared_ptr<Type>> argTypes, std::shared_ptr<Type> returnType) = delete;
+		virtual ~FunctionType() = default;
+			
+		virtual llvm::Type* Get() const override { return m_LLVMType; }
+		virtual std::string GetHash() const override { return ""; }
+		
 
-        void SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members);
+	private:
+		llvm::FunctionType* m_LLVMType = nullptr;
+		llvm::SmallVector<std::shared_ptr<Type>> m_Args;
+		std::shared_ptr<Type> m_ReturnType;
+	};
 
-        virtual ~StructType() = default;
-            
-        virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual std::string GetHash() const override { return m_Name; };
-
-        size_t GetMemberIndex(const std::string& member);
-        std::shared_ptr<Type> GetMemberType(const std::string& member);
-        void SetMember(const std::string& member, std::shared_ptr<Type> type);
-        std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
-
-        void AddDefaultValue(const std::string& member, llvm::Value* value); // assumes value is of correct type already
-        llvm::Value* GetDefaultValue(const std::string& member);
-
-        const auto& GetMemberTypes()   const { return m_MemberTypes; }
-        const auto& GetMemberIndices() const {return m_MemberIndices; }
-
-    private:
-        llvm::StructType* m_LLVMType;
-        std::unordered_map<std::string, std::shared_ptr<Type>> m_MemberTypes;
-        std::unordered_map<std::string, size_t> m_MemberIndices;
-        std::unordered_map<std::string, llvm::Value*> m_DefaultValues;
-
-        std::string m_Name;
-    };
-
+    struct Symbol;
+	
     class ClassType : public Type
     {
     public:
-        ClassType(std::shared_ptr<StructType> structTy);
+        ClassType(llvm::StringRef name, llvm::LLVMContext& context);
+		void SetBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members);
 
-        virtual llvm::Type* Get() const override { return m_StructType->Get(); }
-        virtual std::string GetHash() const override { return m_StructType->GetHash(); };
-
-        size_t GetMemberIndex(const std::string& member);
-        std::shared_ptr<Type> GetMemberType(const std::string& member);
-        void SetMember(const std::string& member, std::shared_ptr<Type> type);
-        std::shared_ptr<Type> GetMemberAtIndex(uint64_t index);
-
-        void AddDefaultValue(const std::string& member, llvm::Value* value);
-        llvm::Value* GetDefaultValue(const std::string& member);
-
-        std::shared_ptr<StructType> GetBaseType() { return m_StructType; }
-
-        std::string ConvertFunctionToClassFunction(const std::string& name);
-
-        void PushFunction(const std::string& name);
-        bool HasFunctionMangled(const std::string& name);
-
-        const auto& GetMemberTypes()   const { return m_StructType->GetMemberTypes(); }
-        const auto& GetMemberIndices() const {return  m_StructType->GetMemberIndices(); }
-        const auto& GetFunctions()     const {return  m_Functions; }
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override { return m_Name; };
+	
+		std::optional<std::shared_ptr<Symbol>> GetMember(llvm::StringRef name);
+		std::optional<std::shared_ptr<Symbol>> GetMemberValueByIndex(size_t index);
+		std::optional<size_t> GetMemberValueIndex(llvm::StringRef name);
 
     private:
-        std::shared_ptr<StructType> m_StructType;
-        std::set<std::string> m_Functions;
+		llvm::StructType* m_LLVMType = nullptr;
+		llvm::MapVector<std::string, std::shared_ptr<Type>> m_MemberValues;
+		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> m_MemberFunctions;
+		std::string m_Name;
     };
     
     class VariadicArgumentsHolder : public Type 

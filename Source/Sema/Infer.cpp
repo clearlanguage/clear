@@ -60,10 +60,14 @@ namespace clear
 
 	std::shared_ptr<Type> Infer::InferTypeFromBinExpr(std::shared_ptr<ASTBinaryExpression> binExpr)
 	{
+		if (binExpr->ResultantType)
+			return binExpr->ResultantType;
+
 		std::shared_ptr<Type> lhsType = InferTypeFromNode(binExpr->LeftSide);
 		std::shared_ptr<Type> rhsType = InferTypeFromNode(binExpr->RightSide);
-
-		return GetCommonType(lhsType, rhsType);
+	
+		binExpr->ResultantType = GetCommonType(lhsType, rhsType);
+		return binExpr->ResultantType;
 	}
 
 	std::shared_ptr<Type> Infer::InferTypeFromFunctionCall(std::shared_ptr<ASTFunctionCall> funcCall)

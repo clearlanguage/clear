@@ -48,6 +48,10 @@ namespace clear
 	private:
 		void Report(DiagnosticCode code, Token token);
 		std::optional<Symbol> ConstructType(std::shared_ptr<ASTType> type);	
+		
+		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		void VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;
