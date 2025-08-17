@@ -15,7 +15,8 @@ set(CLEAR_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/Source")
 file(GLOB_RECURSE MY_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp")
 add_executable(clearc "${MY_SOURCES}"
         Source/Compilation/CompilationManager.cpp
-        Source/Lexing/Token.cpp)
+        Source/Lexing/Token.cpp
+        Source/Sema/ConstEval.cpp)
 
 find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)
