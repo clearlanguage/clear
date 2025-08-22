@@ -187,7 +187,7 @@ namespace clear
 			Visit(func->ReturnType, context);
 		
 		//TODO: temporary, until we have the clear runtime make a main function we will have to ignore mangling for main
-		std::string mangledName = func->GetName() != "main" || !isGeneric ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
+		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
 		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function);
 	
 		if (!symbol.has_value())
