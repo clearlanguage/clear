@@ -869,7 +869,20 @@ namespace clear
 
             if(Match(TokenType::Identifier)) 
                 Consume();
-            
+
+            if(Match(TokenType::Ellipses))
+            {
+                Consume();
+                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
+
+                auto param = std::make_shared<ASTTypeSpecifier>("");
+				param->TypeResolver = type;
+                param->IsVariadic = true;
+
+                decleration->Arguments.push_back(param);
+                break;
+            }
+
             if(!Match(TokenType::RightParen))
             {
                 Expect(TokenType::Comma);
