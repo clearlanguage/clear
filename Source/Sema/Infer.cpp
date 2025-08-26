@@ -40,6 +40,11 @@ namespace clear
 			{
 				return InferTypeFromUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
 			}
+			case ASTNodeType::StructExpr:
+			{
+				auto structExpr = std::dynamic_pointer_cast<ASTStructExpr>(node);
+				return structExpr->TargetType->ConstructedType.GetType();
+			}
 			default:
 			{
 				CLEAR_UNREACHABLE("unimplemented");

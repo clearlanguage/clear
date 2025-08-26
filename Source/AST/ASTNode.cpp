@@ -608,13 +608,17 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
-		CLEAR_UNREACHABLE("TODO");
-		return Symbol();
+		auto member = std::dynamic_pointer_cast<ASTMember>(right);
+		auto memberType = lhs.GetType()->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMember(member->GetName()).value()->GetType();
+		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberType));
+
+		size_t index = lhs.GetType()->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
+		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
 
     Symbol ASTBinaryExpression::HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
     {
-		 auto member = std::dynamic_pointer_cast<ASTMember>(right);
+		auto member = std::dynamic_pointer_cast<ASTMember>(right);
 
 		auto enumTy = dyn_cast<EnumType>(lhs.GetType());
 		CLEAR_VERIFY(enumTy, "not a valid enum");
@@ -1943,23 +1947,12 @@ namespace clear
 
     Symbol ASTClass::Codegen(CodegenContext& ctx)
     {
-		auto classTy = ctx.TypeReg->CreateType<ClassType>(m_Name, m_Name, ctx.Context);
-		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> members;
-	
-		for (auto value : Members)
-		{
-			Symbol result = value->Codegen(ctx);
-			members.emplace_back(std::string(result.Metadata.value_or(String())), std::make_shared<Symbol>(result));
-		}
-
 		for (auto func : MemberFunctions)
 		{
 			func->Codegen(ctx);
-			members.emplace_back(func->GetName(), func->FunctionSymbol);
 		}
 	
-		classTy->SetBody(members);
-		return Symbol::CreateType(classTy);
+		return Symbol::CreateType(ClassTy);
    }
 	
 	//TODO: type substitution should be handled by sema, in future node will be deep copied before instantiation

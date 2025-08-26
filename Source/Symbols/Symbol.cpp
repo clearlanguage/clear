@@ -60,6 +60,16 @@ namespace clear
             .Data = symbol
         };
     }
+
+	Symbol Symbol::CreateFunction(std::shared_ptr<ASTFunctionDefinition> def)
+	{
+		FunctionSymbol symbol = { .FunctionNode = def };
+
+		return Symbol {
+			.Kind = SymbolKind::Function,
+			.Data = symbol
+		};
+	}
     
     Symbol Symbol::CreateFunctionTemplate(FunctionTemplate* template_)
     {

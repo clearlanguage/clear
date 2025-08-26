@@ -96,7 +96,8 @@ namespace clear
         static Symbol CreateModule(std::shared_ptr<Module> module_);
         static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type, bool shouldMemcpy = false);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
-        static Symbol CreateFunction(FunctionInstance* instance);
+        static Symbol CreateFunction(FunctionInstance* instance); // TODO: depricated
+		static Symbol CreateFunction(std::shared_ptr<ASTFunctionDefinition> def);
         static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);

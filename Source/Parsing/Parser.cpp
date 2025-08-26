@@ -241,6 +241,7 @@ namespace clear
             {"return",    [this]() { return ParseReturn(); }}, 
             {"if",        [this]() { return ParseIf(); }},
 			{"while",	  [this]() { return ParseWhile(); }},
+			{"class",     [this]() { return ParseClass(); }},
         };
         
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
@@ -1394,16 +1395,15 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseClass()
+	std::shared_ptr<ASTClass> Parser::ParseClass()
     {
-        EXPECT_DATA("class", DiagnosticCode_None);
+        EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN_RETURN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier, nullptr);
         std::string className = Consume().GetData();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
-        Root()->Children.push_back(classNode);
 
         if(Match(TokenType::LeftBracket))
         {
@@ -1444,24 +1444,12 @@ namespace clear
             while(Match(TokenType::EndLine))
                 Consume();
 
+			if (Match(TokenType::EndScope))
+				break;
+
             if(Match("function"))
             {
-                size_t rootLevel = m_RootStack.size();
-				
-				m_RootStack.push_back(std::make_shared<ASTBlock>());
-
-                ParseFunctionDefinition();
-
-                // continue parsing as normal until end of function definition
-                while(rootLevel < m_RootStack.size())
-                {
-                    ParseStatement();
-
-                }
-
-				classNode->MemberFunctions.push_back(std::dynamic_pointer_cast<ASTFunctionDefinition>(m_RootStack.back()->Children[0]));
-				m_RootStack.pop_back();
-
+				classNode->MemberFunctions.push_back(ParseFunctionDefinition());
                 continue;
             }
 
@@ -1493,6 +1481,7 @@ namespace clear
         }
 
         Flush();
+		return classNode;
     }
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)

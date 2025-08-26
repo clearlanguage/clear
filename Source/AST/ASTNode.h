@@ -511,6 +511,7 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual Symbol Codegen(CodegenContext&) override;
 		
+		inline const auto& GetName() const { return m_Name; }
 
 	public:
 		bool IsVariadic = false;
@@ -567,11 +568,14 @@ namespace clear
 		}
 
 		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
+	
+		inline const auto& GetName() const { return m_Name; } 
 
 	public:
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
 		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
+		std::shared_ptr<Type> ClassTy;
 	
 	private:
 		std::string m_Name;

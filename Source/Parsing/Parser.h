@@ -58,7 +58,7 @@ namespace clear
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
         void ParseFor();
         void ParseIndentation();
-        void ParseClass();
+		std::shared_ptr<ASTClass> ParseClass();
         void ParseLoopControls();
         void ParseTrait();
         void ParseEnum();

@@ -178,7 +178,7 @@ namespace clear
 
 	std::optional<std::shared_ptr<Symbol>> ClassType::GetMemberValueByIndex(size_t index)
 	{
-		if (m_MemberValues.size() >= index)
+		if (index >= m_MemberValues.size())
 			return std::nullopt;
 		
 		auto it = m_MemberValues.begin() + index;

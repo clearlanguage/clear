@@ -11,6 +11,7 @@
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
 
+#include <bits/types/cookie_io_functions_t.h>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -161,6 +162,7 @@ namespace clear
 			case ASTNodeType::Class:					return Visit(std::dynamic_pointer_cast<ASTClass>(ast), context);
 			case ASTNodeType::IfExpression:				return Visit(std::dynamic_pointer_cast<ASTIfExpression>(ast), context);
 			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
+			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
     		default:	
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
@@ -254,8 +256,7 @@ namespace clear
 			}
 			case OperatorType::Dot:
 			{
-				VisitBinaryExprMemberAccess(binaryExpression, context);
-				break;
+				return VisitBinaryExprMemberAccess(binaryExpression, context);
 			}
 			default:
 			{
@@ -340,21 +341,34 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTClass> classExpr, SemaContext context) 
 	{
+		auto classTy = m_Module->GetTypeRegistry()->CreateType<ClassType>(classExpr->GetName(), classExpr->GetName(), *m_Module->GetContext());
+		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> members;
+
 		for (auto node : classExpr->Members) 
 		{
 			Visit(node, context);
+			members.emplace_back(node->GetName(), std::make_shared<Symbol>(node->TypeResolver->ConstructedType));
 		}
 		
 		for (auto node : classExpr->DefaultValues)
 		{
-			Visit(node, context);
+			if (node)
+				Visit(node, context);
 		}
 
 		for (auto node : classExpr->MemberFunctions)
 		{
+			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateFunction(node)));
+		}
+		
+		classTy->SetBody(members);
+		classExpr->ClassTy = classTy;
+		
+		for (auto node : classExpr->MemberFunctions)
+		{
 			Visit(node, context);
 		}
-	
+
 		return classExpr;
 	}
 
@@ -375,10 +389,22 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context)
 	{
-		Visit(whileExpr->WhileBlock.Condition, context);
+		whileExpr->WhileBlock.Condition = Visit(whileExpr->WhileBlock.Condition, context);
 		Visit(whileExpr->WhileBlock.CodeBlock, context);
 		
 		return whileExpr;
+	}
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context)
+	{	
+		Visit(structExpr->TargetType, context);
+
+		for (auto& value : structExpr->Values)
+		{
+			context.ValueReq = ValueRequired::RValue;
+			value = Visit(value, context);
+		}
+		
+		return structExpr;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
@@ -535,8 +561,10 @@ namespace clear
 		// TODO: check if types are compatible and perform casting if needed
 	}
 
-	void Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
+	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
 	{
+		bool insertLoad = context.ValueReq == ValueRequired::RValue;
+
 		context.ValueReq = ValueRequired::LValue;
 
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
@@ -548,14 +576,14 @@ namespace clear
 		{
 			// DiagnosticCode_InvalidAccess
 			Report(DiagnosticCode_None, Token());
-			return;
+			return nullptr;
 		}
 
 		if (binaryExpr->RightSide->GetType() != ASTNodeType::Member)
 		{
 			// DiagnosticCode_InvalidAccess
 			Report(DiagnosticCode_None, Token());
-			return;
+			return nullptr;
 		}
 		
 		std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(binaryExpr->RightSide);
@@ -564,10 +592,20 @@ namespace clear
 		{
 			// DiagnosticCode_MissingMember
 			Report(DiagnosticCode_None, Token());
-			return;
+			return nullptr;
 		}
 
 		binaryExpr->ResultantType = lhsType->As<ClassType>()->GetMember(member->GetName()).value()->GetType();
 		// TODO: check if has function, public and private members etc...
+			
+		if (insertLoad)
+		{
+			std::shared_ptr<ASTUnaryExpression> loadOp = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			loadOp->Operand = binaryExpr;
+			return loadOp;
+		}
+
+		binaryExpr->ResultantType = m_Module->GetTypeRegistry()->GetPointerTo(binaryExpr->ResultantType);
+		return binaryExpr;
 	}
 }
