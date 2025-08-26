@@ -127,11 +127,14 @@ namespace clear
 
     std::shared_ptr<Type> Symbol::GetType() const
     {
-        CLEAR_VERIFY(Kind == SymbolKind::Type || Kind == SymbolKind::Value, "cannot call Symbol::GetType() when kind is not Type or Value");
+        CLEAR_VERIFY(Kind == SymbolKind::Type || Kind == SymbolKind::Value, "cannot call Symbol::GetType() when kind is not Type or Value or Function");
 
         if(Kind == SymbolKind::Type)
             return std::get<TypeSymbol>(Data).Type_;
-
+		
+		if(Kind == SymbolKind::Function)
+			return std::get<FunctionSymbol>(Data).FunctionNode->ReturnType->ConstructedType.GetType();
+		
         auto& value = std::get<ValueSymbol>(Data);
         return value.Types[0];
     }

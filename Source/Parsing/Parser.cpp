@@ -38,7 +38,14 @@ namespace clear
     SkipUntil(TokenType::EndLine); \
     return; \
     }
-
+	
+	#define EXPECT_DATA_RETURN(str, code, returnValue) \
+    if (!Match(str)) { \
+    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
+    SkipUntil(TokenType::EndLine); \
+    return returnValue; \
+    }
 
     #define VERIFY(cond, code)                             \
     if (!(cond)) {                                               \
@@ -57,7 +64,7 @@ namespace clear
     }
 
 
-    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule,DiagnosticsBuilder& builder)
+    Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule, DiagnosticsBuilder& builder)
         : m_Tokens(tokens), m_DiagnosticsBuilder(builder)
     {
         m_Modules.push_back(rootModule);
@@ -95,10 +102,7 @@ namespace clear
             TokenType::Keyword
         });
 
-        while(!Match(TokenType::EndOfFile))
-        {
-            ParseStatement();
-        }
+        rootModule->GetRoot()->Children.push_back(ParseCodeBlock());
     }
 
     std::shared_ptr<ASTNodeBase> Parser::GetResult()
@@ -200,116 +204,85 @@ namespace clear
         CLEAR_LOG_ERROR("missing expected token from token set");    
         CLEAR_UNREACHABLE("TODO");
     } */
+	
+	std::shared_ptr<ASTBlock> Parser::ParseCodeBlock()
+	{
+		auto block = std::make_shared<ASTBlock>();
+		
+		while(!Match(TokenType::EndOfFile) && !Match(TokenType::EndScope))
+        {
+			auto statement = ParseStatement();
 
-    void Parser::ParseStatement()
+			if (statement)
+				block->Children.push_back(statement);
+			else 
+				break;
+        }
+
+		return block;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseStatement()
     {
-        if (Match(TokenType::EndLine))
+        while(Match(TokenType::EndLine))
         {
             Consume();
-            return;
         }
 
-        if (Match("pass"))
+        if (Match("pass") || Match(TokenType::EndScope))
         {
             Consume();
-            return;
-        }
+            return nullptr;
+		}
 
-        static std::map<std::string, std::function<void()>> s_MappedKeywordsToFunctions = {
-            {"function",  [this]() { ParseFunctionDefinition(); }},
-            {"while",     [this]() { ParseWhile(); }},
-            {"for",       [this]() { ParseFor(); }},
-            {"declare",   [this]() { ParseFunctionDeclaration(); }}, 
-            {"struct",    [this]() { ParseStruct(); }}, 
-            {"return",    [this]() { ParseReturn(); }}, 
-            {"if",        [this]() { ParseIf(); }},
-            {"else",      [this]() { ParseElse(); }},
-            {"elseif",    [this]() { ParseElseIf(); }},
-            {"defer",     [this]() { ParseDefer(); }},
-            {"class",     [this]() { ParseClass(); }},
-            {"enum",      [this]() { ParseEnum(); }},
-            {"trait",     [this]() { ParseTrait(); }},
-            {"module",    [this]() { ParseModule(); }},
-            {"endmodule", [this]() { ParseEndModule(); }},
-            {"break",     [this]() { ParseLoopControls();}},
-            {"continue",  [this]() { ParseLoopControls();}},
-            {"switch",    [this]() { ParseSwitch();}}, 
-            {"pass",      [this]() { Consume(); }}
+        static std::map<std::string, std::function<std::shared_ptr<ASTNodeBase>()>> s_MappedKeywordsToFunctions = {
+            {"function",  [this]() { return ParseFunctionDefinition(); }},
+            {"declare",   [this]() { return ParseFunctionDeclaration(); }}, 
+            {"return",    [this]() { return ParseReturn(); }}, 
+            {"if",        [this]() { return ParseIf(); }},
+			{"while",	  [this]() { return ParseWhile(); }},
         };
         
-        static std::map<TokenType, std::function<void()>> s_MappedTokenTypeToFunctions = {
-            {TokenType::EndScope,   [this]() { ParseIndentation(); }}
-        };  
-
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
         {
-            s_MappedKeywordsToFunctions.at(Peak().GetData())();
+            return s_MappedKeywordsToFunctions.at(Peak().GetData())();
         }
-        else if (s_MappedTokenTypeToFunctions.contains(Peak().GetType()))
-        {
-            s_MappedTokenTypeToFunctions.at(Peak().GetType())();
-        }
-        else 
-        {
-            ParseGeneral();
-        }
+
+		return ParseGeneral();
     }
 
-    void Parser::ParseGeneral()
+	std::shared_ptr<ASTNodeBase> Parser::ParseGeneral()
     {
         if(Match(TokenType::Identifier) && Next().IsType(TokenType::Colon))
         {
-            ParseBlock();
-            return;
+            return ParseBlock();
         }
 
         bool isDeclaration = IsDeclaration();
 
-        // parse either expression or declerations, allowing for multiple on the same line seperated by commas
         if(!isDeclaration)
         {
-            while(!(Match(TokenType::EndLine) || Match(TokenType::EndScope) || Match(TokenType::EndOfFile)))
-            {
-                auto expr = ParseExpression();
+			auto expr = ParseExpression();
 
-                if(MatchAny(m_AssignmentOperators))
-                {
-                    Root()->Children.push_back(ParseAssignment(expr));
-                    return;
-                }
-                else 
-                {
-                    Root()->Children.push_back(expr);
-                }
+			if(MatchAny(m_AssignmentOperators))
+			{
+				return ParseAssignment(expr);
+			}
 
-                if(Match(TokenType::Comma))
-                    Consume();
-            }
-
-            return;
+			return expr;
         }
 
-        while(isDeclaration)
-        {
-            auto decleration = ParseVariableDecleration();
+		auto decleration = ParseVariableDecleration();
 
-            if(decleration.HasBeenInitialized)
-            {
-                Root()->Children.push_back(decleration.Node);
-            }
-            else 
-            {
-                auto initializer = std::make_shared<ASTDefaultInitializer>();
-                initializer->Storage = decleration.Node;
-
-                Root()->Children.push_back(initializer);
-            }
-
-            if(Match(TokenType::Comma))
-                Consume();
-
-            isDeclaration = IsDeclaration();
-        }
+		if(decleration.HasBeenInitialized)
+		{
+			return decleration.Node;
+		}
+	
+		auto initializer = std::make_shared<ASTDefaultInitializer>();
+		initializer->Storage = decleration.Node;
+		
+		return initializer;
     }
 
     void Parser::ParseLoopControls() 
@@ -362,180 +335,79 @@ namespace clear
             Consume(); 
     }
 
-
-    void Parser::ParseStruct()
+   	std::shared_ptr<ASTReturn> Parser::ParseReturn()
     {
-        EXPECT_DATA("struct",DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-        std::string structName = Consume().GetData();
-
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
-        Consume();
-
-        auto struct_ = std::make_shared<ASTStruct>(structName);
-
-        std::vector<std::shared_ptr<ASTTypeSpecifier>> typeSpecifiers;
-        std::vector<std::shared_ptr<ASTNodeBase>> defaultArgs;
-
-        auto Flush = [&]()
-        {
-            for(const auto& type : typeSpecifiers)
-            {
-                struct_->Members.push_back(type);
-            }
-
-            for(const auto& defaultArg : defaultArgs)
-            {
-                struct_->DefaultValues.push_back(defaultArg);
-            }
-
-            Root()->Children.push_back(struct_);
-            Consume();
-        };
-
-        auto ConstructType = [&](std::shared_ptr<ASTType> type)
-        {   
-            EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
-            std::string memberName = Consume().GetData();
-
-            auto member = std::make_shared<ASTTypeSpecifier>(memberName);
-            member->TypeResolver = type;
-
-            typeSpecifiers.push_back(member);
-
-            if(Match(TokenType::Equals))
-            {
-                Consume();
-                defaultArgs.push_back(ParseExpression());
-            }
-            else 
-            {
-                defaultArgs.push_back(nullptr);
-            }
-        };
-
-        while(!Match(TokenType::EndScope))
-        {
-            auto type = ParseTypeResolver();
-            ConstructType(type);
-
-            while(Match(TokenType::Comma))
-            {
-                Consume();
-                ConstructType(type);
-            }
-            
-            while(Match(TokenType::EndLine))
-                Consume();
-        }
-
-        Flush();
-    }
-
-    void Parser::ParseImport()
-    {
-        CLEAR_UNREACHABLE("unimplemented");
-       /*  Expect(TokenType::Import);
-
-        Consume();
-
-        Expect(TokenType::RValueString);
-
-        std::string path  = Consume().Data;
-        std::string alias = "";
-
-        if(Match(TokenType::As))
-        {
-            Consume();
-
-            Expect(TokenType::RValueString);
-            alias = Consume().Data;
-            
-            auto aliases = Split(alias, '.');            
-            m_Aliases.insert(aliases.begin(), aliases.end());
-        }
-
-        std::shared_ptr<ASTImport> import = std::make_shared<ASTImport>(path, alias);
-
-        Expect(TokenType::EndLine);
-        Root()->Children.push_back(import); */
-    }
-
-    void Parser::ParseReturn()
-    {
-        EXPECT_DATA("return",DiagnosticCode_None);
+        EXPECT_DATA_RETURN("return",DiagnosticCode_None, nullptr);
         Consume();
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
         returnStatement->ReturnValue = ParseExpression();
 
-        Root()->Children.push_back(returnStatement); 
+		return returnStatement;
     }
 
-    void Parser::ParseIf()
+	std::shared_ptr<ASTIfExpression> Parser::ParseIf()
     {
-        EXPECT_DATA("if",DiagnosticCode_None);
-        Consume();
+        EXPECT_DATA_RETURN("if", DiagnosticCode_None, nullptr);
+        Consume();	
 
-		std::shared_ptr<ASTBlock> codeBlock = std::make_shared<ASTBlock>();
+		auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon));
+
+        EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
+        Consume();
 
         std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
 		
 		ifExpr->ConditionalBlocks.push_back({
-			.Condition = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon)),
-			.CodeBlock = codeBlock 
+			.Condition = expr,
+			.CodeBlock = ParseCodeBlock() 
 		});
+		
+		while (Match("elseif"))		
+		{
+			Consume();
 
-        Root()->Children.push_back(ifExpr);
-        m_RootStack.push_back(codeBlock); 
+			auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon));
 
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation)
-        Consume();
+			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
+			Consume();
+
+			ifExpr->ConditionalBlocks.push_back({
+				.Condition = expr,
+				.CodeBlock = ParseCodeBlock() 
+			});
+		}
+		
+		if (Match("else"))
+		{
+			Consume();
+			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
+			Consume();
+
+			ifExpr->ElseBlock = ParseCodeBlock();
+		}
+
+		return ifExpr;
     }
 
-    void Parser::ParseElse()
+	std::shared_ptr<ASTWhileExpression> Parser::ParseWhile()
     {
-        EXPECT_DATA("else",DiagnosticCode_None);
-        Consume();
-
-        auto& last = Root()->Children.back();
-        std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        VERIFY(ifExpr, DiagnosticCode_ElseNotInIfBlock);
-        
-        std::shared_ptr<ASTBlock> codeBlock = std::make_shared<ASTBlock>();
-        ifExpr->ElseBlock = codeBlock;
-            
-        m_RootStack.push_back(codeBlock); 
-
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation)
-        Consume();
-    }
-
-    void Parser::ParseWhile()
-    {
-        EXPECT_DATA("while",DiagnosticCode_None);
+        EXPECT_DATA_RETURN("while", DiagnosticCode_None, nullptr);
         Consume();
         
-		std::shared_ptr<ASTBlock> codeBlock = std::make_shared<ASTBlock>();
-
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
 
-		whileExp->WhileBlock = {
-			.Condition = ParseExpression(GetLastBracket(TokenType::QuestionMark,TokenType::Colon)),
-			.CodeBlock = codeBlock
-		};
-
-
-        Root()->Children.push_back(whileExp);
-        m_RootStack.push_back(codeBlock);
-
+		auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark,TokenType::Colon));
+		
         EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
+
+		whileExp->WhileBlock = {
+			.Condition = expr,
+			.CodeBlock = ParseCodeBlock()
+		};
+
+		return whileExp;
     }
 
     void Parser::ParseFor()
@@ -568,35 +440,14 @@ namespace clear
         Consume();
     }
 
-    void Parser::ParseElseIf()
+    
+
+	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly)
     {
-        EXPECT_DATA("elseif",DiagnosticCode_None);
+        EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
         Consume();
 
-        auto& last = Root()->Children.back();
-
-        std::shared_ptr<ASTIfExpression> ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(last);
-        VERIFY(ifExpr, DiagnosticCode_ElseNotInIfBlock);
-
-        std::shared_ptr<ASTBlock> codeBlock = std::make_shared<ASTBlock>();
-
-        ifExpr->ConditionalBlocks.push_back(ConditionalBlock {
-			.Condition = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon)),
-			.CodeBlock = codeBlock
-		});
-
-        m_RootStack.push_back(codeBlock); 
-
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedIndentation);
-        Consume();
-    }
-
-    void Parser::ParseFunctionDefinition(bool descriptionOnly)
-    {
-        EXPECT_DATA("function", DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
         std::string name = Consume().GetData();
 
         auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
@@ -607,7 +458,7 @@ namespace clear
             {
                 Consume();
 
-                EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
+                EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
                 funcNode->AddGeneric(Consume().GetData());
             }  
 
@@ -615,7 +466,7 @@ namespace clear
         }
 
 
-        EXPECT_TOKEN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition);
+        EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
 
         Consume();
 
@@ -632,17 +483,12 @@ namespace clear
             }
 
             funcNode->ReturnType = returnType;
-
-            Root()->Children.push_back(funcNode);
+			Consume();
 
             if(!descriptionOnly)
 			{
-				auto block = std::make_shared<ASTBlock>();
-				funcNode->CodeBlock = block;
-                m_RootStack.push_back(block);
+				funcNode->CodeBlock = ParseCodeBlock();
 			}
-
-            Consume();
         };
 
         while (!Match(TokenType::RightParen))
@@ -656,7 +502,7 @@ namespace clear
 				Consume();
 				
 				// DiagnosticCode_VariadicArgsMustBeAtEnd
-				EXPECT_TOKEN(TokenType::RightParen, DiagnosticCode_None);
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_None, nullptr);
 				break;
 			}
 			
@@ -668,7 +514,7 @@ namespace clear
 				Consume();
 				
 				// DiagnosticCode_VariadicArgsMustBeAtEnd
-				EXPECT_TOKEN(TokenType::RightParen, DiagnosticCode_None);
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_None, nullptr);
 				break;
 			}
 		
@@ -682,20 +528,22 @@ namespace clear
         if (Match(TokenType::Colon)) 
         {
             Flush();
-            return;
+            return funcNode;
         }
 
         if(Match(TokenType::EndLine) && descriptionOnly)
         {
             Flush();
-            return;
+            return funcNode;
         }
 
-        EXPECT_TOKEN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType);
+        EXPECT_TOKEN_RETURN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType, nullptr);
         Consume();
         
         returnType = ParseTypeResolver();
         Flush();
+
+		return funcNode;
     }
 
     void Parser::ParseEnum()
@@ -795,7 +643,7 @@ namespace clear
         Root()->Children.push_back(defer);
     }
 
-    void Parser::ParseBlock()
+	std::shared_ptr<ASTBlock> Parser::ParseBlock()
     {
         EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
         Consume();
@@ -805,11 +653,8 @@ namespace clear
 
         EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation);
         Consume();
-
-        auto block = std::make_shared<ASTBlock>();
-
-        Root()->Children.push_back(block);
-        m_RootStack.push_back(block);
+		
+		return ParseCodeBlock();
     }
 
     void Parser::ParseModule()
@@ -835,15 +680,15 @@ namespace clear
         //m_RootStack.pop_back();
     }
 
-    void Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
+	std::shared_ptr<ASTFunctionDeclaration> Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
     {
-        EXPECT_DATA(declareKeyword,DiagnosticCode_None);
+        EXPECT_DATA_RETURN(declareKeyword,DiagnosticCode_None, nullptr);
         Consume();
 
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
+        EXPECT_TOKEN_RETURN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier, nullptr);
         std::string functionName = Consume().GetData();
 
-        EXPECT_TOKEN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition);
+        EXPECT_TOKEN_RETURN(TokenType::LeftParen,DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
         Consume();
 
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
@@ -852,12 +697,16 @@ namespace clear
         // params
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
+			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+			auto param = std::make_shared<ASTTypeSpecifier>(Consume().GetData());	
+			
+			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+			Consume();
+
             if(Match(TokenType::Ellipses))
             {
                 Consume();
-                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
-
-                auto param = std::make_shared<ASTTypeSpecifier>("");
+                EXPECT_TOKEN_RETURN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction, nullptr);
                 param->IsVariadic = true;
 
                 decleration->Arguments.push_back(param);
@@ -865,18 +714,13 @@ namespace clear
                 break;
             }
 
-            auto type = ParseTypeResolver();
-
-            if(Match(TokenType::Identifier)) 
-                Consume();
+            param->TypeResolver = ParseTypeResolver();
 
             if(Match(TokenType::Ellipses))
             {
                 Consume();
-                EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
+                EXPECT_TOKEN_RETURN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction, nullptr);
 
-                auto param = std::make_shared<ASTTypeSpecifier>("");
-				param->TypeResolver = type;
                 param->IsVariadic = true;
 
                 decleration->Arguments.push_back(param);
@@ -888,16 +732,11 @@ namespace clear
                 Expect(TokenType::Comma);
                 Consume();
             }
-
-            auto param = std::make_shared<ASTTypeSpecifier>("");
-            param->TypeResolver = type;
-
-            decleration->Arguments.push_back(param);
+			
+			decleration->Arguments.push_back(param);
         }
 
-        EXPECT_TOKEN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction)
-        VERIFY(m_Position == terminationIndex, DiagnosticCode_None);
-
+        EXPECT_TOKEN_RETURN(TokenType::RightParen,DiagnosticCode_ExpectedEndOfFunction, nullptr);
         Consume();
 
         // return type
@@ -907,7 +746,7 @@ namespace clear
             decleration->ReturnType = ParseTypeResolver();
         }
 
-        Root()->Children.push_back(decleration);
+		return decleration;
     }
 
     std::shared_ptr<ASTNodeBase> Parser::ParseFunctionCall()
@@ -1563,10 +1402,7 @@ namespace clear
         EXPECT_TOKEN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier);
         std::string className = Consume().GetData();
 
-		std::shared_ptr<ASTStruct> structNode = std::make_shared<ASTStruct>(className);
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
-		classNode->Struct = structNode;
-
         Root()->Children.push_back(classNode);
 
         if(Match(TokenType::LeftBracket))
@@ -1592,12 +1428,12 @@ namespace clear
         {
             for(const auto& defaultValue : defaultValues)
             {
-                structNode->DefaultValues.push_back(defaultValue);
+                classNode->DefaultValues.push_back(defaultValue);
             }
 
             for(const auto& type : types)
             {
-                structNode->Members.push_back(type);
+                classNode->Members.push_back(type);
             }
 
             Consume(); 
@@ -1620,9 +1456,10 @@ namespace clear
                 while(rootLevel < m_RootStack.size())
                 {
                     ParseStatement();
+
                 }
 
-				classNode->MemberFunctions.push_back(m_RootStack.back()->Children[0]);
+				classNode->MemberFunctions.push_back(std::dynamic_pointer_cast<ASTFunctionDefinition>(m_RootStack.back()->Children[0]));
 				m_RootStack.pop_back();
 
                 continue;

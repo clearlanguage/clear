@@ -103,7 +103,6 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
 		virtual Symbol Codegen(CodegenContext&) override;
 		
-
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Children;
 	};
@@ -215,8 +214,6 @@ namespace clear
 
 	private:
 		Token m_Name;
-
-	
 	};
 
 	enum class AssignmentOperatorType 
@@ -572,8 +569,9 @@ namespace clear
 		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
 
 	public:
-		std::shared_ptr<ASTStruct> Struct;
-		std::vector<std::shared_ptr<ASTNodeBase>> MemberFunctions;
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
+		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
+		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
 	
 	private:
 		std::string m_Name;

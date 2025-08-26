@@ -22,10 +22,6 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
-				
-				if (variable->Variable->Kind == SymbolKind::Function)
-					return variable->Variable->GetFunctionSymbol().FunctionNode->ReturnType->ConstructedType.GetType();
-				
 				return variable->Variable->GetType();
 			}
 			case ASTNodeType::BinaryExpression:

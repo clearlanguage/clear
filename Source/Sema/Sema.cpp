@@ -158,6 +158,9 @@ namespace clear
 			case ASTNodeType::Literal:					return Visit(std::dynamic_pointer_cast<ASTNodeLiteral>(ast), context);
 			case ASTNodeType::UnaryExpression:			return Visit(std::dynamic_pointer_cast<ASTUnaryExpression>(ast), context);
 			case ASTNodeType::FunctionDecleration:		return Visit(std::dynamic_pointer_cast<ASTFunctionDeclaration>(ast), context);
+			case ASTNodeType::Class:					return Visit(std::dynamic_pointer_cast<ASTClass>(ast), context);
+			case ASTNodeType::IfExpression:				return Visit(std::dynamic_pointer_cast<ASTIfExpression>(ast), context);
+			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
     		default:	
 				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
@@ -333,6 +336,49 @@ namespace clear
 
 		decl->DeclSymbol = symbol.value();
 		return decl;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTClass> classExpr, SemaContext context) 
+	{
+		for (auto node : classExpr->Members) 
+		{
+			Visit(node, context);
+		}
+		
+		for (auto node : classExpr->DefaultValues)
+		{
+			Visit(node, context);
+		}
+
+		for (auto node : classExpr->MemberFunctions)
+		{
+			Visit(node, context);
+		}
+	
+		return classExpr;
+	}
+
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTIfExpression> ifExpr, SemaContext context)
+	{
+		for (auto conditionalBlock : ifExpr->ConditionalBlocks)
+		{
+			Visit(conditionalBlock.Condition, context);
+			Visit(conditionalBlock.CodeBlock, context);
+		}
+		
+		if (ifExpr->ElseBlock)
+			Visit(ifExpr->ElseBlock);
+
+		return ifExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context)
+	{
+		Visit(whileExpr->WhileBlock.Condition, context);
+		Visit(whileExpr->WhileBlock.CodeBlock, context);
+		
+		return whileExpr;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)

@@ -740,8 +740,6 @@ namespace clear
 		return *Variable;
 	}
 	
-
-
 	void ASTVariable::Print()
 	{
 		std::print("{} ", m_Name.GetData());
@@ -925,7 +923,7 @@ namespace clear
 		builder.restoreIP(ip);
 		s_InsertPoints.pop();
 
-		return {};
+		return *FunctionSymbol;
 	}
 
 	void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
@@ -1635,10 +1633,9 @@ namespace clear
 			int64_t ExpressionIdx = 0;
 		};
 
-
 		std::vector<Branch> branches;
 
-		for (size_t i = 0; ConditionalBlocks.size(); i++)
+		for (size_t i = 0; i < ConditionalBlocks.size(); i++)
 		{
 			Branch branch;
 			branch.ConditionBlock = llvm::BasicBlock::Create(ctx.Context, "if.condition");
@@ -1764,7 +1761,6 @@ namespace clear
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 		{
-			GetSymbolTable()->FlushScope(ctx);
 			ctx.Builder.CreateBr(conditionBlock);
 		}
 		
@@ -1947,16 +1943,23 @@ namespace clear
 
     Symbol ASTClass::Codegen(CodegenContext& ctx)
     {
-		if(m_Generics.empty())
+		auto classTy = ctx.TypeReg->CreateType<ClassType>(m_Name, m_Name, ctx.Context);
+		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> members;
+	
+		for (auto value : Members)
 		{
-			Instantiate(ctx);
-		}
-		else  
-		{
-			ctx.TypeReg->CreateClassTemplate(m_Name, std::dynamic_pointer_cast<ASTClass>(shared_from_this()), m_Generics);
+			Symbol result = value->Codegen(ctx);
+			members.emplace_back(std::string(result.Metadata.value_or(String())), std::make_shared<Symbol>(result));
 		}
 
-		return {};
+		for (auto func : MemberFunctions)
+		{
+			func->Codegen(ctx);
+			members.emplace_back(func->GetName(), func->FunctionSymbol);
+		}
+	
+		classTy->SetBody(members);
+		return Symbol::CreateType(classTy);
    }
 	
 	//TODO: type substitution should be handled by sema, in future node will be deep copied before instantiation
