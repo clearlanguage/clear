@@ -4,6 +4,12 @@
 
 namespace clear  
 {
+	bool SemaSymbolTable::Insert(llvm::StringRef name, SymbolEntryType type, std::shared_ptr<Symbol> symbol)
+	{
+		auto [it, success] = m_Symbols.try_emplace(std::string(name), SymbolEntry { type, symbol });
+		return success;	
+	}
+
 	std::optional<std::shared_ptr<Symbol>> SemaSymbolTable::InsertEmpty(llvm::StringRef name, SymbolEntryType type)
 	{
 		auto [it, success] = m_Symbols.try_emplace(std::string(name), SymbolEntry { type, std::make_shared<Symbol>() });

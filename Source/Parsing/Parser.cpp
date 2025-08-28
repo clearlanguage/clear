@@ -242,6 +242,7 @@ namespace clear
             {"if",        [this]() { return ParseIf(); }},
 			{"while",	  [this]() { return ParseWhile(); }},
 			{"class",     [this]() { return ParseClass(); }},
+			{"let",		  [this]() { return ParseLet(); }},
         };
         
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
@@ -847,12 +848,16 @@ namespace clear
 
     Parser::VariableDecleration Parser::ParseVariableDecleration()
     {
-        auto type = ParseTypeResolver();
-
-        Expect(TokenType::Identifier);
-        
-        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(Consume());
-        variableDecleration->TypeResolver = type;
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, {});
+		auto variableName = Consume();
+		
+        auto variableDecleration = std::make_shared<ASTVariableDeclaration>(variableName);
+		
+		if (Match(TokenType::Colon))
+		{
+			Consume();		
+			variableDecleration->TypeResolver = ParseTypeResolver();
+		}
 
         bool hasBeenInitialized = false;
 
@@ -1483,6 +1488,25 @@ namespace clear
         Flush();
 		return classNode;
     }
+
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseLet()
+	{
+		EXPECT_DATA_RETURN("let", DiagnosticCode_None, nullptr);
+		Consume();
+
+		auto decleration = ParseVariableDecleration();
+
+		if(decleration.HasBeenInitialized)
+		{
+			return decleration.Node;
+		}
+	
+		auto initializer = std::make_shared<ASTDefaultInitializer>();
+		initializer->Storage = decleration.Node;
+		
+		return initializer;
+	}
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
     {

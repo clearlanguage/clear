@@ -59,6 +59,7 @@ namespace clear
         void ParseFor();
         void ParseIndentation();
 		std::shared_ptr<ASTClass> ParseClass();
+		std::shared_ptr<ASTNodeBase> ParseLet();
         void ParseLoopControls();
         void ParseTrait();
         void ParseEnum();

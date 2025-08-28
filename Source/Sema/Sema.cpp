@@ -11,7 +11,6 @@
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
 
-#include <bits/types/cookie_io_functions_t.h>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -28,7 +27,7 @@ namespace clear
 		m_ScopeStack.emplace_back();
 		
 		for(auto node : ast->Children)
-			Visit(node, context);
+			node = Visit(node, context);
 
 		m_ScopeStack.pop_back();
 
@@ -57,12 +56,28 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context)
 	{
-		Visit(decl->TypeResolver, context);
-			
-		context.ValueReq = ValueRequired::RValue;
+		if (decl->TypeResolver)
+		{
+			Visit(decl->TypeResolver, context);
 
-		if (decl->Initializer)
-			Visit(decl->Initializer, context);
+			if (decl->Initializer)
+				decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue } );
+		}
+		else 
+		{
+			if (!decl->Initializer)
+			{
+				//DiagnosticCode_NeedsValueWithoutTypeAnnotation
+				Report(DiagnosticCode_None, Token());
+				return nullptr;
+			}
+
+			decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue });
+
+			decl->TypeResolver = std::make_shared<ASTType>();
+			decl->TypeResolver->ConstructedType = Symbol::CreateType(m_TypeInferEngine.InferTypeFromNode(decl->Initializer));
+		}
+
 
 		std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(decl->TypeResolver);
 		
@@ -174,7 +189,7 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
 		bool isGeneric = func->IsVariadic;
-			
+		 	
 		if (func->GenericTypes.size() > 0)
 		{
 			//TODO: generic function so delay instantiation until function call
@@ -193,8 +208,20 @@ namespace clear
 		
 		//TODO: temporary, until we have the clear runtime make a main function we will have to ignore mangling for main
 		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
-		auto symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function);
-	
+		std::optional<std::shared_ptr<Symbol>> symbol;
+		
+		if (func->FunctionSymbol)
+		{
+			bool success = m_ScopeStack.back().Insert(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function, func->FunctionSymbol);
+			symbol = success ? std::optional(func->FunctionSymbol) : std::nullopt;
+		}	
+		else 
+		{
+			symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function);
+			if (symbol)
+				*symbol.value() = Symbol::CreateFunction(nullptr);
+		}
+
 		if (!symbol.has_value())
 		{
 			// DiagnosticCode_AlreadyDefinedFunction
@@ -205,8 +232,7 @@ namespace clear
 		
 		func->SetName(mangledName);
 
-		auto fnSymbolPtr = symbol.value();
-		*fnSymbolPtr = Symbol::CreateFunction(nullptr);
+		std::shared_ptr<Symbol> fnSymbolPtr = symbol.value();
 		
 		{
 			FunctionSymbol& functionSymbol = fnSymbolPtr->GetFunctionSymbol();
@@ -358,7 +384,9 @@ namespace clear
 
 		for (auto node : classExpr->MemberFunctions)
 		{
-			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateFunction(node)));
+			auto functionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(node));
+			members.emplace_back(node->GetName(), functionSymbol);
+			node->FunctionSymbol = functionSymbol;
 		}
 		
 		classTy->SetBody(members);
@@ -368,6 +396,7 @@ namespace clear
 		{
 			Visit(node, context);
 		}
+	
 
 		return classExpr;
 	}
@@ -572,13 +601,6 @@ namespace clear
 		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
 		CLEAR_VERIFY(lhsType, "");
 
-		if (!lhsType->IsCompound() && !lhsType->IsGeneric())
-		{
-			// DiagnosticCode_InvalidAccess
-			Report(DiagnosticCode_None, Token());
-			return nullptr;
-		}
-
 		if (binaryExpr->RightSide->GetType() != ASTNodeType::Member)
 		{
 			// DiagnosticCode_InvalidAccess
@@ -587,15 +609,20 @@ namespace clear
 		}
 		
 		std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(binaryExpr->RightSide);
+		
+		if (lhsType->IsPointer())
+			lhsType = lhsType->As<PointerType>()->GetBaseType();
+		
+		std::optional<std::shared_ptr<Symbol>> memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName());
 
-		if (!lhsType->As<ClassType>()->GetMember(member->GetName()))
+		if (!memberSymbol)
 		{
 			// DiagnosticCode_MissingMember
 			Report(DiagnosticCode_None, Token());
 			return nullptr;
 		}
 
-		binaryExpr->ResultantType = lhsType->As<ClassType>()->GetMember(member->GetName()).value()->GetType();
+		binaryExpr->ResultantType = memberSymbol.value()->GetType();
 		// TODO: check if has function, public and private members etc...
 			
 		if (insertLoad)

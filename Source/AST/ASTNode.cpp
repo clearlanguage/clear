@@ -151,6 +151,8 @@ namespace clear
 			return HandleCmpExpression(leftChild, rightChild, ctx);
 
 		if(m_Expression == OperatorType::Index)
+			return HandleArrayIndex(leftChild, rightChild, ctx);	
+
     	if (IsBitwiseExpression())
 			return HandleBitwiseExpression(leftChild, rightChild, ctx);
 
@@ -609,10 +611,27 @@ namespace clear
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
 		auto member = std::dynamic_pointer_cast<ASTMember>(right);
-		auto memberType = lhs.GetType()->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMember(member->GetName()).value()->GetType();
-		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberType));
+		auto lhsType = lhs.GetType();
+		
+		int loadCount = 0;
 
-		size_t index = lhs.GetType()->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
+		while (!lhsType->As<PointerType>()->GetBaseType()->IsClass())
+		{
+			lhsType = lhsType->As<PointerType>()->GetBaseType();
+			loadCount++;
+		}
+		
+		auto memberSymbol = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMember(member->GetName()).value();
+
+		if (memberSymbol->Kind == SymbolKind::Function)
+			return *memberSymbol;
+		
+		while (loadCount--)
+			lhs = SymbolOps::Load(lhs, ctx.Builder);
+
+		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
+
+		size_t index = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
 
@@ -976,17 +995,13 @@ namespace clear
 
 		BuildArgs(ctx, args, types);
 		
-		FunctionSymbol functionSymbol;
+		FunctionSymbol& functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
 
 		if (auto memberAccess = IsMemberFunction())
 		{
 			auto ptr = memberAccess->LeftSide->Codegen(ctx);
 			args.push_back(ptr.GetLLVMValue());
 			types.push_back(ptr.GetType());
-		}
-		else 
-		{	
-			functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
 		}
 
 		if (!functionSymbol.FunctionPtr)
@@ -1014,6 +1029,10 @@ namespace clear
 		}
 
 		llvm::Value* returnValue = ctx.Builder.CreateCall(functionPtr, args);
+
+		if (!functionSymbol.FunctionNode->ReturnType)
+			return Symbol();
+		
 		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnType->ConstructedType.GetType());
 	}
 

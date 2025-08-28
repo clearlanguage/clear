@@ -16,13 +16,13 @@ namespace clear
 		std::string returnTypeHash = returnType ? returnType->GetHash() : "";
 		std::string nameStr = std::string(name);
 
-		return std::format("{}__function__{}__A{}_R{}", m_Module->GetName(), nameStr, FormatArgs(args), returnTypeHash);
+		return std::format("{}.{}.A{}.R{}", m_Module->GetName(), nameStr, FormatArgs(args), returnTypeHash);
 	}
 
 	std::string NameMangler::MangleClass(llvm::StringRef name, llvm::ArrayRef<std::shared_ptr<Type>> genericArgs)
 	{
 		std::string nameStr = std::string(name);
-		return std::format("{}__class__{}__A{}", m_Module->GetName(), nameStr, FormatArgs(genericArgs));
+		return std::format("{}.{}.A{}", m_Module->GetName(), nameStr, FormatArgs(genericArgs));
 	}
 
 	std::string NameMangler::MangleFunctionFromNode(std::shared_ptr<ASTFunctionDefinition> func)
@@ -47,7 +47,7 @@ namespace clear
 			if (i + 1 == args.size())
 				continue;
 
-			argStream << "_";	
+			argStream << ".";	
 		}
 
 		return argStream.str();
