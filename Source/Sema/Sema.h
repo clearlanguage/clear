@@ -21,6 +21,7 @@ namespace clear
 	struct SemaContext
 	{
 		ValueRequired ValueReq = ValueRequired::Any;
+		std::shared_ptr<Type> TypeHint;
 	};
 
     class Sema
@@ -51,11 +52,10 @@ namespace clear
 
 	private:
 		void Report(DiagnosticCode code, Token token);
-		std::optional<Symbol> ConstructType(std::shared_ptr<ASTType> type);	
+		std::optional<Symbol> ConstructType(std::shared_ptr<ASTType> type, std::shared_ptr<Type> selfType);	
 		
 		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
-		
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;
@@ -64,6 +64,5 @@ namespace clear
 		ConstEval m_ConstantEvaluator;
 		Infer m_TypeInferEngine;
 		NameMangler m_NameMangler;
-		
     };
 }

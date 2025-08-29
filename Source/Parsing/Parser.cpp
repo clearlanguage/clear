@@ -8,6 +8,7 @@
 #include "Lexing/Token.h"
 #include "Symbols/Module.h"
 #include "Symbols/SymbolTable.h"
+#include "Symbols/Type.h"
 
 #include <memory>
 #include <print>
@@ -496,32 +497,15 @@ namespace clear
 
         while (!Match(TokenType::RightParen))
 		{
-			if (Match(TokenType::Identifier) && Next().IsType(TokenType::Ellipses))
+			if (Match(TokenType::Star) || Match("const") || Match("self"))
 			{
-				funcNode->IsVariadic = true;
-				params.push_back(nullptr);
-
-				Consume();
-				Consume();
-				
-				// DiagnosticCode_VariadicArgsMustBeAtEnd
-				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_None, nullptr);
-				break;
+				params.push_back(ParseSelf());
 			}
-			
-			params.push_back(ParseVariableDecleration().Node);
-			
-			if (Match(TokenType::Ellipses))
+			else 
 			{
-				funcNode->IsVariadic = true;
-				Consume();
-				
-				// DiagnosticCode_VariadicArgsMustBeAtEnd
-				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_None, nullptr);
-				break;
+				params.push_back(ParseVariableDecleration().Node);
 			}
-		
-
+				
 			if (Match(TokenType::Comma))
 				Consume();  
 		}
@@ -871,6 +855,16 @@ namespace clear
 
         return { variableDecleration, hasBeenInitialized };
     }
+
+	std::shared_ptr<ASTVariableDeclaration> Parser::ParseSelf()
+	{
+		auto ty = ParseTypeResolver();
+
+		std::shared_ptr<ASTVariableDeclaration> decl = std::make_shared<ASTVariableDeclaration>(Prev());
+		decl->TypeResolver = ty;
+
+		return decl;
+	}
 
     void Parser::ParseSwitch() 
     { 

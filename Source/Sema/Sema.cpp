@@ -36,7 +36,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTType> type, SemaContext context)
 	{
-		type->ConstructedType = ConstructType(type).value_or(Symbol());	
+		type->ConstructedType = ConstructType(type, context.TypeHint).value_or(Symbol());	
 		return type;
 	}
 	
@@ -196,6 +196,8 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
+		m_ScopeStack.emplace_back();
+
 		bool isGeneric = func->IsVariadic;
 		 	
 		if (func->GenericTypes.size() > 0)
@@ -255,6 +257,9 @@ namespace clear
 		func->SourceModule = m_Module;	
 
 		Visit(func->CodeBlock, context);	
+		
+		m_ScopeStack.pop_back();
+
 		return func;
 	}
 
@@ -310,10 +315,10 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssignmentOperator> assignmentOp, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::LValue;
-		assignmentOp->Storage = Visit(assignmentOp->Storage);
+		assignmentOp->Storage = Visit(assignmentOp->Storage, context);
 
 		context.ValueReq = ValueRequired::RValue;
-		assignmentOp->Value = Visit(assignmentOp->Value);
+		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
 		return assignmentOp;
 	}
@@ -399,6 +404,7 @@ namespace clear
 		
 		classTy->SetBody(members);
 		classExpr->ClassTy = classTy;
+		context.TypeHint = classTy;
 		
 		for (auto node : classExpr->MemberFunctions)
 		{
@@ -450,7 +456,7 @@ namespace clear
 		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, token, code);
 	}
 
-	std::optional<Symbol> Sema::ConstructType(std::shared_ptr<ASTType> type)
+	std::optional<Symbol> Sema::ConstructType(std::shared_ptr<ASTType> type, std::shared_ptr<Type> selfType)
 	{
 		std::vector<Token> tokens = std::move(type->TakeTokens());
 		
@@ -484,7 +490,7 @@ namespace clear
 				
 				if (auto astType = std::dynamic_pointer_cast<ASTType>(type->Children[childIndex++]))
 				{
-					std::shared_ptr<Type> baseTy = ConstructType(astType)
+					std::shared_ptr<Type> baseTy = ConstructType(astType, selfType)
 						.and_then([](const Symbol& type)
 							{
 								return std::optional(type.GetType());
@@ -534,7 +540,21 @@ namespace clear
 		}	
 		else 
 		{
-			baseType = m_Module->Lookup(curr->GetData()).value();
+			if (curr->GetData() == "self")
+			{
+				if (!selfType)
+				{
+					// DiagnosticCode_CannotUseSelfWhenNotInClassArg
+					Report(DiagnosticCode_None, *curr);
+					return std::nullopt;
+				}
+
+				baseType = Symbol::CreateType(selfType);
+			}
+			else 
+			{
+				baseType = m_Module->Lookup(curr->GetData()).value();
+			}
 
 			if (baseType.Kind == SymbolKind::None)
 			{

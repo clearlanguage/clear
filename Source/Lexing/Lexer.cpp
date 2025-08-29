@@ -23,6 +23,7 @@ namespace clear
         m_Contents = stream.str();
 
         Lex();
+		
     }
 
     void Lexer::Lex()

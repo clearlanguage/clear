@@ -81,6 +81,7 @@ namespace clear
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTType> ParseTypeResolver();
         VariableDecleration ParseVariableDecleration();
+		std::shared_ptr<ASTVariableDeclaration> ParseSelf();
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
