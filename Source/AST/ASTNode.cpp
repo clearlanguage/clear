@@ -306,7 +306,7 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
-		auto booleanType = ctx.ClearModule->Lookup("bool").GetType();
+		auto booleanType = ctx.ClearModule->Lookup("bool").value().GetType();
 
     	switch (m_Expression)
 		{
@@ -525,21 +525,15 @@ namespace clear
 				if(ty->IsEnum())
 					return HandleMemberEnum(lhs, right, ctx);
 
-				if(right->GetType() == ASTNodeType::FunctionCall)
+				if(ty->IsClass())
 				{
-					CLEAR_VERIFY(ty->IsClass(), "cannot call a function on a type that is not a class");
+					std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(right);
+					CLEAR_VERIFY(member, "");
+						
+					std::shared_ptr<Symbol> memberSymbol = ty->As<ClassType>()->GetMember(member->GetName()).value();
 
-					auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
-					CLEAR_VERIFY(funcCall, "invalid function call");
-
-					//std::string name = funcCall->GetName();
-
-					//funcCall->SetName(std::format("{}.{}", ty->As<ClassType>()->GetHash(), name));
-					Symbol result = funcCall->Codegen(ctx);
-
-					//funcCall->SetName(name);
-
-					return result;
+					if (memberSymbol->Kind == SymbolKind::Function)
+						return Symbol::CreateCallee(memberSymbol, nullptr);
 				}
 
 				CLEAR_UNREACHABLE("unimplemented");
@@ -613,22 +607,18 @@ namespace clear
 		auto member = std::dynamic_pointer_cast<ASTMember>(right);
 		auto lhsType = lhs.GetType();
 		
-		int loadCount = 0;
 
 		while (!lhsType->As<PointerType>()->GetBaseType()->IsClass())
 		{
 			lhsType = lhsType->As<PointerType>()->GetBaseType();
-			loadCount++;
+			lhs = SymbolOps::Load(lhs, ctx.Builder);
 		}
 		
 		auto memberSymbol = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMember(member->GetName()).value();
 
 		if (memberSymbol->Kind == SymbolKind::Function)
-			return *memberSymbol;
+			return Symbol::CreateCallee(memberSymbol, std::make_shared<Symbol>(lhs));
 		
-		while (loadCount--)
-			lhs = SymbolOps::Load(lhs, ctx.Builder);
-
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
 		size_t index = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
@@ -653,7 +643,7 @@ namespace clear
 		if(right->GetType() == ASTNodeType::Member)
 		{
 			auto member = std::dynamic_pointer_cast<ASTMember>(right);
-			Symbol symbol = mod->Lookup(member->GetName());
+			Symbol symbol = mod->Lookup(member->GetName()).value();
 
 			if(symbol.Kind == SymbolKind::Type) //only one LLVMContext for now so this is fine
 			{
@@ -760,6 +750,9 @@ namespace clear
 
 	Symbol ASTVariable::Codegen(CodegenContext& ctx)
     {
+		if (Variable->Kind == SymbolKind::Function)
+			return Symbol::CreateCallee(Variable, nullptr);
+
 		return *Variable;
 	}
 	
@@ -992,17 +985,17 @@ namespace clear
 	{
 		std::vector<llvm::Value*> args;
 		std::vector<std::shared_ptr<Type>> types;
+		
+		CalleeSymbol calleeSymbol = Callee->Codegen(ctx).GetCalleeSymbol();
+		FunctionSymbol& functionSymbol = calleeSymbol.FunctionSymbol->GetFunctionSymbol();
+
+		if (calleeSymbol.Receiver)
+		{
+			args.push_back(calleeSymbol.Receiver->GetLLVMValue());
+			types.push_back(calleeSymbol.Receiver->GetType());
+		}
 
 		BuildArgs(ctx, args, types);
-		
-		FunctionSymbol& functionSymbol = Callee->Codegen(ctx).GetFunctionSymbol();
-
-		if (auto memberAccess = IsMemberFunction())
-		{
-			auto ptr = memberAccess->LeftSide->Codegen(ctx);
-			args.push_back(ptr.GetLLVMValue());
-			types.push_back(ptr.GetType());
-		}
 
 		if (!functionSymbol.FunctionPtr)
 		{
@@ -1095,7 +1088,7 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		m_ReturnType = ctx.ClearModule->Lookup("void").GetType();
+		m_ReturnType = ctx.ClearModule->Lookup("void").value().GetType();
 
 		if (ReturnType)
 			m_ReturnType = ReturnType->Codegen(ctx).GetType();
@@ -1396,9 +1389,15 @@ namespace clear
 
 			return valuePtr;
 		}
+		
+		auto ip = ctx.Builder.saveIP(); 
 
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();    
+
+		ctx.Builder.SetInsertPoint(&function->getEntryBlock());
 		llvm::Value* structAlloc = ctx.Builder.CreateAlloca(llvmStructTy, nullptr, "struct.alloc");
-			
+		ctx.Builder.restoreIP(ip);	
+
 		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmStructTy);
 		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);
 			
@@ -1554,7 +1553,7 @@ namespace clear
 
 			if(!signedType->IsSigned()) // uint... -> int...
 			{
-				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).GetType();
+				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).value().GetType();
 			}
 
 			return SymbolOps::Neg(result, ctx.Builder, signedType); 
@@ -1566,7 +1565,7 @@ namespace clear
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
-		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.ClearModule->Lookup("int32").GetType());
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.ClearModule->Lookup("int32").value().GetType());
 
 		Symbol result = Operand->Codegen(ctx);
 		auto [resultValue, resultType] = result.GetValue();
@@ -1644,6 +1643,11 @@ namespace clear
 		return returnValue;
 	}
 
+	Symbol ASTLoad::Codegen(CodegenContext& ctx)
+	{
+		Symbol operand = Operand->Codegen(ctx);
+		return SymbolOps::Load(operand, ctx.Builder);
+	}
 
 	Symbol ASTIfExpression::Codegen(CodegenContext& ctx)
 	{

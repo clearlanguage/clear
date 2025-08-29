@@ -132,6 +132,14 @@ namespace clear
 		
 		if (!symbol.has_value())
 		{
+			std::optional<Symbol> sym = m_Module->Lookup(variable->GetName().GetData());
+			
+			if (sym.has_value())
+				symbol = SymbolEntry { SymbolEntryType::None, std::make_shared<Symbol>(sym.value()) };
+		}
+
+		if (!symbol.has_value())
+		{
 			// DiagnosticCode_UndefinedVariable
 			Report(DiagnosticCode_None, variable->GetName());
 			return nullptr;
@@ -141,7 +149,7 @@ namespace clear
 
 		if (context.ValueReq == ValueRequired::RValue && symbol.value().Type == SymbolEntryType::Variable)
 		{
-			auto loadNode = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			auto loadNode = std::make_shared<ASTLoad>();
 			loadNode->Operand = variable;
 
 			return loadNode;
@@ -263,8 +271,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTReturn> returnStatement, SemaContext context)
 	{
-		Visit(returnStatement->ReturnValue, context);
-		//TODO: add type checking
+		returnStatement->ReturnValue = Visit(returnStatement->ReturnValue, context);
 		return returnStatement;
 	}
 	
@@ -303,10 +310,10 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssignmentOperator> assignmentOp, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::LValue;
-		Visit(assignmentOp->Storage);
+		assignmentOp->Storage = Visit(assignmentOp->Storage);
 
 		context.ValueReq = ValueRequired::RValue;
-		Visit(assignmentOp->Value);
+		assignmentOp->Value = Visit(assignmentOp->Value);
 
 		return assignmentOp;
 	}
@@ -320,6 +327,7 @@ namespace clear
 			case OperatorType::Ellipsis:
 			case OperatorType::Increment: 
 			case OperatorType::Decrement:
+			case OperatorType::Address:
 			{
 				unaryExpr->Operand = Visit(unaryExpr->Operand, { ValueRequired::LValue });
 				break;
@@ -446,12 +454,6 @@ namespace clear
 	{
 		std::vector<Token> tokens = std::move(type->TakeTokens());
 		
-		if (tokens[0].GetData() == "let")
-			return Symbol::CreateInferType(false);
-		
-		if (tokens[0].GetData() == "const" && tokens.size() == 1)
-			return Symbol::CreateInferType(true);
-
 		auto ConstructArray = [&](auto begin, size_t& childIndex) -> std::optional<Symbol>
 	 		{
 				if (childIndex + 2 >= type->Children.size())
@@ -532,7 +534,7 @@ namespace clear
 		}	
 		else 
 		{
-			baseType = m_Module->Lookup(curr->GetData());
+			baseType = m_Module->Lookup(curr->GetData()).value();
 
 			if (baseType.Kind == SymbolKind::None)
 			{
@@ -627,7 +629,7 @@ namespace clear
 			
 		if (insertLoad)
 		{
-			std::shared_ptr<ASTUnaryExpression> loadOp = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			std::shared_ptr<ASTLoad> loadOp = std::make_shared<ASTLoad>();
 			loadOp->Operand = binaryExpr;
 			return loadOp;
 		}

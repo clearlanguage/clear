@@ -118,14 +118,25 @@ namespace clear
         };
     }
 
+	Symbol Symbol::CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver)
+	{
+		return Symbol {
+			.Kind = SymbolKind::Callee,
+			.Data = CalleeSymbol {
+				.FunctionSymbol = function,
+				.Receiver = receiver
+			}
+		};
+	}
+
     Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
     {
-        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").GetType());
+        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value().GetType());
     }
     
     Symbol Symbol::GetBooleanType(std::shared_ptr<Module> module_)
     {
-        return Symbol::CreateType(module_->Lookup("bool").GetType());
+        return Symbol::CreateType(module_->Lookup("bool").value().GetType());
     }
     
     llvm::Value* Symbol::GetLLVMValue()
@@ -206,5 +217,11 @@ namespace clear
 	{
 		CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunctionSymbol() when kind is not Function");
 		return std::get<FunctionSymbol>(Data);
+	}
+
+	CalleeSymbol Symbol::GetCalleeSymbol()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Callee, "cannot call Symbol::GetCalleeSymbol() when kind is not Callee");
+		return std::get<CalleeSymbol>(Data);
 	}
 }

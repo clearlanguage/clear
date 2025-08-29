@@ -2,6 +2,7 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Core/Operator.h"
+#include "Diagnostics/Diagnostic.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Lexing/TokenDefinitions.h"
 #include "Lexing/Token.h"
@@ -1423,26 +1424,8 @@ namespace clear
             Consume();
         }
 
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
+        EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
         Consume();
-
-        std::vector<std::shared_ptr<ASTTypeSpecifier>> types;
-        std::vector<std::shared_ptr<ASTNodeBase>> defaultValues;
-
-        auto Flush = [&]()
-        {
-            for(const auto& defaultValue : defaultValues)
-            {
-                classNode->DefaultValues.push_back(defaultValue);
-            }
-
-            for(const auto& type : types)
-            {
-                classNode->Members.push_back(type);
-            }
-
-            Consume(); 
-        };
 
         while(!Match(TokenType::EndScope))
         {
@@ -1457,35 +1440,32 @@ namespace clear
 				classNode->MemberFunctions.push_back(ParseFunctionDefinition());
                 continue;
             }
-
-            auto type = ParseTypeResolver();
-
-            EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-
+			
+			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
             auto typeSpec = std::make_shared<ASTTypeSpecifier>(Consume().GetData());
-            typeSpec->TypeResolver = type;
+			
+			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+			Consume();
+
+            typeSpec->TypeResolver = ParseTypeResolver();
 
             if(Match(TokenType::Equals))
             {
                 Consume();
-                defaultValues.push_back(ParseExpression());
+                classNode->DefaultValues.push_back(ParseExpression());
             }
             else 
             {
-                defaultValues.push_back(nullptr);
+                classNode->DefaultValues.push_back(nullptr);
             }
 
-            types.push_back(typeSpec);
+            classNode->Members.push_back(typeSpec);
 
-            if(Match(TokenType::Comma))
-                Consume();
-            
-            EXPECT_TOKEN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation);
-
+            EXPECT_TOKEN_RETURN(TokenType::EndLine,DiagnosticCode_ExpectedNewlineAferIndentation, nullptr);
             Consume();
         }
-
-        Flush();
+		
+		Consume();
 		return classNode;
     }
 

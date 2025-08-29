@@ -32,7 +32,7 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr, StructExpr, Block
+		Switch, ListExpr, StructExpr, Block, Load
 	};
 
 	class ASTNodeBase;
@@ -451,6 +451,18 @@ namespace clear
 
 	private: 
 		OperatorType m_Type;
+	};
+
+	class ASTLoad : public ASTNodeBase 
+	{
+	public:
+		ASTLoad() = default;
+		virtual ~ASTLoad() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Load; }
+		virtual Symbol Codegen(CodegenContext&) override;
+	
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
 	};
 	
 

@@ -29,7 +29,8 @@ namespace clear
         Value, 
         Identifier, 
         ClassTemplate, 
-        InferType
+        InferType,
+		Callee
     };
 
     struct FunctionSymbol 
@@ -40,6 +41,14 @@ namespace clear
 		llvm::FunctionType* FunctionType = nullptr;
 		std::shared_ptr<ASTFunctionDefinition> FunctionNode;
     };
+	
+	struct Symbol;
+
+	struct CalleeSymbol
+	{
+		std::shared_ptr<Symbol> FunctionSymbol;
+		std::shared_ptr<Symbol> Receiver;
+	};
 
     struct FunctionTemplateSymbol 
     {
@@ -84,7 +93,8 @@ namespace clear
         TypeSymbol, 
         String, 
         ClassTemplate, 
-        InferTypeSymbol>;
+        InferTypeSymbol,
+		CalleeSymbol>;
 
     struct Symbol 
     {
@@ -103,6 +113,7 @@ namespace clear
         static Symbol CreateIdentifier(StringRef identifierName);
         static Symbol CreateClassTemplate(const ClassTemplate& classTemplate);
         static Symbol CreateInferType(bool IsConst);
+		static Symbol CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver);
 
         // helpers
         static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
@@ -119,5 +130,6 @@ namespace clear
         ClassTemplate GetClassTemplate();
         InferTypeSymbol GetInferType();
 		FunctionSymbol& GetFunctionSymbol();
+		CalleeSymbol GetCalleeSymbol();
     };
 }

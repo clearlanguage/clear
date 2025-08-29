@@ -45,6 +45,11 @@ namespace clear
 				auto structExpr = std::dynamic_pointer_cast<ASTStructExpr>(node);
 				return structExpr->TargetType->ConstructedType.GetType();
 			}
+			case ASTNodeType::Load:
+			{
+				auto load = std::dynamic_pointer_cast<ASTLoad>(node);
+				return InferTypeFromNode(load->Operand);
+			}
 			default:
 			{
 				CLEAR_UNREACHABLE("unimplemented");
@@ -56,7 +61,15 @@ namespace clear
 
 	std::shared_ptr<Type> Infer::InferTypeFromUnaryExpr(std::shared_ptr<ASTUnaryExpression> unaryExpr)
 	{
-		return InferTypeFromNode(unaryExpr->Operand);
+		std::shared_ptr<Type> base = InferTypeFromNode(unaryExpr->Operand);
+	
+		if(unaryExpr->GetOperatorType() == OperatorType::Address)
+			return m_Module->GetTypeRegistry()->GetPointerTo(base);
+		
+		if(unaryExpr->GetOperatorType() == OperatorType::Dereference)
+			return base->As<PointerType>()->GetBaseType();
+
+		return base;
 	}
 
 	std::shared_ptr<Type> Infer::InferTypeFromBinExpr(std::shared_ptr<ASTBinaryExpression> binExpr)

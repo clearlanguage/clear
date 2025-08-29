@@ -8,6 +8,7 @@
 
 #include "Symbols/Symbol.h"
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Module.h>
 #include <memory>
 #include <unordered_map>
@@ -39,9 +40,10 @@ namespace clear
 		const auto& GetName() { return m_ModuleName; }
 
         CodegenContext GetCodegenContext();
-
-        Symbol Lookup(const std::string& symbol);
-        Symbol Lookup(const std::string& fn, const std::vector<Parameter>& params);
+		
+		//TODO: make this optional Symbols
+		std::optional<Symbol> Lookup(llvm::StringRef symbol);
+		std::optional<Symbol> Lookup(llvm::StringRef fn, llvm::ArrayRef<Parameter> params);
 
         // NOTE: for now only types but may be extended to support more symbols
         void CreateAlias(const std::string& aliasName, const std::string& symbolName);
