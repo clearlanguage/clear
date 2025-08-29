@@ -40,11 +40,18 @@ namespace clear
 
     void Lexer::Eat()
     {
-        if(Prev() == "\n")
+        if (Prev() == "\n")
         {
-            EmplaceBack(TokenType::EndLine, " ");
-        }
+            //TODO: fix EndScope for chained statements
+            size_t pos = m_Position;
+            while (pos < m_Contents.size() && std::isspace(m_Contents[pos]) && m_Contents[pos] != '\n')
+                pos++;
 
+            if (pos >= m_Contents.size() || m_Contents[pos] != '.')
+            {
+                EmplaceBack(TokenType::EndLine, " ");
+            }
+        }
         if(Prev() == "\n" && !IsLineOnlyWhitespace()) 
         {
             FlushScopes();
