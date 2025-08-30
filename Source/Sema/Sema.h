@@ -56,6 +56,8 @@ namespace clear
 		
 		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		
+		bool IsNodeValue(std::shared_ptr<ASTNodeBase> node);
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;

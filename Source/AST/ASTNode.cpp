@@ -20,6 +20,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/MC/MCInstrDesc.h>
@@ -59,6 +60,21 @@ namespace clear
 	static void PushScopeMarker(CodegenContext& ctx)
 	{
 		ctx.DeferredCalls.push_back(nullptr);
+	}
+
+	static Symbol CreateTemporary(std::shared_ptr<Type> type, CodegenContext& ctx)
+	{
+		llvm::BasicBlock* insertBlock = ctx.Builder.GetInsertBlock();
+        
+        CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
+	    auto ip = ctx.Builder.saveIP(); 
+	    llvm::Function* function = insertBlock->getParent();    
+	    ctx.Builder.SetInsertPoint(&function->getEntryBlock());
+		
+		Symbol symbol = Symbol::CreateValue(ctx.Builder.CreateAlloca(type->Get(), nullptr, "tmp"), ctx.ClearModule->GetTypeRegistry()->GetPointerTo(type)); 
+
+	    ctx.Builder.restoreIP(ip);  
+		return symbol;
 	}
 
     ASTNodeBase::ASTNodeBase()
@@ -550,15 +566,6 @@ namespace clear
 			{
 				auto [lhsValue, lhsType] = lhs.GetValue();
 
-				if(!lhsType->IsPointer()) 
-				{
-					Allocation temp = tbl->RequestTemporary(lhsType, ctx.Builder);
-					ctx.Builder.CreateStore(lhsValue, temp.Alloca);
-
-					lhsValue = temp.Alloca;
-					lhsType =  ctx.TypeReg->GetPointerTo(temp.Type);
-				}
-
 				if(right->GetType() == ASTNodeType::Member)
 				{
 					return HandleMember(lhs, right, ctx);
@@ -602,26 +609,47 @@ namespace clear
 		return Symbol();	
 	}
 
-    Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
+    Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		auto member = std::dynamic_pointer_cast<ASTMember>(right);
 		auto lhsType = lhs.GetType();
 		
-
-		while (!lhsType->As<PointerType>()->GetBaseType()->IsClass())
-		{
+		while (lhsType->IsPointer())
 			lhsType = lhsType->As<PointerType>()->GetBaseType();
-			lhs = SymbolOps::Load(lhs, ctx.Builder);
-		}
-		
-		auto memberSymbol = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMember(member->GetName()).value();
+
+		auto memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName()).value();
 
 		if (memberSymbol->Kind == SymbolKind::Function)
+		{
+			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->TypeResolver->ConstructedType.GetType();
+
+			while(lhs.GetType() != targetType)
+			{
+				lhs = SymbolOps::Load(lhs, ctx.Builder);
+			}
+			
 			return Symbol::CreateCallee(memberSymbol, std::make_shared<Symbol>(lhs));
+		}
 		
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
-		size_t index = lhsType->As<PointerType>()->GetBaseType()->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
+		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
+		
+		if (lhs.GetType()->IsClass())
+		{
+			Symbol storage = CreateTemporary(lhsType, ctx);
+			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
+			lhs = storage;
+		}
+		
+		while (lhs.GetType()->IsPointer())
+		{
+			if (lhs.GetType()->As<PointerType>()->GetBaseType()->IsClass())
+				break;
+			
+			lhs = SymbolOps::Load(lhs, ctx.Builder);
+		}
+		
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
 
@@ -730,7 +758,7 @@ namespace clear
 			llvm::Function* function = insertBlock->getParent();    
 			ctx.Builder.SetInsertPoint(&function->getEntryBlock());
 			
-			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get());
+			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get(), nullptr, m_Name.GetData());
 			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
 				
 			ctx.Builder.restoreIP(ip);

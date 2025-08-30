@@ -617,11 +617,13 @@ namespace clear
 		bool insertLoad = context.ValueReq == ValueRequired::RValue;
 
 		context.ValueReq = ValueRequired::LValue;
-
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
 		
 		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
 		CLEAR_VERIFY(lhsType, "");
+
+		while (lhsType->IsPointer())
+			lhsType = lhsType->As<PointerType>()->GetBaseType();
 
 		if (binaryExpr->RightSide->GetType() != ASTNodeType::Member)
 		{
@@ -631,10 +633,6 @@ namespace clear
 		}
 		
 		std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(binaryExpr->RightSide);
-		
-		if (lhsType->IsPointer())
-			lhsType = lhsType->As<PointerType>()->GetBaseType();
-		
 		std::optional<std::shared_ptr<Symbol>> memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName());
 
 		if (!memberSymbol)
@@ -644,9 +642,9 @@ namespace clear
 			return nullptr;
 		}
 
-		binaryExpr->ResultantType = memberSymbol.value()->GetType();
+		binaryExpr->ResultantType = memberSymbol.value()->GetType(); 
 		// TODO: check if has function, public and private members etc...
-			
+		
 		if (insertLoad)
 		{
 			std::shared_ptr<ASTLoad> loadOp = std::make_shared<ASTLoad>();
@@ -656,5 +654,42 @@ namespace clear
 
 		binaryExpr->ResultantType = m_Module->GetTypeRegistry()->GetPointerTo(binaryExpr->ResultantType);
 		return binaryExpr;
+	}
+
+	bool Sema::IsNodeValue(std::shared_ptr<ASTNodeBase> node)
+	{
+		//TODO: may not always be the case as we may allow nested types in the future
+		switch (node->GetType())
+		{
+			case ASTNodeType::Literal:
+			{
+				return true;
+			}
+			case ASTNodeType::Variable:
+			{
+				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
+				return variable->Variable->Kind == SymbolKind::Value || variable->Variable->Kind == SymbolKind::Function;
+			}
+			case ASTNodeType::BinaryExpression:
+			{
+				std::shared_ptr<ASTBinaryExpression> binaryExpr = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				return true;
+			}
+			case ASTNodeType::Load:
+			{
+				return true;
+			}
+			case ASTNodeType::UnaryExpression:
+			{
+				return true;
+			}
+			default:
+			{
+				break;
+			}
+		}
+	
+		CLEAR_UNREACHABLE("unimplemented");
+		return false;
 	}
 }
