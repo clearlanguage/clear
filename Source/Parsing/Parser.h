@@ -58,7 +58,8 @@ namespace clear
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
         void ParseFor();
         void ParseIndentation();
-		std::shared_ptr<ASTClass> ParseClass();
+		std::shared_ptr<ASTNodeBase> ParseClass();
+		std::shared_ptr<ASTGenericTemplate> ParseGenericArgs(std::shared_ptr<ASTNodeBase> templateNode);
 		std::shared_ptr<ASTNodeBase> ParseLet();
         void ParseLoopControls();
         void ParseTrait();

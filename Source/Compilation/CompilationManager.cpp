@@ -72,6 +72,15 @@ namespace clear
             return;
         }
 
+		#if 0
+
+		for (const auto& token : lexer.GetTokens())
+		{
+			std::println("{}: {}", token.GetTypeAsString(), token.GetData());
+		}
+
+		#endif
+
         Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
 
         if(m_DiagnosticsBuilder.IsFatal())

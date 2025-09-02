@@ -186,26 +186,18 @@ namespace clear
 			case ASTNodeType::IfExpression:				return Visit(std::dynamic_pointer_cast<ASTIfExpression>(ast), context);
 			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
+			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
     		default:	
-				CLEAR_UNREACHABLE("Unhandled ASTNodeType");
     			break;
     	}
 
+		CLEAR_UNREACHABLE("Unhandled ASTNodeType");
 		return nullptr;
     }
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
 		m_ScopeStack.emplace_back();
-
-		bool isGeneric = func->IsVariadic;
-		 	
-		if (func->GenericTypes.size() > 0)
-		{
-			//TODO: generic function so delay instantiation until function call
-			isGeneric = true;
-			return func;
-		}
 
 		for (auto arg : func->Arguments)
 		{
@@ -222,12 +214,12 @@ namespace clear
 		
 		if (func->FunctionSymbol)
 		{
-			bool success = m_ScopeStack.back().Insert(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function, func->FunctionSymbol);
+			bool success = m_ScopeStack[m_ScopeStack.size() - 2].Insert(func->GetName(), SymbolEntryType::Function, func->FunctionSymbol);
 			symbol = success ? std::optional(func->FunctionSymbol) : std::nullopt;
 		}	
 		else 
 		{
-			symbol = m_ScopeStack.back().InsertEmpty(func->GetName(), isGeneric ? SymbolEntryType::GenericFunction : SymbolEntryType::Function);
+			symbol = m_ScopeStack[m_ScopeStack.size() - 2].InsertEmpty(func->GetName(), SymbolEntryType::Function);
 			if (symbol)
 				*symbol.value() = Symbol::CreateFunction(nullptr);
 		}
@@ -255,6 +247,7 @@ namespace clear
 
 		func->FunctionSymbol = fnSymbolPtr;
 		func->SourceModule = m_Module;	
+
 
 		Visit(func->CodeBlock, context);	
 		
@@ -350,6 +343,7 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDeclaration> decl, SemaContext context)
 	{
 		size_t k = 0;
+
 		for (auto arg : decl->Arguments)
 		{
 			if (arg->IsVariadic)
@@ -420,7 +414,7 @@ namespace clear
 	{
 		for (auto conditionalBlock : ifExpr->ConditionalBlocks)
 		{
-			Visit(conditionalBlock.Condition, context);
+			Visit(conditionalBlock.Condition, SemaContext { .ValueReq = ValueRequired::RValue });
 			Visit(conditionalBlock.CodeBlock, context);
 		}
 		
@@ -448,6 +442,11 @@ namespace clear
 		}
 		
 		return structExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context)
+	{
+		return generic;	
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
@@ -511,7 +510,6 @@ namespace clear
 			};
 
 		// TODO: add all the diagnostic codes
-		
 		auto pivot = std::find_if(tokens.begin(), tokens.end(), [](const Token& other)
 						  {
 								return other.GetType() == TokenType::Identifier || 

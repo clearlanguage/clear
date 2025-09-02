@@ -264,7 +264,7 @@ namespace clear
         return m_EnumValues.at(name);
     }
 
-    GenericType::GenericType(std::string_view name)
+    GenericType::GenericType(llvm::StringRef name)
         : m_Name(name)
     {
         Toggle(TypeFlags::Generic);

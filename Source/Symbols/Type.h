@@ -297,7 +297,7 @@ namespace clear
     class GenericType : public Type 
     {
     public:
-        GenericType(std::string_view name);
+        GenericType(llvm::StringRef name);
         ~GenericType() = default;
 
         virtual llvm::Type* Get() const override { return nullptr; }

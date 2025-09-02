@@ -13,8 +13,10 @@
 #include "Symbols/TypeRegistry.h"
 
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <memory>
 #include <string>
 #include <filesystem>
@@ -32,7 +34,7 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr, StructExpr, Block, Load
+		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate
 	};
 
 	class ASTNodeBase;
@@ -754,4 +756,19 @@ namespace clear
 		std::vector<SwitchCase> Cases;
 		std::shared_ptr<ASTNodeBase> Value;
 	};	
+	
+	class ASTGenericTemplate : public ASTNodeBase
+	{
+	public:
+		ASTGenericTemplate() = default;
+		virtual ~ASTGenericTemplate() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::GenericTemplate; }
+		virtual Symbol Codegen(CodegenContext&) override { CLEAR_UNREACHABLE(""); return Symbol(); }
+		
+		std::string GetName();
+
+	public:
+		llvm::SmallVector<std::string> GenericTypeNames;
+		std::shared_ptr<ASTNodeBase> TemplateNode;
+	};
 } 

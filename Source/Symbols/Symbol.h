@@ -1,20 +1,23 @@
 #pragma once 
 
+#include "Symbols/Type.h"
 #include <API/LLVM/LLVMInclude.h>
 
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
-#include <system_error>
 #include <variant>
 
 namespace clear 
 {
     class Module;
     class Type;
+	class GenericType;
     class FunctionInstance;
     class FunctionTemplate;
     class ASTNodeBase;
 	class ASTFunctionDefinition;
+
+	struct Symbol;
 
     using String = llvm::SmallString<64>;
     using StringRef = llvm::StringRef;
@@ -30,7 +33,8 @@ namespace clear
         Identifier, 
         ClassTemplate, 
         InferType,
-		Callee
+		Callee,
+		GenericTemplate
     };
 
     struct FunctionSymbol 
@@ -42,12 +46,16 @@ namespace clear
 		std::shared_ptr<ASTFunctionDefinition> FunctionNode;
     };
 	
-	struct Symbol;
 
 	struct CalleeSymbol
 	{
 		std::shared_ptr<Symbol> FunctionSymbol;
 		std::shared_ptr<Symbol> Receiver;
+	};
+
+	struct GenericTemplateSymbol
+	{
+		std::shared_ptr<ASTNodeBase> GenericTemplate;
 	};
 
     struct FunctionTemplateSymbol 
@@ -94,7 +102,8 @@ namespace clear
         String, 
         ClassTemplate, 
         InferTypeSymbol,
-		CalleeSymbol>;
+		CalleeSymbol,
+		GenericTemplateSymbol>;
 
     struct Symbol 
     {
@@ -114,8 +123,8 @@ namespace clear
         static Symbol CreateClassTemplate(const ClassTemplate& classTemplate);
         static Symbol CreateInferType(bool IsConst);
 		static Symbol CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver);
+		static Symbol CreateGenericTemplate(std::shared_ptr<ASTNodeBase> genericTemplate);
 
-        // helpers
         static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
         static Symbol GetBooleanType(std::shared_ptr<Module> module_);
 
@@ -131,5 +140,6 @@ namespace clear
         InferTypeSymbol GetInferType();
 		FunctionSymbol& GetFunctionSymbol();
 		CalleeSymbol GetCalleeSymbol();
+		GenericTemplateSymbol GetGenericTemplate();
     };
 }

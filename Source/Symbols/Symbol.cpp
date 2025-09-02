@@ -129,6 +129,16 @@ namespace clear
 		};
 	}
 
+	Symbol Symbol::CreateGenericTemplate(std::shared_ptr<ASTNodeBase> genericTemplate)
+	{
+		return Symbol {
+			.Kind = SymbolKind::GenericTemplate,
+			.Data = GenericTemplateSymbol {
+				.GenericTemplate = genericTemplate
+			}
+		};
+	}
+
     Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
     {
         return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value().GetType());
@@ -148,7 +158,11 @@ namespace clear
 
     std::shared_ptr<Type> Symbol::GetType() const
     {
-        CLEAR_VERIFY(Kind == SymbolKind::Type || Kind == SymbolKind::Value || Kind == SymbolKind::Function, "cannot call Symbol::GetType() when kind is not Type or Value or Function");
+        CLEAR_VERIFY(Kind == SymbolKind::Type || 
+					 Kind == SymbolKind::Value || 
+					 Kind == SymbolKind::Function, 
+					 "cannot call Symbol::GetType() when kind is not Type or Value or Function"
+		);
 
         if(Kind == SymbolKind::Type)
             return std::get<TypeSymbol>(Data).Type_;
@@ -176,7 +190,6 @@ namespace clear
 
         return std::make_pair(value.Values[0], value.Types[0]);
     }
-
     FunctionInstance* Symbol::GetFunction() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
@@ -223,5 +236,11 @@ namespace clear
 	{
 		CLEAR_VERIFY(Kind == SymbolKind::Callee, "cannot call Symbol::GetCalleeSymbol() when kind is not Callee");
 		return std::get<CalleeSymbol>(Data);
+	}
+
+	GenericTemplateSymbol Symbol::GetGenericTemplate()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::GenericTemplate, "cannot call Symbol::GetGenericTemplate() when kind is not GenericTemplate");
+		return std::get<GenericTemplateSymbol>(Data);
 	}
 }

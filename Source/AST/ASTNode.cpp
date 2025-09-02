@@ -2398,5 +2398,18 @@ namespace clear
 
 		return Symbol();
 	}
+
+	std::string ASTGenericTemplate::GetName()
+	{
+		switch (TemplateNode->GetType()) 
+		{
+			case ASTNodeType::Class: return std::dynamic_pointer_cast<ASTClass>(TemplateNode)->GetName();
+			default:
+				break;
+		}
+		
+		CLEAR_UNREACHABLE("unhandled type");
+		return "";
+	}
 }
 

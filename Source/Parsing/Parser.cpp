@@ -221,6 +221,7 @@ namespace clear
 				break;
         }
 
+		Consume();
 		return block;
 	}
 
@@ -231,11 +232,14 @@ namespace clear
             Consume();
         }
 
-        if (Match("pass") || Match(TokenType::EndScope))
+        if (Match("pass"))
         {
             Consume();
             return nullptr;
 		}
+
+		if (Match(TokenType::EndScope))
+			return nullptr;
 
         static std::map<std::string, std::function<std::shared_ptr<ASTNodeBase>()>> s_MappedKeywordsToFunctions = {
             {"function",  [this]() { return ParseFunctionDefinition(); }},
@@ -1395,7 +1399,7 @@ namespace clear
         Consume();
     }
 
-	std::shared_ptr<ASTClass> Parser::ParseClass()
+	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
     {
         EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
         Consume();
@@ -1404,18 +1408,11 @@ namespace clear
         std::string className = Consume().GetData();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
+		std::shared_ptr<ASTGenericTemplate> genericTemplate;
 
         if(Match(TokenType::LeftBracket))
         {
-            while(!Match(TokenType::RightBracket))
-            {   
-                Consume();
-
-                std::string genericName = Consume().GetData();
-                classNode->AddGeneric(genericName);
-            }
-
-            Consume();
+			genericTemplate = ParseGenericArgs(classNode);
         }
 
         EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
@@ -1445,7 +1442,7 @@ namespace clear
 
             if(Match(TokenType::Equals))
             {
-                Consume();
+				Consume();
                 classNode->DefaultValues.push_back(ParseExpression());
             }
             else 
@@ -1460,9 +1457,36 @@ namespace clear
         }
 		
 		Consume();
+
+		if (genericTemplate)
+			return genericTemplate;
+		
 		return classNode;
     }
+	
+	std::shared_ptr<ASTGenericTemplate> Parser::ParseGenericArgs(std::shared_ptr<ASTNodeBase> templateNode)
+	{
+		std::shared_ptr<ASTGenericTemplate> genericTemplate = std::make_shared<ASTGenericTemplate>();
+		genericTemplate->TemplateNode = templateNode;
+		
+		EXPECT_TOKEN_RETURN(TokenType::LeftBracket, DiagnosticCode_None, nullptr);
+		Consume();
 
+		while (!Match(TokenType::RightBracket))
+		{
+			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+			genericTemplate->GenericTypeNames.push_back(Consume().GetData());
+			
+			if (Match(TokenType::RightBracket))
+				break;
+
+			EXPECT_TOKEN_RETURN(TokenType::Comma, DiagnosticCode_ExpectedComma, nullptr);
+			Consume();
+		}
+		
+		Consume();
+		return genericTemplate;
+	}
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseLet()
 	{
