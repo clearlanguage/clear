@@ -1,7 +1,6 @@
 #pragma once 
 
 #include "AST/ASTNode.h"
-#include "SymbolTable.h"
 
 namespace clear {
 	
@@ -18,9 +17,13 @@ namespace clear {
 		std::shared_ptr<ASTVariable> CloneVariable(std::shared_ptr<ASTVariable> node);
 		std::shared_ptr<ASTType> CloneType(std::shared_ptr<ASTType> node);
 		std::shared_ptr<ASTTypeSpecifier> CloneTypeSpec(std::shared_ptr<ASTTypeSpecifier> node);
+		std::shared_ptr<ASTExpression> CloneExpr(std::shared_ptr<ASTExpression> node);	
+		std::shared_ptr<ASTBinaryExpression> CloneBinaryExpr(std::shared_ptr<ASTBinaryExpression> node);
+		std::shared_ptr<ASTUnaryExpression> CloneUnaryExpr(std::shared_ptr<ASTUnaryExpression> node);	
+		std::shared_ptr<ASTNodeLiteral> CloneLiteral(std::shared_ptr<ASTNodeLiteral> node);
+		std::shared_ptr<ASTBlock> CloneBlock(std::shared_ptr<ASTBlock> node);
 
 		std::shared_ptr<Module> DestinationModule;
-		std::unordered_map<std::string, Symbol> SubstitutionMap;
-		std::vector<SemaSymbolTable> SymbolTable;
+		std::unordered_map<std::string, std::string> SubstitutionMap;
 	};
 }

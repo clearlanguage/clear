@@ -1494,16 +1494,7 @@ namespace clear
 		Consume();
 
 		auto decleration = ParseVariableDecleration();
-
-		if(decleration.HasBeenInitialized)
-		{
-			return decleration.Node;
-		}
-	
-		auto initializer = std::make_shared<ASTDefaultInitializer>();
-		initializer->Storage = decleration.Node;
-		
-		return initializer;
+		return decleration.Node;
 	}
 
     AssignmentOperatorType Parser::GetAssignmentOperatorFromTokenType(TokenType type)
