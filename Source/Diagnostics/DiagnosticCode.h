@@ -32,6 +32,7 @@ namespace clear
 		DiagnosticCode_ExpectedModuleName,
 		DiagnosticCode_ExpectedComma,
 		DiagnosticCode_ExpectedColon,
+		DiagnosticCode_AssignConst,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -64,6 +65,7 @@ namespace clear
 		"Expected a module name string",
 		"Expected ',' between list or argument elements.",
 		"Expected ':' after case label or block starter.",
+		"Cannot assign to 'const' variable.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -95,5 +97,6 @@ namespace clear
 		"Add a module name string (e.g. \"math\") after the module keyword",
 		"Separate items with a comma ',' at {} to continue the list or argument sequence.",
 		"Add a colon ':' after {} to start the block or specify the case body.",
+		"Declare the variable without 'const' if it needs reassignment.",
 	};
 }

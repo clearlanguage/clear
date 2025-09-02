@@ -309,7 +309,11 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::LValue;
 		assignmentOp->Storage = Visit(assignmentOp->Storage, context);
-
+		auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
+		if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
+			CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
+			Report(DiagnosticCode_AssignConst, Token());
+		}
 		context.ValueReq = ValueRequired::RValue;
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
@@ -512,9 +516,10 @@ namespace clear
 		// TODO: add all the diagnostic codes
 		auto pivot = std::find_if(tokens.begin(), tokens.end(), [](const Token& other)
 						  {
-								return other.GetType() == TokenType::Identifier || 
-									   other.GetType() == TokenType::Keyword || 
-									   other.GetType() == TokenType::RightBracket;
+								return( other.GetType() == TokenType::Identifier ||
+									   other.GetType() == TokenType::Keyword ||
+									   other.GetType() == TokenType::RightBracket
+										) and other.GetData() != "const";
 						  });
 			
 		if (pivot == tokens.end())
