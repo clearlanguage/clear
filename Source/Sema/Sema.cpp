@@ -12,6 +12,7 @@
 #include "Symbols/Type.h"
 
 #include <iterator>
+#include <llvm/Support/CommandLine.h>
 #include <memory>
 #include <optional>
 
@@ -187,6 +188,7 @@ namespace clear
 			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
 			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
+			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -208,7 +210,10 @@ namespace clear
 		
 		if (func->ReturnType)
 			Visit(func->ReturnType, context);
-		
+			
+		if (context.TypeHint)
+			func->SetName(std::format("{}.{}", context.TypeHint->GetHash(), func->GetName()));
+
 		//TODO: temporary, until we have the clear runtime make a main function we will have to ignore mangling for main
 		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
 		std::optional<std::shared_ptr<Symbol>> symbol;
@@ -282,6 +287,7 @@ namespace clear
 			case OperatorType::Sub:
 			case OperatorType::Div:
 			case OperatorType::Mul:
+			case OperatorType::Mod:
 			{
 				VisitBinaryExprArithmetic(binaryExpression, context);
 				break;
@@ -310,11 +316,14 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::LValue;
 		assignmentOp->Storage = Visit(assignmentOp->Storage, context);
+
 		auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
-		if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
-			CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
-			Report(DiagnosticCode_AssignConst, Token());
-		}
+
+		//if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
+		//	CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
+			//Report(DiagnosticCode_AssignConst, Token());
+		//}
+	
 		context.ValueReq = ValueRequired::RValue;
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
@@ -325,7 +334,7 @@ namespace clear
 	{
 		switch (unaryExpr->GetOperatorType())
 		{
-			case OperatorType::PostIncrement: // increment and decrement need to operate on an lvalue and always return an rvalue
+			case OperatorType::PostIncrement: // increment and decrement need to operate on an lvalue and always return an rvalueSema.cpp
 			case OperatorType::PostDecrement:
 			case OperatorType::Ellipsis:
 			case OperatorType::Increment: 
@@ -459,6 +468,42 @@ namespace clear
 		return generic;	
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSubscript> subscript, SemaContext context)
+	{
+		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue });
+		subscript->Meaning = SubscriptSemantic::Generic;
+
+		if (IsNodeValue(subscript->Target))
+		{
+			subscript->Meaning = SubscriptSemantic::ArrayIndex;	
+		}
+
+		for (auto& arg : subscript->SubscriptArgs)
+		{
+			arg = Visit(arg, { .ValueReq = ValueRequired::RValue });
+		}
+
+		if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
+		{
+			//TODO: check all values are ints and cast if needed
+		
+			if (context.ValueReq == ValueRequired::RValue)
+			{
+				std::shared_ptr<ASTLoad> load = std::make_shared<ASTLoad>();
+				load->Operand = subscript;
+				return load;
+			}
+		}
+		else 
+		{
+			CLEAR_UNREACHABLE("unimplemented");
+		}
+
+		
+		
+		return subscript;
+	}
+
 	void Sema::Report(DiagnosticCode code, Token token)
 	{
 		// TODO: change CodeGeneration to Semanatic Analysis
@@ -471,7 +516,7 @@ namespace clear
 		
 		auto ConstructArray = [&](auto begin, size_t& childIndex) -> std::optional<Symbol>
 	 		{
-				if (childIndex + 2 >= type->Children.size())
+				if (childIndex + 1 >= type->Children.size())
 				{
 					// DiagnosticCode_ArrayExpectedSizeAndType
 					Report(DiagnosticCode_None, *begin);
@@ -490,7 +535,7 @@ namespace clear
 				int64_t size = m_ConstantEvaluator.GetValue<int64_t>();
 				m_ConstantEvaluator.CurrentValue = nullptr;	
 
-				if (size <= 0)
+				if (size == 0)
 				{
 					// DiagnosticCode_ArraySizeOutOfRange
 					Report(DiagnosticCode_None, *begin);
@@ -524,7 +569,7 @@ namespace clear
 						  {
 								return( other.GetType() == TokenType::Identifier ||
 									   other.GetType() == TokenType::Keyword ||
-									   other.GetType() == TokenType::RightBracket
+									   other.GetType() == TokenType::LeftBracket
 										) and other.GetData() != "const";
 						  });
 			
@@ -540,7 +585,7 @@ namespace clear
 
 		Symbol baseType;
 
-		if (curr->GetType() == TokenType::RightBracket)
+		if (curr->GetType() == TokenType::LeftBracket)
 		{
 			baseType = ConstructArray(pivot, childrenIndex).value_or(Symbol());
 			
@@ -634,15 +679,17 @@ namespace clear
 		while (lhsType->IsPointer())
 			lhsType = lhsType->As<PointerType>()->GetBaseType();
 
-		if (binaryExpr->RightSide->GetType() != ASTNodeType::Member)
+		if (binaryExpr->RightSide->GetType() != ASTNodeType::Variable)
 		{
 			// DiagnosticCode_InvalidAccess
 			Report(DiagnosticCode_None, Token());
 			return nullptr;
 		}
 		
-		std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(binaryExpr->RightSide);
-		std::optional<std::shared_ptr<Symbol>> memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName());
+		std::shared_ptr<ASTVariable> member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+		std::optional<std::shared_ptr<Symbol>> memberSymbol = lhsType->As<ClassType>()->GetMember(
+			member->GetName().GetData()
+		);
 
 		if (!memberSymbol)
 		{

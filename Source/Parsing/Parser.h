@@ -24,6 +24,14 @@ namespace clear
 
         std::shared_ptr<ASTNodeBase> GetResult();
 
+		std::shared_ptr<ASTNodeBase> ParsePrefixExpr();
+		std::shared_ptr<ASTNodeBase> ParseInfixExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParsePostfixExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseFunctionCallExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseSubscriptExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseStructInitializerExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
+
     private:
         std::shared_ptr<ASTBlock> Root();
         std::shared_ptr<Module> RootModule();
@@ -77,6 +85,7 @@ namespace clear
         };
 
         std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
+		std::shared_ptr<ASTNodeBase> ParseExpr(int64_t minBindingPower = 0);
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
         std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
@@ -93,6 +102,10 @@ namespace clear
         size_t FindLastOf(TokenType type); // relative to end line
         size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
 
+		OperatorType GetPrefixOperator(const Token& token);
+		OperatorType GetBinaryOperator(const Token& token);
+		OperatorType GetPostfixOperator(const Token& token);
+		
     private:
         bool IsDeclaration();
 

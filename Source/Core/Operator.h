@@ -30,6 +30,8 @@ namespace clear
 
         Negation, Dot, Index, 
         Pow, Ternary, FunctionCall,
+		Subscript, StructInitializer,
+		ListInitializer,
 
         Count
     };

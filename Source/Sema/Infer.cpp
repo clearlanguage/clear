@@ -1,6 +1,8 @@
 #include "Infer.h"
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Symbols/Module.h"
+#include <llvm/Support/CommandLine.h>
 #include <memory>
 
 namespace clear 
@@ -43,12 +45,45 @@ namespace clear
 			case ASTNodeType::StructExpr:
 			{
 				auto structExpr = std::dynamic_pointer_cast<ASTStructExpr>(node);
-				return structExpr->TargetType->ConstructedType.GetType();
+				
+				switch (structExpr->TargetType->GetType())
+				{
+					case ASTNodeType::TypeResolver:
+					{
+						std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(structExpr->TargetType);
+						return type->ConstructedType.GetType();
+					}
+					case ASTNodeType::Variable:
+					{
+						std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType);
+						return variable->Variable->GetType();
+					}
+					default:
+					{
+						CLEAR_UNREACHABLE("unimplemented");
+					}
+				}
+
+				return nullptr;
 			}
 			case ASTNodeType::Load:
 			{
 				auto load = std::dynamic_pointer_cast<ASTLoad>(node);
 				return InferTypeFromNode(load->Operand);
+			}
+			case ASTNodeType::Subscript:
+			{
+				std::shared_ptr<ASTSubscript> subscript = std::dynamic_pointer_cast<ASTSubscript>(node);
+
+				if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
+				{
+					std::shared_ptr<Type> type = InferTypeFromNode(subscript->Target);
+					
+					for (int64_t i = subscript->SubscriptArgs.size(); i > 0; i--)
+						type = type->IsArray() ? type->As<ArrayType>()->GetBaseType() : type->As<PointerType>()->GetBaseType();
+ 
+					return type; 		
+				}
 			}
 			default:
 			{

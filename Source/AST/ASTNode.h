@@ -34,7 +34,8 @@ namespace clear
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate
+		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
+		Subscript
 	};
 
 	class ASTNodeBase;
@@ -316,6 +317,26 @@ namespace clear
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
 		std::shared_ptr<ASTBinaryExpression> IsMemberFunction();
 	};
+	
+	enum class SubscriptSemantic
+	{
+		None = 0, ArrayIndex, Generic
+	};
+
+	class ASTSubscript : public ASTNodeBase
+	{
+	public:
+		ASTSubscript() = default;
+		virtual ~ASTSubscript() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Subscript; }
+		virtual Symbol Codegen(CodegenContext&) override;
+		
+	public:
+		std::shared_ptr<ASTNodeBase> Target;
+		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> SubscriptArgs;
+		SubscriptSemantic Meaning = SubscriptSemantic::None;
+		std::shared_ptr<Symbol> GeneratedType;
+	};
 
 	class ASTFunctionDeclaration : public ASTNodeBase
 	{
@@ -379,7 +400,7 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Values;
-		std::shared_ptr<ASTType> TargetType; 
+		std::shared_ptr<ASTNodeBase> TargetType; 
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);
@@ -398,7 +419,7 @@ namespace clear
 
 	private:
 		void ProcessCImport(const std::filesystem::path& path,  CodegenContext& ctx);
-		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);
+		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);ASTNode.h
 		Parameter GetInfoFromArg(const std::vector<Token>& arg, CodegenContext& ctx);
 
 		void ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx);

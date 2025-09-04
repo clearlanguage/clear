@@ -543,10 +543,10 @@ namespace clear
 
 				if(ty->IsClass())
 				{
-					std::shared_ptr<ASTMember> member = std::dynamic_pointer_cast<ASTMember>(right);
+					std::shared_ptr<ASTVariable> member = std::dynamic_pointer_cast<ASTVariable>(right);
 					CLEAR_VERIFY(member, "");
 						
-					std::shared_ptr<Symbol> memberSymbol = ty->As<ClassType>()->GetMember(member->GetName()).value();
+					std::shared_ptr<Symbol> memberSymbol = ty->As<ClassType>()->GetMember(member->GetName().GetData()).value();
 
 					if (memberSymbol->Kind == SymbolKind::Function)
 						return Symbol::CreateCallee(memberSymbol, nullptr);
@@ -566,37 +566,9 @@ namespace clear
 			{
 				auto [lhsValue, lhsType] = lhs.GetValue();
 
-				if(right->GetType() == ASTNodeType::Member)
+				if(right->GetType() == ASTNodeType::Variable)
 				{
 					return HandleMember(lhs, right, ctx);
-				}
-				else if (right->GetType() == ASTNodeType::FunctionCall)
-				{
-					auto funcCall = std::dynamic_pointer_cast<ASTFunctionCall>(right);
-					CLEAR_VERIFY(funcCall, "invalid function call");
-
-					auto ptrType = std::dynamic_pointer_cast<PointerType>(lhsType);
-					CLEAR_VERIFY(ptrType, "invalid pointer type for function call");
-
-					while(!ptrType->GetBaseType()->IsCompound()) // automatic derefencing if pointer
-					{
-						lhs = SymbolOps::Load(lhs, ctx.Builder);
-						ptrType =  std::dynamic_pointer_cast<PointerType>(lhs.GetValue().second);
-					}
-
-					auto classType = dyn_cast<ClassType>(ptrType->GetBaseType());
-					CLEAR_VERIFY(classType, "invalid class type for function call");
-
-					//std::string name = funcCall->GetName();
-
-					//funcCall->PushPrefixArgument(lhs.GetValue().first, ptrType);
-					//funcCall->SetName(std::format("{}.{}", classType->GetHash(), name));
-
-					Symbol result = funcCall->Codegen(ctx);
-
-					//funcCall->SetName(name);
-
-					return result;
 				}
 			}
 			default:	
@@ -611,13 +583,13 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		auto member = std::dynamic_pointer_cast<ASTMember>(right);
+		auto member = std::dynamic_pointer_cast<ASTVariable>(right);
 		auto lhsType = lhs.GetType();
 		
 		while (lhsType->IsPointer())
 			lhsType = lhsType->As<PointerType>()->GetBaseType();
 
-		auto memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName()).value();
+		auto memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName().GetData()).value();
 
 		if (memberSymbol->Kind == SymbolKind::Function)
 		{
@@ -633,7 +605,7 @@ namespace clear
 		
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
-		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName()).value();	
+		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();	
 		
 		if (lhs.GetType()->IsClass())
 		{
@@ -1085,6 +1057,44 @@ namespace clear
 			return memberAccess;
 		
 		return nullptr;
+	}
+
+	Symbol ASTSubscript::Codegen(CodegenContext& ctx)
+	{
+		switch (Meaning)
+		{
+			case SubscriptSemantic::ArrayIndex:
+			{
+				Symbol operand = Target->Codegen(ctx);
+				
+				llvm::SmallVector<llvm::Value*> indices;
+				indices.push_back(ctx.Builder.getInt64(0));
+					
+				std::shared_ptr<Type> resPtrType = operand.GetType()->As<PointerType>()->GetBaseType(); 
+
+				for (auto index : SubscriptArgs)
+				{
+					indices.push_back(index->Codegen(ctx).GetLLVMValue());
+					resPtrType = resPtrType->IsArray() ? resPtrType->As<ArrayType>()->GetBaseType() : resPtrType->As<PointerType>()->GetBaseType();
+				}
+
+				resPtrType = ctx.ClearModule->GetTypeRegistry()->GetPointerTo(resPtrType);
+			
+				Symbol resPtrTypeSymbol = Symbol::CreateType(resPtrType);
+				return SymbolOps::GEP(operand, resPtrTypeSymbol, indices, ctx.Builder);
+			}
+			case SubscriptSemantic::Generic:
+			{
+				return *GeneratedType; //Type is generated during semantic analysis
+			}
+			default:
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+				break;
+			}
+		}
+
+		return Symbol();
 	}
 
     ASTFunctionDeclaration::ASTFunctionDeclaration(const std::string& name)
@@ -1560,6 +1570,9 @@ namespace clear
 				result = Operand->Codegen(ctx);
 			}
 
+			if (result.Kind == SymbolKind::Type)
+				return Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(result.GetType()));
+
 			auto [resultValue, resultType] = result.GetValue();
 
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
@@ -1570,7 +1583,7 @@ namespace clear
 
 		if(m_Type == OperatorType::Address)
 		{		
-			return Operand->Codegen(ctx);;
+			return Operand->Codegen(ctx);
 		}
 
 		if(m_Type == OperatorType::Negation)
