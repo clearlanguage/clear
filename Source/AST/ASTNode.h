@@ -784,7 +784,7 @@ namespace clear
 		ASTGenericTemplate() = default;
 		virtual ~ASTGenericTemplate() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::GenericTemplate; }
-		virtual Symbol Codegen(CodegenContext&) override { CLEAR_UNREACHABLE(""); return Symbol(); }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
 		
 		std::string GetName();
 

@@ -1041,6 +1041,16 @@ namespace clear
 
 				break;
 			}
+			case TokenType::Keyword:
+			{
+				if (token.GetData() != "const")
+				{
+					lhs = std::make_shared<ASTVariable>(token);
+					Consume();
+
+					break;
+				}
+			}
 			default:
 			{
 				OperatorType op = GetPrefixOperator(token);

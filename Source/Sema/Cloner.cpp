@@ -6,6 +6,9 @@ namespace clear {
 
 	std::shared_ptr<ASTNodeBase> Cloner::Clone(std::shared_ptr<ASTNodeBase> node)
 	{
+		if (!node)
+			return nullptr;
+
 		switch (node->GetType()) 
 		{
 			case ASTNodeType::Class:					return CloneClass(std::dynamic_pointer_cast<ASTClass>(node));
@@ -19,6 +22,8 @@ namespace clear {
 			case ASTNodeType::UnaryExpression:			return CloneUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
 			case ASTNodeType::Literal:					return CloneLiteral(std::dynamic_pointer_cast<ASTNodeLiteral>(node));
 			case ASTNodeType::Block:					return CloneBlock(std::dynamic_pointer_cast<ASTBlock>(node));
+			case ASTNodeType::FunctionCall:				return CloneFunctionCall(std::dynamic_pointer_cast<ASTFunctionCall>(node));
+			case ASTNodeType::ReturnStatement:			return CloneReturn(std::dynamic_pointer_cast<ASTReturn>(node));
 			default: break;
 	}	
 
@@ -47,7 +52,9 @@ namespace clear {
 		std::shared_ptr<ASTFunctionDefinition> newNode = std::make_shared<ASTFunctionDefinition>(node->GetName());
 
 		newNode->CodeBlock = CloneBlock(node->CodeBlock);		
-		newNode->ReturnType = CloneType(node->ReturnType);
+		
+		if (node->ReturnType)
+			newNode->ReturnType = CloneType(node->ReturnType);
 		
 		for (auto arg : node->Arguments)
 			newNode->Arguments.push_back(CloneVariableDecl(arg));
@@ -73,7 +80,11 @@ namespace clear {
 
 	std::shared_ptr<ASTVariable> Cloner::CloneVariable(std::shared_ptr<ASTVariable> node)
 	{
-		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(node->GetName());
+		std::string name = SubstitutionMap.contains(node->GetName().GetData()) ? SubstitutionMap[node->GetName().GetData()] : node->GetName().GetData();
+		Token tok = node->GetName();
+		tok.SetData(name);
+
+		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(tok);
 		return newNode;
 	}
 	
@@ -147,5 +158,26 @@ namespace clear {
 			newNode->Children.push_back(Clone(child));
 		
 		return newNode;
+	}
+
+	std::shared_ptr<ASTFunctionCall> Cloner::CloneFunctionCall(std::shared_ptr<ASTFunctionCall> node)
+	{
+		std::shared_ptr<ASTFunctionCall> funcCall = std::make_shared<ASTFunctionCall>();
+		funcCall->Callee = Clone(node->Callee);
+		
+		for (auto arg : node->Arguments)
+			funcCall->Arguments.push_back(Clone(arg));
+		
+		return funcCall;
+	}
+
+	std::shared_ptr<ASTReturn> Cloner::CloneReturn(std::shared_ptr<ASTReturn> node)
+	{
+		std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
+		
+		if (node->ReturnValue)
+			returnStatement->ReturnValue = Clone(node->ReturnValue);
+
+		return returnStatement;
 	}
 }

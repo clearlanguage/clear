@@ -22,6 +22,8 @@ namespace clear {
 		std::shared_ptr<ASTUnaryExpression> CloneUnaryExpr(std::shared_ptr<ASTUnaryExpression> node);	
 		std::shared_ptr<ASTNodeLiteral> CloneLiteral(std::shared_ptr<ASTNodeLiteral> node);
 		std::shared_ptr<ASTBlock> CloneBlock(std::shared_ptr<ASTBlock> node);
+		std::shared_ptr<ASTFunctionCall> CloneFunctionCall(std::shared_ptr<ASTFunctionCall> node);
+		std::shared_ptr<ASTReturn> CloneReturn(std::shared_ptr<ASTReturn> node);
 
 		std::shared_ptr<Module> DestinationModule;
 		std::unordered_map<std::string, std::string> SubstitutionMap;

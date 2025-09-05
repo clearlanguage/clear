@@ -34,7 +34,8 @@ namespace clear
         ClassTemplate, 
         InferType,
 		Callee,
-		GenericTemplate
+		GenericTemplate,
+		Generic
     };
 
     struct FunctionSymbol 
@@ -56,6 +57,12 @@ namespace clear
 	struct GenericTemplateSymbol
 	{
 		std::shared_ptr<ASTNodeBase> GenericTemplate;
+	};
+	
+	struct GenericSymbol
+	{
+		std::shared_ptr<ASTNodeBase> Node;
+		std::shared_ptr<Symbol> GeneratedSymbol;
 	};
 
     struct FunctionTemplateSymbol 
@@ -103,7 +110,8 @@ namespace clear
         ClassTemplate, 
         InferTypeSymbol,
 		CalleeSymbol,
-		GenericTemplateSymbol>;
+		GenericTemplateSymbol,
+		GenericSymbol>;
 
     struct Symbol 
     {
@@ -124,6 +132,7 @@ namespace clear
         static Symbol CreateInferType(bool IsConst);
 		static Symbol CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver);
 		static Symbol CreateGenericTemplate(std::shared_ptr<ASTNodeBase> genericTemplate);
+		static Symbol CreateGeneric(std::shared_ptr<ASTNodeBase> clonned);
 
         static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
         static Symbol GetBooleanType(std::shared_ptr<Module> module_);
@@ -141,5 +150,6 @@ namespace clear
 		FunctionSymbol& GetFunctionSymbol();
 		CalleeSymbol GetCalleeSymbol();
 		GenericTemplateSymbol GetGenericTemplate();
+		GenericSymbol GetGeneric();
     };
 }

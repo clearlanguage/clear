@@ -19,6 +19,8 @@ namespace clear
 		// std::string MangleVariant(), MangleEnum() etc...
 		
 		std::string MangleFunctionFromNode(std::shared_ptr<ASTFunctionDefinition> definition);
+		
+		std::string MangleGeneric(llvm::StringRef name, llvm::ArrayRef<std::shared_ptr<Type>> args);
 
 	private:
 		std::string FormatArgs(llvm::ArrayRef<std::shared_ptr<Type>> args);	

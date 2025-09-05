@@ -10,8 +10,10 @@
 #include "Symbols/Module.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
+#include "Cloner.h"
 
 #include <iterator>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/CommandLine.h>
 #include <memory>
 #include <optional>
@@ -493,14 +495,76 @@ namespace clear
 				load->Operand = subscript;
 				return load;
 			}
-		}
+		} 
 		else 
 		{
-			CLEAR_UNREACHABLE("unimplemented");
+			std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(subscript->Target);
+			CLEAR_VERIFY(var, "this is temporary, we will support more than just variables (for example *Test[int]))");
+				
+			std::shared_ptr<Symbol> genericSym;
+
+			std::optional<size_t> optIndex;
+
+			for (size_t i = m_ScopeStack.size(); i-- > 0; )
+			{
+				auto& table = m_ScopeStack[i];
+				if (auto entry = table.Get(var->GetName().GetData()))
+				{
+					genericSym = entry.value().Symbol;
+					optIndex = i; 
+					break;
+				}
+			}
+
+			if (!genericSym)
+			{
+				Report(DiagnosticCode_None, var->GetName());
+				return nullptr;
+			}
+			
+			llvm::SmallVector<std::shared_ptr<Type>> types;
+			for (auto node : subscript->SubscriptArgs)
+				types.push_back(GetTypeFromNode(node));
+
+			std::string name = m_NameMangler.MangleGeneric(var->GetName().GetData(), types);
+			std::shared_ptr<Symbol> sym;
+
+			for (auto rit = m_ScopeStack.rbegin(); rit != m_ScopeStack.rend(); rit++)
+			{
+				if (auto entry = rit->Get(name))
+				{
+					sym = entry.value().Symbol;
+					break;
+			    }
+			}
+
+			if (!sym)
+			{
+				GenericTemplateSymbol genericTemplate = genericSym->GetGenericTemplate();
+				std::shared_ptr<ASTGenericTemplate> node = std::dynamic_pointer_cast<ASTGenericTemplate>(genericTemplate.GenericTemplate);
+				
+				Cloner cloner;
+				cloner.DestinationModule = m_Module;
+				
+				for (size_t i = 0; i < types.size(); i++)
+				{
+					cloner.SubstitutionMap[node->GenericTypeNames[i]] = types[i]->GetHash(); // TODO: this needs to be the type itself not the hash in the future
+				}
+				
+				std::shared_ptr<ASTNodeBase> clonned = cloner.Clone(node->TemplateNode);
+				clonned = Visit(clonned, SemaContext());
+				
+				sym = std::make_shared<Symbol>(Symbol::CreateGeneric(clonned));
+				bool success = m_ScopeStack[optIndex.value()].Insert(name, SymbolEntryType::None, sym);
+				CLEAR_VERIFY(success, "");
+
+				*sym->GetGeneric().GeneratedSymbol = Symbol::CreateType(std::dynamic_pointer_cast<ASTClass>(clonned)->ClassTy); // TODO TEMPORARY
+			}
+
+			GenericSymbol generic = sym->GetGeneric();		
+			subscript->GeneratedType = generic.GeneratedSymbol;
 		}
 
-		
-		
 		return subscript;
 	}
 
@@ -731,6 +795,11 @@ namespace clear
 				std::shared_ptr<ASTBinaryExpression> binaryExpr = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
 				return true;
 			}
+			case ASTNodeType::Subscript:
+			{
+				std::shared_ptr<ASTSubscript> subscript = std::dynamic_pointer_cast<ASTSubscript>(node);
+				return subscript->Meaning == SubscriptSemantic::ArrayIndex;
+			}
 			case ASTNodeType::Load:
 			{
 				return true;
@@ -747,5 +816,40 @@ namespace clear
 	
 		CLEAR_UNREACHABLE("unimplemented");
 		return false;
+	}
+
+	std::shared_ptr<Type> Sema::GetTypeFromNode(std::shared_ptr<ASTNodeBase> node)
+	{
+		switch (node->GetType())
+		{
+			case ASTNodeType::Variable:
+			{
+				std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(node);
+				std::optional<Symbol> sym = m_Module->Lookup(var->GetName().GetData());
+
+				if (!sym || sym->Kind != SymbolKind::Type)
+					return nullptr;
+
+				return sym->GetType();
+			}
+
+			case ASTNodeType::UnaryExpression:
+			{
+				std::shared_ptr<ASTUnaryExpression> unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node);
+
+				if (unary->GetOperatorType() == OperatorType::Dereference)
+				{
+					std::shared_ptr<Type> base = GetTypeFromNode(unary->Operand);
+					return base ? m_Module->GetTypeRegistry()->GetPointerTo(base) : nullptr;
+				}
+			}
+			default:
+			{
+				CLEAR_UNREACHABLE("unimplemented");
+				break;
+			}
+		}
+
+		return nullptr;
 	}
 }

@@ -60,6 +60,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		
 		bool IsNodeValue(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<Type> GetTypeFromNode(std::shared_ptr<ASTNodeBase> node);
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;

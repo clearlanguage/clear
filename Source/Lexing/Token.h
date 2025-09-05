@@ -35,6 +35,11 @@ namespace clear
         const std::filesystem::path& GetSourceFile() const { return m_SourceFile; }
 
         std::string_view GetTypeAsString() const;
+		
+		void SetData(std::string_view data)
+		{
+			m_Data = data;
+		}
 
     public:
         size_t LineNumber = 0;

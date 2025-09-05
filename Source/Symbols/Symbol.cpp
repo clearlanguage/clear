@@ -139,6 +139,17 @@ namespace clear
 		};
 	}
 
+	Symbol Symbol::CreateGeneric(std::shared_ptr<ASTNodeBase> generic)
+	{
+		return Symbol {
+			.Kind = SymbolKind::Generic,
+			.Data = GenericSymbol { 
+				.Node = generic,
+				.GeneratedSymbol = std::make_shared<Symbol>()
+			}
+		};
+	}
+
     Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
     {
         return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value().GetType());
@@ -242,5 +253,11 @@ namespace clear
 	{
 		CLEAR_VERIFY(Kind == SymbolKind::GenericTemplate, "cannot call Symbol::GetGenericTemplate() when kind is not GenericTemplate");
 		return std::get<GenericTemplateSymbol>(Data);
+	}
+
+	GenericSymbol Symbol::GetGeneric()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Generic, "cannot call Symbol::GetGeneric() when kind is not Generic");
+		return std::get<GenericSymbol>(Data);
 	}
 }

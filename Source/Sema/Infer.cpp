@@ -58,6 +58,11 @@ namespace clear
 						std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType);
 						return variable->Variable->GetType();
 					}
+					case ASTNodeType::Subscript:
+					{
+						std::shared_ptr<ASTSubscript> subscript = std::dynamic_pointer_cast<ASTSubscript>(structExpr->TargetType);
+						return subscript->GeneratedType->GetType();
+					}
 					default:
 					{
 						CLEAR_UNREACHABLE("unimplemented");
@@ -84,6 +89,8 @@ namespace clear
  
 					return type; 		
 				}
+
+				return subscript->GeneratedType->GetType();
 			}
 			default:
 			{

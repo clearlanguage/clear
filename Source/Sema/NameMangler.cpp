@@ -36,6 +36,12 @@ namespace clear
 		return MangleFunction(func->GetName(), funcArgs, func->ReturnType ? func->ReturnType->ConstructedType.GetType() : nullptr);
 	}
 
+
+	std::string NameMangler::MangleGeneric(llvm::StringRef name, llvm::ArrayRef<std::shared_ptr<Type>> args)
+	{
+		return std::format("{}[{}]", std::string(name), FormatArgs(args));
+	}
+
 	std::string NameMangler::FormatArgs(llvm::ArrayRef<std::shared_ptr<Type>> args)
 	{
 		std::stringstream argStream;
@@ -47,9 +53,10 @@ namespace clear
 			if (i + 1 == args.size())
 				continue;
 
-			argStream << ".";	
+			argStream << ",";	
 		}
 
 		return argStream.str();
 	}
+
 }
