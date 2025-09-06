@@ -550,6 +550,13 @@ namespace clear
 
 					if (memberSymbol->Kind == SymbolKind::Function)
 						return Symbol::CreateCallee(memberSymbol, nullptr);
+					
+
+					if (memberSymbol->Kind == SymbolKind::Type)
+					{
+						Symbol resPtrType = Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(memberSymbol->GetType()));
+						return SymbolOps::GEPStruct(lhs, resPtrType, ty->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value(), ctx.Builder);
+					}
 				}
 
 				CLEAR_UNREACHABLE("unimplemented");

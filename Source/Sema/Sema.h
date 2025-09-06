@@ -22,6 +22,8 @@ namespace clear
 	{
 		ValueRequired ValueReq = ValueRequired::Any;
 		std::shared_ptr<Type> TypeHint;
+		llvm::SmallVector<std::shared_ptr<Type>> CallsiteArgs;
+		bool AllowGenericInferenceFromArgs = true;
 	};
 
     class Sema
@@ -64,6 +66,8 @@ namespace clear
 		
 		void ConstructSymbol(std::shared_ptr<Symbol> symbol, std::shared_ptr<ASTNodeBase> clonnedNode);
 		void ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode);
+		
+		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;

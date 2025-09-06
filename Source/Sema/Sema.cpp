@@ -107,11 +107,13 @@ namespace clear
 			return variable;
 
 		std::optional<SymbolEntry> symbol;
+		size_t scopeIndex = (size_t)-1;	
 
-		for (auto it = m_ScopeStack.rbegin(); it != m_ScopeStack.rend(); it++)
+		for (int64_t i = (int64_t)m_ScopeStack.size() - 1; i >= 0; i--)
 		{
-			symbol = it->Get(variable->GetName().GetData());
-			
+			symbol = m_ScopeStack[i].Get(variable->GetName().GetData());
+			scopeIndex = (size_t)i;
+
 			if (symbol.has_value())
 				break;
 		}
@@ -124,7 +126,12 @@ namespace clear
 				symbol = SymbolEntry { SymbolEntryType::None, std::make_shared<Symbol>(sym.value()) };
 		}
 		
-		if (variable->GetName().GetData() == "self" || variable->GetName().GetData() == "Self")
+		if (variable->GetName().GetData() == "Self")
+		{
+			if (context.TypeHint)
+				symbol = { SymbolEntryType::None, std::make_shared<Symbol>(Symbol::CreateType(context.TypeHint)) };
+		}
+		else if (!symbol.has_value() && variable->GetName().GetData() == "self")
 		{
 			if (context.TypeHint)
 				symbol = { SymbolEntryType::None, std::make_shared<Symbol>(Symbol::CreateType(context.TypeHint)) };
@@ -135,6 +142,13 @@ namespace clear
 			// DiagnosticCode_UndefinedVariable
 			Report(DiagnosticCode_None, variable->GetName());
 			return nullptr;
+		}
+
+		if (symbol.value().Symbol->Kind == SymbolKind::GenericTemplate && context.AllowGenericInferenceFromArgs && context.CallsiteArgs.size() > 0)
+		{
+			llvm::SmallVector<Symbol> transformed(context.CallsiteArgs.size());
+			std::transform(context.CallsiteArgs.begin(), context.CallsiteArgs.end(), transformed.begin(), [](auto type) { return Symbol::CreateType(type); });
+			symbol.value().Symbol = SolveConstraints(variable->GetName().GetData(), symbol.value().Symbol, scopeIndex, transformed);
 		}
 		
 		variable->Variable = symbol.value().Symbol;
@@ -260,9 +274,12 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
-
+		
 		for (auto& arg : funcCall->Arguments)
+		{
 			arg = Visit(arg, context);
+			context.CallsiteArgs.push_back(m_TypeInferEngine.InferTypeFromNode(arg));
+		}
 		
 		Visit(funcCall->Callee, context);
 		return funcCall;
@@ -465,7 +482,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSubscript> subscript, SemaContext context)
 	{
-		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue });
+		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue, .TypeHint = context.TypeHint, .AllowGenericInferenceFromArgs = false });
 		subscript->Meaning = SubscriptSemantic::Generic;
 
 		if (IsNodeValue(subscript->Target))
@@ -495,8 +512,7 @@ namespace clear
 			CLEAR_VERIFY(var, "");
 				
 			std::shared_ptr<Symbol> genericSym;
-
-			std::optional<size_t> optIndex;
+			size_t scopeIndex = (size_t)-1;
 
 			for (size_t i = m_ScopeStack.size(); i-- > 0; )
 			{
@@ -505,7 +521,7 @@ namespace clear
 				if (auto entry = table.Get(var->GetName().GetData()))
 				{
 					genericSym = entry.value().Symbol;
-					optIndex = i; 
+					scopeIndex = i; 
 					break;
 				}
 			}
@@ -518,6 +534,7 @@ namespace clear
 			}
 			
 			llvm::SmallVector<Symbol> substitutedArgs;
+
 			for (auto node : subscript->SubscriptArgs)
 			{
 				if (auto ty = GetTypeFromNode(node))
@@ -532,44 +549,7 @@ namespace clear
 				}
 			}
 
-			std::string name = m_NameMangler.MangleGeneric(var->GetName().GetData(), substitutedArgs);
-			std::shared_ptr<Symbol> sym;
-
-			for (auto rit = m_ScopeStack.rbegin(); rit != m_ScopeStack.rend(); rit++)
-			{
-				if (auto entry = rit->Get(name))
-				{
-					sym = entry.value().Symbol;
-					break;
-			    }
-			}
-
-			if (!sym)
-			{
-				GenericTemplateSymbol genericTemplate = genericSym->GetGenericTemplate();
-				std::shared_ptr<ASTGenericTemplate> node = std::dynamic_pointer_cast<ASTGenericTemplate>(genericTemplate.GenericTemplate);
-				
-				Cloner cloner;
-				cloner.DestinationModule = m_Module;
-				
-				for (size_t i = 0; i < substitutedArgs.size(); i++)
-				{
-					cloner.SubstitutionMap[node->GenericTypeNames[i]] = substitutedArgs[i]; 
-				}
-				
-				std::shared_ptr<ASTNodeBase> clonned = cloner.Clone(node->TemplateNode);
-				ChangeNameOfNode(name, clonned);
-
-				sym = std::make_shared<Symbol>(Symbol::CreateGeneric(clonned));
-				bool success = m_ScopeStack[optIndex.value()].Insert(name, SymbolEntryType::None, sym);
-				CLEAR_VERIFY(success, "");
-
-				clonned = Visit(clonned);
-				ConstructSymbol(sym, clonned);
-			}
-
-			GenericSymbol generic = sym->GetGeneric();		
-			subscript->GeneratedType = generic.GeneratedSymbol;
+			subscript->GeneratedType = SolveConstraints(var->GetName().GetData(), genericSym, scopeIndex, substitutedArgs);
 		}
 
 		return subscript;
@@ -914,7 +894,47 @@ namespace clear
 				break;
 			}
 		}
+	}
+
 	
+	std::shared_ptr<Symbol> Sema::SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs)
+	{
+		std::string instanceName = m_NameMangler.MangleGeneric(name, substitutedArgs);
+		std::shared_ptr<Symbol> instanceSymbol;
+
+		for (auto rit = m_ScopeStack.rbegin(); rit != m_ScopeStack.rend(); rit++)
+		{
+			if (auto entry = rit->Get(instanceName))
+			{
+				instanceSymbol = entry.value().Symbol;
+				break;
+			}
+		}
+
+		if (instanceSymbol)
+			return instanceSymbol->GetGeneric().GeneratedSymbol;
+
+		GenericTemplateSymbol genericTemplate = genericSymbol->GetGenericTemplate();
+		std::shared_ptr<ASTGenericTemplate> node = std::dynamic_pointer_cast<ASTGenericTemplate>(genericTemplate.GenericTemplate);
 		
+		Cloner cloner;
+		cloner.DestinationModule = m_Module;
+		
+		for (size_t i = 0; i < substitutedArgs.size(); i++)
+		{
+			cloner.SubstitutionMap[node->GenericTypeNames[i]] = substitutedArgs[i]; 
+		}
+		
+		std::shared_ptr<ASTNodeBase> clonned = cloner.Clone(node->TemplateNode);
+		ChangeNameOfNode(instanceName, clonned);
+
+		instanceSymbol = std::make_shared<Symbol>(Symbol::CreateGeneric(clonned));
+		bool success = m_ScopeStack[scopeIndex].Insert(instanceName, SymbolEntryType::None, instanceSymbol);
+		CLEAR_VERIFY(success, ""); //TODO Report(...)
+
+		clonned = Visit(clonned);
+		ConstructSymbol(instanceSymbol, clonned);
+
+		return instanceSymbol->GetGeneric().GeneratedSymbol;
 	}
 }
