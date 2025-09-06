@@ -160,7 +160,7 @@ namespace clear
         return Symbol::CreateType(module_->Lookup("bool").value().GetType());
     }
     
-    llvm::Value* Symbol::GetLLVMValue()
+    llvm::Value* Symbol::GetLLVMValue() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");
         auto& value = std::get<ValueSymbol>(Data);
@@ -180,8 +180,8 @@ namespace clear
 		
 		if(Kind == SymbolKind::Function)
 		{
-			auto returnType = std::get<FunctionSymbol>(Data).FunctionNode->ReturnType;
-			return returnType ? returnType->ConstructedType.GetType() : nullptr;
+			auto returnType = std::get<FunctionSymbol>(Data).FunctionNode->ReturnTypeVal;
+			return returnType;
 		}
 	
         auto& value = std::get<ValueSymbol>(Data);

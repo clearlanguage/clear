@@ -191,9 +191,10 @@ namespace clear
 		const auto& GetResolvedType() const { return m_Type; }
 	
 	public:
-		std::shared_ptr<ASTType> TypeResolver;
+		std::shared_ptr<ASTNodeBase> TypeResolver;
 		std::shared_ptr<ASTNodeBase> Initializer;
 		std::shared_ptr<Symbol> Variable;
+		std::shared_ptr<Type> ResolvedType;
 
 	private:
 		Token m_Name;
@@ -221,7 +222,7 @@ namespace clear
 
 	enum class AssignmentOperatorType 
 	{
-		Initialize, Normal, Mul, Div, Add, Sub, Mod
+		None, Initialize, Normal, Mul, Div, Add, Sub, Mod
 	};
 
 	class ASTAssignmentOperator : public ASTNodeBase
@@ -283,7 +284,8 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
-		std::shared_ptr<ASTType> ReturnType;
+		std::shared_ptr<ASTNodeBase> ReturnType;
+		std::shared_ptr<Type> ReturnTypeVal;
 		std::shared_ptr<ASTBlock> CodeBlock;	
 		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
 		std::shared_ptr<Symbol> FunctionSymbol;	
@@ -550,7 +552,8 @@ namespace clear
 
 	public:
 		bool IsVariadic = false;
-		std::shared_ptr<ASTType> TypeResolver;
+		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<Type> ResolvedType;
 
 	private:
 		std::string m_Name;
@@ -605,6 +608,7 @@ namespace clear
 		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
 	
 		inline const auto& GetName() const { return m_Name; } 
+		void SetName(llvm::StringRef newName) { m_Name = std::string(newName); }
 
 	public:
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;

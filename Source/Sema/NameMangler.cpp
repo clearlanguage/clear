@@ -1,3 +1,4 @@
+#include "Core/Log.h"
 #include "NameMangling.h"
 #include "AST/ASTNode.h"
 
@@ -30,16 +31,37 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<Type>> funcArgs;
 		std::transform(func->Arguments.begin(), func->Arguments.end(), std::back_inserter(funcArgs), [](std::shared_ptr<ASTVariableDeclaration> typeSpec)
 				{
-					return typeSpec->TypeResolver->ConstructedType.GetType();
+					return typeSpec->ResolvedType;
 				});
 		
-		return MangleFunction(func->GetName(), funcArgs, func->ReturnType ? func->ReturnType->ConstructedType.GetType() : nullptr);
+		return MangleFunction(func->GetName(), funcArgs, func->ReturnTypeVal ? func->ReturnTypeVal : nullptr);
 	}
 
 
-	std::string NameMangler::MangleGeneric(llvm::StringRef name, llvm::ArrayRef<std::shared_ptr<Type>> args)
+	std::string NameMangler::MangleGeneric(llvm::StringRef name, llvm::ArrayRef<Symbol> args)
 	{
-		return std::format("{}[{}]", std::string(name), FormatArgs(args));
+		std::stringstream argStream;
+		
+		for (size_t i = 0; i < args.size(); i++)
+		{
+			if (args[i].Kind == SymbolKind::Type)
+			{
+				argStream << args[i].GetType()->GetHash();
+			}
+			else if (args[i].Kind == SymbolKind::Value)
+			{
+				std::string valStr;
+				llvm::raw_string_ostream rso(valStr);
+				args[i].GetLLVMValue()->print(rso);  
+				rso.flush();
+				argStream << valStr;  
+			}
+			
+			if (i + 1 < args.size())
+				argStream << ",";
+		}
+
+		return std::format("{}[{}]", std::string(name), argStream.str());
 	}
 
 	std::string NameMangler::FormatArgs(llvm::ArrayRef<std::shared_ptr<Type>> args)

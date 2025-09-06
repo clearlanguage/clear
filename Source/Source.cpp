@@ -46,7 +46,6 @@ int main(int argc, char* argv[])
             std::println("Finished compilation");
 
             return 0;
-
         }
         default:
         {

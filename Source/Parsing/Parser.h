@@ -30,6 +30,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseFunctionCallExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseSubscriptExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseStructInitializerExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
 
     private:
@@ -88,7 +89,6 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseExpr(int64_t minBindingPower = 0);
         std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
-        std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize = false);
         std::shared_ptr<ASTType> ParseTypeResolver();
         VariableDecleration ParseVariableDecleration();
 		std::shared_ptr<ASTVariableDeclaration> ParseSelf();

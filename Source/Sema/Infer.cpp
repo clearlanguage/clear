@@ -119,6 +119,30 @@ namespace clear
 		if (binExpr->ResultantType)
 			return binExpr->ResultantType;
 
+		// member access (TODO need to handle all the cases such as members, artihemtic etc... seperately)
+		if (binExpr->GetExpression() == OperatorType::Dot)
+		{
+			std::shared_ptr<ClassType> lhsType = InferTypeFromNode(binExpr->LeftSide)->As<ClassType>(); // TODO: need to make a way to support other data types like enums
+			std::shared_ptr<ASTVariable> rhs = std::dynamic_pointer_cast<ASTVariable>(binExpr->RightSide);
+			
+			std::shared_ptr<Symbol> member = lhsType->GetMember(rhs->GetName().GetData()).value_or(nullptr);
+			CLEAR_VERIFY(member, "not a valid member");
+			
+			if (member->Kind == SymbolKind::Type)
+			{
+				return member->GetType();
+			}
+			else if (member->Kind == SymbolKind::Function)
+			{
+				auto& fn = member->GetFunctionSymbol();
+				return fn.FunctionNode->ReturnTypeVal;
+			}
+			else 
+			{
+				CLEAR_UNREACHABLE("");
+			}
+		}
+
 		std::shared_ptr<Type> lhsType = InferTypeFromNode(binExpr->LeftSide);
 		std::shared_ptr<Type> rhsType = InferTypeFromNode(binExpr->RightSide);
 	

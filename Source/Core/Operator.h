@@ -8,7 +8,7 @@ namespace clear
 {
     enum class OperatorType 
     {
-        None = 0, Or, And, 
+        None = 0, Assignment, Or, And, 
 
         Ellipsis, NotEqual, IsEqual, 
         GreaterThanEqual, LessThanEqual, 

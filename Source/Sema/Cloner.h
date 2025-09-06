@@ -24,8 +24,10 @@ namespace clear {
 		std::shared_ptr<ASTBlock> CloneBlock(std::shared_ptr<ASTBlock> node);
 		std::shared_ptr<ASTFunctionCall> CloneFunctionCall(std::shared_ptr<ASTFunctionCall> node);
 		std::shared_ptr<ASTReturn> CloneReturn(std::shared_ptr<ASTReturn> node);
+		std::shared_ptr<ASTStructExpr> CloneStructExpr(std::shared_ptr<ASTStructExpr> node);
+		std::shared_ptr<ASTSubscript> CloneSubscript(std::shared_ptr<ASTSubscript> node);
 
 		std::shared_ptr<Module> DestinationModule;
-		std::unordered_map<std::string, std::string> SubstitutionMap;
+		std::unordered_map<std::string, Symbol> SubstitutionMap;
 	};
 }

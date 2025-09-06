@@ -61,6 +61,9 @@ namespace clear
 		
 		bool IsNodeValue(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<Type> GetTypeFromNode(std::shared_ptr<ASTNodeBase> node);
+		
+		void ConstructSymbol(std::shared_ptr<Symbol> symbol, std::shared_ptr<ASTNodeBase> clonnedNode);
+		void ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode);
 
     private:
 		std::vector<SemaSymbolTable> m_ScopeStack;

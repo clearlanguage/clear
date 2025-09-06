@@ -137,7 +137,7 @@ namespace clear
         static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
         static Symbol GetBooleanType(std::shared_ptr<Module> module_);
 
-        llvm::Value* GetLLVMValue();
+        llvm::Value* GetLLVMValue() const;
         std::shared_ptr<Type>   GetType() const;
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;

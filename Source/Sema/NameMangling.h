@@ -20,7 +20,7 @@ namespace clear
 		
 		std::string MangleFunctionFromNode(std::shared_ptr<ASTFunctionDefinition> definition);
 		
-		std::string MangleGeneric(llvm::StringRef name, llvm::ArrayRef<std::shared_ptr<Type>> args);
+		std::string MangleGeneric(llvm::StringRef name, llvm::ArrayRef<Symbol> args);
 
 	private:
 		std::string FormatArgs(llvm::ArrayRef<std::shared_ptr<Type>> args);	

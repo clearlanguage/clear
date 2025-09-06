@@ -122,6 +122,8 @@ namespace clear
 		{OperatorType::And,     {1, 2}},
 		{OperatorType::Or,      {1, 2}},
 		{OperatorType::Ternary, {1, 2}},
+		
+		{OperatorType::Assignment, {0, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
 	};
 
     Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule, DiagnosticsBuilder& builder)
@@ -324,31 +326,7 @@ namespace clear
             return ParseBlock();
         }
 
-        bool isDeclaration = IsDeclaration();
-
-        if(!isDeclaration)
-        {
-			auto expr = ParseExpr();
-
-			if(MatchAny(m_AssignmentOperators))
-			{
-				return ParseAssignment(expr);
-			}
-
-			return expr;
-        }
-
-		auto decleration = ParseVariableDecleration();
-
-		if(decleration.HasBeenInitialized)
-		{
-			return decleration.Node;
-		}
-	
-		auto initializer = std::make_shared<ASTDefaultInitializer>();
-		initializer->Storage = decleration.Node;
-		
-		return initializer;
+		return ParseExpr();
     }
 
     void Parser::ParseLoopControls() 
@@ -539,7 +517,7 @@ namespace clear
         size_t i = 0;
 
         std::vector<std::shared_ptr<ASTVariableDeclaration>> params;
-        std::shared_ptr<ASTType> returnType;
+        std::shared_ptr<ASTNodeBase> returnType;
 
         auto Flush = [&]()
         {
@@ -589,7 +567,7 @@ namespace clear
         EXPECT_TOKEN_RETURN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType, nullptr);
         Consume();
         
-        returnType = ParseTypeResolver();
+        returnType = ParseExpr();
         Flush();
 
 		return funcNode;
@@ -763,7 +741,7 @@ namespace clear
                 break;
             }
 
-            param->TypeResolver = ParseTypeResolver();
+            param->TypeResolver = ParseExpr();
 
             if(Match(TokenType::Ellipses))
             {
@@ -866,30 +844,6 @@ namespace clear
         return nullptr;
     }
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> storage, bool initialize)
-    {
-        ExpectAny(m_AssignmentOperators);
-
-        Token assignmentToken = Consume();
-        auto assignType = GetAssignmentOperatorFromTokenType(assignmentToken.GetType());
-   
-        std::shared_ptr<ASTAssignmentOperator> assign;
-
-        if(initialize)
-        {
-            CLEAR_VERIFY(assignType == AssignmentOperatorType::Normal, "not a valid initializer");
-            assign = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Initialize);
-        }
-        else 
-        {
-            assign = std::make_shared<ASTAssignmentOperator>(assignType);
-        }
-
-        assign->Storage = storage;            
-        assign->Value = ParseExpression(); 
-
-        return assign;
-    }
 
     Parser::VariableDecleration Parser::ParseVariableDecleration()
     {
@@ -901,7 +855,7 @@ namespace clear
 		if (Match(TokenType::Colon))
 		{
 			Consume();		
-			variableDecleration->TypeResolver = ParseTypeResolver();
+			variableDecleration->TypeResolver = ParseExpr();
 		}
 
         bool hasBeenInitialized = false;
@@ -918,7 +872,7 @@ namespace clear
 
 	std::shared_ptr<ASTVariableDeclaration> Parser::ParseSelf()
 	{
-		auto ty = ParseTypeResolver();
+		auto ty = ParseExpr();
 
 		std::shared_ptr<ASTVariableDeclaration> decl = std::make_shared<ASTVariableDeclaration>(Prev());
 		decl->TypeResolver = ty;
@@ -1080,7 +1034,7 @@ namespace clear
 			if (OperatorType op = GetBinaryOperator(Peak()); op != OperatorType::None)
 			{
 				OperatorInfo info = g_OperatorTable.at(op);
-				if (info.LeftBindingPower < minBindingPower)
+					if (info.LeftBindingPower < minBindingPower)
 					break;
 
 				lhs = info.InfixParse(this, lhs);
@@ -1104,7 +1058,8 @@ namespace clear
 
 		std::shared_ptr<ASTUnaryExpression> unary = std::make_shared<ASTUnaryExpression>(op);
 		unary->Operand = ParseExpr(info.RightBindingPower);
-				
+			
+		VERIFY_WITH_RETURN(unary->Operand, DiagnosticCode_None, nullptr);
 		return unary;
 	}
 
@@ -1202,6 +1157,34 @@ namespace clear
 
 		Consume();
 		return expr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseAssignment(std::shared_ptr<ASTNodeBase> lhs)
+	{
+		Token assignmentType = Consume();
+		AssignmentOperatorType opType = AssignmentOperatorType::None;
+
+		switch (assignmentType.GetType())
+		{
+			case TokenType::Equals:
+			{
+				opType = AssignmentOperatorType::Normal;
+				break;
+			}
+			default:
+			{
+				break;
+				
+			}
+		}
+		
+		VERIFY_WITH_RETURN(opType != AssignmentOperatorType::None, DiagnosticCode_UnexpectedToken, nullptr);
+
+		std::shared_ptr<ASTAssignmentOperator> node = std::make_shared<ASTAssignmentOperator>(opType); 
+		node->Storage = lhs;
+		node->Value = ParseExpr();
+		
+		return node;
 	}
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseListInitializerExpr()
@@ -1583,6 +1566,8 @@ namespace clear
 
     std::shared_ptr<ASTType> Parser::ParseTypeResolver()
     {
+		CLEAR_UNREACHABLE("depricated");
+
         std::shared_ptr<ASTType> resolver = std::make_shared<ASTType>();
 
         if(Match("let"))
@@ -1614,7 +1599,7 @@ namespace clear
                 EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_None, resolver);
                 Consume();
 
-                resolver->Children.push_back(ParseTypeResolver());
+                resolver->Children.push_back(ParseExpr());
                 EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_None, resolver);
                
                 resolver->PushToken(Consume()); // can't be anything after ]
@@ -1712,7 +1697,7 @@ namespace clear
 			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
 			Consume();
 
-            typeSpec->TypeResolver = ParseTypeResolver();
+            typeSpec->TypeResolver = ParseExpr();
 
             if(Match(TokenType::Equals))
             {
@@ -1902,6 +1887,8 @@ namespace clear
 			case TokenType::Dot:                return OperatorType::Dot;
 			case TokenType::LeftBracket:        return OperatorType::Index;
 			case TokenType::Ellipses:           return OperatorType::Ellipsis;
+		
+			case TokenType::Equals:				return OperatorType::Assignment;
 		
 			default:
 				break;

@@ -43,7 +43,7 @@ namespace clear
         std::shared_ptr<T> CreateType(const std::string& name, Args&&... args)
         {
             auto [it, success] = m_Types.try_emplace(name, std::make_shared<T>(std::forward<Args>(args)...));
-            CLEAR_VERIFY(success, "failed to emplace type ", name);
+			CLEAR_VERIFY(success, "failed to emplace type ", name);
             return std::dynamic_pointer_cast<T>(it->second);
         }
 

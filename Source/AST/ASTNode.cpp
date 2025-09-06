@@ -593,7 +593,7 @@ namespace clear
 
 		if (memberSymbol->Kind == SymbolKind::Function)
 		{
-			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->TypeResolver->ConstructedType.GetType();
+			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->ResolvedType;
 
 			while(lhs.GetType() != targetType)
 			{
@@ -697,14 +697,13 @@ namespace clear
 
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
-		Symbol resolvedType = TypeResolver->Codegen(ctx);
+		Symbol resolvedType = Symbol::CreateType(ResolvedType);
 		Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
 		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 			
 		if (isGlobal)
 		{
-		
 			llvm::Value* allocaInst = new llvm::GlobalVariable(
 				ctx.Module, 
 				resolvedType.GetType()->Get(),
@@ -875,7 +874,7 @@ namespace clear
 		llvm::SmallVector<llvm::Type*> argTypes;
 		std::transform(Arguments.begin(), Arguments.end(), std::back_inserter(argTypes), [](std::shared_ptr<ASTVariableDeclaration> decl)
 				 {
-					return decl->TypeResolver->ConstructedType.GetType()->Get();
+					return decl->ResolvedType->Get();
 				 });
 		
 		std::shared_ptr<Type> returnType = ReturnType ? ReturnType->Codegen(ctx).GetType() : nullptr;
@@ -902,7 +901,7 @@ namespace clear
 		for (const auto& arg : Arguments)
 		{
 			Symbol argAlloc = arg->Codegen(ctx);
-			Symbol argValue = Symbol::CreateValue(functionSymbol.FunctionPtr->getArg(k++), arg->TypeResolver->ConstructedType.GetType());
+			Symbol argValue = Symbol::CreateValue(functionSymbol.FunctionPtr->getArg(k++), arg->ResolvedType);
 			SymbolOps::Store(argAlloc, argValue, ctx.Builder, ctx.Module, true);
 		}
 
@@ -1026,10 +1025,8 @@ namespace clear
 		if (!functionSymbol.FunctionNode->ReturnType)
 			return Symbol();
 		
-		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnType->ConstructedType.GetType());
+		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnTypeVal);
 	}
-
-
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
     {
@@ -1143,8 +1140,7 @@ namespace clear
 			funcSymbol.FunctionType = functionType;
 			funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
 			funcSymbol.FunctionNode->SourceModule = ctx.ClearModule;
-			funcSymbol.FunctionNode->ReturnType = std::make_shared<ASTType>();
-			funcSymbol.FunctionNode->ReturnType->ConstructedType = Symbol::CreateType(m_ReturnType);	
+			funcSymbol.FunctionNode->ReturnTypeVal = m_ReturnType;	
 			
 			return *DeclSymbol;
 		}
@@ -2351,9 +2347,7 @@ namespace clear
 			return type;
 		}
 
-		Symbol type = TypeResolver->Codegen(ctx);
-		type.Metadata = m_Name;
-		return type;
+		return Symbol::CreateType(ResolvedType);
 	}
 
 

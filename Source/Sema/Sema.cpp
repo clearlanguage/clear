@@ -6,6 +6,7 @@
 #include "Diagnostics/Diagnostic.h"
 #include "Diagnostics/DiagnosticCode.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
+#include "Lexing/TokenDefinitions.h"
 #include "Sema/SymbolTable.h"
 #include "Symbols/Module.h"
 #include "Symbols/Symbol.h"
@@ -54,6 +55,8 @@ namespace clear
 		}
 
 		Visit(type->TypeResolver, context);
+		type->ResolvedType = GetTypeFromNode(type->TypeResolver);
+
 		return type;
 	}
 
@@ -62,6 +65,7 @@ namespace clear
 		if (decl->TypeResolver)
 		{
 			Visit(decl->TypeResolver, context);
+			decl->ResolvedType = GetTypeFromNode(decl->TypeResolver);
 
 			if (decl->Initializer)
 				decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue } );
@@ -76,42 +80,18 @@ namespace clear
 			}
 
 			decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue });
-
-			decl->TypeResolver = std::make_shared<ASTType>();
-			decl->TypeResolver->ConstructedType = Symbol::CreateType(m_TypeInferEngine.InferTypeFromNode(decl->Initializer));
+			decl->ResolvedType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
 		}
 
 
-		std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(decl->TypeResolver);
-		
 		std::shared_ptr<Type> inferredType = decl->Initializer ? m_TypeInferEngine.InferTypeFromNode(decl->Initializer) : nullptr;
 		
-		if (type->ConstructedType.Kind == SymbolKind::InferType)
-		{
-			if (!inferredType)
-			{
-				// DiagnosticCode_InferredDeclarationMustHaveValue
-				Report(DiagnosticCode_None, Token());
-				return decl;
-			}
-
-			auto inferTypeInfo = type->ConstructedType.GetInferType();
-	
-			type->ConstructedType = Symbol::CreateType(inferredType);
-
-			if(inferTypeInfo.IsConst)
-			{
-				type->ConstructedType = Symbol::CreateType(m_Module->GetTypeRegistry()->GetConstFrom(type->ConstructedType.GetType()));
-			}
-		}
-		
 		// TODO if inferred type and constructed type are not the same then insert a cast
-		
 		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData(), SymbolEntryType::Variable);
 	
 		if (symbol.has_value())
 		{
-			*symbol.value() = Symbol::CreateValue(nullptr, type->ConstructedType.GetType());
+			*symbol.value() = Symbol::CreateValue(nullptr, decl->ResolvedType);
 			decl->Variable = symbol.value();
 			return decl;
 		}
@@ -123,6 +103,9 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariable> variable, SemaContext context)
 	{
+		if (variable->Variable)
+			return variable;
+
 		std::optional<SymbolEntry> symbol;
 
 		for (auto it = m_ScopeStack.rbegin(); it != m_ScopeStack.rend(); it++)
@@ -139,6 +122,12 @@ namespace clear
 			
 			if (sym.has_value())
 				symbol = SymbolEntry { SymbolEntryType::None, std::make_shared<Symbol>(sym.value()) };
+		}
+		
+		if (variable->GetName().GetData() == "self" || variable->GetName().GetData() == "Self")
+		{
+			if (context.TypeHint)
+				symbol = { SymbolEntryType::None, std::make_shared<Symbol>(Symbol::CreateType(context.TypeHint)) };
 		}
 
 		if (!symbol.has_value())
@@ -211,7 +200,11 @@ namespace clear
 		}
 		
 		if (func->ReturnType)
+		{
 			Visit(func->ReturnType, context);
+			func->ReturnTypeVal = GetTypeFromNode(func->ReturnType);
+			CLEAR_VERIFY(func->ReturnTypeVal, "");
+		}
 			
 		if (context.TypeHint)
 			func->SetName(std::format("{}.{}", context.TypeHint->GetHash(), func->GetName()));
@@ -396,7 +389,7 @@ namespace clear
 		for (auto node : classExpr->Members) 
 		{
 			Visit(node, context);
-			members.emplace_back(node->GetName(), std::make_shared<Symbol>(node->TypeResolver->ConstructedType));
+			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateType(node->ResolvedType)));
 		}
 		
 		for (auto node : classExpr->DefaultValues)
@@ -499,7 +492,7 @@ namespace clear
 		else 
 		{
 			std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(subscript->Target);
-			CLEAR_VERIFY(var, "this is temporary, we will support more than just variables (for example *Test[int]))");
+			CLEAR_VERIFY(var, "");
 				
 			std::shared_ptr<Symbol> genericSym;
 
@@ -508,6 +501,7 @@ namespace clear
 			for (size_t i = m_ScopeStack.size(); i-- > 0; )
 			{
 				auto& table = m_ScopeStack[i];
+
 				if (auto entry = table.Get(var->GetName().GetData()))
 				{
 					genericSym = entry.value().Symbol;
@@ -518,15 +512,27 @@ namespace clear
 
 			if (!genericSym)
 			{
+				//DiagnosticCode_UndeclaredIdentifier
 				Report(DiagnosticCode_None, var->GetName());
 				return nullptr;
 			}
 			
-			llvm::SmallVector<std::shared_ptr<Type>> types;
+			llvm::SmallVector<Symbol> substitutedArgs;
 			for (auto node : subscript->SubscriptArgs)
-				types.push_back(GetTypeFromNode(node));
+			{
+				if (auto ty = GetTypeFromNode(node))
+				{
+					substitutedArgs.push_back(Symbol::CreateType(ty));
+				}
+				else 
+				{
+					m_ConstantEvaluator.Evaluate(node);
+					substitutedArgs.push_back(Symbol::CreateValue(m_ConstantEvaluator.CurrentValue, m_TypeInferEngine.InferTypeFromNode(node)));
+					m_ConstantEvaluator.CurrentValue = nullptr;
+				}
+			}
 
-			std::string name = m_NameMangler.MangleGeneric(var->GetName().GetData(), types);
+			std::string name = m_NameMangler.MangleGeneric(var->GetName().GetData(), substitutedArgs);
 			std::shared_ptr<Symbol> sym;
 
 			for (auto rit = m_ScopeStack.rbegin(); rit != m_ScopeStack.rend(); rit++)
@@ -546,19 +552,20 @@ namespace clear
 				Cloner cloner;
 				cloner.DestinationModule = m_Module;
 				
-				for (size_t i = 0; i < types.size(); i++)
+				for (size_t i = 0; i < substitutedArgs.size(); i++)
 				{
-					cloner.SubstitutionMap[node->GenericTypeNames[i]] = types[i]->GetHash(); // TODO: this needs to be the type itself not the hash in the future
+					cloner.SubstitutionMap[node->GenericTypeNames[i]] = substitutedArgs[i]; 
 				}
 				
 				std::shared_ptr<ASTNodeBase> clonned = cloner.Clone(node->TemplateNode);
-				clonned = Visit(clonned, SemaContext());
-				
+				ChangeNameOfNode(name, clonned);
+
 				sym = std::make_shared<Symbol>(Symbol::CreateGeneric(clonned));
 				bool success = m_ScopeStack[optIndex.value()].Insert(name, SymbolEntryType::None, sym);
 				CLEAR_VERIFY(success, "");
 
-				*sym->GetGeneric().GeneratedSymbol = Symbol::CreateType(std::dynamic_pointer_cast<ASTClass>(clonned)->ClassTy); // TODO TEMPORARY
+				clonned = Visit(clonned);
+				ConstructSymbol(sym, clonned);
 			}
 
 			GenericSymbol generic = sym->GetGeneric();		
@@ -825,7 +832,7 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(node);
-				std::optional<Symbol> sym = m_Module->Lookup(var->GetName().GetData());
+				std::optional<Symbol> sym = var->Variable ? std::optional(*var->Variable) : m_Module->Lookup(var->GetName().GetData());
 
 				if (!sym || sym->Kind != SymbolKind::Type)
 					return nullptr;
@@ -843,13 +850,71 @@ namespace clear
 					return base ? m_Module->GetTypeRegistry()->GetPointerTo(base) : nullptr;
 				}
 			}
+			case ASTNodeType::Subscript:
+			{
+				std::shared_ptr<ASTSubscript> subscript = std::dynamic_pointer_cast<ASTSubscript>(node);
+				
+				if (subscript->GeneratedType && subscript->GeneratedType->Kind != SymbolKind::None)
+				{
+					return subscript->GeneratedType->GetType();
+				}
+				
+				return GetTypeFromNode(subscript->Target);
+			}
 			default:
 			{
-				CLEAR_UNREACHABLE("unimplemented");
 				break;
 			}
 		}
 
 		return nullptr;
+	}
+
+	void Sema::ConstructSymbol(std::shared_ptr<Symbol> symbol, std::shared_ptr<ASTNodeBase> clonnedNode)
+	{
+		CLEAR_VERIFY(symbol->Kind == SymbolKind::Generic, "");
+
+		switch (clonnedNode->GetType())
+		{
+			case ASTNodeType::Class:
+			{
+				*symbol->GetGeneric().GeneratedSymbol = Symbol::CreateType(std::dynamic_pointer_cast<ASTClass>(clonnedNode)->ClassTy); 
+				break;
+			}
+			case ASTNodeType::FunctionDefinition:
+			{
+				symbol->GetGeneric().GeneratedSymbol = std::dynamic_pointer_cast<ASTFunctionDefinition>(clonnedNode)->FunctionSymbol; 
+				break;
+			}
+			default:
+			{
+				CLEAR_UNREACHABLE("Unimplemented");
+				break;
+			}
+		}
+	}
+
+	void Sema::ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode)
+	{
+		switch (clonnedNode->GetType())
+		{
+			case ASTNodeType::Class:
+			{
+				std::dynamic_pointer_cast<ASTClass>(clonnedNode)->SetName(newName); 
+				break;
+			}
+			case ASTNodeType::FunctionDefinition:
+			{
+				std::dynamic_pointer_cast<ASTFunctionDefinition>(clonnedNode)->SetName(std::string(newName)); 
+				break;
+			}
+			default:
+			{
+				CLEAR_UNREACHABLE("Unimplemented");
+				break;
+			}
+		}
+	
+		
 	}
 }

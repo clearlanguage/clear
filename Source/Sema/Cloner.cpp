@@ -1,4 +1,5 @@
 #include "Cloner.h" 
+#include "Core/Log.h"
 #include "Core/Operator.h"
 #include <memory>
 
@@ -24,6 +25,8 @@ namespace clear {
 			case ASTNodeType::Block:					return CloneBlock(std::dynamic_pointer_cast<ASTBlock>(node));
 			case ASTNodeType::FunctionCall:				return CloneFunctionCall(std::dynamic_pointer_cast<ASTFunctionCall>(node));
 			case ASTNodeType::ReturnStatement:			return CloneReturn(std::dynamic_pointer_cast<ASTReturn>(node));
+			case ASTNodeType::StructExpr:				return CloneStructExpr(std::dynamic_pointer_cast<ASTStructExpr>(node));
+			case ASTNodeType::Subscript:				return CloneSubscript(std::dynamic_pointer_cast<ASTSubscript>(node));
 			default: break;
 	}	
 
@@ -54,7 +57,7 @@ namespace clear {
 		newNode->CodeBlock = CloneBlock(node->CodeBlock);		
 		
 		if (node->ReturnType)
-			newNode->ReturnType = CloneType(node->ReturnType);
+			newNode->ReturnType = Clone(node->ReturnType);
 		
 		for (auto arg : node->Arguments)
 			newNode->Arguments.push_back(CloneVariableDecl(arg));
@@ -70,7 +73,7 @@ namespace clear {
 		std::shared_ptr<ASTVariableDeclaration> newNode = std::make_shared<ASTVariableDeclaration>(node->GetName());
 		
 		if (node->TypeResolver)
-			newNode->TypeResolver = CloneType(node->TypeResolver);
+			newNode->TypeResolver = Clone(node->TypeResolver);
 		
 		if (node->Initializer)
 			newNode->Initializer = Clone(newNode->Initializer);
@@ -80,16 +83,19 @@ namespace clear {
 
 	std::shared_ptr<ASTVariable> Cloner::CloneVariable(std::shared_ptr<ASTVariable> node)
 	{
-		std::string name = SubstitutionMap.contains(node->GetName().GetData()) ? SubstitutionMap[node->GetName().GetData()] : node->GetName().GetData();
-		Token tok = node->GetName();
-		tok.SetData(name);
+		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(node->GetName());
 
-		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(tok);
+		auto it = SubstitutionMap.find(node->GetName().GetData());
+		if (it != SubstitutionMap.end())
+			newNode->Variable = std::make_shared<Symbol>(it->second);
+		
 		return newNode;
 	}
 	
 	std::shared_ptr<ASTType> Cloner::CloneType(std::shared_ptr<ASTType> node)
 	{
+		CLEAR_UNREACHABLE("depricated");
+
 		std::shared_ptr<ASTType> newNode = std::make_shared<ASTType>();
 
 		for (const auto& token : node->GetTokens())
@@ -104,8 +110,8 @@ namespace clear {
 
 			if (it == SubstitutionMap.end())
 				newNode->PushToken(token);
-			else 
-				newNode->PushToken(Token(token.GetType(), it->second, token.GetSourceFile(), token.LineNumber, token.ColumnNumber));
+			//else 
+				//newNode->PushToken(Token(token.GetType(), it->second, token.GetSourceFile(), token.LineNumber, token.ColumnNumber));
 		}
 
 		for (auto child : node->Children)
@@ -117,7 +123,7 @@ namespace clear {
 	std::shared_ptr<ASTTypeSpecifier> Cloner::CloneTypeSpec(std::shared_ptr<ASTTypeSpecifier> node)
 	{
 		std::shared_ptr<ASTTypeSpecifier> newNode = std::make_shared<ASTTypeSpecifier>(node->GetName());
-		newNode->TypeResolver = CloneType(node->TypeResolver);
+		newNode->TypeResolver = Clone(node->TypeResolver);
 
 		return newNode;
 	}
@@ -142,6 +148,8 @@ namespace clear {
 	{
 		std::shared_ptr<ASTUnaryExpression> newNode = std::make_shared<ASTUnaryExpression>(node->GetOperatorType());
 		newNode->Operand = Clone(node->Operand);
+		CLEAR_VERIFY(newNode->Operand, "failed to clone");
+
 		return newNode;
 	}
 
@@ -179,5 +187,28 @@ namespace clear {
 			returnStatement->ReturnValue = Clone(node->ReturnValue);
 
 		return returnStatement;
+	}
+
+	std::shared_ptr<ASTStructExpr> Cloner::CloneStructExpr(std::shared_ptr<ASTStructExpr> node)
+	{
+		std::shared_ptr<ASTStructExpr> structExpr = std::make_shared<ASTStructExpr>();
+		structExpr->TargetType = Clone(node->TargetType);
+		
+		for (auto arg : node->Values)
+			structExpr->Values.push_back(Clone(arg));
+
+		return structExpr;
+	}
+
+	std::shared_ptr<ASTSubscript> Cloner::CloneSubscript(std::shared_ptr<ASTSubscript> node)
+	{
+		std::shared_ptr<ASTSubscript> subscript = std::make_shared<ASTSubscript>();
+		subscript->Meaning = node->Meaning;
+		subscript->Target = Clone(node->Target);
+		
+		for (auto arg : node->SubscriptArgs)
+			subscript->SubscriptArgs.push_back(Clone(arg));
+
+		return subscript;
 	}
 }
