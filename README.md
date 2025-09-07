@@ -6,14 +6,14 @@ Clear is a modern **compiled programming language** that combines the **simplici
 
 ---
 
-## 📦 Build Instructions 
+## 📦 Build Instructions
 
-### Requirements 
+### Requirements
+
 * Clang compiler with C++23 support (Clang 16 or later recommended)
 * CMake (version ≥ 3.20.0 recommended)
 * LLVM (built from source with CMake installed) → See the [LLVM CMake build guide](https://llvm.org/docs/CMake.html) for setup instructions.
 * Linux or macOS (currently only tested on these platforms)
-
 
 ### Building
 
@@ -23,14 +23,14 @@ Clear is a modern **compiled programming language** that combines the **simplici
 git clone https://github.com/clearlanguage/clear.git
 ```
 
-* Create a build directory 
+* Create a build directory
 
 ```
 mkdir build
 cd build
 ```
 
-* Use IDE CMake integration or call cmake directly 
+* Use IDE CMake integration or call cmake directly
 
 ```
 cmake path/to/clearc
@@ -42,85 +42,107 @@ cmake --build .
 ## 🌍 Open Source
 
 Clear is open source and welcomes contributions!
+
 ---
 
 ## Roadmap
 
-### Completed Features 
-* Variables 
+### ✅ Completed Features
+
+* Variables
+
 ```
-int a = 5
-float y = 2.0
-char const* name = "alice"
+a: int = 5
+y: float = 2.0
+name: const *char = "alice"
 ```
-* Functions 
+
+* Functions
+
 ```
-function add(int a, int b) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
 function main():
-    int result = add(5, 10)
+    result: int = add(5, 10)
 ```
+
 * Operators
+
 ```
-int sum = 5 + 3
-int product = 4 * 2
-bool isEqual = (sum == product)
+sum: int = 5 + 3
+product: int = 4 * 2
+isEqual: bool = (sum == product)
 ```
-* Pointers/Dereferencing 
+
+* Pointers / Dereferencing
+
 ```
-int x = 42;
-int* ptr = &x;   // pointer to x
-int y = *ptr;    // dereference ptr
+x: int = 42
+ptr: *int = &x    // pointer to x
+y: int = *ptr     // dereference ptr
 ```
-* Arrays 
+
+* Arrays
+
 ```
-int[5] nums = {1, 2, 3, 4, 5}
-int first = nums[0]
+nums: [5]int = {1, 2, 3, 4, 5}
+first: int = nums[0]
 ```
-* If/ElseIf/Else 
+
+* If / ElseIf / Else
+
 ```
 if x > 10:
     print("Greater than 10")
 elseif x == 10:
     print("Exactly 10")
 else:
-    print("Less than 10");
+    print("Less than 10")
 ```
+
 * While loops
+
 ```
-int i = 0;
+i: int = 0
 while i < 5:
     print(i)
     i++
 ```
-* Type Inference 
+
+* Type Inference
+
 ```
-let i = 0 // int
-const number = 2.0 // float const
+let i = 0          // inferred int
+const number = 2.0 // inferred const float
 ```
-* Structs 
+
+* Structs
+
 ```
 struct Point:
-    float x, float y
-    float z
+    x: float
+    y: float
+    z: float
 
-Point p = { 1.0, 2.0 }
+p: Point = { 1.0, 2.0 }
 ```
-* Basic Classes 
+
+* Classes
+
 ```
 class Person:
-    string name
+    name: string
 
     function greet():
         print("Hello ", this.name)
 
-
-Person p = { "Bob" }
-p.greet() // outputs "Hello bob"
+p: Person = { "Bob" }
+p.greet() // outputs "Hello Bob"
 ```
 
-* Traits 
+* Traits
+
 ```
 trait Drawable:
     function draw()
@@ -129,88 +151,103 @@ class Circle:
     function draw():
         print("Drawing Circle")
 
-
-function draw_object(Drawable drawable):
+function draw_object(drawable: Drawable):
     drawable.draw()
 
-Circle c
+c: Circle
 draw_object(c)
-
 ```
 
 * Function Overloading
+
 ```
-function _print(int64 a):
+function _print(a: int64):
     printf("%i", a)
 
-function _print(float64 a):
+function _print(a: float64):
     printf("%d", a)
 ```
-* Variadic Arguments 
+
+* Variadic Arguments
+
 ```
 function println(args...):
     for arg in args:
         _print(arg)
-    
     printf("\n")
 ```
-* Defer 
+
+* Defer
+
 ```
 function test():
     defer print("Cleaning up!")
     print("Doing work...")
     // "Cleaning up!" will print when leaving this scope
-
 ```
+
 * Named Blocks
+
 ```
 outer:
-    defer print("i am leaving outer block")
-    print("Inside outer block")
+    defer print("leaving outer")
+    print("Inside outer")
 
     inner:
-        defer print("i am leaving inner block")
-        print("Inside inner block")
+        defer print("leaving inner")
+        print("Inside inner")
+```
 
-        // outputs i am leaving inner block when inner scope is finished
-    
-    // outputs i am leaving outer block when outer scope is finished
-```
 * Switch Statements
+
 ```
-int a = ...
+a: int = ...
 switch a:
     case 20, 30, 40:
         print("a was either 20, 30, or 40")
     default:
         print("not a valid input")
 ```
-* Basic Enums 
+
+* Enums
+
 ```
 enum Direction:
     Left, Right, Up, Down 
 
-print(Direction.Left)   // outputs 0
-print(Direction.Right)  // outputs 1
-print(Direction.Up)     // outputs 2
-
+print(Direction.Left)   // 0
+print(Direction.Right)  // 1
+print(Direction.Up)     // 2
 ```
 
-### Planned Features
+* Optionals
+
+```
+x: ?int
+
+if x != null:
+    print(?x)   // unwrap optional
+```
+
+---
+
+## 🚧 Planned Features
 
 * Unions
 * Variants
-* Generics 
+* Generics
 * Modules
-* Inheritence 
-* More Developed Enums
-* Unpack Operator 
-* Operator overloading
+* Inheritance
+* Advanced Enums
+* Unpack Operator
+* Operator Overloading
 * Properties
 * Async/await
-* Package manager
+* Package Manager
 * Lambdas
-* Compile time saftey checks when indexing, derefencing and more
-* Optional runtime saftey checks when doing the same as above
+* Compile-time safety checks (indexing, dereferencing, etc.)
+* Optional runtime safety checks
+
 ---
+
 
