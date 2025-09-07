@@ -54,7 +54,6 @@ Clear is open source and welcomes contributions!
 ```
 let a: int = 5
 let y: float = 2.0
-let name: const *char = "alice"
 ```
 
 * Functions
@@ -70,9 +69,9 @@ function main():
 * Operators
 
 ```
-let sum: int = 5 + 3
-let product: int = 4 * 2
-let isEqual: bool = (sum == product)
+let sum = 5 + 3
+let product = 4 * 2
+let isEqual = (sum == product)
 ```
 
 * Pointers / Dereferencing
@@ -87,7 +86,7 @@ let y: int = *ptr     // dereference ptr
 
 ```
 let nums: [5; int] = {1, 2, 3, 4, 5}
-let first: int = nums[0]
+let first = nums[0]
 ```
 
 * If / ElseIf / Else
@@ -114,7 +113,7 @@ while i < 5:
 
 ```
 let i = 0          // inferred int
-let const number = 2.0 // inferred const float
+const number = 2.0 // inferred const float
 ```
 
 * Classes
@@ -123,27 +122,27 @@ let const number = 2.0 // inferred const float
 class Person:
     name: string   // no `let` needed inside class
 
-    function greet():
-        print("Hello ", this.name)
+    function greet(*self):
+        print("Hello ", self.name)
 
-let p: Person = { "Bob" }
+let p = Person { "Bob" }
 p.greet() // outputs "Hello Bob"
 ```
 
-* Traits
+* Interfaces
 
 ```
-trait Drawable:
+interface Drawable:
     function draw()
 
-class Circle:
-    function draw():
+class Circle implements Drawable:
+    function draw(*self):
         print("Drawing Circle")
 
 function draw_object(drawable: Drawable):
     drawable.draw()
 
-let c: Circle
+let c = Circle {}
 draw_object(c)
 ```
 
