@@ -30,10 +30,6 @@ namespace clear
 			{
 				return InferTypeFromBinExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
 			}
-			case ASTNodeType::Expression:
-			{
-				return InferTypeFromExpr(std::dynamic_pointer_cast<ASTExpression>(node));
-			}
 			case ASTNodeType::FunctionCall:
 			{
 				return InferTypeFromFunctionCall(std::dynamic_pointer_cast<ASTFunctionCall>(node));
@@ -48,11 +44,6 @@ namespace clear
 				
 				switch (structExpr->TargetType->GetType())
 				{
-					case ASTNodeType::TypeResolver:
-					{
-						std::shared_ptr<ASTType> type = std::dynamic_pointer_cast<ASTType>(structExpr->TargetType);
-						return type->ConstructedType.GetType();
-					}
 					case ASTNodeType::Variable:
 					{
 						std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType);
@@ -91,6 +82,11 @@ namespace clear
 				}
 
 				return subscript->GeneratedType->GetType();
+			}
+			case ASTNodeType::ListExpr:
+			{
+				std::shared_ptr<ASTListExpr> listExpr = std::dynamic_pointer_cast<ASTListExpr>(node);
+				return listExpr->ListType;
 			}
 			default:
 			{
@@ -155,11 +151,6 @@ namespace clear
 		return InferTypeFromNode(funcCall->Callee);
 	}
 
-	std::shared_ptr<Type> Infer::InferTypeFromExpr(std::shared_ptr<ASTExpression> expr)
-	{
-		return InferTypeFromNode(expr->RootExpr);
-	}
-	
 	std::shared_ptr<Type> Infer::GetCommonType(std::shared_ptr<Type> type1, std::shared_ptr<Type> type2)
 	{
 		if (type1 == type2)

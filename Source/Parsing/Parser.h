@@ -31,7 +31,9 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseSubscriptExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseStructInitializerExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseTernary(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
+		std::shared_ptr<ASTNodeBase> ParseArrayType();
 
     private:
         std::shared_ptr<ASTBlock> Root();
@@ -85,11 +87,8 @@ namespace clear
             bool HasBeenInitialized = false;
         };
 
-        std::shared_ptr<ASTNodeBase> ParseExpression(uint64_t terminationIndex = UINT64_MAX);
 		std::shared_ptr<ASTNodeBase> ParseExpr(int64_t minBindingPower = 0);
-        std::shared_ptr<ASTNodeBase> ParseOperand();
         std::shared_ptr<ASTNodeBase> ParseFunctionCall();
-        std::shared_ptr<ASTType> ParseTypeResolver();
         VariableDecleration ParseVariableDecleration();
 		std::shared_ptr<ASTVariableDeclaration> ParseSelf();
 
@@ -106,40 +105,6 @@ namespace clear
 		OperatorType GetBinaryOperator(const Token& token);
 		OperatorType GetPostfixOperator(const Token& token);
 		
-    private:
-        bool IsDeclaration();
-
-        template<typename T>
-        std::shared_ptr<T> ParseList(std::shared_ptr<ASTType> ty = nullptr)
-        {
-            Consume();
-
-            auto expr = std::make_shared<T>();
-
-            if constexpr (std::is_same_v<T, ASTStructExpr>)
-			{
-				expr->TargetType = ty;
-			}
-
-            while(!Match(TokenType::RightBrace))
-            {
-                while(Match(TokenType::EndLine) || Match(TokenType::EndScope))
-                    Consume();
-
-                if(Match(TokenType::RightBrace))
-                    break;
-
-                expr->Values.push_back(ParseExpression());
-
-                if(Match(TokenType::Comma))
-                    Consume();
-            }
-
-            Consume();
-
-            return expr;
-        }
-
     private:    
         std::vector<Token> m_Tokens;
         std::set<std::string> m_Aliases;

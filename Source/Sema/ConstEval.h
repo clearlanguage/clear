@@ -44,7 +44,6 @@ namespace clear
 		llvm::Constant* EvaluateBinaryExpr(std::shared_ptr<ASTBinaryExpression> binExpr);
 		llvm::Constant* EvaluateUnaryExpr(std::shared_ptr<ASTUnaryExpression> unaryExpr);
 		//llvm::Constant* EvaluateTernaryExpr(std::shared_ptr<ASTTernaryExpression> ternaryExpr);
-		llvm::Constant* EvaluateExpr(std::shared_ptr<ASTExpression> expr);
 		
 		llvm::Constant* EvaluateGeneric(std::shared_ptr<ASTNodeBase> node);
 

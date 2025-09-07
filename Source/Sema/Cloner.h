@@ -15,9 +15,7 @@ namespace clear {
 		std::shared_ptr<ASTFunctionDefinition> CloneFunction(std::shared_ptr<ASTFunctionDefinition> node);
 		std::shared_ptr<ASTVariableDeclaration> CloneVariableDecl(std::shared_ptr<ASTVariableDeclaration> node);
 		std::shared_ptr<ASTVariable> CloneVariable(std::shared_ptr<ASTVariable> node);
-		std::shared_ptr<ASTType> CloneType(std::shared_ptr<ASTType> node);
 		std::shared_ptr<ASTTypeSpecifier> CloneTypeSpec(std::shared_ptr<ASTTypeSpecifier> node);
-		std::shared_ptr<ASTExpression> CloneExpr(std::shared_ptr<ASTExpression> node);	
 		std::shared_ptr<ASTBinaryExpression> CloneBinaryExpr(std::shared_ptr<ASTBinaryExpression> node);
 		std::shared_ptr<ASTUnaryExpression> CloneUnaryExpr(std::shared_ptr<ASTUnaryExpression> node);	
 		std::shared_ptr<ASTNodeLiteral> CloneLiteral(std::shared_ptr<ASTNodeLiteral> node);

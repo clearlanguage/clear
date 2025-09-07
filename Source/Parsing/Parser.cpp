@@ -83,6 +83,7 @@ namespace clear
 		{OperatorType::FunctionCall,	  {6, 7, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseFunctionCallExpr(node); }}},
 		{OperatorType::StructInitializer, {6, 7, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseStructInitializerExpr(node); }}},
 		{OperatorType::ListInitializer,   {6, 7, [](Parser* p) { return p->ParseListInitializerExpr(); }}},
+		{OperatorType::ArrayType,		  {6, 7, [](Parser* p) { return p->ParseArrayType(); }}},
 
 		{OperatorType::Negation,     {5, 6}},
 		{OperatorType::Increment,    {5, 6}},
@@ -121,7 +122,7 @@ namespace clear
 
 		{OperatorType::And,     {1, 2}},
 		{OperatorType::Or,      {1, 2}},
-		{OperatorType::Ternary, {1, 2}},
+		{OperatorType::Ternary, {1, 2, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseTernary(node);}}},
 		
 		{OperatorType::Assignment, {0, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
 	};
@@ -395,7 +396,7 @@ namespace clear
         EXPECT_DATA_RETURN("if", DiagnosticCode_None, nullptr);
         Consume();	
 
-		auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon));
+		auto expr = ParseExpr();
 
         EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
         Consume();
@@ -411,7 +412,7 @@ namespace clear
 		{
 			Consume();
 
-			auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark, TokenType::Colon));
+			auto expr = ParseExpr();
 
 			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
 			Consume();
@@ -441,7 +442,7 @@ namespace clear
         
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
 
-		auto expr = ParseExpression(GetLastBracket(TokenType::QuestionMark,TokenType::Colon));
+		auto expr = ParseExpr();
 		
         EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
@@ -602,7 +603,7 @@ namespace clear
         else 
         {
             Consume();
-            enum_->EnumValues.push_back(ParseExpression());
+            enum_->EnumValues.push_back(ParseExpr());
         }
 
         if(Match(TokenType::Comma)) 
@@ -636,7 +637,7 @@ namespace clear
             EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment)
             Consume();
 
-            enum_->EnumValues.push_back(ParseExpression());
+            enum_->EnumValues.push_back(ParseExpr());
             
             if(Match(TokenType::Comma))
                 Consume();
@@ -770,7 +771,7 @@ namespace clear
         if(Match(TokenType::RightThinArrow))
         {
             Consume();
-            decleration->ReturnType = ParseTypeResolver();
+            decleration->ReturnTypeNode = ParseExpr();
         }
 
 		return decleration;
@@ -789,7 +790,7 @@ namespace clear
 
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
-            call->Arguments.push_back(ParseExpression(terminationIndex));
+            call->Arguments.push_back(ParseExpr());
 
             if(m_Position < terminationIndex)
             {
@@ -802,46 +803,6 @@ namespace clear
         Consume();
 
         return call;
-    }
-
-
-    std::shared_ptr<ASTNodeBase> Parser::ParseOperand()
-    {
-        if(MatchAny(m_Literals)) 
-            return std::make_shared<ASTNodeLiteral>(Consume());
-
-        if(Match(TokenType::Identifier))
-        {
-            SavePosition();
-
-            auto ty = ParseTypeResolver();
-
-            if(Match(TokenType::LeftBrace))
-            {
-                return ParseList<ASTStructExpr>(ty);
-            }
-
-            if(Match(TokenType::Dot))
-            {
-                return ty;
-            }
-
-            RestorePosition();
-
-            if(Prev().IsType(TokenType::Dot))
-            {
-                return std::make_shared<ASTMember>(Consume().GetData());
-            }
-
-            return std::make_shared<ASTVariable>(Consume());
-        }
-
-        if(Match(TokenType::LeftBrace))
-        {
-            return ParseList<ASTListExpr>();
-        }
-
-        return nullptr;
     }
 
 
@@ -886,7 +847,7 @@ namespace clear
         Consume(); 
 
         auto switchStatement = std::make_shared<ASTSwitch>(); 
-        switchStatement->Value = ParseExpression(); 
+        switchStatement->Value = ParseExpr();
 
         EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
 
@@ -909,13 +870,13 @@ namespace clear
             
 			SwitchCase switchCase;
 			
-            switchCase.Values.push_back(ParseExpression()); 
+            switchCase.Values.push_back(ParseExpr());
 
             while(!Match(TokenType::Colon)) 
             { 
                 EXPECT_TOKEN(TokenType::Comma, DiagnosticCode_ExpectedComma); 
                 Consume(); 
-                switchCase.Values.push_back(ParseExpression()); 
+                switchCase.Values.push_back(ParseExpr()); 
             } 
 
             Consume();
@@ -999,6 +960,8 @@ namespace clear
 			{
 				if (token.GetData() != "const")
 				{
+					CLEAR_UNREACHABLE("unimplemented");
+
 					lhs = std::make_shared<ASTVariable>(token);
 					Consume();
 
@@ -1187,6 +1150,23 @@ namespace clear
 		return node;
 	}
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseTernary(std::shared_ptr<ASTNodeBase> lhs)
+	{
+		EXPECT_TOKEN_RETURN(TokenType::QuestionMark, DiagnosticCode_None, nullptr);
+		Consume();
+		
+		std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::make_shared<ASTTernaryExpression>();
+		ternaryExpr->Condition = lhs;
+		ternaryExpr->Truthy = ParseExpr();
+		
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+
+		Consume();
+		ternaryExpr->Falsy = ParseExpr();
+
+		return ternaryExpr;
+	}
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseListInitializerExpr()
 	{
 		EXPECT_TOKEN_RETURN(TokenType::LeftBrace, DiagnosticCode_None, nullptr);
@@ -1212,445 +1192,23 @@ namespace clear
 		return expr;
 	}
 
-    std::shared_ptr<ASTNodeBase> Parser::ParseExpression(uint64_t terminationIndex) // infix to RPN and creates nodes
-    {
-        std::vector<std::shared_ptr<ASTNodeBase>> expression;
-        std::stack<Operator> operators;
-
-        auto PopOperatorsUntil = [&](auto condition) 
-        {
-            while (!operators.empty() && !condition(operators.top())) 
-            {
-                const auto& currentOperator = operators.top();
-				expression.push_back(currentOperator.OperatorNode);
-                operators.pop();
-            }
-        };
-
-        auto IsTokenOperand = [&](const Token& token)
-        {
-            bool isBasicType = token.IsType(TokenType::Identifier) ||
-                               token.IsType(TokenType::Number) ||
-                               token.IsType(TokenType::String) || 
-                               token.IsType(TokenType::LeftBrace);
-        
-            bool isSpecialKeyword =  token.GetData() == "true" ||
-                                     token.GetData() == "false" ||
-                                     token.GetData() == "null";
-        
-            return isBasicType || isSpecialKeyword;
-        };
-        
-        auto IsOperand = [&]()
-        {
-            return IsTokenOperand(Peak());
-        };
-
-        auto HandleOpenBracket = [&]() 
-        {
-            operators.push({ .IsOpenBracket=true });
-            Consume();
-        };
-
-        auto HandleCloseBracket = [&]() 
-        {
-            PopOperatorsUntil([](const Operator& op) { return op.IsOpenBracket; });
-            
-            if (!operators.empty()) 
-                operators.pop(); // remove the open bracket
-
-            Consume();
-        };
-
-
-        auto GetOperatorTypeFromContext = [&]()
-        {
-            Token current = Peak();
-
-            // unambiguous cases 
-            switch (current.GetType()) 
-            {
-                case TokenType::Plus:               return OperatorType::Add;
-                case TokenType::ForwardSlash:       return OperatorType::Div;
-                case TokenType::Percent:            return OperatorType::Mod;
-                                
-                case TokenType::Pipe:               return OperatorType::BitwiseOr;
-                case TokenType::Hat:                return OperatorType::BitwiseXor;
-                case TokenType::LeftShift:          return OperatorType::LeftShift;
-                case TokenType::RightShift:         return OperatorType::RightShift;
-                case TokenType::Telda:              return OperatorType::BitwiseNot;
-                
-                case TokenType::LogicalAnd:         return OperatorType::And;
-                case TokenType::LogicalOr:          return OperatorType::Or;
-                case TokenType::Bang:               return OperatorType::Not;
-                
-                case TokenType::EqualsEquals:       return OperatorType::IsEqual;
-                case TokenType::BangEquals:         return OperatorType::NotEqual;
-                case TokenType::LessThan:           return OperatorType::LessThan;
-                case TokenType::LessThanEquals:     return OperatorType::LessThanEqual;
-                case TokenType::GreaterThan:        return OperatorType::GreaterThan;
-                case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
-                case TokenType::Dot:                return OperatorType::Dot;
-                case TokenType::LeftBracket:        return OperatorType::Index;
-                case TokenType::Ellipses:           return OperatorType::Ellipsis;
-            
-                default:
-                    break;
-            }
-
-            // ambiguous cases
-            bool isPrevOperandOrBracket = IsTokenOperand(Prev()) || 
-                                          Prev().IsType(TokenType::RightParen) || 
-                                          Prev().IsType(TokenType::RightBracket);
-
-            switch (current.GetType())
-            {
-                case TokenType::Star:
-                {
-                    if (isPrevOperandOrBracket) 
-                        return OperatorType::Mul;
-                
-                    return OperatorType::Dereference;
-                }
-            
-                case TokenType::Ampersand:
-                {
-                    if (isPrevOperandOrBracket) 
-                        return OperatorType::BitwiseAnd;
-                
-                    return OperatorType::Address;
-                }
-            
-                case TokenType::Minus:
-                {
-                    if (isPrevOperandOrBracket)
-                        return OperatorType::Sub;
-                
-                    return OperatorType::Negation;
-                }
-            
-                case TokenType::Decrement:
-                {
-                    bool prev = IsTokenOperand(Prev());
-                    bool next = IsTokenOperand(Next());
-                
-                    if (prev || next)
-                    {
-                        CLEAR_VERIFY(!(prev && next), "ambiguous decrement");
-
-                        if(next) 
-                            return OperatorType::Decrement;
-
-                        return OperatorType::PostDecrement;
-                    }
-
-
-                    CLEAR_UNREACHABLE("invalid decrement");
-                    return OperatorType::None;
-                }
-
-                case TokenType::Increment:
-                {
-                    bool prev = IsTokenOperand(Prev());
-                    bool next = IsTokenOperand(Next());
-                
-                    if (prev || next)
-                    {
-                        CLEAR_VERIFY(!(prev && next), "ambiguous increment");
-
-                        if(next) 
-                            return OperatorType::Increment;
-
-                        return OperatorType::PostIncrement;
-                    }
-                    
-                    CLEAR_UNREACHABLE("invalid increment");
-                    return OperatorType::None;
-                }
-				case TokenType::LeftParen:
-				{
-					bool isFunctionCall = IsTokenOperand(Prev()) || Prev().IsType(TokenType::RightParen) || Prev().IsType(TokenType::RightBracket);
-
-					if (isFunctionCall)
-						return OperatorType::FunctionCall;
-					
-					return OperatorType::None;
-				}
-                default: 
-                {
-                    break;
-                }
-            }
-
-            return OperatorType::None;
-        };
-
-        auto HandleBinaryOperator = [&](OperatorType operatorType) 
-        {
-            if(operatorType == OperatorType::None)
-            {
-                Consume();
-                return;
-            }
-
-            int precedence = g_Precedence.at(operatorType);
-
-            PopOperatorsUntil([&](const Operator& op) 
-            {
-                if(op.IsRightAssociative())
-                    return op.IsOpenBracket || precedence >= op.Precedence;
-                
-                return op.IsOpenBracket || precedence > op.Precedence;
-            });
-
-
-            operators.push({
-                .OperatorExpr = operatorType,
-                .IsBinary = true,
-				.OperatorNode = std::make_shared<ASTBinaryExpression>(operatorType),
-                .Precedence = precedence,
-            });
-        };
-
-        auto HandlePreUnaryOperators = [&]() 
-        {
-            OperatorType operatorType = GetOperatorTypeFromContext();
-
-            while(g_PreUnaryOperators.test((size_t)operatorType))
-            {
-                Consume();
-
-                int precedence = g_Precedence.at(operatorType);
-
-                PopOperatorsUntil([&](const Operator& op) 
-                {
-                    if(op.IsRightAssociative())
-                        return op.IsOpenBracket || precedence >= op.Precedence;
-                    
-                    return op.IsOpenBracket || precedence > op.Precedence;
-                });
-
-                operators.push({
-                    .OperatorExpr = operatorType, 
-                    .IsUnary = true,
-					.OperatorNode = std::make_shared<ASTUnaryExpression>(operatorType),
-                    .Precedence = precedence
-                });
-
-                operatorType = GetOperatorTypeFromContext();
-            }
-        };
-
-        auto HandlePostUnaryOperators = [&]() 
-        {
-            OperatorType operatorType = GetOperatorTypeFromContext();
-
-            while(g_PostUnaryOperators.test((size_t)operatorType))
-            {
-                Consume();
-
-                int precedence = g_Precedence.at(operatorType);
-
-                PopOperatorsUntil([&](const Operator& op) 
-                { 
-                     if(op.IsRightAssociative())
-                        return op.IsOpenBracket || precedence >= op.Precedence;
-
-                    return op.IsOpenBracket || precedence > op.Precedence;
-                });
-
-                operators.push({
-                    .OperatorExpr = operatorType, 
-                    .IsUnary = true,
-					.OperatorNode = std::make_shared<ASTUnaryExpression>(operatorType),
-                    .Precedence = precedence
-                });
-
-                operatorType = GetOperatorTypeFromContext();
-            }
-        };
-
-        auto DebugPrintExpression = [&]()
-        {
-            for(const auto& expr : expression)
-            {
-                expr->Print();
-            }  
-            
-            std::println();
-        };
-
-
-        while (!MatchAny(m_Terminators) && m_Position < terminationIndex) 
-        {
-            HandlePreUnaryOperators();
-
-            OperatorType operatorType = GetOperatorTypeFromContext();
-
-            if (IsOperand()) 
-            {
-                expression.push_back(ParseOperand());
-            }
-			else if (operatorType == OperatorType::FunctionCall)
-			{
-				int precedence = g_Precedence.at(OperatorType::FunctionCall);
-
-				PopOperatorsUntil([precedence](const Operator& op)
-					{
-						if(op.IsRightAssociative())
-							return op.IsOpenBracket || precedence >= op.Precedence;
-                    
-						return op.IsOpenBracket || precedence > op.Precedence;	
-					});
-				
-				operators.push({
-					.OperatorExpr = OperatorType::FunctionCall,
-					.OperatorNode = ParseFunctionCall(),
-                    .Precedence = precedence
-				});
-			}
-            else if (Match(TokenType::LeftParen)) 
-            {
-                HandleOpenBracket();
-            }
-            else if (Match(TokenType::RightParen) || Match(TokenType::RightBracket)) 
-            {
-                HandleCloseBracket();
-            }
-            else if (operatorType != OperatorType::None)
-            {
-                HandleBinaryOperator(operatorType);
-
-                if(operatorType == OperatorType::Index) 
-                {
-                    operators.push({ .IsOpenBracket=true });
-                }
-
-                Consume();
-            }
-            else if (Match("?")) 
-            {
-                PopOperatorsUntil([](const Operator& op) { return op.OperatorExpr == OperatorType::Ternary || op.IsOpenBracket; });
-
-                operators.push({ .IsBeginTernary = true });
-                Consume();
-            }
-            else if (Match(":"))
-            {
-                PopOperatorsUntil([](const Operator& op)
-                {
-                    return op.IsBeginTernary;
-                });
-
-                if (!operators.empty()) 
-                    operators.pop(); // remove the start ternary
-
-                Consume();
-
-                operators.push({
-                    .OperatorExpr = OperatorType::Ternary, 
-					.OperatorNode = std::make_shared<ASTTernaryExpression>(),
-                    .Precedence = g_Precedence.at(OperatorType::Ternary)
-                });
-            }
-            
-            HandlePostUnaryOperators();
-        }
-
-        PopOperatorsUntil([](const Operator&) { return false; });
-
-        //DebugPrintExpression();
-
-        return ASTExpression::AssembleFromRPN(expression);
-    }
-
-    std::shared_ptr<ASTType> Parser::ParseTypeResolver()
-    {
-		CLEAR_UNREACHABLE("depricated");
-
-        std::shared_ptr<ASTType> resolver = std::make_shared<ASTType>();
-
-        if(Match("let"))
-        {
-            resolver->PushToken(Consume());
-            EXPECT_TOKEN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier);
-
-            return resolver;
-        }
-
-        if(Match("const"))
-        {
-            resolver->PushToken(Consume());
-
-            if(Peak().IsType(TokenType::Identifier) && Next().IsType(TokenType::Equals))
-            {
-                return resolver;
-            }
-        }
-
-        while(Match("const") || Match(TokenType::Star) || Match(TokenType::LeftBracket))
-        {
-            resolver->PushToken(Consume());
-
-            if(Prev().IsType(TokenType::LeftBracket))
-            {                
-                resolver->Children.push_back(ParseExpression());
-
-                EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_None, resolver);
-                Consume();
-
-                resolver->Children.push_back(ParseExpr());
-                EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_None, resolver);
-               
-                resolver->PushToken(Consume()); // can't be anything after ]
-                return resolver;
-            }
-        }
-
-        if(!(Match(TokenType::Keyword) || Match(TokenType::Identifier)))
-            return resolver;
-
-        resolver->PushToken(Consume());
-
-        while(Match(TokenType::Dot))
-        {
-            resolver->PushToken(Consume());
-
-            EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
-
-            resolver->PushToken(Consume());
-        }
-
-        if(Match(TokenType::LeftBracket))
-        {
-            Consume();
-             // hack to allow the ASTType to differentiate between an array and a template
-            resolver->PushToken(Token(TokenType::LessThan, "<"));
-
-            size_t prev = m_Position;
-
-            while(!Match(TokenType::RightBracket))
-            {
-                resolver->Children.push_back(ParseTypeResolver());
-
-                if(Match(TokenType::Comma))
-                {
-                    Consume();
-                }
-
-                if(m_Position == prev)
-                    return resolver;
-
-                prev = m_Position;
-            }
-
-            Consume();
-            resolver->PushToken(Token(TokenType::GreaterThan, ">"));
-        }
-
-        return resolver;
-    }
-
+	std::shared_ptr<ASTNodeBase> Parser::ParseArrayType()
+	{
+		EXPECT_TOKEN_RETURN(TokenType::LeftBracket, DiagnosticCode_None, nullptr);
+		Consume();
+
+		std::shared_ptr<ASTArrayType> arrayType = std::make_shared<ASTArrayType>();
+		arrayType->SizeNode = ParseExpr();
+		
+		EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+		
+		arrayType->TypeNode = ParseExpr();
+		EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		return arrayType;
+	}
 
     void Parser::ParseIndentation()
     {
@@ -1702,7 +1260,7 @@ namespace clear
             if(Match(TokenType::Equals))
             {
 				Consume();
-                classNode->DefaultValues.push_back(ParseExpression());
+                classNode->DefaultValues.push_back(ParseExpr());
             }
             else 
             {
@@ -1851,6 +1409,7 @@ namespace clear
 			case TokenType::Decrement:			return OperatorType::Decrement;
 			case TokenType::Increment:			return OperatorType::Increment;
 			case TokenType::LeftBrace:			return OperatorType::ListInitializer;
+			case TokenType::LeftBracket:		return OperatorType::ArrayType;
 			default:
 				break;
 		}
@@ -1912,21 +1471,4 @@ namespace clear
 
 		return OperatorType::None;
 	}
-    
-    bool Parser::IsDeclaration()
-    {
-        if (Match(TokenType::EndLine))
-            return false;
-
-        SavePosition();
-
-        ParseTypeResolver();
-
-        bool isDecl = Match(TokenType::Identifier); 
-
-        RestorePosition(); 
-
-        return isDecl;
-    }
-
 }

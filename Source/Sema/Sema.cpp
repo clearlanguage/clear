@@ -38,12 +38,6 @@ namespace clear
 		return ast;
 	}
 
-	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTType> type, SemaContext context)
-	{
-		type->ConstructedType = ConstructType(type, context.TypeHint).value_or(Symbol());	
-		return type;
-	}
-	
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type, SemaContext context)
 	{	
 		if (!type->TypeResolver)
@@ -164,23 +158,15 @@ namespace clear
 		return variable;
 	}
 
-	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTExpression> expr, SemaContext context)
-	{
-		expr->RootExpr = Visit(expr->RootExpr, context);
-		return expr;
-	}
-
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context)
     {
     	switch (ast->GetType()) 
 		{
     		case ASTNodeType::FunctionCall:				return Visit(std::dynamic_pointer_cast<ASTFunctionCall>(ast), context);
     		case ASTNodeType::Variable:					return Visit(std::dynamic_pointer_cast<ASTVariable>(ast), context);
-    		case ASTNodeType::TypeResolver:				return Visit(std::dynamic_pointer_cast<ASTType>(ast), context);
     		case ASTNodeType::TypeSpecifier:			return Visit(std::dynamic_pointer_cast<ASTTypeSpecifier>(ast), context);
     		case ASTNodeType::Block:					return Visit(std::dynamic_pointer_cast<ASTBlock>(ast), context);
     		case ASTNodeType::VariableDecleration:		return Visit(std::dynamic_pointer_cast<ASTVariableDeclaration>(ast), context);
-			case ASTNodeType::Expression:				return Visit(std::dynamic_pointer_cast<ASTExpression>(ast), context);
 			case ASTNodeType::AssignmentOperator:		return Visit(std::dynamic_pointer_cast<ASTAssignmentOperator>(ast), context);
 			case ASTNodeType::FunctionDefinition:		return Visit(std::dynamic_pointer_cast<ASTFunctionDefinition>(ast), context);
 			case ASTNodeType::ReturnStatement:			return Visit(std::dynamic_pointer_cast<ASTReturn>(ast), context);
@@ -194,6 +180,8 @@ namespace clear
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
 			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
 			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
+			case ASTNodeType::ArrayType:				return Visit(std::dynamic_pointer_cast<ASTArrayType>(ast), context);
+			case ASTNodeType::ListExpr:					return Visit(std::dynamic_pointer_cast<ASTListExpr>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -382,8 +370,13 @@ namespace clear
 			k++;
 		}
 		
-		if (decl->ReturnType)
-			Visit(decl->ReturnType);
+		decl->ReturnType = m_Module->Lookup("void").value().GetType();
+
+		if (decl->ReturnTypeNode)
+		{
+			decl->ReturnTypeNode = Visit(decl->ReturnTypeNode);
+			decl->ReturnType = GetTypeFromNode(decl->ReturnTypeNode);
+		}
 		
 		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName(), SymbolEntryType::FunctionDeclaration);
 
@@ -555,154 +548,48 @@ namespace clear
 		return subscript;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTArrayType> arrayType, SemaContext context)
+	{
+		arrayType->SizeNode = Visit(arrayType->SizeNode, context);
+		arrayType->TypeNode = Visit(arrayType->TypeNode, context);
+
+		m_ConstantEvaluator.Evaluate(arrayType->SizeNode);
+		std::shared_ptr<Type> baseTy = GetTypeFromNode(arrayType->TypeNode);
+		
+		int64_t size = m_ConstantEvaluator.GetValue<int64_t>();
+		m_ConstantEvaluator.CurrentValue = nullptr;
+			
+		if (size <= 0)
+		{
+			Report(DiagnosticCode_None, Token());
+			return nullptr;
+		}
+
+		arrayType->GeneratedArrayType = m_Module->GetTypeRegistry()->GetArrayFrom(baseTy, (size_t)size);
+		return arrayType;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTListExpr> listExpr, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::RValue;
+		for (auto& value : listExpr->Values)
+			value = Visit(value, context);
+		
+		std::shared_ptr<Type> targetBaseType = m_TypeInferEngine.InferTypeFromNode(listExpr->Values[0]);
+
+		for (size_t i = 1; i < listExpr->Values.size(); i++)
+		{
+			//TODO: insert cast expr if types not same
+		}
+
+		listExpr->ListType = m_Module->GetTypeRegistry()->GetArrayFrom(targetBaseType, listExpr->Values.size());
+		return listExpr;
+	}
+
 	void Sema::Report(DiagnosticCode code, Token token)
 	{
 		// TODO: change CodeGeneration to Semanatic Analysis
 		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, token, code);
-	}
-
-	std::optional<Symbol> Sema::ConstructType(std::shared_ptr<ASTType> type, std::shared_ptr<Type> selfType)
-	{
-		std::vector<Token> tokens = std::move(type->TakeTokens());
-		
-		auto ConstructArray = [&](auto begin, size_t& childIndex) -> std::optional<Symbol>
-	 		{
-				if (childIndex + 1 >= type->Children.size())
-				{
-					// DiagnosticCode_ArrayExpectedSizeAndType
-					Report(DiagnosticCode_None, *begin);
-					return std::nullopt;
-				}
-
-				m_ConstantEvaluator.Evaluate(type->Children[childIndex++]);
-				
-				if (!m_ConstantEvaluator.CurrentValue)
-				{
-					// DiagnosticCode_ArraySizeEvaluationFailed
-					Report(DiagnosticCode_None, *begin);
-					return std::nullopt;
-				}
-
-				int64_t size = m_ConstantEvaluator.GetValue<int64_t>();
-				m_ConstantEvaluator.CurrentValue = nullptr;	
-
-				if (size == 0)
-				{
-					// DiagnosticCode_ArraySizeOutOfRange
-					Report(DiagnosticCode_None, *begin);
-					return std::nullopt;
-				}
-				
-				if (auto astType = std::dynamic_pointer_cast<ASTType>(type->Children[childIndex++]))
-				{
-					std::shared_ptr<Type> baseTy = ConstructType(astType, selfType)
-						.and_then([](const Symbol& type)
-							{
-								return std::optional(type.GetType());
-							})
-						.value_or(nullptr);
-				
-
-					if (!baseTy)
-						return std::nullopt;
-
-					return Symbol::CreateType(m_Module->GetTypeRegistry()->GetArrayFrom(baseTy, size));			
-				}
-				
-				// DiagnosticCode_ArrayExpectedType
-				Report(DiagnosticCode_None, *begin);
-				return {};
-
-			};
-
-		// TODO: add all the diagnostic codes
-		auto pivot = std::find_if(tokens.begin(), tokens.end(), [](const Token& other)
-						  {
-								return( other.GetType() == TokenType::Identifier ||
-									   other.GetType() == TokenType::Keyword ||
-									   other.GetType() == TokenType::LeftBracket
-										) and other.GetData() != "const";
-						  });
-			
-		if (pivot == tokens.end())
-		{
-			// DiagnosticCode_MissingBaseType
-			Report(DiagnosticCode_None, tokens.back());
-			return std::nullopt;
-		}
-
-		auto curr = pivot;
-		size_t childrenIndex = 0;	
-
-		Symbol baseType;
-
-		if (curr->GetType() == TokenType::LeftBracket)
-		{
-			baseType = ConstructArray(pivot, childrenIndex).value_or(Symbol());
-			
-			if (baseType.Kind == SymbolKind::None)
-				return std::nullopt;
-		}	
-		else 
-		{
-			if (curr->GetData() == "self")
-			{
-				if (!selfType)
-				{
-					// DiagnosticCode_CannotUseSelfWhenNotInClassArg
-					Report(DiagnosticCode_None, *curr);
-					return std::nullopt;
-				}
-
-				baseType = Symbol::CreateType(selfType);
-			}
-			else 
-			{
-				baseType = m_Module->Lookup(curr->GetData()).value();
-			}
-
-			if (baseType.Kind == SymbolKind::None)
-			{
-				// DiagnosticCode_UndeclaredIdentifier
-				Report(DiagnosticCode_None, *curr);
-				return std::nullopt;
-			}
-		}
-		
-		if (baseType.Kind == SymbolKind::ClassTemplate)
-		{
-			CLEAR_UNREACHABLE("TODO");
-		}
-		
-		std::shared_ptr<Type> createdType = baseType.GetType();
-
-		if (pivot == tokens.begin())
-			return Symbol::CreateType(createdType);
-		
-		curr--;
-		
-		for(;; curr--)
-		{
-			if(curr->IsType(TokenType::Star))
-			{
-				createdType = m_Module->GetTypeRegistry()->GetPointerTo(createdType);
-			}
-			else if (curr->GetData() == "const")
-			{
-				createdType = m_Module->GetTypeRegistry()->GetConstFrom(createdType);
-			}
-			else 
-			{
-				// DiagnosticCode_UnexepctedTokenInType (should be handled by parser but check for it here anyways)
-				Report(DiagnosticCode_None, *curr);
-				return std::nullopt;
-			}
-
-			if (curr == tokens.begin())
-				break;
-		}
-
-		return Symbol::CreateType(createdType);	
 	}
 
 	void Sema::VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
@@ -840,6 +727,11 @@ namespace clear
 				}
 				
 				return GetTypeFromNode(subscript->Target);
+			}
+			case ASTNodeType::ArrayType:
+			{
+				std::shared_ptr<ASTArrayType> arrayType = std::dynamic_pointer_cast<ASTArrayType>(node);
+				return arrayType->GeneratedArrayType;
 			}
 			default:
 			{

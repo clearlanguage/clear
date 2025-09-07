@@ -1109,17 +1109,18 @@ namespace clear
 	Symbol ASTFunctionDeclaration::Codegen(CodegenContext& ctx)
 	{
 		auto& module = ctx.Module;
-		std::vector<llvm::Type*> types;
+		llvm::SmallVector<llvm::Type*> types;
+		llvm::SmallVector<Parameter> params;
 
 		for (auto arg : Arguments)
 		{
 			auto param = arg->Codegen(ctx);
-			m_Parameters.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = arg->IsVariadic });
+			params.push_back({ .Name = std::string(param.Metadata.value_or(String())), .Type = param.GetType(), .IsVariadic = arg->IsVariadic });
 		} 
 
 		bool isVariadic = false;
 
-		for (auto& param : m_Parameters)
+		for (auto& param : params)
 		{
 			if (!param.Type)
 			{
@@ -1130,14 +1131,9 @@ namespace clear
 			types.push_back(param.Type->Get());
 		}
 
-		m_ReturnType = ctx.ClearModule->Lookup("void").value().GetType();
-
-		if (ReturnType)
-			m_ReturnType = ReturnType->Codegen(ctx).GetType();
-
 		if(InsertDecleration)
 		{
-			llvm::FunctionType* functionType = llvm::FunctionType::get(m_ReturnType->Get(), types, isVariadic);
+			llvm::FunctionType* functionType = llvm::FunctionType::get(ReturnType->Get(), types, isVariadic);
 			llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 			
 			*DeclSymbol = Symbol::CreateFunction(nullptr);
@@ -1147,93 +1143,13 @@ namespace clear
 			funcSymbol.FunctionType = functionType;
 			funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
 			funcSymbol.FunctionNode->SourceModule = ctx.ClearModule;
-			funcSymbol.FunctionNode->ReturnTypeVal = m_ReturnType;	
+			funcSymbol.FunctionNode->ReturnTypeVal = ReturnType;	
 			
 			return *DeclSymbol;
 		}
 
 		return {};
 	}	
-
-    Symbol ASTExpression::Codegen(CodegenContext& ctx)
-	{
-		CLEAR_VERIFY(RootExpr, "root expr cannot be null");
-		return RootExpr->Codegen(ctx);
-	}
-
-
-	std::shared_ptr<ASTExpression> ASTExpression::AssembleFromRPN(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> nodes)
-	{
-		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> stack;
-
-		auto IsOperand = [](std::shared_ptr<ASTNodeBase> child) 
-		{
-			return child->GetType() == ASTNodeType::Literal || 
-				   child->GetType() == ASTNodeType::Variable ||
-				   child->GetType() == ASTNodeType::Member || 
-				   child->GetType() == ASTNodeType::ListExpr || 
-				   child->GetType() == ASTNodeType::StructExpr || 
-				   child->GetType() == ASTNodeType::TypeResolver;
-		};
-		
-		for (auto child : nodes)
-		{
-			if (IsOperand(child))
-			{
-				stack.push_back(child);
-				continue;
-			}
-
-			if (std::shared_ptr<ASTUnaryExpression> unaryExpression = std::dynamic_pointer_cast<ASTUnaryExpression>(child))
-			{
-				unaryExpression->Operand = stack.back();
-				stack.pop_back();
-
-				stack.push_back(unaryExpression);
-				continue;
-			}
-			else if (std::shared_ptr<ASTFunctionCall> functionCall = std::dynamic_pointer_cast<ASTFunctionCall>(child))
-			{
-				functionCall->Callee = stack.back();
-				stack.pop_back();
-
-				stack.push_back(functionCall);
-			}
-			else if (std::shared_ptr<ASTBinaryExpression> binExp = std::dynamic_pointer_cast<ASTBinaryExpression>(child))
-			{
-				binExp->RightSide = stack.back();
-				stack.pop_back();
-
-				binExp->LeftSide = stack.back();
-				stack.pop_back();
-
-				stack.push_back(binExp);
-			}
-			else if (std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::dynamic_pointer_cast<ASTTernaryExpression>(child))
-			{
-				ternaryExpr->Falsy = stack.back();
-				stack.pop_back();
-
-				ternaryExpr->Truthy = stack.back();
-				stack.pop_back();
-
-				ternaryExpr->Condition = stack.back();
-				stack.pop_back();
-
-				stack.push_back(ternaryExpr);
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("unimplemented");
-			}			
-		}
-
-		CLEAR_VERIFY(stack.size() == 1, "wot");
-
-		std::shared_ptr<ASTExpression> expr = std::make_shared<ASTExpression>();
-		expr->RootExpr = stack.back();
-		return expr;
-	}
 
 	Symbol ASTListExpr::Codegen(CodegenContext& ctx)
 	{
@@ -1260,8 +1176,7 @@ namespace clear
 			values.push_back(value.GetLLVMValue());
 		}
 
-		// create static default array and assign any constants
-		std::shared_ptr<Type> arrayType = ctx.TypeReg->GetArrayFrom(first.GetType(), values.size());
+		std::shared_ptr<Type> arrayType = ListType;
 
 		llvm::SmallVector<llvm::Constant*> constantValues;
 		constantValues.resize(values.size(), llvm::ConstantAggregateZero::get(first.GetType()->Get()));
@@ -2035,22 +1950,7 @@ namespace clear
 
     Symbol ASTTrait::Codegen(CodegenContext& ctx)
     {
-		std::vector<std::string> functions;
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> members; 
-
-		for (auto child : VariableDeclarations)
-			members.emplace_back(child->GetName().GetData(), child->GetResolvedType());
-		
-		for (auto child : FunctionDeclarations)
-		{
-			child->InsertDecleration = false;
-			child->Codegen(ctx);
-			functions.push_back(FunctionCache::GetMangledName(child->GetName(), 
-															  child->GetParameters(), 
-															  child->GetReturnType()));
-		}
-
-		ctx.TypeReg->CreateType<TraitType>(m_Name, functions, members, m_Name);
+		CLEAR_UNREACHABLE("todo");
         return Symbol();
     }
 
@@ -2186,163 +2086,6 @@ namespace clear
 		ctx.DeferredCalls.push_back(Expr);
         return Symbol();
     }
-
-    ASTType::ASTType(const std::vector<Token>& tokens)
-		: m_Tokens(tokens)
-    {
-    }
-
-    Symbol ASTType::Codegen(CodegenContext& ctx)
-    {
-		return ConstructedType;
-		
-#if OLD
-		CLEAR_VERIFY(m_Tokens.size() > 0, "not a valid type resolver");
-
-		if(Symbol inferred = Inferred(); inferred.Kind != SymbolKind::None)
-		{
-			return inferred;
-		}
-
-		auto& children = Children;
-
-		int64_t k = (size_t)children.size() - 1;
-		size_t i = 0;
-
-		std::reverse(m_Tokens.begin(), m_Tokens.end());
-
-		std::shared_ptr<Type> type;
-
-		if(m_Tokens[i].IsType(TokenType::RightBracket))
-		{
-			type = ResolveArray(ctx, i, k);
-		}
-		else if (m_Tokens[i].IsType(TokenType::GreaterThan))
-		{
-			i += 2; // <>
-
-			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
-			CLEAR_VERIFY(symbol.Kind == SymbolKind::ClassTemplate, "not a valid template");
-
-			i++;
-		
-			type = ResolveGeneric(symbol, ctx, i, k);
-		}
-		else
-		{
-			Symbol symbol = ctx.ClearModule->Lookup(m_Tokens[i].GetData());
-
-			if(symbol.Kind == SymbolKind::ClassTemplate)
-				return symbol;
-
-			type = symbol.GetType();
-			i++;
-		}
-
-
-		for(; i < m_Tokens.size(); i++)
-		{
-			if(m_Tokens[i].IsType(TokenType::Star))
-			{
-				type = ctx.TypeReg->GetPointerTo(type);
-			}
-			else if (m_Tokens[i].IsType(TokenType::RightBracket))
-			{
-				type = ResolveArray(ctx, i, k);
-				i--;
-			}
-			else if (m_Tokens[i].GetData() == "const")
-			{
-				type = ctx.TypeReg->GetConstFrom(type);
-			}
-			else 
-			{
-				CLEAR_UNREACHABLE("invalid token in type ", m_Tokens[i].GetData());
-			}
-		}
-
-        return Symbol::CreateType(type);
-#endif   
-	}
-
-
-
-	Symbol ASTType::Inferred()
-	{
-		if(m_Tokens[0].GetData() == "let") 
-		{
-			CLEAR_VERIFY(m_Tokens.size() == 1, "cannot have anything past let");
-			return Symbol::CreateInferType(/* isConst = */ false);
-		}
-
-		if(m_Tokens[0].GetData() == "const" && m_Tokens.size() == 1)
-		{
-			return Symbol::CreateInferType(/* isConst = */ true);
-		} 
-
-		return Symbol();
-	}
-
-	std::shared_ptr<Type> ASTType::ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k)
-	{
-		auto& children = Children;
-
-		Symbol baseType = children[k]->Codegen(ctx);
-		CLEAR_VERIFY(k > 0 && baseType.Kind == SymbolKind::Type, "");
-		
-		k--;
-
-		Symbol size = children[k]->Codegen(ctx);
-		CLEAR_VERIFY(size.Kind == SymbolKind::Value, "");
-
-		k--;
-
-		i += 2; // []
-
-		llvm::ConstantInt* value = llvm::dyn_cast<llvm::ConstantInt>(size.GetLLVMValue());
-		CLEAR_VERIFY(value, "cannot define an array of dynamic size, consider using a dynamic list instead");
-
-		return ctx.TypeReg->GetArrayFrom(baseType.GetType(), value->getZExtValue());
-	}
-
-	std::shared_ptr<Type> ASTType::ResolveGeneric(Symbol& symbol, CodegenContext& ctx, size_t& i, int64_t& k)
-	{		
-		auto& children = Children;
-
-		ClassTemplate classTemplate = symbol.GetClassTemplate();
-
-		std::string typeName = classTemplate.Name;
-
-		llvm::SmallVector<std::shared_ptr<Type>> types;
-
-		for(; k >= 0; k--)
-		{
-			if(children[k]->GetType() != ASTNodeType::TypeResolver)
-				break;
-			
-			std::shared_ptr<Type> subType = children[k]->Codegen(ctx).GetType();
-			types.push_back(subType);
-		}
-
-		std::reverse(types.begin(), types.end());
-
-		for(auto& ty : types)
-		{
-			typeName += ty->GetHash();
-		}
-
-		std::shared_ptr<Type> type = ctx.TypeReg->GetType(typeName);
-
-		if(!type)
-		{
-			auto classNode = std::dynamic_pointer_cast<ASTClass>(classTemplate.Class);
-			classNode->Instantiate(ctx, types);
-
-			type = ctx.TypeReg->GetType(typeName);
-		}
-
-		return type;
-	}
 
 	Symbol ASTTypeSpecifier::Codegen(CodegenContext& ctx) 
 	{

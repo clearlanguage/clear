@@ -16,9 +16,7 @@ namespace clear {
 			case ASTNodeType::FunctionDefinition:		return CloneFunction(std::dynamic_pointer_cast<ASTFunctionDefinition>(node));
 			case ASTNodeType::VariableDecleration:		return CloneVariableDecl(std::dynamic_pointer_cast<ASTVariableDeclaration>(node));
 			case ASTNodeType::Variable:					return CloneVariable(std::dynamic_pointer_cast<ASTVariable>(node));
-			case ASTNodeType::TypeResolver:				return CloneType(std::dynamic_pointer_cast<ASTType>(node));
 			case ASTNodeType::TypeSpecifier:			return CloneTypeSpec(std::dynamic_pointer_cast<ASTTypeSpecifier>(node));
-			case ASTNodeType::Expression:				return CloneExpr(std::dynamic_pointer_cast<ASTExpression>(node));
 			case ASTNodeType::BinaryExpression:			return CloneBinaryExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
 			case ASTNodeType::UnaryExpression:			return CloneUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
 			case ASTNodeType::Literal:					return CloneLiteral(std::dynamic_pointer_cast<ASTNodeLiteral>(node));
@@ -92,46 +90,11 @@ namespace clear {
 		return newNode;
 	}
 	
-	std::shared_ptr<ASTType> Cloner::CloneType(std::shared_ptr<ASTType> node)
-	{
-		CLEAR_UNREACHABLE("depricated");
-
-		std::shared_ptr<ASTType> newNode = std::make_shared<ASTType>();
-
-		for (const auto& token : node->GetTokens())
-		{
-			if (!token.IsType(TokenType::Identifier))
-			{
-				newNode->PushToken(token);
-				continue;
-			}
-
-			auto it = SubstitutionMap.find(token.GetData());
-
-			if (it == SubstitutionMap.end())
-				newNode->PushToken(token);
-			//else 
-				//newNode->PushToken(Token(token.GetType(), it->second, token.GetSourceFile(), token.LineNumber, token.ColumnNumber));
-		}
-
-		for (auto child : node->Children)
-			newNode->Children.push_back(Clone(child));
-
-		return newNode;
-	}
-
 	std::shared_ptr<ASTTypeSpecifier> Cloner::CloneTypeSpec(std::shared_ptr<ASTTypeSpecifier> node)
 	{
 		std::shared_ptr<ASTTypeSpecifier> newNode = std::make_shared<ASTTypeSpecifier>(node->GetName());
 		newNode->TypeResolver = Clone(node->TypeResolver);
 
-		return newNode;
-	}
-
-	std::shared_ptr<ASTExpression> Cloner::CloneExpr(std::shared_ptr<ASTExpression> node)
-	{
-		std::shared_ptr<ASTExpression> newNode = std::make_shared<ASTExpression>();
-		newNode->RootExpr = Clone(node->RootExpr);
 		return newNode;
 	}
 

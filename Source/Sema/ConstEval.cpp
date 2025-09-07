@@ -112,10 +112,6 @@ namespace clear
 			{
 				return EvaluateBinaryExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
 			}
- 			case ASTNodeType::Expression:
-			{
-				return EvaluateExpr(std::dynamic_pointer_cast<ASTExpression>(node));
-			}
  			case ASTNodeType::UnaryExpression:
 			{
 				return EvaluateUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
@@ -127,11 +123,6 @@ namespace clear
 		}
 
 		return nullptr;
-	}
-
-	llvm::Constant* ConstEval::EvaluateExpr(std::shared_ptr<ASTExpression> expr)
-	{
-		return EvaluateGeneric(expr->RootExpr);
 	}
 
 	llvm::Constant* ConstEval::EvaluateUnaryExpr(std::shared_ptr<ASTUnaryExpression> unaryExpr)
