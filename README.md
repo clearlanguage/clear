@@ -117,17 +117,6 @@ let i = 0          // inferred int
 let const number = 2.0 // inferred const float
 ```
 
-* Structs
-
-```
-struct Point:
-    x: float
-    y: float
-    z: float
-
-let p: Point = { 1.0, 2.0 }
-```
-
 * Classes
 
 ```
