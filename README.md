@@ -52,9 +52,9 @@ Clear is open source and welcomes contributions!
 * Variables
 
 ```
-a: int = 5
-y: float = 2.0
-name: const *char = "alice"
+let a: int = 5
+let y: float = 2.0
+let name: const *char = "alice"
 ```
 
 * Functions
@@ -64,30 +64,30 @@ function add(a: int, b: int) -> int:
     return a + b
 
 function main():
-    result: int = add(5, 10)
+    let result: int = add(5, 10)
 ```
 
 * Operators
 
 ```
-sum: int = 5 + 3
-product: int = 4 * 2
-isEqual: bool = (sum == product)
+let sum: int = 5 + 3
+let product: int = 4 * 2
+let isEqual: bool = (sum == product)
 ```
 
 * Pointers / Dereferencing
 
 ```
-x: int = 42
-ptr: *int = &x    // pointer to x
-y: int = *ptr     // dereference ptr
+let x: int = 42
+let ptr: *int = &x    // pointer to x
+let y: int = *ptr     // dereference ptr
 ```
 
 * Arrays
 
 ```
-nums: [5]int = {1, 2, 3, 4, 5}
-first: int = nums[0]
+let nums: [5; int] = {1, 2, 3, 4, 5}
+let first: int = nums[0]
 ```
 
 * If / ElseIf / Else
@@ -104,7 +104,7 @@ else:
 * While loops
 
 ```
-i: int = 0
+let i: int = 0
 while i < 5:
     print(i)
     i++
@@ -114,7 +114,7 @@ while i < 5:
 
 ```
 let i = 0          // inferred int
-const number = 2.0 // inferred const float
+let const number = 2.0 // inferred const float
 ```
 
 * Structs
@@ -125,19 +125,19 @@ struct Point:
     y: float
     z: float
 
-p: Point = { 1.0, 2.0 }
+let p: Point = { 1.0, 2.0 }
 ```
 
 * Classes
 
 ```
 class Person:
-    name: string
+    name: string   // no `let` needed inside class
 
     function greet():
         print("Hello ", this.name)
 
-p: Person = { "Bob" }
+let p: Person = { "Bob" }
 p.greet() // outputs "Hello Bob"
 ```
 
@@ -154,7 +154,7 @@ class Circle:
 function draw_object(drawable: Drawable):
     drawable.draw()
 
-c: Circle
+let c: Circle
 draw_object(c)
 ```
 
@@ -201,7 +201,7 @@ outer:
 * Switch Statements
 
 ```
-a: int = ...
+let a: int = ...
 switch a:
     case 20, 30, 40:
         print("a was either 20, 30, or 40")
@@ -223,7 +223,7 @@ print(Direction.Up)     // 2
 * Optionals
 
 ```
-x: ?int
+let x: ?int
 
 if x != null:
     print(?x)   // unwrap optional
@@ -249,5 +249,3 @@ if x != null:
 * Optional runtime safety checks
 
 ---
-
-
