@@ -115,7 +115,7 @@ namespace clear
 
         "not","and","or",
 
-        "let","const",
+        "let", "const",
     };
 
     inline set<std::string> g_Punctuators = {

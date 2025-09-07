@@ -41,15 +41,11 @@ int main(int argc, char* argv[])
             std::println("Using standard library {}", config.StandardLibrary.string());
 
             CompilationManager manager(config);
-            manager.LoadSources();
-            manager.PropagateSymbolTables();
-            manager.GenerateIRAndObjectFiles();
-            manager.Emit();
+			manager.RunPipeline();
 
             std::println("Finished compilation");
 
             return 0;
-
         }
         default:
         {
@@ -57,5 +53,4 @@ int main(int argc, char* argv[])
             return -1;
         }
     }
-    
 }

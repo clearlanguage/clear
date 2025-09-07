@@ -17,6 +17,8 @@ namespace clear
     public:
         CompilationManager(const BuildConfig& config);
         ~CompilationManager() = default;
+		
+		void RunPipeline();
 
         void LoadSources();
         void LoadSourceFile(const std::filesystem::path& path);

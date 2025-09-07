@@ -8,6 +8,7 @@
 
 #include "Symbols/Symbol.h"
 
+#include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Module.h>
 #include <memory>
 #include <unordered_map>
@@ -34,12 +35,15 @@ namespace clear
         std::unique_ptr<llvm::Module> TakeModule() { return std::move(m_Module); }
         
         std::shared_ptr<llvm::LLVMContext> GetContext() { return m_Context; }
-        std::shared_ptr<ASTNodeBase> GetRoot() { return m_Root; }
+        std::shared_ptr<ASTBlock> GetRoot() { return m_Root; }
+		std::shared_ptr<TypeRegistry> GetTypeRegistry() { return m_TypeRegistry; }
+		const auto& GetName() { return m_ModuleName; }
 
         CodegenContext GetCodegenContext();
-
-        Symbol Lookup(const std::string& symbol);
-        Symbol Lookup(const std::string& fn, const std::vector<Parameter>& params);
+		
+		//TODO: make this optional Symbols
+		std::optional<Symbol> Lookup(llvm::StringRef symbol);
+		std::optional<Symbol> Lookup(llvm::StringRef fn, llvm::ArrayRef<Parameter> params);
 
         // NOTE: for now only types but may be extended to support more symbols
         void CreateAlias(const std::string& aliasName, const std::string& symbolName);
@@ -55,7 +59,7 @@ namespace clear
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
         
         std::unordered_map<std::string, std::shared_ptr<Module>> m_ContainedModules;
-        std::shared_ptr<ASTNodeBase> m_Root;
+        std::shared_ptr<ASTBlock> m_Root;
 
         std::shared_ptr<TypeRegistry> m_TypeRegistry;
 

@@ -1,7 +1,9 @@
 #pragma once 
 
+#include "Symbols/Type.h"
 #include <API/LLVM/LLVMInclude.h>
 
+#include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <variant>
 
@@ -9,9 +11,13 @@ namespace clear
 {
     class Module;
     class Type;
+	class GenericType;
     class FunctionInstance;
     class FunctionTemplate;
     class ASTNodeBase;
+	class ASTFunctionDefinition;
+
+	struct Symbol;
 
     using String = llvm::SmallString<64>;
     using StringRef = llvm::StringRef;
@@ -26,13 +32,38 @@ namespace clear
         Value, 
         Identifier, 
         ClassTemplate, 
-        InferType
+        InferType,
+		Callee,
+		GenericTemplate,
+		Generic
     };
 
     struct FunctionSymbol 
     {
         FunctionInstance* Instance;
+		
+		llvm::Function* FunctionPtr = nullptr;
+		llvm::FunctionType* FunctionType = nullptr;
+		std::shared_ptr<ASTFunctionDefinition> FunctionNode;
     };
+	
+
+	struct CalleeSymbol
+	{
+		std::shared_ptr<Symbol> FunctionSymbol;
+		std::shared_ptr<Symbol> Receiver;
+	};
+
+	struct GenericTemplateSymbol
+	{
+		std::shared_ptr<ASTNodeBase> GenericTemplate;
+	};
+	
+	struct GenericSymbol
+	{
+		std::shared_ptr<ASTNodeBase> Node;
+		std::shared_ptr<Symbol> GeneratedSymbol;
+	};
 
     struct FunctionTemplateSymbol 
     {
@@ -77,7 +108,10 @@ namespace clear
         TypeSymbol, 
         String, 
         ClassTemplate, 
-        InferTypeSymbol>;
+        InferTypeSymbol,
+		CalleeSymbol,
+		GenericTemplateSymbol,
+		GenericSymbol>;
 
     struct Symbol 
     {
@@ -89,18 +123,21 @@ namespace clear
         static Symbol CreateModule(std::shared_ptr<Module> module_);
         static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type, bool shouldMemcpy = false);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
-        static Symbol CreateFunction(FunctionInstance* instance);
+        static Symbol CreateFunction(FunctionInstance* instance); // TODO: depricated
+		static Symbol CreateFunction(std::shared_ptr<ASTFunctionDefinition> def);
         static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
         static Symbol CreateIdentifier(StringRef identifierName);
         static Symbol CreateClassTemplate(const ClassTemplate& classTemplate);
         static Symbol CreateInferType(bool IsConst);
+		static Symbol CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver);
+		static Symbol CreateGenericTemplate(std::shared_ptr<ASTNodeBase> genericTemplate);
+		static Symbol CreateGeneric(std::shared_ptr<ASTNodeBase> clonned);
 
-        // helpers
         static Symbol GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value);
         static Symbol GetBooleanType(std::shared_ptr<Module> module_);
 
-        llvm::Value* GetLLVMValue();
+        llvm::Value* GetLLVMValue() const;
         std::shared_ptr<Type>   GetType() const;
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;
@@ -110,5 +147,9 @@ namespace clear
         const ValueSymbol& GetValueTuple() const;
         ClassTemplate GetClassTemplate();
         InferTypeSymbol GetInferType();
+		FunctionSymbol& GetFunctionSymbol();
+		CalleeSymbol GetCalleeSymbol();
+		GenericTemplateSymbol GetGenericTemplate();
+		GenericSymbol GetGeneric();
     };
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Log.h"
 #include "Symbols/FunctionCache.h"
 #include "Symbols/Type.h"
 #include "Core/Value.h"
@@ -11,7 +12,11 @@
 #include "Symbols/Symbol.h"
 #include "Symbols/TypeRegistry.h"
 
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <memory>
 #include <string>
 #include <filesystem>
@@ -22,14 +27,15 @@ namespace clear
 	{
 		Base = 0, Literal, BinaryExpression, VariableDecleration,
 		FunctionDefinition, FunctionDecleration,
-		ReturnStatement, Expression, Struct,
+		ReturnStatement, Struct,
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
 		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
 		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
 		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
 		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
-		Switch, ListExpr, StructExpr
+		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
+		Subscript, ArrayType
 	};
 
 	class ASTNodeBase;
@@ -65,6 +71,8 @@ namespace clear
 		{
 		}
 	};
+	
+	class Sema;
 
     class ASTNodeBase : public std::enable_shared_from_this<ASTNodeBase>
 	{
@@ -73,12 +81,9 @@ namespace clear
 		virtual ~ASTNodeBase() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&);
-
 		virtual void Print() {}
 
-		void Push(const std::shared_ptr<ASTNodeBase>& child);
-		void Remove(const std::shared_ptr<ASTNodeBase>& child);
-
+		void AddChild(std::shared_ptr<ASTNodeBase> node);
 		void PropagateSymbolTableToChildren();
 
 		void CreateSymbolTable();
@@ -86,14 +91,23 @@ namespace clear
 
 		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
 
-		auto& GetChildren() { return m_Children; }
-	
 	private:
 		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
-
+	
 	private:
-		std::vector<std::shared_ptr<ASTNodeBase>> m_Children;
 		std::shared_ptr<SymbolTable> m_SymbolTable;
+	};
+	
+	class ASTBlock : public ASTNodeBase
+	{
+	public:
+		ASTBlock();
+		virtual ~ASTBlock() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Block; }
+		virtual Symbol Codegen(CodegenContext&) override;
+		
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Children;
 	};
 
 	class ASTNodeLiteral : public ASTNodeBase
@@ -103,6 +117,8 @@ namespace clear
 		virtual ~ASTNodeLiteral() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Literal; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		const auto& GetData() const { return m_Token; }
 
 	private:
 		Token m_Token;
@@ -116,6 +132,7 @@ namespace clear
 		virtual ~ASTBinaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::BinaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
 		virtual void Print() override;
 
 		inline const OperatorType GetExpression() const { return m_Expression; }
@@ -126,6 +143,12 @@ namespace clear
 		static Symbol HandleMathExpressionSI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 		static Symbol HandleMathExpressionUI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
 		static Symbol HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+
+
+	public:
+		std::shared_ptr<ASTNodeBase> LeftSide;
+		std::shared_ptr<ASTNodeBase> RightSide;
+		std::shared_ptr<Type> ResultantType;
 
 	private:
 		bool IsMathExpression()    const;
@@ -150,43 +173,55 @@ namespace clear
 		Symbol HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
 	private:
-		OperatorType m_Expression;
+		OperatorType m_Expression;	
 	};
+	
 
 	class ASTVariableDeclaration : public ASTNodeBase
 	{
 	public:
-		ASTVariableDeclaration(const std::string& name);
+		ASTVariableDeclaration(const Token& name);
 		virtual ~ASTVariableDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
 
 		const auto& GetName() const { return m_Name; }
 		const auto& GetResolvedType() const { return m_Type; }
+	
+	public:
+		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<ASTNodeBase> Initializer;
+		std::shared_ptr<Symbol> Variable;
+		std::shared_ptr<Type> ResolvedType;
 
 	private:
-		std::string m_Name;
+		Token m_Name;
 		std::shared_ptr<Type> m_Type;
 	};
 
 	class ASTVariable : public ASTNodeBase
 	{
 	public:
-		ASTVariable(const std::string& name);
+		ASTVariable(const Token& name);
 		virtual ~ASTVariable() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Variable; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
 		virtual void Print() override;
 
-		const std::string& GetName() const { return m_Name; }
+		const auto& GetName() const { return m_Name; }
+	
+	public:
+		std::shared_ptr<Symbol> Variable;
 
 	private:
-		std::string m_Name;
+		Token m_Name;
 	};
 
 	enum class AssignmentOperatorType 
 	{
-		Initialize, Normal, Mul, Div, Add, Sub, Mod
+		None, Initialize, Normal, Mul, Div, Add, Sub, Mod
 	};
 
 	class ASTAssignmentOperator : public ASTNodeBase
@@ -197,6 +232,10 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::AssignmentOperator; }
 		virtual Symbol Codegen(CodegenContext&);
 
+	public:
+		std::shared_ptr<ASTNodeBase> Storage;
+		std::shared_ptr<ASTNodeBase> Value;
+
 	private:
 		void HandleDifferentTypes(Symbol& storage, Symbol& data, CodegenContext& ctx);
 
@@ -205,6 +244,10 @@ namespace clear
 	};
 
 
+	
+	class ASTTypeSpecifier;
+	class ASTDefaultArgument;
+
 	class ASTFunctionDefinition : public ASTNodeBase
 	{
 	public:
@@ -212,6 +255,7 @@ namespace clear
 		virtual ~ASTFunctionDefinition() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
 
 		const std::string& GetName() const { return m_Name; }
 		void SetName(const std::string& name) { m_Name = name;}
@@ -236,6 +280,17 @@ namespace clear
 
 		std::shared_ptr<ASTFunctionDefinition> ShallowCopy();
 
+	public:
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
+		std::shared_ptr<ASTNodeBase> ReturnType;
+		std::shared_ptr<Type> ReturnTypeVal;
+		std::shared_ptr<ASTBlock> CodeBlock;	
+		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
+		std::shared_ptr<Symbol> FunctionSymbol;	
+		std::shared_ptr<Module> SourceModule;
+		llvm::Function::LinkageTypes Linkage = llvm::Function::InternalLinkage;
+		bool IsVariadic = false;
+
 	private:
 		std::string m_Name;
 
@@ -249,56 +304,59 @@ namespace clear
 	class ASTFunctionCall : public ASTNodeBase
 	{
 	public:
-		ASTFunctionCall(const std::string& name);
+		ASTFunctionCall() = default;
 		virtual ~ASTFunctionCall() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionCall; }
 		virtual Symbol Codegen(CodegenContext&) override;
 				
-		void SetName(const std::string& name) { m_Name = name; }
-		const std::string& GetName() const { return m_Name; }
-
-		void PushPrefixArgument(llvm::Value* value, std::shared_ptr<Type> type) 
-		{ 
-			m_PrefixArguments.emplace_back(value, type); 
-		}
+	public:
+		std::shared_ptr<ASTNodeBase> Callee;
+		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
 
 	private:
-		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params);
-		void CastArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<Parameter>& params, FunctionTemplate&);
+		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
+		std::shared_ptr<ASTBinaryExpression> IsMemberFunction();
+	};
 	
-	private:
-		std::string m_Name;
-		std::vector<std::pair<llvm::Value*, std::shared_ptr<Type>>> m_PrefixArguments; // value, type
+	enum class SubscriptSemantic
+	{
+		None = 0, ArrayIndex, Generic
 	};
 
-	class ASTFunctionDecleration : public ASTNodeBase
+	class ASTSubscript : public ASTNodeBase
 	{
 	public:
-		bool InsertDecleration = true;
-
+		ASTSubscript() = default;
+		virtual ~ASTSubscript() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Subscript; }
+		virtual Symbol Codegen(CodegenContext&) override;
+		
 	public:
-		ASTFunctionDecleration(const std::string& name);
-		virtual ~ASTFunctionDecleration() = default;
+		std::shared_ptr<ASTNodeBase> Target;
+		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> SubscriptArgs;
+		SubscriptSemantic Meaning = SubscriptSemantic::None;
+		std::shared_ptr<Symbol> GeneratedType;
+	};
+
+	class ASTFunctionDeclaration : public ASTNodeBase
+	{
+	public:
+		ASTFunctionDeclaration(const std::string& name);
+		virtual ~ASTFunctionDeclaration() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDecleration; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
-		const auto& GetParameters() { return m_Parameters; }
-		const auto& GetReturnType() { return m_ReturnType; }
 		const auto& GetName() 		{ return m_Name; }
 
-	private:
-		std::vector<Parameter> m_Parameters;
-		std::shared_ptr<Type> m_ReturnType;
-		std::string m_Name;
-	};
-
-	class ASTExpression : public ASTNodeBase
-	{
 	public:
-		ASTExpression() = default;
-		virtual ~ASTExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Expression; }
-		virtual Symbol Codegen(CodegenContext&) override;
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Arguments;
+		std::shared_ptr<ASTNodeBase> ReturnTypeNode;
+		std::shared_ptr<Type> ReturnType;
+		std::shared_ptr<Symbol> DeclSymbol;
+		bool InsertDecleration = true;
+
+	private:
+		std::string m_Name;
 	};
 
 	class ASTListExpr : public ASTNodeBase 
@@ -308,6 +366,10 @@ namespace clear
 		virtual ~ASTListExpr() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ListExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<Type> ListType;
 	};
 
 	class ASTStructExpr : public ASTNodeBase 
@@ -317,6 +379,10 @@ namespace clear
 		virtual ~ASTStructExpr() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::StructExpr; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<ASTNodeBase> TargetType; 
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);
@@ -335,7 +401,7 @@ namespace clear
 
 	private:
 		void ProcessCImport(const std::filesystem::path& path,  CodegenContext& ctx);
-		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);
+		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);ASTNode.h
 		Parameter GetInfoFromArg(const std::vector<Token>& arg, CodegenContext& ctx);
 
 		void ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx);
@@ -366,6 +432,10 @@ namespace clear
 		virtual ~ASTReturn() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ReturnStatement; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+
+	public:
+		std::shared_ptr<ASTNodeBase> ReturnValue;
 
 	private:
 		void EmitDefaultReturn(CodegenContext& ctx);
@@ -378,9 +448,33 @@ namespace clear
 		virtual ~ASTUnaryExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		OperatorType GetOperatorType() const { return m_Type; }
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
 
 	private: 
 		OperatorType m_Type;
+	};
+
+	class ASTLoad : public ASTNodeBase 
+	{
+	public:
+		ASTLoad() = default;
+		virtual ~ASTLoad() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Load; }
+		virtual Symbol Codegen(CodegenContext&) override;
+	
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
+	};
+	
+
+	struct ConditionalBlock
+	{
+		std::shared_ptr<ASTNodeBase> Condition;
+		std::shared_ptr<ASTBlock> CodeBlock;
 	};
 
 	class ASTIfExpression : public ASTNodeBase 
@@ -390,6 +484,10 @@ namespace clear
 		virtual ~ASTIfExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IfExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<ConditionalBlock> ConditionalBlocks;
+		std::shared_ptr<ASTBlock> ElseBlock;
 	};
 
 	class ASTWhileExpression : public ASTNodeBase
@@ -399,8 +497,10 @@ namespace clear
 		virtual ~ASTWhileExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::WhileLoop; }
 		virtual Symbol Codegen(CodegenContext&) override;
-	};
 
+	public:
+		ConditionalBlock WhileBlock;
+	};
 
 	class ASTTernaryExpression : public ASTNodeBase
 	{
@@ -410,8 +510,13 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TernaryExpression; }
 		virtual Symbol Codegen(CodegenContext&) override;
 		virtual void Print() override;
-	};
 
+	public:
+		std::shared_ptr<ASTNodeBase> Condition;
+		std::shared_ptr<ASTNodeBase> Truthy;
+		std::shared_ptr<ASTNodeBase> Falsy;
+	};
+	
 	class ASTTypeSpecifier : public ASTNodeBase
 	{
 	public:
@@ -419,9 +524,13 @@ namespace clear
 		virtual ~ASTTypeSpecifier() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeSpecifier; }
 		virtual Symbol Codegen(CodegenContext&) override;
+		
+		inline const auto& GetName() const { return m_Name; }
 
 	public:
 		bool IsVariadic = false;
+		std::shared_ptr<ASTNodeBase> TypeResolver;
+		std::shared_ptr<Type> ResolvedType;
 
 	private:
 		std::string m_Name;
@@ -434,7 +543,11 @@ namespace clear
 		virtual ~ASTForExpression() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ForLoop; }
 		virtual Symbol Codegen(CodegenContext&) override;
-	
+
+	public:
+		std::shared_ptr<ASTNodeBase> Iterator;
+		std::shared_ptr<ASTBlock> CodeBlock;
+
 	private:
 		std::string m_Name;
 	};
@@ -446,6 +559,10 @@ namespace clear
 		virtual ~ASTStruct() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
 		virtual Symbol Codegen(CodegenContext&) override;
+	
+	public:
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
+		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
 
 	private:
 		std::string m_Name;
@@ -466,12 +583,21 @@ namespace clear
 		}
 
 		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
+	
+		inline const auto& GetName() const { return m_Name; } 
+		void SetName(llvm::StringRef newName) { m_Name = std::string(newName); }
 
+	public:
+		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
+		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
+		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
+		std::shared_ptr<Type> ClassTy;
+	
 	private:
 		std::string m_Name;
 		llvm::SmallVector<std::string> m_Generics;
 	};
-
+	
 	class ASTTrait : public ASTNodeBase
 	{
 	public:
@@ -479,6 +605,11 @@ namespace clear
 		virtual ~ASTTrait() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Trait; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> VariableDeclarations;
+		std::vector<std::shared_ptr<ASTFunctionDeclaration>> FunctionDeclarations;
+
 	private:
 		std::string m_Name;
 	};
@@ -505,6 +636,9 @@ namespace clear
 
 		size_t GetIndex() const { return m_Index; }
 
+	public:
+		std::shared_ptr<ASTNodeBase> Value;
+		
 	private:
 		size_t m_Index;
 	};
@@ -537,6 +671,8 @@ namespace clear
 
 		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal = false);
 
+	public:
+		std::shared_ptr<ASTNodeBase> Storage;
 	};
 
 	class ASTEnum : public ASTNodeBase
@@ -552,6 +688,9 @@ namespace clear
 			m_Names.push_back(name);
 		}
 
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> EnumValues;
+
 	private:
 		std::string m_EnumName;
 		std::vector<std::string> m_Names;
@@ -564,29 +703,17 @@ namespace clear
 		virtual ~ASTDefer() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Defer; }
 		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Expr;
+		
 	};
 
-	class ASTTypeResolver : public ASTNodeBase 
+	struct SwitchCase
 	{
-	public:
-		ASTTypeResolver(const std::vector<Token>& tokens = {});
-		virtual ~ASTTypeResolver() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeResolver; }
-		virtual Symbol Codegen(CodegenContext&) override; 
-
-		void PushToken(const Token& token)
-		{
-			m_Tokens.push_back(token);
-		}
-
-	private:
-		Symbol Inferred();
-		std::shared_ptr<Type> ResolveArray(CodegenContext& ctx, size_t& i, int64_t& k);
-		std::shared_ptr<Type> ResolveGeneric(Symbol& classTemplate, CodegenContext& ctx, size_t& i, int64_t& k);
-	
-	private:
-		std::vector<Token> m_Tokens;
-	};	
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<ASTBlock> CodeBlock;
+	};
 
 	class ASTSwitch : public ASTNodeBase 
 	{
@@ -595,5 +722,39 @@ namespace clear
 		virtual ~ASTSwitch() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Switch; }
 		virtual Symbol Codegen(CodegenContext&) override; 
+
+	public:
+		std::shared_ptr<ASTBlock> DefaultCaseCodeBlock;
+		std::vector<SwitchCase> Cases;
+		std::shared_ptr<ASTNodeBase> Value;
 	};	
-}
+	
+	class ASTGenericTemplate : public ASTNodeBase
+	{
+	public:
+		ASTGenericTemplate() = default;
+		virtual ~ASTGenericTemplate() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::GenericTemplate; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+		
+		std::string GetName();
+
+	public:
+		llvm::SmallVector<std::string> GenericTypeNames;
+		std::shared_ptr<ASTNodeBase> TemplateNode;
+	};
+
+	class ASTArrayType : public ASTNodeBase 
+	{
+	public:
+		ASTArrayType() = default;
+		virtual ~ASTArrayType() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ArrayType; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+		
+	public:
+		std::shared_ptr<Type> GeneratedArrayType;
+		std::shared_ptr<ASTNodeBase> SizeNode;
+		std::shared_ptr<ASTNodeBase> TypeNode;
+	};
+} 

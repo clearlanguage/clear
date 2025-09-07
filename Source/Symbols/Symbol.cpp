@@ -1,5 +1,6 @@
 #include "Symbol.h"
 
+#include "Core/Log.h"
 #include "Module.h"
 #include "Type.h"
 #include "FunctionCache.h"
@@ -59,6 +60,16 @@ namespace clear
             .Data = symbol
         };
     }
+
+	Symbol Symbol::CreateFunction(std::shared_ptr<ASTFunctionDefinition> def)
+	{
+		FunctionSymbol symbol = { .FunctionNode = def };
+
+		return Symbol {
+			.Kind = SymbolKind::Function,
+			.Data = symbol
+		};
+	}
     
     Symbol Symbol::CreateFunctionTemplate(FunctionTemplate* template_)
     {
@@ -107,17 +118,49 @@ namespace clear
         };
     }
 
+	Symbol Symbol::CreateCallee(std::shared_ptr<Symbol> function, std::shared_ptr<Symbol> receiver)
+	{
+		return Symbol {
+			.Kind = SymbolKind::Callee,
+			.Data = CalleeSymbol {
+				.FunctionSymbol = function,
+				.Receiver = receiver
+			}
+		};
+	}
+
+	Symbol Symbol::CreateGenericTemplate(std::shared_ptr<ASTNodeBase> genericTemplate)
+	{
+		return Symbol {
+			.Kind = SymbolKind::GenericTemplate,
+			.Data = GenericTemplateSymbol {
+				.GenericTemplate = genericTemplate
+			}
+		};
+	}
+
+	Symbol Symbol::CreateGeneric(std::shared_ptr<ASTNodeBase> generic)
+	{
+		return Symbol {
+			.Kind = SymbolKind::Generic,
+			.Data = GenericSymbol { 
+				.Node = generic,
+				.GeneratedSymbol = std::make_shared<Symbol>()
+			}
+		};
+	}
+
     Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
     {
-        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").GetType());
+        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value().GetType());
     }
     
     Symbol Symbol::GetBooleanType(std::shared_ptr<Module> module_)
     {
-        return Symbol::CreateType(module_->Lookup("bool").GetType());
+        return Symbol::CreateType(module_->Lookup("bool").value().GetType());
     }
     
-    llvm::Value* Symbol::GetLLVMValue()
+    llvm::Value* Symbol::GetLLVMValue() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Value, "cannot call Symbol::GetValue() when kind is not Value");
         auto& value = std::get<ValueSymbol>(Data);
@@ -126,11 +169,21 @@ namespace clear
 
     std::shared_ptr<Type> Symbol::GetType() const
     {
-        CLEAR_VERIFY(Kind == SymbolKind::Type || Kind == SymbolKind::Value, "cannot call Symbol::GetType() when kind is not Type or Value");
+        CLEAR_VERIFY(Kind == SymbolKind::Type || 
+					 Kind == SymbolKind::Value || 
+					 Kind == SymbolKind::Function, 
+					 "cannot call Symbol::GetType() when kind is not Type or Value or Function"
+		);
 
         if(Kind == SymbolKind::Type)
             return std::get<TypeSymbol>(Data).Type_;
-
+		
+		if(Kind == SymbolKind::Function)
+		{
+			auto returnType = std::get<FunctionSymbol>(Data).FunctionNode->ReturnTypeVal;
+			return returnType;
+		}
+	
         auto& value = std::get<ValueSymbol>(Data);
         return value.Types[0];
     }
@@ -148,7 +201,6 @@ namespace clear
 
         return std::make_pair(value.Values[0], value.Types[0]);
     }
-
     FunctionInstance* Symbol::GetFunction() const
     {
         CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
@@ -184,4 +236,28 @@ namespace clear
         CLEAR_VERIFY(Kind == SymbolKind::InferType, "cannot call Symbol::GetInferType() when kind is not InferType");
         return std::get<InferTypeSymbol>(Data);
     }
+
+	FunctionSymbol& Symbol::GetFunctionSymbol()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunctionSymbol() when kind is not Function");
+		return std::get<FunctionSymbol>(Data);
+	}
+
+	CalleeSymbol Symbol::GetCalleeSymbol()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Callee, "cannot call Symbol::GetCalleeSymbol() when kind is not Callee");
+		return std::get<CalleeSymbol>(Data);
+	}
+
+	GenericTemplateSymbol Symbol::GetGenericTemplate()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::GenericTemplate, "cannot call Symbol::GetGenericTemplate() when kind is not GenericTemplate");
+		return std::get<GenericTemplateSymbol>(Data);
+	}
+
+	GenericSymbol Symbol::GetGeneric()
+	{
+		CLEAR_VERIFY(Kind == SymbolKind::Generic, "cannot call Symbol::GetGeneric() when kind is not Generic");
+		return std::get<GenericSymbol>(Data);
+	}
 }

@@ -2,7 +2,9 @@
 
 #include <fast_float/fast_float.h>
 
+#include <limits>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace clear {
@@ -128,7 +130,7 @@ namespace clear {
 
     NumberInfo GetNumberInfoFromLiteral(const std::string_view& str)
     {
-        bool isFloatingPoint = str.find_first_of('.') != std::string_view::npos;
+        bool isFloatingPoint = str.find_first_of(".eE") != std::string_view::npos;
 
         NumberInfo info;
 
@@ -143,35 +145,32 @@ namespace clear {
         auto testTypeAgainst = [&info, result](auto type)
             {
                 using T = decltype(type);
+						
+				if (result <= (double)std::numeric_limits<T>::max() && 
+					result >= (double)std::numeric_limits<T>::min())
+				{
+					info.IsFloatingPoint = std::is_floating_point_v<T>;
+					info.IsSigned = std::is_signed_v<T>;
+					info.BitsNeeded = sizeof(T) * 8;
 
-                if (result == (double)((T)(result)))
-                {
-                    if constexpr (std::is_signed_v<T>)
-                    {
-                        info.IsSigned = true;
-                    }
+					return true;
+				}
 
-                    if constexpr (std::is_floating_point_v<T>)
-                    {
-                        info.IsFloatingPoint = true;
-                    }
-
-                    info.BitsNeeded = sizeof(T) * 8;
-                    
-                    return true;
-                }
-                return false;
+				return false;
             };
 
-        
-        if (!isFloatingPoint && (testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{})))
-            return info;
+			
+		if (!isFloatingPoint)
+		{
+			if (testTypeAgainst(int32_t{}) || testTypeAgainst(int64_t{}))
+				return info;
+			
+			if (testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{}))
+				return info;
+		}
 
-        if (!isFloatingPoint && (testTypeAgainst(uint32_t{}) || testTypeAgainst(uint64_t{})))
-            return info;
-
-        if (testTypeAgainst(float{}) || testTypeAgainst(double{}))
-            return info;
+		if (testTypeAgainst(float{}) || testTypeAgainst(double{}))
+			return info;
 
         return info;
     }

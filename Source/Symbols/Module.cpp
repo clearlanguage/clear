@@ -4,6 +4,7 @@
 #include "Symbols/TypeRegistry.h"
 #include "Symbols/SymbolTable.h"
 #include <memory>
+#include <optional>
 
 namespace clear 
 {
@@ -14,8 +15,7 @@ namespace clear
 		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
         m_Module  = std::make_unique<llvm::Module>(name, *m_Context);
 
-        m_Root = std::make_shared<ASTNodeBase>();
-        m_Root->CreateSymbolTable();
+        m_Root = std::make_shared<ASTBlock>();
 
         m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
 
@@ -41,8 +41,7 @@ namespace clear
         m_TypeRegistry = std::make_shared<TypeRegistry>(m_Context);
         m_ContainedModules["__clrt_internal"] = builtins;
 
-        m_Root = std::make_shared<ASTNodeBase>();
-        m_Root->CreateSymbolTable();
+        m_Root = std::make_shared<ASTBlock>();
         m_Root->GetSymbolTable()->SetPrevious(parent->GetRoot()->GetSymbolTable());
     }
 
@@ -121,9 +120,9 @@ namespace clear
         return ctx;
     }
     
-    Symbol Module::Lookup(const std::string& symbolName)
+	std::optional<Symbol> Module::Lookup(llvm::StringRef symbolName)
     {
-        if(auto ty = m_TypeRegistry->GetType(symbolName))
+        if(auto ty = m_TypeRegistry->GetType(symbolName.str()))
             return Symbol::CreateType(ty);
 
         if(auto classTemplate = m_TypeRegistry->GetClassTemplate(symbolName))
@@ -134,7 +133,7 @@ namespace clear
         
         auto tbl = m_Root->GetSymbolTable();
         
-        Allocation alloca = tbl->GetAlloca(symbolName);
+        Allocation alloca = tbl->GetAlloca(symbolName.str());
 
         if(alloca.Alloca)
         {
@@ -146,36 +145,23 @@ namespace clear
             if(name == symbolName)
                 return Symbol::CreateModule(containedModule);
 
-            Symbol symbol = containedModule->Lookup(symbolName);
+			std::optional<Symbol> symbol = containedModule->Lookup(symbolName.str());
 
-            if(symbol.Kind != SymbolKind::None)
+            if(symbol.has_value())
                 return symbol;
         }
 
-        return Symbol();
+        return std::nullopt;
     }
     
-    Symbol Module::Lookup(const std::string& fn, const std::vector<Parameter>& params)
+	std::optional<Symbol> Module::Lookup(llvm::StringRef fn, llvm::ArrayRef<Parameter> params)
     {
-        FunctionTemplate& template_ = m_Root->GetSymbolTable()->GetTemplate(fn, params);
-
-        if(template_.SourceModule)
-            return Symbol::CreateFunctionTemplate(&template_);
-
-        for(const auto& [name, containedModule] : m_ContainedModules)
-        {
-            Symbol symbol = containedModule->Lookup(fn, params);
-
-            if(symbol.Kind != SymbolKind::None)
-                return symbol;
-        }
-
-        return Symbol();
+		return Symbol();
     }
 
     void Module::CreateAlias(const std::string& aliasName, const std::string& symbolName)
     {
-        Symbol symbol = Lookup(symbolName);
+        Symbol symbol = Lookup(symbolName).value();
         m_TypeRegistry->RegisterType(aliasName, symbol.GetType());
     }
     

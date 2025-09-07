@@ -1,7 +1,7 @@
 #include "CompilationManager.h"
 
 #include "Core/Log.h"
-#include <iterator>
+#include "Sema/Sema.h"
 #include <llvm/IR/LLVMContext.h>
 #include <memory>
 
@@ -14,6 +14,14 @@ namespace clear
         m_Builtins = std::make_shared<Module>("__clrt_internal", context, nullptr);
         m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins);
     }
+	
+	void CompilationManager::RunPipeline()
+	{
+		LoadSources();
+		PropagateSymbolTables();
+		GenerateIRAndObjectFiles();
+		Emit();
+	}
 
     void CompilationManager::LoadSources()
     {
@@ -64,6 +72,15 @@ namespace clear
             return;
         }
 
+		#if 0
+
+		for (const auto& token : lexer.GetTokens())
+		{
+			std::println("{}: {}", token.GetTypeAsString(), token.GetData());
+		}
+
+		#endif
+
         Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
 
         if(m_DiagnosticsBuilder.IsFatal())
@@ -71,6 +88,15 @@ namespace clear
             m_DiagnosticsBuilder.Dump();
             return;
         }
+
+		Sema sema(m_MainModule, m_DiagnosticsBuilder);
+		sema.Visit(parser.GetResult());
+		
+		if (m_DiagnosticsBuilder.IsFatal())
+		{
+			m_DiagnosticsBuilder.Dump();
+			return;
+		}
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -108,7 +134,6 @@ namespace clear
         }
 
         m_MainModule->Link();
-
         if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
             std::println("failed to build module");

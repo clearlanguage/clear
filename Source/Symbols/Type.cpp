@@ -3,8 +3,12 @@
 #include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
 #include "SymbolTable.h"
+#include "Symbols/Symbol.h"
 
 #include <functional>
+#include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/IR/LLVMContext.h>
+#include <memory>
 
 namespace clear
 {
@@ -121,137 +125,74 @@ namespace clear
         m_BaseType = type;
     }
 
-    StructType::StructType(const std::string& name, llvm::LLVMContext& context)
-        : m_Name(name), m_LLVMType(llvm::StructType::create(context, name))
-    {
-        Toggle(TypeFlags::Compound);
-    }
+	ClassType::ClassType(llvm::StringRef name, llvm::LLVMContext& context)
+		: m_Name(name), m_LLVMType(llvm::StructType::create(context, name))
+	{
+		Toggle(TypeFlags::Compound);
+		Toggle(TypeFlags::Class);
+	}
 
-    StructType::StructType(const std::string& name, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
-        : m_Name(name)
-    {
-        std::vector<llvm::Type*> types;
-
-		uint32_t k = 0;
-
-		for (auto& [memberName, type] : members)
+	void ClassType::SetBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members)
+	{
+		llvm::SmallVector<llvm::Type*> types;
+		
+		for (const auto& [memberName, member] : members)
 		{
-			m_MemberIndices[memberName] = k++;
-            m_MemberTypes[memberName] = type;
-			types.push_back(type->Get());
+			if (member->Kind == SymbolKind::Type)
+			{
+				types.push_back(member->GetType()->Get());
+				m_MemberValues[memberName] = member->GetType();
+			}
+			else 
+			{
+				m_MemberFunctions[memberName] = member;
+			}
 		}
 
-		m_LLVMType = llvm::StructType::create(types, name);
-        Toggle(TypeFlags::Compound);
-    }
+		m_LLVMType->setBody(types);
+	}
 
-    void StructType::SetBody(const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members)
-    {
-        std::vector<llvm::Type*> types;
-
-		uint32_t k = 0;
-
-		for (auto& [memberName, type] : members)
+	std::optional<std::shared_ptr<Symbol>> ClassType::GetMember(llvm::StringRef name)
+	{
+		std::string strName = std::string(name);
+		
 		{
-			m_MemberIndices[memberName] = k++;
-            m_MemberTypes[memberName] = type;
-			types.push_back(type->Get());
+			auto it = m_MemberFunctions.find(strName);
+
+			if (it != m_MemberFunctions.end())
+				return it->second;
 		}
-        
-        m_LLVMType->setBody(types);
-    }
 
+		{
+			auto it = m_MemberValues.find(strName);
 
-    size_t StructType::GetMemberIndex(const std::string& member)
-    {
-        CLEAR_VERIFY(m_MemberIndices.contains(member), member, " is not a member of ", m_Name);
-        return m_MemberIndices.at(member);
-    }
+			if (it != m_MemberValues.end())
+			{
+				std::shared_ptr<Symbol> symbol = std::make_shared<Symbol>(Symbol::CreateType(it->second));
+				return symbol;
+			}
+		}
 
-    std::shared_ptr<Type> StructType::GetMemberType(const std::string& member)
-    {
-        CLEAR_VERIFY(m_MemberTypes.contains(member), member, " is not a member of ", m_Name);
-        return m_MemberTypes.at(member);
-    }
+		return std::nullopt;
+	}
 
-    void StructType::SetMember(const std::string& member, std::shared_ptr<Type> type)
-    {
-        CLEAR_VERIFY(m_MemberTypes.contains(member), "invalid member");
-        CLEAR_VERIFY(m_MemberTypes[member]->IsPointer() && type->IsPointer(), "cannot redefine a member that is not a pointer");
+	std::optional<std::shared_ptr<Symbol>> ClassType::GetMemberValueByIndex(size_t index)
+	{
+		if (index >= m_MemberValues.size())
+			return std::nullopt;
+		
+		auto it = m_MemberValues.begin() + index;
+		return std::make_shared<Symbol>(Symbol::CreateType(it->second));
+	}
 
-        m_MemberTypes[member] = type;
-    }
+	std::optional<size_t> ClassType::GetMemberValueIndex(llvm::StringRef name)
+	{
+		auto it = m_MemberValues.find(std::string(name));
+		if (it == m_MemberValues.end())
+			return std::nullopt;
 
-    std::shared_ptr<Type> StructType::GetMemberAtIndex(uint64_t index)
-    {
-        for(const auto& [member, mIndex] : m_MemberIndices)
-        {
-            if(index == mIndex) 
-                return m_MemberTypes[member];
-        }
-
-        CLEAR_UNREACHABLE("unable to find index", index);
-        return nullptr;
-    }
-
-    void StructType::AddDefaultValue(const std::string& member, llvm::Value* value)
-    {
-        m_DefaultValues[member] = value;
-    }
-
-    llvm::Value* StructType::GetDefaultValue(const std::string& member)
-    {
-        return m_DefaultValues[member];
-    }
-
-    void ClassType::AddDefaultValue(const std::string& member, llvm::Value* value)
-    {
-        m_StructType->AddDefaultValue(member, value);
-    }
-
-    llvm::Value* ClassType::GetDefaultValue(const std::string& member)
-    {
-        return m_StructType->GetDefaultValue(member);
-    }
-
-    std::string ClassType::ConvertFunctionToClassFunction(const std::string& name)
-    {
-        //_CLRfunction_name$args%rt -> _CLRClassName.function_name$ClassName*args%rt
-    
-        CLEAR_VERIFY(name.starts_with("_CLR"), "Not a valid mangled name");
-    
-        size_t startArgs = name.find_first_of('$');
-        size_t endArgs   = name.find_last_of('%');
-    
-        CLEAR_VERIFY(startArgs != std::string::npos && endArgs != std::string::npos && startArgs < endArgs,
-                     "Invalid mangled name structure");
-        
-        std::string functionName = name.substr(4, startArgs - 4);
-        std::string args         = name.substr(startArgs + 1, endArgs - startArgs - 1);
-        std::string returnType   = name.substr(endArgs);
-        
-        std::string classPrefix    = std::format("_CLR{}.{}", m_StructType->GetHash(), functionName);
-        std::string classArgsAndRt = std::format("${}P{}{}", m_StructType->GetHash(), args, returnType);
-        
-        return classPrefix + classArgsAndRt;
-    }
-
-    void ClassType::PushFunction(const std::string &name)
-    {
-        m_Functions.insert(name);
-    }
-
-    bool ClassType::HasFunctionMangled(const std::string& name)
-    {
-        CLEAR_VERIFY(name.starts_with("_CLR"), "not a valid mangled name");
-
-        //_CLRfunction_name$args%rt
-        std::string classPrefix = std::format("_CLR{}.", m_StructType->GetHash());
-        std::string classFunction = name;
-        classFunction.replace(0, 4, classPrefix);
-
-        return m_Functions.contains(classFunction);
-    }
+		return std::distance(m_MemberValues.begin(), it);
+	}
 
     VariadicArgumentsHolder::VariadicArgumentsHolder()
     {
@@ -265,29 +206,6 @@ namespace clear
         Toggle(base->GetFlags());
     }
 
-    ClassType::ClassType(std::shared_ptr<StructType> structTy)
-        : m_StructType(structTy)
-    {
-        Toggle(TypeFlags::Compound);
-        Toggle(TypeFlags::Class);
-    }
-
-    size_t ClassType::GetMemberIndex(const std::string& member)
-    {
-        return m_StructType->GetMemberIndex(member);
-    }
-
-    std::shared_ptr<Type> ClassType::GetMemberType(const std::string& member)
-    {
-        return m_StructType->GetMemberType(member);
-    }
-
-    void ClassType::SetMember(const std::string& member, std::shared_ptr<Type> type)
-    {
-        m_StructType->SetMember(member, type);
-    }
-
-
     TraitType::TraitType(const std::vector<std::string>& functions, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, const std::string& name)
         : m_Functions(functions), m_Name(name), m_Members(members)
     {
@@ -296,33 +214,36 @@ namespace clear
 
     bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy)
     {  
-        const auto& members = classTy->GetMemberTypes();
-
-        for(const auto& [name, type] : m_Members)
-        {
-            if(!members.contains(name))
-                return false;
-
-            if(type->Get() != members.at(name)->Get())
-                return false;
-        }
-
-        std::string className = classTy->GetHash();
-        const auto& classFunctions = classTy->GetFunctions();
-        
-        for(auto& function : m_Functions)
-        {
-            size_t argBegin = function.find_first_of('$');
-
-            std::string name = function.substr(4, argBegin - 4);
-            std::string rest = function.substr(argBegin + 1);
-
-            std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
-            if(!classFunctions.contains(classFunctionName))
-                return false;
-        }
-
-        return true;
+        // const auto& members = classTy->GetMemberTypes();
+        //
+        // for(const auto& [name, type] : m_Members)
+        // {
+        //     if(!members.contains(name))
+        //         return false;
+        //
+        //     if(type->Get() != members.at(name)->Get())
+        //         return false;
+        // }
+        //
+        // std::string className = classTy->GetHash();
+        // const auto& classFunctions = classTy->GetFunctions();
+        //
+        // for(auto& function : m_Functions)
+        // {
+        //     size_t argBegin = function.find_first_of('$');
+        //
+        //     std::string name = function.substr(4, argBegin - 4);
+        //     std::string rest = function.substr(argBegin + 1);
+        //
+        //     std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
+        //     if(!classFunctions.contains(classFunctionName))
+        //         return false;
+        // }
+        //
+        // return true;
+	
+		CLEAR_UNREACHABLE("TODO");
+		return false;
     }
 
     EnumType::EnumType(std::shared_ptr<Type> integerType, const std::string& name)
@@ -343,7 +264,7 @@ namespace clear
         return m_EnumValues.at(name);
     }
 
-    GenericType::GenericType(std::string_view name)
+    GenericType::GenericType(llvm::StringRef name)
         : m_Name(name)
     {
         Toggle(TypeFlags::Generic);

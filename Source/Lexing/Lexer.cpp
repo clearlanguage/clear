@@ -23,6 +23,7 @@ namespace clear
         m_Contents = stream.str();
 
         Lex();
+		
     }
 
     void Lexer::Lex()
@@ -40,11 +41,18 @@ namespace clear
 
     void Lexer::Eat()
     {
-        if(Prev() == "\n")
+        if (Prev() == "\n")
         {
-            EmplaceBack(TokenType::EndLine, " ");
-        }
+            //TODO: fix EndScope for chained statements
+            size_t pos = m_Position;
+            while (pos < m_Contents.size() && std::isspace(m_Contents[pos]) && m_Contents[pos] != '\n')
+                pos++;
 
+            if (pos >= m_Contents.size() || m_Contents[pos] != '.')
+            {
+                EmplaceBack(TokenType::EndLine, " ");
+            }
+        }
         if(Prev() == "\n" && !IsLineOnlyWhitespace()) 
         {
             FlushScopes();
@@ -311,6 +319,14 @@ namespace clear
         std::string word = GetWord(ShouldContinue);
 
         auto [value, isNumber] = GetNumber(word);
+        std::string suffix;
+        if (!Peak().empty() && std::isalpha(Peak()[0])) {
+            auto shouldContinue = [&]() {
+                return m_Position < m_Contents.size() && std::isalnum(m_Contents[m_Position]);
+            };
+
+            suffix = GetWord(shouldContinue);
+        }
 
         if (!isNumber) 
         {
@@ -320,7 +336,7 @@ namespace clear
             return;
         }
 
-        EmplaceBack(TokenType::Number, word);
+        EmplaceBack(TokenType::Number, word,suffix);
     }
         
     void Lexer::FlushScopes()
@@ -585,5 +601,11 @@ namespace clear
     void Lexer::EmplaceBack(TokenType type, const std::string& data)
     {
         m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
+    }
+
+
+    void Lexer::EmplaceBack(TokenType type, const std::string& data,const std::string& metadata)
+    {
+        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber,metadata);
     }
 }

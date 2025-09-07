@@ -21,3 +21,5 @@ class allocator:
             return
         free(this.pointer)
         this.pointer = null
+
+
