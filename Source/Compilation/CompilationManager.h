@@ -28,7 +28,6 @@ namespace clear
 
         void LoadSources();
         void LoadSourceFile(const std::filesystem::path& path);
-        void PropagateSymbolTables();
         void GenerateIRAndObjectFiles();
         void Emit();
 

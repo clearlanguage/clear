@@ -21,11 +21,11 @@ namespace clear
 		std::shared_ptr<Symbol> Symbol; 
 	};
 
-	class SemaSymbolTable 
+	class SymbolTable 
 	{
 	public:
-		SemaSymbolTable() = default;
-		~SemaSymbolTable() = default;
+		SymbolTable() = default;
+		~SymbolTable() = default;
 
 		bool Insert(llvm::StringRef name, SymbolEntryType type, std::shared_ptr<Symbol> symbol);
 		std::optional<std::shared_ptr<Symbol>> InsertEmpty(llvm::StringRef name, SymbolEntryType type);

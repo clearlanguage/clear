@@ -146,21 +146,6 @@ namespace clear
 		m_CompilationUnits[path] = CompilationUnit { newModule, parser.GetResult() };
     }
 
-    void CompilationManager::PropagateSymbolTables()
-    {
-        if(m_DiagnosticsBuilder.IsFatal())
-        {
-            return;
-        }
-
-        for(auto& [filepath, mod] : m_Modules)
-        {
-            mod->PropagateSymbolTables();
-        }
-
-        m_MainModule->PropagateSymbolTables();
-    }
-
     void CompilationManager::GenerateIRAndObjectFiles()
     {
 	   if(m_DiagnosticsBuilder.IsFatal())

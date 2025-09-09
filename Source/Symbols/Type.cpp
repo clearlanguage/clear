@@ -2,7 +2,6 @@
 
 #include "API/LLVM/LLVMInclude.h"
 #include "Core/Log.h"
-#include "SymbolTable.h"
 #include "Symbols/Symbol.h"
 
 #include <functional>

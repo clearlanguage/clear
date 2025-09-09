@@ -73,7 +73,7 @@ namespace clear
 		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
 
     private:
-		std::vector<SemaSymbolTable> m_ScopeStack;
+		std::vector<SymbolTable> m_ScopeStack;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

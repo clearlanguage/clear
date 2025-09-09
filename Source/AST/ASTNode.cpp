@@ -86,42 +86,8 @@ namespace clear
 		return Symbol();
 	}
 
-    void ASTNodeBase::PropagateSymbolTableToChildren()
-    {
-    }
-
-    void ASTNodeBase::CreateSymbolTable()
-    {
-		m_SymbolTable = std::make_shared<SymbolTable>();
-    }
-
-	void ASTNodeBase::SetSymbolTable(std::shared_ptr<SymbolTable> tbl)
-    {
-		m_SymbolTable = tbl;
-    }
-
-    void ASTNodeBase::PropagateSymbolTable(const std::shared_ptr<SymbolTable>& registry)
-    {
-		CLEAR_VERIFY(registry, "dont take in null");
-		
-		if(m_SymbolTable == registry) // already done
-		{
-			return;
-		}
-
-		if(m_SymbolTable)
-		{
-			m_SymbolTable->SetPrevious(registry);
-		}
-		else
-		{
-			m_SymbolTable = registry;
-		}
-    }
-	
 	ASTBlock::ASTBlock()
 	{
-		CreateSymbolTable();
 	}
 
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
@@ -165,9 +131,6 @@ namespace clear
 
 		if(IsCmpExpression())
 			return HandleCmpExpression(leftChild, rightChild, ctx);
-
-		if(m_Expression == OperatorType::Index)
-			return HandleArrayIndex(leftChild, rightChild, ctx);	
 
     	if (IsBitwiseExpression())
 			return HandleBitwiseExpression(leftChild, rightChild, ctx);
@@ -273,7 +236,7 @@ namespace clear
         return false;
     }
 
-    Symbol ASTBinaryExpression::HandleMathExpression(Symbol& lhs, Symbol& rhs,  OperatorType type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
+    Symbol ASTBinaryExpression::HandleMathExpression(Symbol& lhs, Symbol& rhs,  OperatorType type, CodegenContext& ctx)
     {
 		switch (type)
 		{
@@ -305,9 +268,9 @@ namespace clear
 		auto [_, lhsType] = lhs.GetValue();
 
 		if(lhsType->IsPointer()) 
-			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx, GetSymbolTable()); //internally will verify correct expression type
+			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx); //internally will verify correct expression type
 
-        return HandleMathExpression(lhs, rhs, m_Expression, ctx, GetSymbolTable());
+        return HandleMathExpression(lhs, rhs, m_Expression, ctx);
     }
 
     Symbol ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
@@ -427,7 +390,7 @@ namespace clear
         return Symbol::CreateValue(phiNode, rhsType);
     }
 
-    Symbol ASTBinaryExpression::HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl)
+    Symbol ASTBinaryExpression::HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx)
     {
 		auto [lhsValue, lhsType] = lhs.GetValue();
 		auto [rhsValue, rhsType] = rhs.GetValue();
@@ -463,69 +426,8 @@ namespace clear
         return {};
     }
 
-    Symbol ASTBinaryExpression::HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
+	Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		Symbol lhs;
-
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			lhs = left->Codegen(ctx);
-		}
-
-		Symbol rhs;
-
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, false);
-			rhs = right->Codegen(ctx);
-		}
-
-		auto [lhsValue, lhsType] = lhs.GetValue();
-		auto [rhsValue, rhsType] = rhs.GetValue();
-
-		if(lhsType->IsVariadic())
-		{
-			auto* constIdx = llvm::dyn_cast<llvm::ConstantInt>(rhsValue);
-			CLEAR_VERIFY(constIdx, "only allow constant expression indexing, runtime indexing is not supported yet");
-
-			uint64_t index = constIdx->getZExtValue();
-			
-			CLEAR_VERIFY(index < GetSymbolTable()->GetVariadicArguments().size(), "index out of range!");
-			Allocation alloc = GetSymbolTable()->GetVariadicArguments()[index];
-
-			llvm::Value* gep = alloc.Alloca;
-			std::shared_ptr<Type> baseType = alloc.Type;
-
-			if(ctx.WantAddress)
-				return Symbol::CreateValue(gep, ctx.TypeReg->GetPointerTo(baseType));
-
-        	return Symbol::CreateValue(ctx.Builder.CreateLoad(baseType->Get(), gep), baseType);
-				
-		}
-
-		// lhs is going to be a reference to the array
-
-		std::shared_ptr<PointerType> type = std::dynamic_pointer_cast<PointerType>(lhsType);
-		CLEAR_VERIFY(type, "invalid type");
-		
-		std::shared_ptr<ArrayType> arrType = type->GetBaseType()->As<ArrayType>();
-		CLEAR_VERIFY(arrType, "invalid base type ", type->GetBaseType()->GetHash());
-
-		llvm::Value* zero = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), 0);
-
-		auto basePtrTy = Symbol::CreateType(ctx.TypeReg->GetPointerTo(arrType->GetBaseType()));
-
-		Symbol gepResult = SymbolOps::GEP(lhs, basePtrTy, { zero, rhsValue }, ctx.Builder);
-
-		if(ctx.WantAddress)
-			return  gepResult;
-
-        return SymbolOps::Load(gepResult, ctx.Builder);
-    }
-
-    Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
-    {
-		auto tbl = GetSymbolTable();
-
 		Symbol lhs;
 		{
 			ValueRestoreGuard guard(ctx.WantAddress, true);
@@ -968,7 +870,6 @@ namespace clear
 	std::shared_ptr<ASTFunctionDefinition> ASTFunctionDefinition::ShallowCopy()
 	{
 		std::shared_ptr<ASTFunctionDefinition> functionDefinition = std::make_shared<ASTFunctionDefinition>(m_Name);
-		functionDefinition->SetSymbolTable(GetSymbolTable());
 
 		functionDefinition->m_GenericTypes = m_GenericTypes;
 		functionDefinition->m_PrefixParams = m_PrefixParams;
@@ -1534,9 +1435,9 @@ namespace clear
 		auto ApplyFun = [&](OperatorType type)
 		{
 			if(ty->GetBaseType()->IsPointer())
-				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx, GetSymbolTable());
+				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
 			else 
-				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx, GetSymbolTable());
+				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
 		};
 
 		if(m_Type == OperatorType::PostIncrement)
@@ -1815,32 +1716,7 @@ namespace clear
 
     Symbol ASTForExpression::Codegen(CodegenContext& ctx)
     {
-		Symbol iterator;
-
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			iterator = Iterator->Codegen(ctx);
-		}	
-
-		auto tbl = GetSymbolTable();
-
-		auto [iterValue, iterType] = iterator.GetValue();
-
-		if(iterType->IsVariadic())
-		{
-			auto& args = tbl->GetVariadicArguments();
-
-			for(size_t i = 0; i < args.size(); i++)
-			{
-				tbl->TrackAllocation(m_Name, args[i]);
-				CodeBlock->Codegen(ctx);
-			}
-
-			return {};
-		}
-
-		CLEAR_UNREACHABLE("unimplemented");
-
+		CLEAR_UNREACHABLE("TODO");
 		return {};
 	}
 
@@ -1898,8 +1774,6 @@ namespace clear
 	{
     	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
 		
-		GetSymbolTable()->FlushScope(ctx);
-
     	if (m_JumpTy == "continue")
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
 
@@ -1965,8 +1839,6 @@ namespace clear
 
     Symbol ASTDefaultInitializer::Codegen(CodegenContext& ctx)
     {
-		auto tbl = GetSymbolTable();
-
 		CLEAR_VERIFY(Storage, "invalid node");
 
 		ValueRestoreGuard guard(ctx.WantAddress, true);
@@ -2036,10 +1908,6 @@ namespace clear
 		}
 
         return Symbol();
-    }
-
-    void ASTDefaultInitializer::RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal)
-    {
     }
 
     ASTEnum::ASTEnum(const std::string& enumName, const std::vector<std::string>& names)

@@ -3,7 +3,6 @@
 #include "Core/Log.h"
 #include "Symbols/FunctionCache.h"
 #include "Symbols/TypeRegistry.h"
-#include "Symbols/SymbolTable.h"
 #include <memory>
 #include <optional>
 
@@ -43,18 +42,6 @@ namespace clear
         m_ContainedModules["__clrt_internal"] = builtins;
 
         m_Root = std::make_shared<ASTBlock>();
-        m_Root->GetSymbolTable()->SetPrevious(parent->GetRoot()->GetSymbolTable());
-    }
-
- 
-    void Module::PropagateSymbolTables()
-    {
-        m_Root->PropagateSymbolTableToChildren();
-       
-        for(auto& [_, mod] : m_ContainedModules)
-        {
-            mod->PropagateSymbolTables();
-        }
     }
 
     std::shared_ptr<Module> Module::EmplaceOrReturn(const std::string& moduleName)

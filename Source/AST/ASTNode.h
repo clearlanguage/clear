@@ -6,7 +6,6 @@
 #include "Core/Value.h"
 
 #include "Lexing/Token.h"
-#include "Symbols/SymbolTable.h"
 #include "Core/Operator.h"
 
 #include "Symbols/Symbol.h"
@@ -82,20 +81,6 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&);
 		virtual void Print() {}
-
-		void AddChild(std::shared_ptr<ASTNodeBase> node);
-		void PropagateSymbolTableToChildren();
-
-		void CreateSymbolTable();
-		void SetSymbolTable(std::shared_ptr<SymbolTable> tbl);
-
-		std::shared_ptr<SymbolTable> GetSymbolTable() { return m_SymbolTable; }
-
-	private:
-		void PropagateSymbolTable(const std::shared_ptr<SymbolTable>&);
-	
-	private:
-		std::shared_ptr<SymbolTable> m_SymbolTable;
 	};
 	
 	class ASTBlock : public ASTNodeBase
@@ -138,11 +123,11 @@ namespace clear
 		inline const OperatorType GetExpression() const { return m_Expression; }
 
 		Symbol HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		static Symbol HandleMathExpression(Symbol& lhs, Symbol& rhs,   OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
-		static Symbol HandleMathExpressionF(Symbol& lhs, Symbol& rhs,  OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
-		static Symbol HandleMathExpressionSI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
-		static Symbol HandleMathExpressionUI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
-		static Symbol HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx,  std::shared_ptr<SymbolTable> tbl);
+		static Symbol HandleMathExpression(Symbol& lhs, Symbol& rhs,   OperatorType type, CodegenContext& ctx);
+		static Symbol HandleMathExpressionF(Symbol& lhs, Symbol& rhs,  OperatorType type, CodegenContext& ctx);
+		static Symbol HandleMathExpressionSI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx);
+		static Symbol HandleMathExpressionUI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx);
+		static Symbol HandlePointerArithmetic(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx);
 
 
 	public:
@@ -165,7 +150,6 @@ namespace clear
 		Symbol HandleBitwiseExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		Symbol HandleLogicalExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
-		Symbol HandleArrayIndex(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		Symbol HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);	
 
 		Symbol HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
@@ -668,7 +652,6 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::DefaultInitializer; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
-		static void RecursiveCallConstructors(llvm::Value* value, std::shared_ptr<Type> type, CodegenContext& ctx, std::shared_ptr<SymbolTable> tbl, bool isGlobal = false);
 
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;

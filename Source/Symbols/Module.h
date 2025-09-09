@@ -3,7 +3,6 @@
 #include "AST/ASTNode.h"
 #include "Compilation/BuildConfig.h"
 #include "Symbols/FunctionCache.h"
-#include "Symbols/SymbolTable.h"
 #include "Symbols/TypeRegistry.h"
 
 #include "Symbols/Symbol.h"
@@ -21,8 +20,6 @@ namespace clear
         Module(const std::string& name, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> builtins, const std::filesystem::path& path);
         Module(Module* parent, const std::string& name, std::shared_ptr<Module> builtins);
         ~Module() = default;
-
-        void PropagateSymbolTables();
 
         std::shared_ptr<Module> EmplaceOrReturn(const std::string& moduleName);
         std::shared_ptr<Module> Return(const std::string& moduleName);

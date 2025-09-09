@@ -7,7 +7,6 @@
 #include "Lexing/TokenDefinitions.h"
 #include "Lexing/Token.h"
 #include "Symbols/Module.h"
-#include "Symbols/SymbolTable.h"
 #include "Symbols/Type.h"
 
 #include <memory>
