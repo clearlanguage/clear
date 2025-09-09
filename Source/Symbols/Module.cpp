@@ -1,5 +1,6 @@
 #include "Module.h"
 #include "AST/ASTNode.h"
+#include "Core/Log.h"
 #include "Symbols/FunctionCache.h"
 #include "Symbols/TypeRegistry.h"
 #include "Symbols/SymbolTable.h"
@@ -8,8 +9,8 @@
 
 namespace clear 
 {
-    Module::Module(const std::string& name, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> builtins)
-        : m_ModuleName(name)
+    Module::Module(const std::string& name, std::shared_ptr<llvm::LLVMContext> context, std::shared_ptr<Module> builtins, const std::filesystem::path& path)
+        : m_ModuleName(name), m_ModulePath(path)
     {
         m_Context = context;
 		m_Builder = std::make_shared<llvm::IRBuilder<>>(*m_Context);
@@ -90,6 +91,8 @@ namespace clear
     
     void Module::Link()
     {
+		CLEAR_UNREACHABLE("depricated");
+
         for(const auto& [name, mod] : m_ContainedModules)
         {
             mod->Link();
@@ -120,32 +123,17 @@ namespace clear
         return ctx;
     }
     
-	std::optional<Symbol> Module::Lookup(llvm::StringRef symbolName)
+	std::optional<std::shared_ptr<Symbol>> Module::Lookup(llvm::StringRef symbolName)
     {
         if(auto ty = m_TypeRegistry->GetType(symbolName.str()))
-            return Symbol::CreateType(ty);
-
-        if(auto classTemplate = m_TypeRegistry->GetClassTemplate(symbolName))
-            return Symbol::CreateClassTemplate(classTemplate.value());
-
-        // TODO: any function/variable should be exported which will move it to the modules symbol table
-        // for now everything is public
-        
-        auto tbl = m_Root->GetSymbolTable();
-        
-        Allocation alloca = tbl->GetAlloca(symbolName.str());
-
-        if(alloca.Alloca)
-        {
-            return Symbol::CreateValue(alloca.Alloca, m_TypeRegistry->GetPointerTo(alloca.Type));
-        }
+            return std::make_shared<Symbol>(Symbol::CreateType(ty));
 
         for(const auto& [name, containedModule] : m_ContainedModules)
         {
             if(name == symbolName)
-                return Symbol::CreateModule(containedModule);
+                return std::make_shared<Symbol>(Symbol::CreateModule(containedModule));
 
-			std::optional<Symbol> symbol = containedModule->Lookup(symbolName.str());
+			auto symbol = containedModule->Lookup(symbolName.str());
 
             if(symbol.has_value())
                 return symbol;
@@ -161,13 +149,10 @@ namespace clear
 
     void Module::CreateAlias(const std::string& aliasName, const std::string& symbolName)
     {
-        Symbol symbol = Lookup(symbolName).value();
-        m_TypeRegistry->RegisterType(aliasName, symbol.GetType());
     }
     
     void Module::RemoveAlias(const std::string& aliasName)
     {
-        m_TypeRegistry->RemoveType(aliasName);
     }
 
     std::shared_ptr<Type> Module::GetTypeFromToken(const Token& token)
@@ -177,4 +162,9 @@ namespace clear
 
         return m_ContainedModules["__clrt_internal"]->GetTypeFromToken(token);
     }
+
+	void Module::ExposeSymbol(llvm::StringRef name, std::shared_ptr<Symbol> sym)
+	{
+		m_ExposedSymbols[name.str()] = sym;
+	}
 }

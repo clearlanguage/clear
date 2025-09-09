@@ -24,12 +24,15 @@ namespace clear
 		std::shared_ptr<Type> TypeHint;
 		llvm::SmallVector<std::shared_ptr<Type>> CallsiteArgs;
 		bool AllowGenericInferenceFromArgs = true;
+		bool GlobalState = true;
 	};
+	
+	struct CompilationUnit;
 
     class Sema
     {
 	public:
-		Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder);
+		Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits);
 		~Sema() = default;
 
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBlock> ast, SemaContext context);
@@ -53,6 +56,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTArrayType> arrayType, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTListExpr> listExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTIfExpression> ifExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTImport> importExpr, SemaContext context);
 
 	private:
 		void Report(DiagnosticCode code, Token token);
@@ -75,5 +79,7 @@ namespace clear
 		ConstEval m_ConstantEvaluator;
 		Infer m_TypeInferEngine;
 		NameMangler m_NameMangler;
+		
+		const std::unordered_map<std::filesystem::path, CompilationUnit>& m_CompilationUnits;
     };
 }

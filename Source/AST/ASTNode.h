@@ -185,7 +185,6 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariableDecleration; }
 		virtual Symbol Codegen(CodegenContext&) override;
 		
-
 		const auto& GetName() const { return m_Name; }
 		const auto& GetResolvedType() const { return m_Type; }
 	
@@ -286,9 +285,9 @@ namespace clear
 		std::shared_ptr<Type> ReturnTypeVal;
 		std::shared_ptr<ASTBlock> CodeBlock;	
 		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
-		std::shared_ptr<Symbol> FunctionSymbol;	
 		std::shared_ptr<Module> SourceModule;
-		llvm::Function::LinkageTypes Linkage = llvm::Function::InternalLinkage;
+		std::shared_ptr<Symbol> FunctionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(nullptr));	
+		llvm::Function::LinkageTypes Linkage = llvm::Function::ExternalLinkage;
 		bool IsVariadic = false;
 
 	private:
@@ -756,5 +755,17 @@ namespace clear
 		std::shared_ptr<Type> GeneratedArrayType;
 		std::shared_ptr<ASTNodeBase> SizeNode;
 		std::shared_ptr<ASTNodeBase> TypeNode;
+	};
+
+	class ASTImport : public ASTNodeBase 
+	{
+	public:
+		ASTImport() = default;
+		virtual ~ASTImport() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Import; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+		std::filesystem::path Filepath;
+		std::string Namespace;
 	};
 } 

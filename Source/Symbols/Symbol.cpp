@@ -152,12 +152,12 @@ namespace clear
 
     Symbol Symbol::GetUInt64(std::shared_ptr<Module> module_, llvm::IRBuilder<>& builder, uint64_t value)
     {
-        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value().GetType());
+        return Symbol::CreateValue(builder.getInt64(value), module_->Lookup("uint64").value()->GetType());
     }
     
     Symbol Symbol::GetBooleanType(std::shared_ptr<Module> module_)
     {
-        return Symbol::CreateType(module_->Lookup("bool").value().GetType());
+        return Symbol::CreateType(module_->Lookup("bool").value()->GetType());
     }
     
     llvm::Value* Symbol::GetLLVMValue() const

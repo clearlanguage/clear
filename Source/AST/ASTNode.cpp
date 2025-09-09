@@ -322,7 +322,7 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
-		auto booleanType = ctx.ClearModule->Lookup("bool").value().GetType();
+		auto booleanType = ctx.ClearModule->Lookup("bool").value()->GetType();
 
     	switch (m_Expression)
 		{
@@ -646,52 +646,47 @@ namespace clear
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		auto mod = lhs.GetModule();
+		auto member = std::dynamic_pointer_cast<ASTVariable>(right);
 
-		if(right->GetType() == ASTNodeType::Member)
+		std::shared_ptr<Symbol> symbol = mod->GetExposedSymbols().at(member->GetName().GetData());
+
+		if(symbol->Kind == SymbolKind::Type) //only one LLVMContext for now so this is fine
 		{
-			auto member = std::dynamic_pointer_cast<ASTMember>(right);
-			Symbol symbol = mod->Lookup(member->GetName()).value();
-
-			if(symbol.Kind == SymbolKind::Type) //only one LLVMContext for now so this is fine
-			{
-				return symbol;
-			}
-			else if (symbol.Kind == SymbolKind::Value) //variable
-			{
-				llvm::GlobalVariable* existingGV = ctx.Module.getNamedGlobal(member->GetName());
-				Symbol value;
-
-				if(existingGV)
-				{
-					value = Symbol::CreateValue(existingGV, symbol.GetType());
-				}
-				else 
-				{
-					llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(symbol.GetLLVMValue());
-
-					llvm::GlobalVariable* decl = new llvm::GlobalVariable(
-				    	ctx.Module,
-				    	gv->getValueType(),
-				    	gv->isConstant(),
-				    	llvm::GlobalValue::ExternalLinkage,
-				    	nullptr,
-				    	gv->getName()
-					);
-
-					value = Symbol::CreateValue(decl, symbol.GetType());
-				}
-
-				if(ctx.WantAddress)
-					return value;
-
-				return SymbolOps::Load(value, ctx.Builder);
-			}
+			return *symbol;
 		}
-
-		if(right->GetType() == ASTNodeType::FunctionCall)
+		else if (symbol->Kind == SymbolKind::Value) //variable
 		{
-			ValueRestoreGuard moduleGuard(ctx.ClearModuleSecondary, mod);
-			return right->Codegen(ctx);
+			llvm::GlobalVariable* existingGV = ctx.Module.getNamedGlobal(member->GetName().GetData());
+			Symbol value;
+
+			if(existingGV)
+			{
+				value = Symbol::CreateValue(existingGV, symbol->GetType());
+			}
+			else 
+			{
+				llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(symbol->GetLLVMValue());
+
+				llvm::GlobalVariable* decl = new llvm::GlobalVariable(
+					ctx.Module,
+					gv->getValueType(),
+					gv->isConstant(),
+					llvm::GlobalValue::ExternalLinkage,
+					nullptr,
+					gv->getName()
+				);
+
+				value = Symbol::CreateValue(decl, symbol->GetType());
+			}
+
+			if(ctx.WantAddress)
+				return value;
+
+			return SymbolOps::Load(value, ctx.Builder);
+		}
+		else if (symbol->Kind == SymbolKind::Function)
+		{
+			return Symbol::CreateCallee(symbol, nullptr);
 		}
 
         return Symbol();
@@ -1512,7 +1507,7 @@ namespace clear
 
 			if(!signedType->IsSigned()) // uint... -> int...
 			{
-				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).value().GetType();
+				signedType = ctx.ClearModule->Lookup(signedType->GetHash().substr(1)).value()->GetType();
 			}
 
 			return SymbolOps::Neg(result, ctx.Builder, signedType); 
@@ -1524,7 +1519,7 @@ namespace clear
 			return SymbolOps::Not(result, ctx.Builder);
 		}
 		
-		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.ClearModule->Lookup("int32").value().GetType());
+		Symbol one = Symbol::CreateValue(ctx.Builder.getInt32(1), ctx.ClearModule->Lookup("int32").value()->GetType());
 
 		Symbol result = Operand->Codegen(ctx);
 		auto [resultValue, resultType] = result.GetValue();

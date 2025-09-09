@@ -13,6 +13,9 @@
 #include "Symbols/Type.h"
 #include "Cloner.h"
 
+#include "Compilation/CompilationManager.h"
+
+#include <filesystem>
 #include <iterator>
 #include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/CommandLine.h>
@@ -21,8 +24,9 @@
 
 namespace clear
 {
-    Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder)
-		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule)
+    Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
+		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule), 
+		  m_CompilationUnits(compilationUnits)
 	{
     }
 
@@ -92,6 +96,10 @@ namespace clear
 			
 		// DiagnosticCode_AlreadyDefinedVariable
 		Report(DiagnosticCode_None, decl->GetName());
+
+		if (context.GlobalState)
+			m_Module->ExposeSymbol(decl->GetName().GetData(), symbol.value());
+		
 		return decl;
 	}
 
@@ -114,10 +122,10 @@ namespace clear
 		
 		if (!symbol.has_value())
 		{
-			std::optional<Symbol> sym = m_Module->Lookup(variable->GetName().GetData());
+			auto sym = m_Module->Lookup(variable->GetName().GetData());
 			
 			if (sym.has_value())
-				symbol = SymbolEntry { SymbolEntryType::None, std::make_shared<Symbol>(sym.value()) };
+				symbol = SymbolEntry { SymbolEntryType::None, sym.value() };
 		}
 		
 		if (variable->GetName().GetData() == "Self")
@@ -182,6 +190,7 @@ namespace clear
 			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
 			case ASTNodeType::ArrayType:				return Visit(std::dynamic_pointer_cast<ASTArrayType>(ast), context);
 			case ASTNodeType::ListExpr:					return Visit(std::dynamic_pointer_cast<ASTListExpr>(ast), context);
+			case ASTNodeType::Import:					return Visit(std::dynamic_pointer_cast<ASTImport>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -193,6 +202,9 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
+		bool globalState = context.GlobalState;
+		context.GlobalState = false;
+
 		m_ScopeStack.emplace_back();
 
 		for (auto arg : func->Arguments)
@@ -235,6 +247,8 @@ namespace clear
 			return func;
 		}
 		
+		
+		m_Module->ExposeSymbol(func->GetName(), symbol.value());
 		func->SetName(mangledName);
 
 		std::shared_ptr<Symbol> fnSymbolPtr = symbol.value();
@@ -251,10 +265,10 @@ namespace clear
 		func->FunctionSymbol = fnSymbolPtr;
 		func->SourceModule = m_Module;	
 
-
 		Visit(func->CodeBlock, context);	
 		
 		m_ScopeStack.pop_back();
+		
 
 		return func;
 	}
@@ -370,7 +384,7 @@ namespace clear
 			k++;
 		}
 		
-		decl->ReturnType = m_Module->Lookup("void").value().GetType();
+		decl->ReturnType = m_Module->Lookup("void").value()->GetType();
 
 		if (decl->ReturnTypeNode)
 		{
@@ -424,7 +438,8 @@ namespace clear
 			Visit(node, context);
 		}
 	
-
+	
+		m_Module->ExposeSymbol(classExpr->GetName(), std::make_shared<Symbol>(Symbol::CreateType(classTy)));
 		return classExpr;
 	}
 
@@ -441,6 +456,32 @@ namespace clear
 			Visit(ifExpr->ElseBlock);
 
 		return ifExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTImport> importExpr, SemaContext context)
+	{
+		std::filesystem::path parent = m_Module->GetPath().parent_path();
+		std::filesystem::path absolute = std::filesystem::absolute(parent / importExpr->Filepath);
+		
+		auto it = m_CompilationUnits.find(absolute);
+		if (it == m_CompilationUnits.end())
+		{
+			Report(DiagnosticCode_None, Token()); // not found file path
+			return nullptr;
+		}
+		
+		if (!importExpr->Namespace.empty())
+		{
+			m_Module->InsertModule(importExpr->Namespace, it->second.CompilationModule);
+			return importExpr;
+		}
+		
+		for (const auto& [symbolName, exposedSymbol] : it->second.CompilationModule->GetExposedSymbols())
+		{
+			m_ScopeStack.back().Insert(symbolName, SymbolEntryType::None, exposedSymbol);
+		}
+		
+		return importExpr;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context)
@@ -470,6 +511,7 @@ namespace clear
 		if (!success)
 			Report(DiagnosticCode_None, Token());
 		
+		m_Module->ExposeSymbol(generic->GetName(), m_ScopeStack.back().Get(generic->GetName()).value().Symbol);
 		return generic;	
 	}
 
@@ -610,9 +652,20 @@ namespace clear
 
 		context.ValueReq = ValueRequired::LValue;
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
+
+		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); var && var->Variable->Kind == SymbolKind::Module)
+		{
+			std::shared_ptr<ASTVariable> member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+			std::shared_ptr<Symbol> symbol = var->Variable->GetModule()->GetExposedSymbols().at(member->GetName().GetData());
+			binaryExpr->ResultantType = symbol->GetType();
+			
+			return binaryExpr;
+		}
 		
 		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
-		CLEAR_VERIFY(lhsType, "");
+
+		if (!lhsType)
+			return binaryExpr;
 
 		while (lhsType->IsPointer())
 			lhsType = lhsType->As<PointerType>()->GetBaseType();
@@ -699,12 +752,12 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(node);
-				std::optional<Symbol> sym = var->Variable ? std::optional(*var->Variable) : m_Module->Lookup(var->GetName().GetData());
+				auto sym = var->Variable ? std::optional(var->Variable) : m_Module->Lookup(var->GetName().GetData());
 
-				if (!sym || sym->Kind != SymbolKind::Type)
+				if (!sym || sym.value()->Kind != SymbolKind::Type)
 					return nullptr;
 
-				return sym->GetType();
+				return sym.value()->GetType();
 			}
 
 			case ASTNodeType::UnaryExpression:

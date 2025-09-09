@@ -56,7 +56,7 @@ namespace clear
 					}
 					default:
 					{
-						CLEAR_UNREACHABLE("unimplemented");
+						return InferTypeFromNode(structExpr->TargetType);
 					}
 				}
 
@@ -87,6 +87,10 @@ namespace clear
 			{
 				std::shared_ptr<ASTListExpr> listExpr = std::dynamic_pointer_cast<ASTListExpr>(node);
 				return listExpr->ListType;
+			}
+			case ASTNodeType::Import:
+			{
+				return nullptr;
 			}
 			default:
 			{

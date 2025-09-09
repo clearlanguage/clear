@@ -310,6 +310,7 @@ namespace clear
 			{"while",	  [this]() { return ParseWhile(); }},
 			{"class",     [this]() { return ParseClass(); }},
 			{"let",		  [this]() { return ParseLet(); }},
+			{"import",	  [this]() { return ParseImport(); }},
         };
         
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
@@ -454,6 +455,23 @@ namespace clear
 
 		return whileExp;
     }
+
+	std::shared_ptr<ASTImport> Parser::ParseImport()
+	{
+		EXPECT_DATA_RETURN("import", DiagnosticCode_None, nullptr);
+		Consume();
+
+		std::shared_ptr<ASTImport> importExpr = std::make_shared<ASTImport>();
+		importExpr->Filepath = Consume().GetData();
+
+		if (!Match("as"))
+			return importExpr;
+		
+		Consume();
+		importExpr->Namespace = Consume().GetData();
+
+		return importExpr;
+	}
 
     void Parser::ParseFor()
     {
@@ -960,8 +978,6 @@ namespace clear
 			{
 				if (token.GetData() != "const")
 				{
-					CLEAR_UNREACHABLE("unimplemented");
-
 					lhs = std::make_shared<ASTVariable>(token);
 					Consume();
 

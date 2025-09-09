@@ -1,8 +1,11 @@
 #include "CompilationManager.h"
 
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Sema/Sema.h"
+#include <iostream>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/Support/raw_ostream.h>
 #include <memory>
 
 namespace clear 
@@ -11,14 +14,16 @@ namespace clear
         : m_Config(config)
     {
         std::shared_ptr<llvm::LLVMContext> context = std::make_shared<llvm::LLVMContext>();
-        m_Builtins = std::make_shared<Module>("__clrt_internal", context, nullptr);
-        m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins);
+        m_Builtins = std::make_shared<Module>("__clrt_internal", context, nullptr, "__cltr_internal");
+        m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins, "main");
     }
 	
 	void CompilationManager::RunPipeline()
 	{
 		LoadSources();
-		PropagateSymbolTables();
+		CollectTopLevelSymbols();
+		CompileModules();
+		LinkModules();
 		GenerateIRAndObjectFiles();
 		Emit();
 	}
@@ -38,11 +43,67 @@ namespace clear
 
     void CompilationManager::CheckErrors() 
     {
-        if (m_DiagnosticsBuilder.IsFatal())
-        {
-            m_DiagnosticsBuilder.Dump();
+		if (m_DiagnosticsBuilder.IsFatal()) 
+		{ 
+			m_DiagnosticsBuilder.Dump();
         }
     }
+
+	void CompilationManager::CollectTopLevelSymbols()
+	{
+		//TODO
+	}
+
+	void CompilationManager::CompileModules()
+	{
+		for (auto& [path, unit] : m_CompilationUnits)
+		{
+			CompileModule(unit);
+		}
+	}
+
+	void CompilationManager::CompileModule(CompilationUnit& unit)
+	{
+		//TODO may need mutex if we introduce parallel compilation
+		if (unit.Compiled) return;
+		
+		std::shared_ptr<ASTBlock> topLevel = std::dynamic_pointer_cast<ASTBlock>(std::dynamic_pointer_cast<ASTBlock>(unit.Ast)->Children[0]);
+		
+		for (const auto& node : topLevel->Children)
+		{
+			std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
+			if (!importNode) continue;
+
+			std::filesystem::path parent = unit.CompilationModule->GetPath().parent_path();
+			std::filesystem::path absolute = std::filesystem::absolute(parent / importNode->Filepath);
+			CompileModule(m_CompilationUnits.at(absolute));
+		}
+
+		Sema analyzer(unit.CompilationModule, m_DiagnosticsBuilder, m_CompilationUnits);
+		analyzer.Visit(unit.Ast);
+
+		if (m_DiagnosticsBuilder.IsFatal())
+		{
+			m_DiagnosticsBuilder.Dump();
+			return;
+		}
+	
+		CodegenContext ctx = unit.CompilationModule->GetCodegenContext();
+		unit.Ast->Codegen(ctx);
+		unit.Compiled = true;
+	}
+
+	void CompilationManager::LinkModules()
+	{
+		llvm::Linker linker(*m_MainModule->GetModule());
+		linker.linkInModule(m_Builtins->TakeModule());
+
+		for (const auto& [path, unit] : m_CompilationUnits)
+		{
+			if (!unit.CompilationModule->GetModule()) continue;
+			linker.linkInModule(unit.CompilationModule->TakeModule());
+		}
+	}
 
 
     void CompilationManager::LoadSourceFile(const std::filesystem::path& path)
@@ -52,7 +113,7 @@ namespace clear
             return;
         }
 
-        if(m_Modules.contains(path))
+        if(m_CompilationUnits.contains(path))
         {
             return;
         }
@@ -63,7 +124,9 @@ namespace clear
         }
         
         std::println("Loading source file {}" , path.string());
-
+		
+		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
+		
         Lexer lexer(path, m_DiagnosticsBuilder);
 
         if(m_DiagnosticsBuilder.IsFatal())
@@ -72,16 +135,7 @@ namespace clear
             return;
         }
 
-		#if 0
-
-		for (const auto& token : lexer.GetTokens())
-		{
-			std::println("{}: {}", token.GetTypeAsString(), token.GetData());
-		}
-
-		#endif
-
-        Parser parser(lexer.GetTokens(), m_MainModule, m_DiagnosticsBuilder);
+        Parser parser(lexer.GetTokens(), newModule, m_DiagnosticsBuilder);
 
         if(m_DiagnosticsBuilder.IsFatal())
         {
@@ -89,14 +143,7 @@ namespace clear
             return;
         }
 
-		Sema sema(m_MainModule, m_DiagnosticsBuilder);
-		sema.Visit(parser.GetResult());
-		
-		if (m_DiagnosticsBuilder.IsFatal())
-		{
-			m_DiagnosticsBuilder.Dump();
-			return;
-		}
+		m_CompilationUnits[path] = CompilationUnit { newModule, parser.GetResult() };
     }
 
     void CompilationManager::PropagateSymbolTables()
@@ -116,24 +163,12 @@ namespace clear
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
-        if(m_DiagnosticsBuilder.IsFatal())
-        {
-            // need to link all modules together before freeing otherwise llvm will try to free modules that have already deleted
-            m_MainModule->Link(); 
-            m_MainModule.reset();
-
-            return;
-        }
-
-        m_MainModule->Codegen(m_Config); //TODO: need to implement diagnostics builder within codegeneration
-
-        if(m_DiagnosticsBuilder.IsFatal())
+	   if(m_DiagnosticsBuilder.IsFatal())
         {
             m_DiagnosticsBuilder.Dump();
             return;
         }
 
-        m_MainModule->Link();
         if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
             std::println("failed to build module");

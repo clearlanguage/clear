@@ -67,6 +67,7 @@ namespace clear
 		std::shared_ptr<ASTReturn> ParseReturn();
 		std::shared_ptr<ASTIfExpression> ParseIf();
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
+		std::shared_ptr<ASTImport> ParseImport();
         void ParseFor();
         void ParseIndentation();
 		std::shared_ptr<ASTNodeBase> ParseClass();

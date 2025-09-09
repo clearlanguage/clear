@@ -3,15 +3,21 @@
 #include "Parsing/Parser.h"
 #include "BuildConfig.h"
 #include "Symbols/Module.h"
-
+#include "Diagnostics/DiagnosticsBuilder.h"
 
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
-#include "Diagnostics/DiagnosticsBuilder.h"
 
 namespace clear 
 {
+	struct CompilationUnit	
+	{
+		std::shared_ptr<Module>	CompilationModule;
+		std::shared_ptr<ASTNodeBase> Ast;
+		bool Compiled = false;
+	};
+	
     class CompilationManager
     {
     public:
@@ -30,12 +36,17 @@ namespace clear
         void LoadDirectory(const std::filesystem::path& path);
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
         void CheckErrors();
+		void CollectTopLevelSymbols();
+		void CompileModules();
+		void CompileModule(CompilationUnit& unit);
+		void LinkModules();
 
         void LinkToExecutableOrDynamic();
         void LinkToStaticLibrary();
         void OptimizeModule();
 
         void CodegenModule(const std::filesystem::path& path);
+		
 
     private:
         BuildConfig m_Config;
@@ -45,5 +56,7 @@ namespace clear
         std::unordered_set<std::filesystem::path> m_GeneratedModules;
         std::unordered_map<std::filesystem::path, std::shared_ptr<Module>> m_Modules;
         DiagnosticsBuilder m_DiagnosticsBuilder;
+		
+		std::unordered_map<std::filesystem::path, CompilationUnit> m_CompilationUnits;
     };
 }
