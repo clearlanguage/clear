@@ -33,7 +33,7 @@ namespace clear
 		DefaultArgument, DefaultInitializer, 
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
-		Subscript, ArrayType, WhenExpr, CastExpr
+		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr
 	};
 
 	class ASTNodeBase;
@@ -597,5 +597,31 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Object;
 		std::shared_ptr<ASTNodeBase> TypeNode;
 		std::shared_ptr<Type> TargetType;
+	};
+
+	class ASTSizeofExpr : public ASTNodeBase
+	{
+	public:
+		ASTSizeofExpr() = default;
+		virtual ~ASTSizeofExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::SizeofExpr; }
+		virtual Symbol Codegen(CodegenContext&) override;
+		
+		std::shared_ptr<ASTNodeBase> Object;
+		uint64_t Size = 0;
+	};
+
+	class ASTIsExpr : public ASTNodeBase 
+	{
+	public:
+		ASTIsExpr() = default;
+		virtual ~ASTIsExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::IsExpr; }
+		virtual Symbol Codegen(CodegenContext&) override;
+		
+		std::shared_ptr<ASTNodeBase> Object;
+		std::shared_ptr<ASTNodeBase> TypeNode;
+		std::shared_ptr<Type> CompareType;
+		bool AreTypesSame = false;
 	};
 } 

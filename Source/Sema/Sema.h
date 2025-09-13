@@ -59,7 +59,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTImport> importExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context);
-
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSizeofExpr> castExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTIsExpr> castExpr, SemaContext context);
 
 	private:
 		void Report(DiagnosticCode code, Token token);

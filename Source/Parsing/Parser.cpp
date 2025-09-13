@@ -92,6 +92,7 @@ namespace clear
 		{OperatorType::PostIncrement, {5, 6}},
 		{OperatorType::PostDecrement, {5, 6}},
 		{OperatorType::Cast,		  {5, 6, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseCastExpr(node); }}},
+		{OperatorType::Sizeof,		  {5, 6, [](Parser* p) { return p->ParseSizeofExpr(); }}},
 
 		{OperatorType::BitwiseNot,   {5, 6}},
 		{OperatorType::Address,      {5, 6}},
@@ -113,7 +114,8 @@ namespace clear
 		{OperatorType::BitwiseAnd, {1, 2}},
 		{OperatorType::BitwiseXor, {1, 2}},
 		{OperatorType::BitwiseOr,  {1, 2}},
-
+		
+		{OperatorType::Is,				{1, 2,	nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseIsExpr(node); }}},
 		{OperatorType::LessThan,        {1, 2}},
 		{OperatorType::GreaterThan,     {1, 2}},
 		{OperatorType::LessThanEqual,   {1, 2}},
@@ -841,6 +843,21 @@ namespace clear
 		return castExpr;
 	}
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseIsExpr(std::shared_ptr<ASTNodeBase> lhs)
+	{
+		Consume();
+		
+		OperatorInfo info = g_OperatorTable.at(OperatorType::Is);
+
+		std::shared_ptr<ASTIsExpr> isExpr = std::make_shared<ASTIsExpr>();
+		isExpr->Object = lhs;
+		isExpr->TypeNode = ParseExpr(info.RightBindingPower);
+
+		return isExpr;
+	
+	
+	}
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseTernary()
 	{
 		EXPECT_DATA_RETURN("when", DiagnosticCode_None, nullptr);
@@ -886,6 +903,7 @@ namespace clear
 		return expr;
 	}
 
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseArrayType()
 	{
 		EXPECT_TOKEN_RETURN(TokenType::LeftBracket, DiagnosticCode_None, nullptr);
@@ -902,6 +920,18 @@ namespace clear
 		Consume();
 
 		return arrayType;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseSizeofExpr()
+	{
+		Consume();
+	
+		OperatorInfo info = g_OperatorTable.at(OperatorType::Sizeof);
+
+		std::shared_ptr<ASTSizeofExpr> sizeofExpr = std::make_shared<ASTSizeofExpr>();
+		sizeofExpr->Object = ParseExpr(info.RightBindingPower);
+		
+		return sizeofExpr;
 	}
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
@@ -1069,7 +1099,8 @@ namespace clear
 				break;
 		}
 
-		if (current.GetData() == "when") return OperatorType::Ternary;
+		if (current.GetData() == "when")   return OperatorType::Ternary;
+		if (current.GetData() == "sizeof") return OperatorType::Sizeof;
 
 		return OperatorType::None;
 	}
@@ -1114,6 +1145,7 @@ namespace clear
 		if (current.GetData() == "or")      return OperatorType::Or;
 		if (current.GetData() == "not")     return OperatorType::Not;
 		if (current.GetData() == "as")		return OperatorType::Cast;
+		if (current.GetData() == "is")		return OperatorType::Is;
 
 		return OperatorType::None;
 	}

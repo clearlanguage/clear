@@ -104,13 +104,13 @@ namespace clear
         "float32", "float64",
         "float",
 
-        "if", "else", "while", "for", "return", "break", "continue",
+        "if", "else", "while", "return", "break", "continue",
         "true", "false", "null", "in", "and", "or", "elseif", "defer",
-        "switch", "case", "default", "import", "as", "module", 
+        "switch", "case", "default", "import", "as",  
         "pass",
 
          "function", "class", "when", "use", "otherwise",
-         "property", "declare", "enum",
+         "property", "declare", "enum", "sizeof", "is",
 
         "not","and","or",
 

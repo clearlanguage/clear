@@ -6,6 +6,7 @@
 #include "Core/Operator.h"
 #include "Diagnostics/DiagnosticsBuilder.h"
 #include <functional>
+#include <llvm/IR/InlineAsm.h>
 #include <memory>
 #include <vector>
 #include <set>
@@ -30,9 +31,11 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseStructInitializerExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseCastExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseIsExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseTernary();
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
 		std::shared_ptr<ASTNodeBase> ParseArrayType();
+		std::shared_ptr<ASTNodeBase> ParseSizeofExpr();
 
     private:
         std::shared_ptr<ASTBlock> Root();

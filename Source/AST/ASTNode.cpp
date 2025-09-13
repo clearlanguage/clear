@@ -1743,5 +1743,15 @@ namespace clear
 		Symbol type = Symbol::CreateType(TargetType);
 		return SymbolOps::Cast(result, type, ctx.Builder);
 	}
+
+	Symbol ASTSizeofExpr::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(ctx.Builder.getInt64(Size), ctx.ClearModule->Lookup("uint64").value()->GetType());
+	}
+
+	Symbol ASTIsExpr::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(ctx.Builder.getInt1(AreTypesSame), ctx.ClearModule->Lookup("bool").value()->GetType());
+	}
 }
 

@@ -193,6 +193,8 @@ namespace clear
 			case ASTNodeType::Import:					return Visit(std::dynamic_pointer_cast<ASTImport>(ast), context);
 			case ASTNodeType::TernaryExpression:		return Visit(std::dynamic_pointer_cast<ASTTernaryExpression>(ast), context);
 			case ASTNodeType::CastExpr:					return Visit(std::dynamic_pointer_cast<ASTCastExpr>(ast), context);
+			case ASTNodeType::SizeofExpr:				return Visit(std::dynamic_pointer_cast<ASTSizeofExpr>(ast), context);
+			case ASTNodeType::IsExpr:					return Visit(std::dynamic_pointer_cast<ASTIsExpr>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -523,6 +525,23 @@ namespace clear
 		castExpr->TargetType = GetTypeFromNode(castExpr->TypeNode);
 
 		return castExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSizeofExpr> sizeofExpr, SemaContext context)
+	{
+		sizeofExpr->Object = Visit(sizeofExpr->Object, context);
+		sizeofExpr->Size = m_TypeInferEngine.InferTypeFromNode(sizeofExpr->Object)->GetSizeInBytes(*m_Module->GetModule());
+		
+		return sizeofExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTIsExpr> isExpr, SemaContext context)
+	{
+		isExpr->Object = Visit(isExpr->Object, context);
+		isExpr->TypeNode = Visit(isExpr->TypeNode, context);
+		isExpr->AreTypesSame = m_TypeInferEngine.InferTypeFromNode(isExpr->Object) == GetTypeFromNode(isExpr->TypeNode);
+
+		return isExpr;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context)

@@ -16,6 +16,14 @@ namespace clear
 	{
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::SizeofExpr:
+			{
+				return m_Module->Lookup("uint64").value()->GetType();
+			}
+			case ASTNodeType::IsExpr:
+			{
+				return m_Module->Lookup("bool").value()->GetType();
+			}
 			case ASTNodeType::CastExpr:
 			{
 				std::shared_ptr<ASTCastExpr> castExpr = std::dynamic_pointer_cast<ASTCastExpr>(node);
