@@ -29,7 +29,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseSubscriptExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseStructInitializerExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseAssignment(std::shared_ptr<ASTNodeBase> lhs);
-		std::shared_ptr<ASTNodeBase> ParseTernary(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseCastExpr(std::shared_ptr<ASTNodeBase> lhs);
+		std::shared_ptr<ASTNodeBase> ParseTernary();
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
 		std::shared_ptr<ASTNodeBase> ParseArrayType();
 

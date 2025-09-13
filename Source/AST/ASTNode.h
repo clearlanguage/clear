@@ -33,7 +33,7 @@ namespace clear
 		DefaultArgument, DefaultInitializer, 
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
-		Subscript, ArrayType
+		Subscript, ArrayType, WhenExpr, CastExpr
 	};
 
 	class ASTNodeBase;
@@ -57,11 +57,6 @@ namespace clear
 		std::shared_ptr<clear::Module> ClearModule;
 		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls where a function is being called from another module
 		std::shared_ptr<TypeRegistry> TypeReg;
-
-		bool WantAddress;
-		bool Thrown = false;
-
-		std::vector<std::shared_ptr<ASTNodeBase>> DeferredCalls;
 
     	CodegenContext(const std::filesystem::path& path, llvm::LLVMContext& context, 
 					   llvm::IRBuilder<>& builder, llvm::Module& module) 
@@ -589,5 +584,18 @@ namespace clear
 
 		std::filesystem::path Filepath;
 		std::string Namespace;
+	};
+
+	class ASTCastExpr : public ASTNodeBase 
+	{
+	public:
+		ASTCastExpr() = default;
+		virtual ~ASTCastExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::CastExpr; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+		std::shared_ptr<ASTNodeBase> Object;
+		std::shared_ptr<ASTNodeBase> TypeNode;
+		std::shared_ptr<Type> TargetType;
 	};
 } 

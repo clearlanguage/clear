@@ -9,6 +9,7 @@
 #include "Symbols/Module.h"
 #include "Symbols/Type.h"
 
+#include <llvm/Analysis/InlineModelFeatureMaps.h>
 #include <llvm/Support/CommandLine.h>
 #include <memory>
 #include <print>
@@ -85,11 +86,12 @@ namespace clear
 		{OperatorType::ListInitializer,   {6, 7, [](Parser* p) { return p->ParseListInitializerExpr(); }}},
 		{OperatorType::ArrayType,		  {6, 7, [](Parser* p) { return p->ParseArrayType(); }}},
 
-		{OperatorType::Negation,     {5, 6}},
-		{OperatorType::Increment,    {5, 6}},
-		{OperatorType::Decrement,    {5, 6}},
-		{OperatorType::PostIncrement,{5, 6}},
-		{OperatorType::PostDecrement,{5, 6}},
+		{OperatorType::Negation,      {5, 6}},
+		{OperatorType::Increment,     {5, 6}},
+		{OperatorType::Decrement,     {5, 6}},
+		{OperatorType::PostIncrement, {5, 6}},
+		{OperatorType::PostDecrement, {5, 6}},
+		{OperatorType::Cast,		  {5, 6, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseCastExpr(node); }}},
 
 		{OperatorType::BitwiseNot,   {5, 6}},
 		{OperatorType::Address,      {5, 6}},
@@ -122,7 +124,7 @@ namespace clear
 
 		{OperatorType::And,     {1, 2}},
 		{OperatorType::Or,      {1, 2}},
-		{OperatorType::Ternary, {1, 2, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseTernary(node);}}},
+		{OperatorType::Ternary, {1, 2, [](Parser* p) { return p->ParseTernary();}}},
 		
 		{OperatorType::Assignment, {0, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
 	};
@@ -607,7 +609,7 @@ namespace clear
 	{
 		Token token = Peak();
 		std::shared_ptr<ASTNodeBase> lhs;
-		
+
 		switch (token.GetType())
 		{
 			case TokenType::Number:
@@ -634,18 +636,19 @@ namespace clear
 				break;
 			}
 			case TokenType::Keyword:
+			default:
 			{
-				if (token.GetData() != "const")
+				OperatorType op = GetPrefixOperator(token);
+
+				if (op == OperatorType::None)
 				{
+					VERIFY_WITH_RETURN(token.IsType(TokenType::Keyword), DiagnosticCode_None, nullptr);
 					lhs = std::make_shared<ASTVariable>(token);
 					Consume();
 
 					break;
 				}
-			}
-			default:
-			{
-				OperatorType op = GetPrefixOperator(token);
+
 				VERIFY_WITH_RETURN(op != OperatorType::None, DiagnosticCode_InvalidOperator, lhs);
 				
 				OperatorInfo info = g_OperatorTable.at(op);
@@ -825,20 +828,36 @@ namespace clear
 		return node;
 	}
 
-	std::shared_ptr<ASTNodeBase> Parser::ParseTernary(std::shared_ptr<ASTNodeBase> lhs)
+	std::shared_ptr<ASTNodeBase> Parser::ParseCastExpr(std::shared_ptr<ASTNodeBase> lhs)
 	{
-		EXPECT_TOKEN_RETURN(TokenType::QuestionMark, DiagnosticCode_None, nullptr);
+		Consume();
+		
+		OperatorInfo info = g_OperatorTable.at(OperatorType::Cast);
+
+		std::shared_ptr<ASTCastExpr> castExpr = std::make_shared<ASTCastExpr>();
+		castExpr->Object = lhs;
+		castExpr->TypeNode = ParseExpr(info.RightBindingPower);
+
+		return castExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseTernary()
+	{
+		EXPECT_DATA_RETURN("when", DiagnosticCode_None, nullptr);
 		Consume();
 		
 		std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::make_shared<ASTTernaryExpression>();
-		ternaryExpr->Condition = lhs;
+		ternaryExpr->Condition = ParseExpr();
+
+		EXPECT_DATA_RETURN("use", DiagnosticCode_UnexpectedToken, nullptr);	
+		Consume();
+
 		ternaryExpr->Truthy = ParseExpr();
 		
-		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
-
+		EXPECT_DATA_RETURN("otherwise", DiagnosticCode_UnexpectedToken, nullptr);
 		Consume();
-		ternaryExpr->Falsy = ParseExpr();
 
+		ternaryExpr->Falsy = ParseExpr();
 		return ternaryExpr;
 	}
 
@@ -1045,9 +1064,12 @@ namespace clear
 			case TokenType::Increment:			return OperatorType::Increment;
 			case TokenType::LeftBrace:			return OperatorType::ListInitializer;
 			case TokenType::LeftBracket:		return OperatorType::ArrayType;
+			case TokenType::Ampersand:			return OperatorType::Address;
 			default:
 				break;
 		}
+
+		if (current.GetData() == "when") return OperatorType::Ternary;
 
 		return OperatorType::None;
 	}
@@ -1087,6 +1109,11 @@ namespace clear
 			default:
 				break;
 		}
+
+		if (current.GetData() == "and")     return OperatorType::And;
+		if (current.GetData() == "or")      return OperatorType::Or;
+		if (current.GetData() == "not")     return OperatorType::Not;
+		if (current.GetData() == "as")		return OperatorType::Cast;
 
 		return OperatorType::None;
 	}

@@ -106,12 +106,11 @@ namespace clear
 
         "if", "else", "while", "for", "return", "break", "continue",
         "true", "false", "null", "in", "and", "or", "elseif", "defer",
-        "switch", "case", "default", "import", "as", "module", "endmodule",
+        "switch", "case", "default", "import", "as", "module", 
         "pass",
 
-        "struct", "function", "class", "restriction",
-        "trait", "property", "declare", "enum",
-        "export",
+         "function", "class", "when", "use", "otherwise",
+         "property", "declare", "enum",
 
         "not","and","or",
 

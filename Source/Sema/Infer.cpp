@@ -16,6 +16,11 @@ namespace clear
 	{
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::CastExpr:
+			{
+				std::shared_ptr<ASTCastExpr> castExpr = std::dynamic_pointer_cast<ASTCastExpr>(node);
+				return castExpr->TargetType;
+			}
 			case ASTNodeType::Literal:
 			{
 				std::shared_ptr<ASTNodeLiteral> literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node);
@@ -87,6 +92,11 @@ namespace clear
 			{
 				std::shared_ptr<ASTListExpr> listExpr = std::dynamic_pointer_cast<ASTListExpr>(node);
 				return listExpr->ListType;
+			}
+			case ASTNodeType::TernaryExpression:
+			{
+				std::shared_ptr<ASTTernaryExpression> ternaryExpr = std::dynamic_pointer_cast<ASTTernaryExpression>(node);
+				return InferTypeFromNode(ternaryExpr->Truthy);
 			}
 			case ASTNodeType::Import:
 			{

@@ -57,12 +57,16 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTListExpr> listExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTIfExpression> ifExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTImport> importExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context);
+
 
 	private:
 		void Report(DiagnosticCode code, Token token);
 		
 		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		std::shared_ptr<ASTNodeBase> VisitBinaryExprBoolean(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);
 		
 		bool IsNodeValue(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<Type> GetTypeFromNode(std::shared_ptr<ASTNodeBase> node);

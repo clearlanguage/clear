@@ -191,6 +191,8 @@ namespace clear
 			case ASTNodeType::ArrayType:				return Visit(std::dynamic_pointer_cast<ASTArrayType>(ast), context);
 			case ASTNodeType::ListExpr:					return Visit(std::dynamic_pointer_cast<ASTListExpr>(ast), context);
 			case ASTNodeType::Import:					return Visit(std::dynamic_pointer_cast<ASTImport>(ast), context);
+			case ASTNodeType::TernaryExpression:		return Visit(std::dynamic_pointer_cast<ASTTernaryExpression>(ast), context);
+			case ASTNodeType::CastExpr:					return Visit(std::dynamic_pointer_cast<ASTCastExpr>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -289,6 +291,7 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTReturn> returnStatement, SemaContext context)
 	{
+		context.ValueReq = ValueRequired::RValue;
 		returnStatement->ReturnValue = Visit(returnStatement->ReturnValue, context);
 		return returnStatement;
 	}
@@ -306,6 +309,15 @@ namespace clear
 				VisitBinaryExprArithmetic(binaryExpression, context);
 				break;
 			}
+			case OperatorType::GreaterThan:
+			case OperatorType::GreaterThanEqual:
+			case OperatorType::LessThan:
+			case OperatorType::LessThanEqual:
+			case OperatorType::IsEqual:
+			case OperatorType::NotEqual:
+			{
+				return VisitBinaryExprBoolean(binaryExpression, context);
+			};
 			case OperatorType::Dot:
 			{
 				return VisitBinaryExprMemberAccess(binaryExpression, context);
@@ -491,6 +503,28 @@ namespace clear
 		
 		return whileExpr;
 	}
+	
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::RValue;
+
+		ternaryExpr->Condition = Visit(ternaryExpr->Condition, context);
+		ternaryExpr->Truthy = Visit(ternaryExpr->Truthy, context);
+		ternaryExpr->Falsy = Visit(ternaryExpr->Falsy, context);
+
+		return ternaryExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context)
+	{
+		castExpr->Object = Visit(castExpr->Object, context);
+		castExpr->TypeNode = Visit(castExpr->TypeNode, context);
+		castExpr->TargetType = GetTypeFromNode(castExpr->TypeNode);
+
+		return castExpr;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context)
 	{	
 		Visit(structExpr->TargetType, context);
@@ -700,6 +734,17 @@ namespace clear
 		}
 
 		binaryExpr->ResultantType = m_Module->GetTypeRegistry()->GetPointerTo(binaryExpr->ResultantType);
+		return binaryExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprBoolean(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::RValue;
+
+		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
+		binaryExpr->RightSide = Visit(binaryExpr->RightSide, context);
+
+		binaryExpr->ResultantType = Symbol::GetBooleanType(m_Module).GetType();
 		return binaryExpr;
 	}
 

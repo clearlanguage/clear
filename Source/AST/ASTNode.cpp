@@ -52,7 +52,7 @@ namespace clear
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
 
-	static Symbol CreateTemporary(std::shared_ptr<Type> type, CodegenContext& ctx)
+	static Symbol CreateAlloca(std::shared_ptr<Type> type, CodegenContext& ctx)
 	{
 		llvm::BasicBlock* insertBlock = ctx.Builder.GetInsertBlock();
         
@@ -61,7 +61,7 @@ namespace clear
 	    llvm::Function* function = insertBlock->getParent();    
 	    ctx.Builder.SetInsertPoint(&function->getEntryBlock());
 		
-		Symbol symbol = Symbol::CreateValue(ctx.Builder.CreateAlloca(type->Get(), nullptr, "tmp"), ctx.ClearModule->GetTypeRegistry()->GetPointerTo(type)); 
+		Symbol symbol = Symbol::CreateValue(ctx.Builder.CreateAlloca(type->Get(), nullptr, "alloca"), ctx.ClearModule->GetTypeRegistry()->GetPointerTo(type)); 
 
 	    ctx.Builder.restoreIP(ip);  
 		return symbol;
@@ -244,16 +244,10 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
-		// ctx.WantAddress is set by parent to this node
 		Symbol lhs = left->Codegen(ctx);
 
-		// right hand side we always want a value
-
 		Symbol rhs;
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, false);
-			rhs = right->Codegen(ctx);
-		}
+		rhs = right->Codegen(ctx);
 
 		auto [_, lhsType] = lhs.GetValue();
 
@@ -265,8 +259,6 @@ namespace clear
 
     Symbol ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
     {
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
 		Symbol lhs = left->Codegen(ctx);
 		Symbol rhs = right->Codegen(ctx);
 
@@ -296,16 +288,12 @@ namespace clear
     {
 
     	auto& builder = ctx.Builder;
-    	// ctx.WantAddress is set by parent to this node
     	Symbol lhs = left->Codegen(ctx);
 
     	// right hand side we always want a value
 
     	Symbol rhs;
-	    {
-    		ValueRestoreGuard guard(ctx.WantAddress, false);
-    		rhs = right->Codegen(ctx);
-	    }
+		rhs = right->Codegen(ctx);
 
     	switch (m_Expression) 
 		{
@@ -327,8 +315,6 @@ namespace clear
 			return {};
 			
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		Symbol lhs = left->Codegen(ctx);
 
@@ -419,10 +405,7 @@ namespace clear
 	Symbol ASTBinaryExpression::HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		Symbol lhs;
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			lhs = left->Codegen(ctx);
-		}
+		lhs = left->Codegen(ctx);
 
 		switch (lhs.Kind) 
 		{
@@ -505,7 +488,7 @@ namespace clear
 		
 		if (lhs.GetType()->IsClass())
 		{
-			Symbol storage = CreateTemporary(lhsType, ctx);
+			Symbol storage = CreateAlloca(lhsType, ctx);
 			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
 			lhs = storage;
 		}
@@ -558,10 +541,7 @@ namespace clear
 				value = Symbol::CreateValue(decl, symbol->GetType());
 			}
 
-			if(ctx.WantAddress)
-				return value;
-
-			return SymbolOps::Load(value, ctx.Builder);
+			return value;
 		}
 		else if (symbol->Kind == SymbolKind::Function)
 		{
@@ -603,17 +583,7 @@ namespace clear
 		}
 		else
 		{
-			llvm::BasicBlock* insertBlock = ctx.Builder.GetInsertBlock();
-        
-			CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
-			auto ip = ctx.Builder.saveIP(); 
-			llvm::Function* function = insertBlock->getParent();    
-			ctx.Builder.SetInsertPoint(&function->getEntryBlock());
-			
-			llvm::Value* allocaInst = ctx.Builder.CreateAlloca(resolvedType.GetType()->Get(), nullptr, m_Name.GetData());
-			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
-				
-			ctx.Builder.restoreIP(ip);
+			*Variable = CreateAlloca(resolvedType.GetType(), ctx);
 
 			if (initializer.Kind != SymbolKind::None)
 				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
@@ -654,17 +624,10 @@ namespace clear
 		CLEAR_VERIFY(Storage && Value, "Assigment operator must have a storage and value");
 	
 		Symbol storage;
-		
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, true);
-			storage = Storage->Codegen(ctx);
-		}
+		storage = Storage->Codegen(ctx);
 
 		Symbol data;
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, false);
-			data    = Value->Codegen(ctx);
-		}
+		data    = Value->Codegen(ctx);
 
 		ValueSymbol value = data.GetValueSymbol();
 
@@ -776,7 +739,6 @@ namespace clear
 		ValueRestoreGuard guard1(ctx.ReturnType,   returnType);
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
-		ValueRestoreGuard guard4(ctx.Thrown,       ctx.Thrown);
 
 		size_t k = 0;
 		for (const auto& arg : Arguments)
@@ -872,8 +834,6 @@ namespace clear
 
     void ASTFunctionCall::BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
     {
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-		
 		for (auto& child : Arguments)	
 		{
 			Symbol gen = child->Codegen(ctx);
@@ -1000,10 +960,6 @@ namespace clear
 			return Symbol();
 		}
 
-		// collect all the values
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
 		Symbol first = Values[0]->Codegen(ctx);
 		
 		llvm::SmallVector<llvm::Value*> values;
@@ -1055,10 +1011,6 @@ namespace clear
 		if(isConst)
 		{
 			Symbol valuePtr = Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
-
-			if(!ctx.WantAddress)
-				return SymbolOps::Load(valuePtr, ctx.Builder);
-
 			return valuePtr;
 		}
 
@@ -1093,10 +1045,6 @@ namespace clear
 		}
 
 		Symbol valuePtr = Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
-
-		if(!ctx.WantAddress)
-			return SymbolOps::Load(valuePtr, ctx.Builder);
-
 		return valuePtr;
 	}
 
@@ -1108,8 +1056,6 @@ namespace clear
 
 		llvm::SmallVector<llvm::Value*> values;
 		llvm::SmallVector<std::shared_ptr<Type>> types;
-
-		ValueRestoreGuard guard(ctx.WantAddress, false);
 
 		for (auto value : Values)
 		{
@@ -1181,11 +1127,7 @@ namespace clear
 		if(isConst)
 		{
 			Symbol valuePtr = Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
-
-			if(!ctx.WantAddress)
-				return SymbolOps::Load(valuePtr, ctx.Builder);
-
-			return valuePtr;
+			return SymbolOps::Load(valuePtr, ctx.Builder);
 		}
 		
 		auto ip = ctx.Builder.saveIP(); 
@@ -1216,12 +1158,8 @@ namespace clear
 		    }
 		}
 
-		Symbol valuePtr = Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy), /* shouldMemcpy = */ true);
-
-		if(!ctx.WantAddress)
-			return SymbolOps::Load(valuePtr, ctx.Builder);
-
-		return valuePtr;
+		Symbol valuePtr = Symbol::CreateValue(structAlloc, ctx.TypeReg->GetPointerTo(structTy));
+		return SymbolOps::Load(valuePtr, ctx.Builder);
 	}
 
 	llvm::Constant* ASTStructExpr::GetDefaultValue(llvm::Type* type)
@@ -1261,7 +1199,6 @@ namespace clear
 			return {};
 		}
 
-		ValueRestoreGuard guard(ctx.WantAddress, false);
 		Symbol codegen = ReturnValue->Codegen(ctx);
 
 		if(codegen.Kind == SymbolKind::None)
@@ -1277,11 +1214,8 @@ namespace clear
 			EmitDefaultReturn(ctx);
 			return Symbol();
 		}
-		
-		if(codegenType->Get() != ctx.ReturnType->Get())
-		{
-			codegenValue = TypeCasting::Cast(codegenValue, codegenType, ctx.ReturnType, ctx.Builder);
-		}
+
+		CLEAR_VERIFY(codegenType->Get() == ctx.ReturnType->Get(), "what the hell");	
 
 		ctx.Builder.CreateStore(codegenValue, ctx.ReturnAlloca);
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
@@ -1315,11 +1249,7 @@ namespace clear
 		if(m_Type == OperatorType::Dereference)
 		{
 			Symbol result;
-
-			{
-				ValueRestoreGuard guard(ctx.WantAddress, false);
-				result = Operand->Codegen(ctx);
-			}
+			result = Operand->Codegen(ctx);
 
 			if (result.Kind == SymbolKind::Type)
 				return Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(result.GetType()));
@@ -1329,8 +1259,6 @@ namespace clear
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
 			return SymbolOps::Load(result, ctx.Builder);
 		}	
-
-		CLEAR_VERIFY(!ctx.WantAddress, "Invalid use of unary expression");
 
 		if(m_Type == OperatorType::Address)
 		{		
@@ -1480,29 +1408,9 @@ namespace clear
 			ctx.Builder.SetInsertPoint(branch.ConditionBlock);
 
 			Symbol condition;
-
-			{
-				ValueRestoreGuard guard(ctx.WantAddress, false);
-				condition = ConditionalBlocks[i].Condition->Codegen(ctx);
-			}
+			condition = ConditionalBlocks[i].Condition->Codegen(ctx);
 
 			auto [conditionValue, conditionType] = condition.GetValue();
-			//TODO: sema pass should insert casts, these casts should be handled by sema pass
-
-			if (conditionType->IsIntegral() && conditionType->GetSizeInBytes(ctx.Module) > 1)
-			{
-				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, llvm::ConstantInt::get(conditionType->Get(), 0));
-			}
-			else if (conditionType->IsFloatingPoint())
-			{
-				conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
-			}
-			else if (conditionType->IsPointer())
-			{
-				conditionValue = ctx.Builder.CreatePtrToInt(conditionValue, ctx.Builder.getInt64Ty(), "cast");
-				conditionValue = ctx.Builder.CreateICmpNE(conditionValue, ctx.Builder.getInt64(0));
-			}
-
 			ctx.Builder.CreateCondBr(conditionValue, branch.BodyBlock, nextBranch);
 
 			function->insert(function->end(), branch.BodyBlock);
@@ -1550,11 +1458,7 @@ namespace clear
 		ctx.Builder.SetInsertPoint(conditionBlock);
 
 		Symbol condition;
-			
-		{
-			ValueRestoreGuard guard(ctx.WantAddress, false);
-			condition = WhileBlock.Condition->Codegen(ctx);
-		}
+		condition = WhileBlock.Condition->Codegen(ctx);
 
 		auto [conditionValue, conditionType] = condition.GetValue();
 		
@@ -1627,10 +1531,6 @@ namespace clear
 
 		ctx.Builder.SetInsertPoint(mergeBlock);
 
-		// cond true false :?
-		// cond true false
-		// false true cond
-		
 		auto phiNode = ctx.Builder.CreatePHI(trueValue.GetType()->Get(), 2);
 
 		phiNode->addIncoming(trueValue.GetLLVMValue(), incomingBlock);
@@ -1665,8 +1565,6 @@ namespace clear
     Symbol ASTDefaultArgument::Codegen(CodegenContext& ctx)
     {
 		CLEAR_VERIFY(Value, "invalid argument");
-		ValueRestoreGuard guard(ctx.WantAddress, false);
-
         return Value->Codegen(ctx);
     }
     
@@ -1689,7 +1587,6 @@ namespace clear
     {
 		CLEAR_VERIFY(Storage, "invalid node");
 
-		ValueRestoreGuard guard(ctx.WantAddress, true);
 		Symbol variable = Storage->Codegen(ctx);
 		
 		auto [varValue, varType] = variable.GetValue();
@@ -1838,6 +1735,13 @@ namespace clear
 		
 		CLEAR_UNREACHABLE("unhandled type");
 		return "";
+	}
+
+	Symbol ASTCastExpr::Codegen(CodegenContext& ctx)
+	{
+		Symbol result = Object->Codegen(ctx);
+		Symbol type = Symbol::CreateType(TargetType);
+		return SymbolOps::Cast(result, type, ctx.Builder);
 	}
 }
 

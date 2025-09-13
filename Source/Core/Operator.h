@@ -26,12 +26,12 @@ namespace clear
 
         Not, Dereference, Address, 
         BitwiseNot, Decrement, Increment,  
-        PostDecrement, PostIncrement,      
+        PostDecrement, PostIncrement, Cast,
 
         Negation, Dot, Index, 
         Pow, Ternary, FunctionCall,
 		Subscript, StructInitializer,
-		ListInitializer, ArrayType,
+		ListInitializer, ArrayType, 
 
         Count
     };
