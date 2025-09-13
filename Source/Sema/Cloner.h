@@ -24,6 +24,9 @@ namespace clear {
 		std::shared_ptr<ASTReturn> CloneReturn(std::shared_ptr<ASTReturn> node);
 		std::shared_ptr<ASTStructExpr> CloneStructExpr(std::shared_ptr<ASTStructExpr> node);
 		std::shared_ptr<ASTSubscript> CloneSubscript(std::shared_ptr<ASTSubscript> node);
+		std::shared_ptr<ASTCastExpr> CloneCastExpr(std::shared_ptr<ASTCastExpr> node);
+		std::shared_ptr<ASTSizeofExpr> CloneSizeofExpr(std::shared_ptr<ASTSizeofExpr> node);
+		std::shared_ptr<ASTIsExpr> CloneIsExpr(std::shared_ptr<ASTIsExpr> node);
 
 		std::shared_ptr<Module> DestinationModule;
 		std::unordered_map<std::string, Symbol> SubstitutionMap;

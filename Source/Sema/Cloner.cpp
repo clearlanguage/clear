@@ -1,6 +1,6 @@
 #include "Cloner.h" 
+#include "AST/ASTNode.h"
 #include "Core/Log.h"
-#include "Core/Operator.h"
 #include <memory>
 
 namespace clear {
@@ -25,6 +25,9 @@ namespace clear {
 			case ASTNodeType::ReturnStatement:			return CloneReturn(std::dynamic_pointer_cast<ASTReturn>(node));
 			case ASTNodeType::StructExpr:				return CloneStructExpr(std::dynamic_pointer_cast<ASTStructExpr>(node));
 			case ASTNodeType::Subscript:				return CloneSubscript(std::dynamic_pointer_cast<ASTSubscript>(node));
+			case ASTNodeType::CastExpr:					return CloneCastExpr(std::dynamic_pointer_cast<ASTCastExpr>(node));		
+			case ASTNodeType::SizeofExpr:				return CloneSizeofExpr(std::dynamic_pointer_cast<ASTSizeofExpr>(node));		
+			case ASTNodeType::IsExpr:					return CloneIsExpr(std::dynamic_pointer_cast<ASTIsExpr>(node));		
 			default: break;
 	}	
 
@@ -174,4 +177,31 @@ namespace clear {
 
 		return subscript;
 	}
+
+	std::shared_ptr<ASTCastExpr> Cloner::CloneCastExpr(std::shared_ptr<ASTCastExpr> node)
+	{
+		std::shared_ptr<ASTCastExpr> castExpr = std::make_shared<ASTCastExpr>();
+		castExpr->Object = Clone(node->Object);
+		castExpr->TypeNode = Clone(node->TypeNode);
+	
+		return castExpr;
+	}
+
+	std::shared_ptr<ASTSizeofExpr> Cloner::CloneSizeofExpr(std::shared_ptr<ASTSizeofExpr> node)
+	{
+		std::shared_ptr<ASTSizeofExpr> sizeofExpr = std::make_shared<ASTSizeofExpr>();
+		sizeofExpr->Object = Clone(node->Object);
+		
+		return sizeofExpr;
+	}
+
+	std::shared_ptr<ASTIsExpr> Cloner::CloneIsExpr(std::shared_ptr<ASTIsExpr> node)
+	{
+		std::shared_ptr<ASTIsExpr> isExpr = std::make_shared<ASTIsExpr>();
+		isExpr->Object = Clone(node->Object);
+		isExpr->TypeNode = Clone(node->TypeNode);
+		
+		return isExpr;
+	}
+
 }
