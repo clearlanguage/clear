@@ -135,7 +135,7 @@ p.greet() // outputs "Hello Bob"
 interface Drawable:
     function draw()
 
-class Circle implements Drawable:
+class Circle:
     function draw(*self):
         print("Drawing Circle")
 
@@ -144,25 +144,6 @@ function draw_object(drawable: Drawable):
 
 let c = Circle {}
 draw_object(c)
-```
-
-* Function Overloading
-
-```
-function _print(a: int64):
-    printf("%i", a)
-
-function _print(a: float64):
-    printf("%d", a)
-```
-
-* Variadic Arguments
-
-```
-function println(args...):
-    for arg in args:
-        _print(arg)
-    printf("\n")
 ```
 
 * Defer
@@ -197,17 +178,6 @@ switch a:
         print("not a valid input")
 ```
 
-* Enums
-
-```
-enum Direction:
-    Left, Right, Up, Down 
-
-print(Direction.Left)   // 0
-print(Direction.Right)  // 1
-print(Direction.Up)     // 2
-```
-
 * Optionals
 
 ```
@@ -221,6 +191,7 @@ if x != null:
 
 ## 🚧 Planned Features
 
+* Macros
 * Unions
 * Variants
 * Generics
