@@ -113,7 +113,6 @@ while i < 5:
 
 ```
 let i = 0          // inferred int
-const number = 2.0 // inferred const float
 ```
 
 * Classes
@@ -129,72 +128,45 @@ let p = Person { "Bob" }
 p.greet() // outputs "Hello Bob"
 ```
 
-* Interfaces
+* Generic Classes
 
 ```
-interface Drawable:
-    function draw()
+class Person[T]:
+    name: T
 
-class Circle:
-    function draw(*self):
-        print("Drawing Circle")
-
-function draw_object(drawable: Drawable):
-    drawable.draw()
-
-let c = Circle {}
-draw_object(c)
+let p1 = Person { "Bob" } //produced Person[string]
+let p2 = Person { 5 }  //produced Person[int]
 ```
 
-* Defer
+* Ternary Expressions
 
 ```
-function test():
-    defer print("Cleaning up!")
-    print("Doing work...")
-    // "Cleaning up!" will print when leaving this scope
+let message = when a >= 0 use "positive" otherwise "negative"
 ```
 
-* Named Blocks
+* Casting
 
 ```
-outer:
-    defer print("leaving outer")
-    print("Inside outer")
-
-    inner:
-        defer print("leaving inner")
-        print("Inside inner")
+let x = 2.4 as int // 2 
 ```
 
-* Switch Statements
+* Imports
 
 ```
-let a: int = ...
-switch a:
-    case 20, 30, 40:
-        print("a was either 20, 30, or 40")
-    default:
-        print("not a valid input")
-```
-
-* Optionals
-
-```
-let x: ?int
-
-if x != null:
-    print(?x)   // unwrap optional
+import "file.cl" // import all symbols into this file
+import "file.cl" as file // import all symbols into this file under the file namespace
 ```
 
 ---
 
 ## 🚧 Planned Features
 
+* Switch Statements
+* Optionals
 * Macros
+* Generics
 * Unions
 * Variants
-* Generics
 * Modules
 * Inheritance
 * Advanced Enums
