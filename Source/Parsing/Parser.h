@@ -22,8 +22,6 @@ namespace clear
         Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> root, DiagnosticsBuilder& builder);
         ~Parser() = default;
 
-        std::shared_ptr<ASTNodeBase> GetResult();
-
 		std::shared_ptr<ASTNodeBase> ParsePrefixExpr();
 		std::shared_ptr<ASTNodeBase> ParseInfixExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParsePostfixExpr(std::shared_ptr<ASTNodeBase> lhs);
@@ -55,10 +53,9 @@ namespace clear
 
         void ExpectAny(TokenSet tokenSet);
 
-        void ParseUntil(TokenType endToken);
-        void ParseUntil(const std::string& endToken);
-        void ParseUntilMatchIndentation(size_t rootLevel);
-		
+		void SkipUntil(TokenType type);
+		size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
+
 		std::shared_ptr<ASTBlock>    ParseCodeBlock();
 		std::shared_ptr<ASTNodeBase> ParseStatement();
 		std::shared_ptr<ASTNodeBase> ParseGeneral();
@@ -68,19 +65,10 @@ namespace clear
 		std::shared_ptr<ASTIfExpression> ParseIf();
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
 		std::shared_ptr<ASTImport> ParseImport();
-        void ParseFor();
-        void ParseIndentation();
 		std::shared_ptr<ASTNodeBase> ParseClass();
 		std::shared_ptr<ASTGenericTemplate> ParseGenericArgs(std::shared_ptr<ASTNodeBase> templateNode);
 		std::shared_ptr<ASTNodeBase> ParseLet();
-        void ParseLoopControls();
-        void ParseTrait();
-        void ParseEnum();
-        void ParseDefer();
 		std::shared_ptr<ASTBlock> ParseBlock();
-        void ParseModule();
-        void ParseEndModule();
-        void ParseSwitch();
 
         struct VariableDecleration
         {
@@ -95,13 +83,6 @@ namespace clear
 
         AssignmentOperatorType GetAssignmentOperatorFromTokenType(TokenType type);
 
-        void SavePosition();
-        void RestorePosition();
-        void SkipUntil(TokenType type);
-
-        size_t FindLastOf(TokenType type); // relative to end line
-        size_t GetLastBracket(TokenType openBracket, TokenType closeBracket);
-
 		OperatorType GetPrefixOperator(const Token& token);
 		OperatorType GetBinaryOperator(const Token& token);
 		OperatorType GetPostfixOperator(const Token& token);
@@ -111,14 +92,10 @@ namespace clear
         std::set<std::string> m_Aliases;
         size_t m_Position = 0;
 
-        std::vector<std::shared_ptr<ASTBlock>> m_RootStack;
-        std::vector<size_t> m_RestorePoints;
-
         TokenSet m_Terminators;
         TokenSet m_AssignmentOperators;
         TokenSet m_Literals;
 
-        std::vector<std::shared_ptr<Module>> m_Modules;
         DiagnosticsBuilder& m_DiagnosticsBuilder;
     };
 }

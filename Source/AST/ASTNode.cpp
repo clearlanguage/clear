@@ -2,16 +2,11 @@
 
 #include "Core/Log.h"
 #include "Core/Operator.h"
-#include "Symbols/FunctionCache.h"
 #include "Symbols/Symbol.h"
 #include "Symbols/Type.h"
 #include "Symbols/TypeCasting.h"
-
-#include "Symbols/TypeRegistry.h"
-#include "Intrinsics.h"
-#include "Symbols/SymbolOperations.h"
 #include "Symbols/Module.h"
-#include "Sema/Sema.h"
+#include "Symbols/SymbolOperations.h"
 
 #include <alloca.h>
 #include <llvm/ADT/ArrayRef.h>
@@ -56,11 +51,6 @@ namespace clear
 	};
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
-
-	static void PushScopeMarker(CodegenContext& ctx)
-	{
-		ctx.DeferredCalls.push_back(nullptr);
-	}
 
 	static Symbol CreateTemporary(std::shared_ptr<Type> type, CodegenContext& ctx)
 	{
@@ -440,9 +430,6 @@ namespace clear
 			{
 				auto ty = lhs.GetType();
 
-				if(ty->IsEnum())
-					return HandleMemberEnum(lhs, right, ctx);
-
 				if(ty->IsClass())
 				{
 					std::shared_ptr<ASTVariable> member = std::dynamic_pointer_cast<ASTVariable>(right);
@@ -534,16 +521,6 @@ namespace clear
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
 
-    Symbol ASTBinaryExpression::HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)	
-    {
-		auto member = std::dynamic_pointer_cast<ASTMember>(right);
-
-		auto enumTy = dyn_cast<EnumType>(lhs.GetType());
-		CLEAR_VERIFY(enumTy, "not a valid enum");
-
-		auto ty = ctx.TypeReg->GetType("int64");
-		return Symbol::CreateValue(ctx.Builder.getInt64(enumTy->GetEnumValue(member->GetName())), ty);
-    }
 
     Symbol ASTBinaryExpression::HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
@@ -845,44 +822,6 @@ namespace clear
 		return *FunctionSymbol;
 	}
 
-	void ASTFunctionDefinition::Instantiate(FunctionInstance& functionData, CodegenContext& ctx)
-    {
-		PushScopeMarker(ctx);
-	}
-
-	void ASTFunctionDefinition::RegisterGenerics(CodegenContext& ctx)
-	{
-		for(const auto& generic : m_GenericTypes)
-		{
-			ctx.TypeReg->CreateType<GenericType>(generic, generic);
-		}
-	}
-
-	void ASTFunctionDefinition::RemoveGenerics(CodegenContext& ctx)
-	{
-		for(const auto& generic : m_GenericTypes)
-		{
-			ctx.TypeReg->RemoveType(generic);
-		}
-	}
-
-
-	std::shared_ptr<ASTFunctionDefinition> ASTFunctionDefinition::ShallowCopy()
-	{
-		std::shared_ptr<ASTFunctionDefinition> functionDefinition = std::make_shared<ASTFunctionDefinition>(m_Name);
-
-		functionDefinition->m_GenericTypes = m_GenericTypes;
-		functionDefinition->m_PrefixParams = m_PrefixParams;
-		functionDefinition->m_ResolvedParams = m_ResolvedParams;
-		functionDefinition->m_ResolvedReturnType = m_ResolvedReturnType;
-		functionDefinition->m_GenericTypes = m_GenericTypes;
-		functionDefinition->Arguments = Arguments;
-		functionDefinition->CodeBlock = CodeBlock;
-		functionDefinition->ReturnType = ReturnType;
-
-		return functionDefinition;
-	}
-
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
 		std::vector<llvm::Value*> args;
@@ -1004,6 +943,13 @@ namespace clear
 
 	Symbol ASTFunctionDeclaration::Codegen(CodegenContext& ctx)
 	{
+		struct Parameter 
+		{
+			std::string Name;
+			std::shared_ptr<Type> Type;
+			bool IsVariadic;
+		};
+
 		auto& module = ctx.Module;
 		llvm::SmallVector<llvm::Type*> types;
 		llvm::SmallVector<Parameter> params;
@@ -1301,15 +1247,6 @@ namespace clear
 	}
 
 
-    ASTMember::ASTMember(const std::string& name)
-		: m_MemberName(name)
-    {
-    }
-
-	Symbol ASTMember::Codegen(CodegenContext& ctx)
-	{
-		return {};
-	}
 
 	Symbol ASTReturn::Codegen(CodegenContext& ctx)
 	{
@@ -1599,8 +1536,6 @@ namespace clear
 	
     Symbol ASTWhileExpression::Codegen(CodegenContext& ctx)
     {
-		PushScopeMarker(ctx);
-
 		CLEAR_VERIFY(WhileBlock.Condition && WhileBlock.CodeBlock, "Cannot have null values here");
 
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
@@ -1709,65 +1644,9 @@ namespace clear
 		std::print("?: ");
 	}
 
-    ASTForExpression::ASTForExpression(const std::string& name)
-		: m_Name(name)
-    {
-    }
-
-    Symbol ASTForExpression::Codegen(CodegenContext& ctx)
-    {
-		CLEAR_UNREACHABLE("TODO");
-		return {};
-	}
-
 	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy)
 		: m_JumpTy(jumpTy)
 	{
-	}
-
-    ASTStruct::ASTStruct(const std::string& name)
-		: m_Name(name)
-    {
-    }
-
-    Symbol ASTStruct::Codegen(CodegenContext& ctx)
-    {
-		// // create the struct type
-		// auto structTy = ctx.TypeReg->CreateType<StructType>(m_Name, m_Name, ctx.Context);
-		// std::vector<std::pair<std::string, std::shared_ptr<Type>>> members;
-		//
-		// for (auto value : Members)
-		// {
-		// 	Symbol result = value->Codegen(ctx);
-		// 	members.emplace_back(std::string(result.Metadata.value_or(String())), result.GetType());
-		// }
-		//
-		// structTy->SetBody(members);
-		//
-		// // set its default values
-		//
-		// ValueRestoreGuard guard(ctx.WantAddress, false);
-		//
-		// size_t i = 0;
-		// for(const auto& [memberName, memberType] : members)
-		// {
-		// 	if(!DefaultValues[i])
-		// 	{
-		// 		i++;
-		// 		structTy->AddDefaultValue(memberName, llvm::Constant::getNullValue(memberType->Get()));
-		// 		continue;
-		// 	}
-		//
-		// 	Symbol result = DefaultValues[i++]->Codegen(ctx);
-		//
-		// 	auto [resultValue, resultType] = result.GetValue();
-		// 	resultValue = TypeCasting::Cast(resultValue, resultType, memberType, ctx.Builder);
-		// 	structTy->AddDefaultValue(memberName, resultValue);
-		// }
-		//
-		// return Symbol::CreateType(structTy);
-		CLEAR_UNREACHABLE("TODO MOVE INTO CLASS NODE");	
-		return Symbol();
 	}
 
 	Symbol ASTLoopControlFlow::Codegen(CodegenContext& ctx) 
@@ -1806,37 +1685,6 @@ namespace clear
 		return Symbol::CreateType(ClassTy);
    }
 	
-	//TODO: type substitution should be handled by sema, in future node will be deep copied before instantiation
-	void ASTClass::Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes)
-	{
-		CLEAR_UNREACHABLE("TODO move this into sema");
-	}
-
-    ASTTrait::ASTTrait(const std::string& name)
-		: m_Name(name)
-    {
-    }
-
-    Symbol ASTTrait::Codegen(CodegenContext& ctx)
-    {
-		CLEAR_UNREACHABLE("todo");
-        return Symbol();
-    }
-
-    Symbol ASTRaise::Codegen(CodegenContext& ctx)
-    {
-		CLEAR_UNREACHABLE("unimplemented");
-		ctx.Thrown = true;
-
-        return Symbol();
-    }
-
-    Symbol ASTTryCatch::Codegen(CodegenContext &)
-    {
-		CLEAR_UNREACHABLE("unimplemented");
-        return Symbol();
-    }
-
     Symbol ASTDefaultInitializer::Codegen(CodegenContext& ctx)
     {
 		CLEAR_VERIFY(Storage, "invalid node");
@@ -1907,46 +1755,6 @@ namespace clear
 		    }
 		}
 
-        return Symbol();
-    }
-
-    ASTEnum::ASTEnum(const std::string& enumName, const std::vector<std::string>& names)
-		: m_Names(names), m_EnumName(enumName)
-    {
-    }
-
-    Symbol ASTEnum::Codegen(CodegenContext& ctx)
-    {
-		std::shared_ptr<EnumType> type = std::make_shared<EnumType>(ctx.TypeReg->GetType("int64"), m_EnumName);
-
-		int64_t previous = 0;
-
-		for(size_t i = 0; i < m_Names.size(); i++)
-		{
-			CLEAR_VERIFY(i < EnumValues.size(), "invalid enum node");
-
-			if(!EnumValues[i])
-			{
-				type->InsertEnumValue(m_Names[i], ++previous);
-				continue;
-			}
-
-			Symbol result = EnumValues[i]->Codegen(ctx);
-
-			auto casted = llvm::dyn_cast<llvm::ConstantInt>(result.GetValue().first);
-			CLEAR_VERIFY(casted, "not a valid enum value!");
-
-			type->InsertEnumValue(m_Names[i], casted->getSExtValue());
-			previous = casted->getSExtValue();
-		}
-
-		ctx.TypeReg->RegisterType(m_EnumName, type);
-        return Symbol();
-    }
-
-    Symbol ASTDefer::Codegen(CodegenContext& ctx)
-    {
-		ctx.DeferredCalls.push_back(Expr);
         return Symbol();
     }
 

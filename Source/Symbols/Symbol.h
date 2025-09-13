@@ -12,7 +12,6 @@ namespace clear
     class Module;
     class Type;
 	class GenericType;
-    class FunctionInstance;
     class FunctionTemplate;
     class ASTNodeBase;
 	class ASTFunctionDefinition;
@@ -40,8 +39,6 @@ namespace clear
 
     struct FunctionSymbol 
     {
-        FunctionInstance* Instance;
-		
 		llvm::Function* FunctionPtr = nullptr;
 		llvm::FunctionType* FunctionType = nullptr;
 		std::shared_ptr<ASTFunctionDefinition> FunctionNode;
@@ -123,7 +120,6 @@ namespace clear
         static Symbol CreateModule(std::shared_ptr<Module> module_);
         static Symbol CreateValue(llvm::Value* value, std::shared_ptr<Type> type, bool shouldMemcpy = false);
         static Symbol CreateVariable(StringRef name, llvm::Value* value, std::shared_ptr<Type> type);
-        static Symbol CreateFunction(FunctionInstance* instance); // TODO: depricated
 		static Symbol CreateFunction(std::shared_ptr<ASTFunctionDefinition> def);
         static Symbol CreateFunctionTemplate(FunctionTemplate* template_);
         static Symbol CreateTuple(const llvm::SmallVector<llvm::Value*>& values, const llvm::SmallVector<std::shared_ptr<Type>>& types);
@@ -142,7 +138,6 @@ namespace clear
         std::shared_ptr<Module> GetModule() const;
         std::pair<llvm::Value*, std::shared_ptr<Type>> GetValue() const;
         ValueSymbol GetValueSymbol();
-        FunctionInstance* GetFunction() const;
         FunctionTemplate* GetFunctionTemplate() const;
         const ValueSymbol& GetValueTuple() const;
         ClassTemplate GetClassTemplate();

@@ -34,8 +34,6 @@ namespace clear
         static Symbol Neg(Symbol& operand, llvm::IRBuilder<>& builder, std::shared_ptr<Type> signedType);
         static Symbol Not(Symbol& operand, llvm::IRBuilder<>& builder);
 
-        static Symbol Call(Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder);
-
         static Symbol Load(Symbol& ptr, llvm::IRBuilder<>& builder);
         static void   Store(Symbol& ptr, Symbol& value, llvm::IRBuilder<>& builder, llvm::Module& module, bool isFirstTime = false);
         static void   Memcpy(Symbol& dst, Symbol& src, Symbol& size, llvm::IRBuilder<>& builder);

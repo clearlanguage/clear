@@ -32,10 +32,6 @@ namespace clear
         std::shared_ptr<Type> GetConstFrom(std::shared_ptr<Type> base);
         std::shared_ptr<Type> GetSignedType(std::shared_ptr<Type> type);
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
-        std::shared_ptr<Type> GetTypeFromClassTemplate(const ClassTemplate& template_, CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> types);
-
-        void CreateClassTemplate(std::string_view name, std::shared_ptr<ASTNodeBase> classNode, llvm::ArrayRef<std::string> generics);
-        std::optional<ClassTemplate> GetClassTemplate(std::string_view name);
 
         const auto& GetTypeTable() { return m_Types; }
 
@@ -52,7 +48,6 @@ namespace clear
 
     private:
         std::unordered_map<std::string, std::shared_ptr<Type>> m_Types;
-        std::unordered_map<std::string, ClassTemplate> m_ClassTemplates;
         std::shared_ptr<llvm::LLVMContext> m_Context;
     };
 }

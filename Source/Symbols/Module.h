@@ -2,7 +2,6 @@
 
 #include "AST/ASTNode.h"
 #include "Compilation/BuildConfig.h"
-#include "Symbols/FunctionCache.h"
 #include "Symbols/TypeRegistry.h"
 
 #include "Symbols/Symbol.h"
@@ -40,11 +39,6 @@ namespace clear
         CodegenContext GetCodegenContext();
 		
 		std::optional<std::shared_ptr<Symbol>> Lookup(llvm::StringRef symbol);
-		std::optional<Symbol> Lookup(llvm::StringRef fn, llvm::ArrayRef<Parameter> params);
-
-        // NOTE: for now only types but may be extended to support more symbols
-        void CreateAlias(const std::string& aliasName, const std::string& symbolName);
-        void RemoveAlias(const std::string& aliasName);
 
         std::shared_ptr<Type> GetTypeFromToken(const Token& token);
 		

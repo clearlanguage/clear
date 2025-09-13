@@ -45,28 +45,12 @@ namespace llvm
 
 namespace clear 
 {
-    enum class BinaryExpressionType : uint8_t
-	{
-		None = 0, Add, Sub, Mul, Div, Pow, Mod, Less, LessEq,
-		Greater, GreaterEq, Eq, NotEq, PositivePointerArithmetic,
-		NegatedPointerArithmetic, Assignment, BitwiseLeftShift,
-		BitwiseRightShift, BitwiseNot, BitwiseAnd, BitwiseOr,
-		BitwiseXor, Index, And, Or, Not, MemberAccess
-	};
-
-	enum class UnaryExpressionType : uint8_t
-	{
-		None = 0, BitwiseNot, Negation, 
-        Dereference, Reference, Cast, PostIncrement, 
-        PostDecrement, PreIncrement, PreDecrement, Not, Unpack
-	};
-
     enum class TypeFlags
     {
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Trait, Enum, Generic, Count
+        Generic, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -107,10 +91,7 @@ namespace clear
         bool IsArray();
         bool IsCompound();
         bool IsClass();
-        bool IsVariadic();
         bool IsConst();
-        bool IsTrait();
-        bool IsEnum();
         bool IsGeneric();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
@@ -187,24 +168,6 @@ namespace clear
         size_t m_Count;
     };
 	
-
-	//TODO:
-	class FunctionType : public Type 
-	{
-	public:
-		FunctionType(llvm::ArrayRef<std::shared_ptr<Type>> argTypes, std::shared_ptr<Type> returnType) = delete;
-		virtual ~FunctionType() = default;
-			
-		virtual llvm::Type* Get() const override { return m_LLVMType; }
-		virtual std::string GetHash() const override { return ""; }
-		
-
-	private:
-		llvm::FunctionType* m_LLVMType = nullptr;
-		llvm::SmallVector<std::shared_ptr<Type>> m_Args;
-		std::shared_ptr<Type> m_ReturnType;
-	};
-
     struct Symbol;
 	
     class ClassType : public Type
@@ -227,19 +190,6 @@ namespace clear
 		std::string m_Name;
     };
     
-    class VariadicArgumentsHolder : public Type 
-    {
-    public:
-        VariadicArgumentsHolder();
-        virtual ~VariadicArgumentsHolder() = default;
-
-        virtual llvm::Type* Get() const override { return m_LLVMType; }
-        virtual std::string GetHash() const override { return "__clrt_variadic"; };
-
-    private:
-        llvm::Type* m_LLVMType = nullptr;
-    };
-
     class ConstantType : public Type
     {
     public:
@@ -253,45 +203,6 @@ namespace clear
 
     private:
         std::shared_ptr<Type> m_Base;
-    };
-
-    class TraitType : public Type
-    {
-    public:
-        TraitType(const std::vector<std::string>& functions,
-                  const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, 
-                  const std::string& name);
-        
-        virtual ~TraitType() = default;
-
-        virtual llvm::Type* Get() const override { return nullptr; }
-        virtual std::string GetHash() const override { return m_Name; };
-
-        bool DoesClassImplementTrait(std::shared_ptr<ClassType> classTy);
-
-    private:
-        std::vector<std::string> m_Functions;
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> m_Members;
-        std::string m_Name;
-    };
-
-    class EnumType : public Type 
-    {
-    public:
-        EnumType(std::shared_ptr<Type> integerType, const std::string& name);
-        virtual ~EnumType() = default;
-
-        void InsertEnumValue(const std::string& name, int64_t value);
-
-        int64_t GetEnumValue(const std::string& name);
-
-        virtual llvm::Type* Get() const override { return m_Type->Get(); }
-        virtual std::string GetHash() const override { return m_Type->GetHash(); };
-        
-    private:
-        std::string m_Name;
-        std::shared_ptr<Type> m_Type;
-        std::unordered_map<std::string, int64_t> m_EnumValues;
     };
 
     class GenericType : public Type 

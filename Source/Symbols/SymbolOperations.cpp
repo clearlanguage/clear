@@ -1,6 +1,5 @@
 #include "SymbolOperations.h"
 
-#include "Symbols/FunctionCache.h"
 #include "Symbols/Symbol.h"
 #include "Type.h"
 #include "Core/Log.h"
@@ -310,12 +309,6 @@ namespace clear
         auto [value, type] = operand.GetValue();
 
         return Symbol::CreateValue(builder.CreateNot(value, "not"), type);
-    }
-    
-    Symbol SymbolOps::Call(Symbol& fn, const llvm::SmallVector<llvm::Value*>& args, llvm::IRBuilder<>& builder)
-    {
-        FunctionInstance* instance = fn.GetFunction();
-        return Symbol::CreateValue(builder.CreateCall(instance->Function, args), instance->ReturnType);
     }
     
     Symbol SymbolOps::Load(Symbol& ptr, llvm::IRBuilder<>& builder)

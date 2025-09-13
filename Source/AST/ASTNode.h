@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Core/Log.h"
-#include "Symbols/FunctionCache.h"
 #include "Symbols/Type.h"
 #include "Core/Value.h"
 
@@ -26,13 +25,13 @@ namespace clear
 	{
 		Base = 0, Literal, BinaryExpression, VariableDecleration,
 		FunctionDefinition, FunctionDecleration,
-		ReturnStatement, Struct,
+		ReturnStatement, 
 		FunctionCall, IfExpression, WhileLoop,
 		UnaryExpression, Break, Continue, 
-		InitializerList, MemberAccess, AssignmentOperator, Import, Member, 
-		Variable, ForLoop, InferredDecleration, Class, LoopControlFlow, 
-		DefaultArgument, Trait, Raise, TryCatch, DefaultInitializer, 
-		Enum, Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
+		MemberAccess, AssignmentOperator, Import,  
+		Variable,  InferredDecleration, Class, LoopControlFlow, 
+		DefaultArgument, DefaultInitializer, 
+		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType
 	};
@@ -153,7 +152,6 @@ namespace clear
 		Symbol HandleMemberAccess(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);	
 
 		Symbol HandleMember(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
-		Symbol HandleMemberEnum(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		Symbol HandleModuleAccess(Symbol& lhs, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 
 	private:
@@ -239,36 +237,14 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionDefinition; }
 		virtual Symbol Codegen(CodegenContext&) override;
 		
-
 		const std::string& GetName() const { return m_Name; }
 		void SetName(const std::string& name) { m_Name = name;}
-
-		void Instantiate(FunctionInstance& functionData, CodegenContext& ctx);
-
-		void AddGeneric(const std::string& genericName)
-		{
-			m_GenericTypes.push_back(genericName);
-		}
-
-		void AddPrefixParam(const Parameter& param)
-		{
-			m_PrefixParams.push_back(param);
-		}
-
-		const auto& GetParameters() const { return m_ResolvedParams; }
-		const auto& GetReturnType() const { return m_ResolvedReturnType; }
-
-		void RegisterGenerics(CodegenContext& ctx);
-		void RemoveGenerics(CodegenContext& ctx);
-
-		std::shared_ptr<ASTFunctionDefinition> ShallowCopy();
 
 	public:
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
 		std::shared_ptr<ASTNodeBase> ReturnType;
 		std::shared_ptr<Type> ReturnTypeVal;
 		std::shared_ptr<ASTBlock> CodeBlock;	
-		std::vector<std::string> GenericTypes; //TODO: make an actual node for it so we can include restrictions later
 		std::shared_ptr<Module> SourceModule;
 		std::shared_ptr<Symbol> FunctionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(nullptr));	
 		llvm::Function::LinkageTypes Linkage = llvm::Function::ExternalLinkage;
@@ -276,12 +252,6 @@ namespace clear
 
 	private:
 		std::string m_Name;
-
-		std::vector<Parameter> m_ResolvedParams;
-		llvm::SmallVector<Parameter> m_PrefixParams;
-		std::shared_ptr<Type> m_ResolvedReturnType;
-
-		llvm::SmallVector<std::string> m_GenericTypes;
 	};
 
 	class ASTFunctionCall : public ASTNodeBase
@@ -369,43 +339,6 @@ namespace clear
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);
-	};
-
-	/* class ASTImport : public ASTNodeBase
-	{
-	public:
-		ASTImport(const std::filesystem::path& filepath, const std::string& alias = "");
-		virtual ~ASTImport() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Import; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-		const std::filesystem::path& GetFilePath() const { return m_Filepath; }
-		const std::string& GetAlias() const { return m_Alias; }
-
-	private:
-		void ProcessCImport(const std::filesystem::path& path,  CodegenContext& ctx);
-		FunctionInstance ParseHeader(const HeaderFunc& function, CodegenContext& ctx);ASTNode.h
-		Parameter GetInfoFromArg(const std::vector<Token>& arg, CodegenContext& ctx);
-
-		void ProcessTypes(const std::filesystem::path& path, CodegenContext& ctx);
-
-	private:
-		std::filesystem::path m_Filepath;
-		std::string m_Alias;
-	}; */
-
-	class ASTMember : public ASTNodeBase
-	{
-	public:
-		ASTMember(const std::string& name);
-		virtual ~ASTMember() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Member; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-		const std::string& GetName() const {  return m_MemberName; }
-
-	private:
-		std::string m_MemberName;
 	};
 
 	class ASTReturn : public ASTNodeBase 
@@ -519,37 +452,6 @@ namespace clear
 		std::string m_Name;
 	};
 
-	class ASTForExpression : public ASTNodeBase 
-	{
-	public:
-		ASTForExpression(const std::string& name);
-		virtual ~ASTForExpression() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ForLoop; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-	public:
-		std::shared_ptr<ASTNodeBase> Iterator;
-		std::shared_ptr<ASTBlock> CodeBlock;
-
-	private:
-		std::string m_Name;
-	};
-
-	class ASTStruct : public ASTNodeBase
-	{
-	public:
-		ASTStruct(const std::string& name);
-		virtual ~ASTStruct() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Struct; }
-		virtual Symbol Codegen(CodegenContext&) override;
-	
-	public:
-		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
-		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
-
-	private:
-		std::string m_Name;
-	};
 
 	class ASTClass : public ASTNodeBase
 	{
@@ -560,13 +462,6 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Class; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
-		void AddGeneric(std::string_view name)
-		{
-			m_Generics.push_back(std::string(name));
-		}
-
-		void Instantiate(CodegenContext& ctx, llvm::ArrayRef<std::shared_ptr<Type>> aliasTypes = {});
-	
 		inline const auto& GetName() const { return m_Name; } 
 		void SetName(llvm::StringRef newName) { m_Name = std::string(newName); }
 
@@ -576,23 +471,6 @@ namespace clear
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
 		std::shared_ptr<Type> ClassTy;
 	
-	private:
-		std::string m_Name;
-		llvm::SmallVector<std::string> m_Generics;
-	};
-	
-	class ASTTrait : public ASTNodeBase
-	{
-	public:
-		ASTTrait(const std::string& name);
-		virtual ~ASTTrait() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Trait; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-	public:
-		std::vector<std::shared_ptr<ASTVariableDeclaration>> VariableDeclarations;
-		std::vector<std::shared_ptr<ASTFunctionDeclaration>> FunctionDeclarations;
-
 	private:
 		std::string m_Name;
 	};
@@ -626,24 +504,6 @@ namespace clear
 		size_t m_Index;
 	};
 
-	class ASTRaise : public ASTNodeBase
-	{
-	public:
-		ASTRaise() = default;
-		virtual ~ASTRaise() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Raise; }
-		virtual Symbol Codegen(CodegenContext&) override;
-	};
-
-	class ASTTryCatch : public ASTNodeBase
-	{
-	public:
-		ASTTryCatch() = default;
-		virtual ~ASTTryCatch() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TryCatch; }
-		virtual Symbol Codegen(CodegenContext&) override;
-	};
-
 	class ASTDefaultInitializer : public ASTNodeBase
 	{
 	public:
@@ -656,27 +516,6 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;
 	};
-
-	class ASTEnum : public ASTNodeBase
-	{
-	public:
-		ASTEnum(const std::string& enumName, const std::vector<std::string>& names = {});
-		virtual ~ASTEnum() = default;
-		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Enum; }
-		virtual Symbol Codegen(CodegenContext&) override;
-
-		void AddEnumName(const std::string& name)
-		{
-			m_Names.push_back(name);
-		}
-
-	public:
-		std::vector<std::shared_ptr<ASTNodeBase>> EnumValues;
-
-	private:
-		std::string m_EnumName;
-		std::vector<std::string> m_Names;
-	};	
 
 	class ASTDefer : public ASTNodeBase 
 	{

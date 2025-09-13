@@ -1,7 +1,6 @@
 #include "Module.h"
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
-#include "Symbols/FunctionCache.h"
 #include "Symbols/TypeRegistry.h"
 #include <memory>
 #include <optional>
@@ -129,19 +128,6 @@ namespace clear
         return std::nullopt;
     }
     
-	std::optional<Symbol> Module::Lookup(llvm::StringRef fn, llvm::ArrayRef<Parameter> params)
-    {
-		return Symbol();
-    }
-
-    void Module::CreateAlias(const std::string& aliasName, const std::string& symbolName)
-    {
-    }
-    
-    void Module::RemoveAlias(const std::string& aliasName)
-    {
-    }
-
     std::shared_ptr<Type> Module::GetTypeFromToken(const Token& token)
     {
         if(auto ty = m_TypeRegistry->GetTypeFromToken(token))

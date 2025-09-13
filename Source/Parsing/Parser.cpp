@@ -9,6 +9,7 @@
 #include "Symbols/Module.h"
 #include "Symbols/Type.h"
 
+#include <llvm/Support/CommandLine.h>
 #include <memory>
 #include <print>
 #include <stack>
@@ -129,9 +130,6 @@ namespace clear
     Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule, DiagnosticsBuilder& builder)
         : m_Tokens(tokens), m_DiagnosticsBuilder(builder)
     {
-        m_Modules.push_back(rootModule);
-        m_RootStack.push_back(rootModule->GetRoot());
-
         m_Terminators = CreateTokenSet({
             TokenType::EndLine, 
 		    TokenType::EndScope, 
@@ -165,21 +163,6 @@ namespace clear
         });
 
         rootModule->GetRoot()->Children.push_back(ParseCodeBlock());
-    }
-
-    std::shared_ptr<ASTNodeBase> Parser::GetResult()
-    {
-        return m_RootStack[0];
-    }
-
-    std::shared_ptr<ASTBlock> Parser::Root()
-    {
-        return m_RootStack.back();
-    }
-
-    std::shared_ptr<Module> Parser::RootModule()
-    {
-        return m_Modules.back();
     }
 
     Token Parser::Consume()
@@ -259,14 +242,6 @@ namespace clear
         CLEAR_UNREACHABLE("TODO: add errors here");
     }
 
-   /*  void Parser::ExpectAny(TokenSet tokenSet)
-    {
-        if(MatchAny(tokenSet)) return;
-        
-        CLEAR_LOG_ERROR("missing expected token from token set");    
-        CLEAR_UNREACHABLE("TODO");
-    } */
-	
 	std::shared_ptr<ASTBlock> Parser::ParseCodeBlock()
 	{
 		auto block = std::make_shared<ASTBlock>();
@@ -330,57 +305,7 @@ namespace clear
 		return ParseExpr();
     }
 
-    void Parser::ParseLoopControls() 
-    {
-        auto node = std::make_shared<ASTLoopControlFlow>(Peak().GetData());
-        Consume();
-        Root()->Children.push_back(node);
-    }
-
-    void Parser::ParseTrait()
-    { 
-        EXPECT_DATA("trait",DiagnosticCode_None);
-        Consume();
-
-        std::string traitName = Consume().GetData();
-
-        EXPECT_TOKEN(TokenType::Colon,  DiagnosticCode_ExpectedIndentation);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation);
-        Consume();
-    
-        std::shared_ptr<ASTTrait> trait = std::make_shared<ASTTrait>(traitName);
-
-        while (Match("function") || Match(TokenType::Keyword) || Match(TokenType::Identifier))
-        {
-			m_RootStack.push_back(std::make_shared<ASTBlock>());
-
-            if(Match("function")) // parse as function decleration
-            {
-                ParseFunctionDeclaration("function");
-				trait->FunctionDeclarations.push_back(std::dynamic_pointer_cast<ASTFunctionDeclaration>(m_RootStack.back()->Children[0]));
-            }
-            else 
-            {
-                ParseVariableDecleration();
-				trait->VariableDeclarations.push_back(std::dynamic_pointer_cast<ASTVariableDeclaration>(m_RootStack.back()->Children[0]));
-            }
-
-			m_RootStack.pop_back();
-
-            while(Match(TokenType::EndLine))
-                Consume();
-        }
-
-        m_RootStack.pop_back();
-        Root()->Children.push_back(trait);
-
-        if(Match(TokenType::EndScope))
-            Consume(); 
-    }
-
-   	std::shared_ptr<ASTReturn> Parser::ParseReturn()
+  	std::shared_ptr<ASTReturn> Parser::ParseReturn()
     {
         EXPECT_DATA_RETURN("return",DiagnosticCode_None, nullptr);
         Consume();
@@ -472,221 +397,64 @@ namespace clear
 		return importExpr;
 	}
 
-    void Parser::ParseFor()
-    {
-        EXPECT_DATA("for",DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-        std::string name = Consume().GetData();
-
-        EXPECT_DATA("in", DiagnosticCode_InvalidForLoop);
-        Consume();
-
-        // TODO: add more comprehensive parseIter function here. for now only variadic arguments are supported
-
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-        auto var = std::make_shared<ASTVariable>(Consume());
-
-        auto forLoop = std::make_shared<ASTForExpression>(name);
-        forLoop->Iterator = var;
-
-        Root()->Children.push_back(forLoop);
-
-        auto body = std::make_shared<ASTBlock>();
-        forLoop->CodeBlock = body;
-
-        m_RootStack.push_back(body);
-
-        EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
-        Consume();
-    }
-
-    
 
 	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly)
-    {
-        EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
-        Consume();
+	{
+		EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
+		Consume();
 
-        EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
-        std::string name = Consume().GetData();
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+		std::string name = Consume().GetData();
 
-        auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
+		auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
 
-        if(Match(TokenType::LeftBracket))
-        {
-            while(!Match(TokenType::RightBracket))
-            {
-                Consume();
+		EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
+		Consume();
 
-                EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
-                funcNode->AddGeneric(Consume().GetData());
-            }  
-
-            Consume();
-        }
-
-
-        EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
-
-        Consume();
-
-        size_t i = 0;
-
-        std::vector<std::shared_ptr<ASTVariableDeclaration>> params;
-        std::shared_ptr<ASTNodeBase> returnType;
-
-        auto Flush = [&]()
-        {
-            for(const auto& param : params)
-            {
-                funcNode->Arguments.push_back(param);
-            }
-
-            funcNode->ReturnType = returnType;
-			Consume();
-
-            if(!descriptionOnly)
-			{
-				funcNode->CodeBlock = ParseCodeBlock();
-			}
-        };
-
-        while (!Match(TokenType::RightParen))
+		while (!Match(TokenType::RightParen))
 		{
 			if (Match(TokenType::Star) || Match("const") || Match("self"))
-			{
-				params.push_back(ParseSelf());
-			}
-			else 
-			{
-				params.push_back(ParseVariableDecleration().Node);
-			}
+				funcNode->Arguments.push_back(ParseSelf());
+			else
+				funcNode->Arguments.push_back(ParseVariableDecleration().Node);
 				
 			if (Match(TokenType::Comma))
 				Consume();  
 		}
-       
-        Consume();
+	   
+		Consume();
 
-        if (Match(TokenType::Colon)) 
-        {
-            Flush();
-            return funcNode;
-        }
+		if (Match(TokenType::Colon)) 
+		{
+			Consume();
 
-        if(Match(TokenType::EndLine) && descriptionOnly)
-        {
-            Flush();
-            return funcNode;
-        }
+			VERIFY_WITH_RETURN(!descriptionOnly, DiagnosticCode_None, nullptr);	
+			funcNode->CodeBlock = ParseCodeBlock();
 
-        EXPECT_TOKEN_RETURN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType, nullptr);
-        Consume();
-        
-        returnType = ParseExpr();
-        Flush();
+			return funcNode;
+		}
+
+		if (Match(TokenType::EndLine) && descriptionOnly)
+		{
+			Consume();
+			return funcNode;
+		}
+
+		EXPECT_TOKEN_RETURN(TokenType::RightThinArrow, DiagnosticCode_ExpectedFunctionReturnType, nullptr);
+		Consume();
+		
+		funcNode->ReturnType = ParseExpr();
+
+		if (!descriptionOnly)
+		{
+			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+			Consume();
+
+			funcNode->CodeBlock = ParseCodeBlock();
+		}
 
 		return funcNode;
-    }
-
-    void Parser::ParseEnum()
-    {
-        EXPECT_DATA("enum",DiagnosticCode_None);
-        Consume();
-
-        std::string enumName = Consume().GetData();
-
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_ExpectedNewlineAferIndentation)
-        Consume();
-
-        std::vector<std::string> names;
-
-        std::shared_ptr<ASTEnum> enum_ = std::make_shared<ASTEnum>(enumName);
-
-        EXPECT_TOKEN(TokenType::Identifier,DiagnosticCode_ExpectedIdentifier);
-        enum_->AddEnumName(Consume().GetData());
-
-        Token zero(TokenType::Number, "0");
-
-        if(Match(TokenType::Comma))
-        {
-            enum_->EnumValues.push_back(std::make_shared<ASTNodeLiteral>(zero));
-        }
-        else 
-        {
-            Consume();
-            enum_->EnumValues.push_back(ParseExpr());
-        }
-
-        if(Match(TokenType::Comma)) 
-            Consume();
-        
-        if(Match(TokenType::EndLine))
-            Consume();
-
-        while(Match(TokenType::Identifier))
-        {
-            enum_->AddEnumName(Consume().GetData());
-
-            if(Match(TokenType::Comma))
-            {
-                Consume();
-                enum_->EnumValues.push_back(nullptr); // nullptr indicates use 1 + previous
-                
-                if(Match(TokenType::EndLine))
-                    Consume();
-                
-                continue;
-            }
-
-            if(Match(TokenType::EndLine))
-            {
-                enum_->EnumValues.push_back(nullptr); 
-                Consume();
-                break;
-            }
-
-            EXPECT_TOKEN(TokenType::Equals,DiagnosticCode_ExpectedAssignment)
-            Consume();
-
-            enum_->EnumValues.push_back(ParseExpr());
-            
-            if(Match(TokenType::Comma))
-                Consume();
-
-            if(Match(TokenType::EndLine))
-                Consume();
-        }
-
-        while(Match(TokenType::EndLine))
-            Consume();
-
-        EXPECT_TOKEN(TokenType::EndScope,DiagnosticCode_ExpectedEndOfScope)
-        Consume();
-
-        Root()->Children.push_back(enum_); 
-    }
-
-    void Parser::ParseDefer()
-    {
-        EXPECT_DATA("defer", DiagnosticCode_None);
-        Consume();
-
-        auto defer = std::make_shared<ASTDefer>();
-		auto block = std::make_shared<ASTBlock>();
-
-        m_RootStack.push_back(block);
-        ParseGeneral();
-        m_RootStack.pop_back();
-		
-		defer->Expr = block;
-        Root()->Children.push_back(defer);
-    }
+	}
 
 	std::shared_ptr<ASTBlock> Parser::ParseBlock()
     {
@@ -700,29 +468,6 @@ namespace clear
         Consume();
 		
 		return ParseCodeBlock();
-    }
-
-    void Parser::ParseModule()
-    {
-        EXPECT_DATA("module", DiagnosticCode_None);
-        Consume();
-
-        EXPECT_TOKEN(TokenType::String, DiagnosticCode_ExpectedModuleName)
-        std::string modules = Consume().GetData(); // TODO: indexing into modules using .
-
-        auto mod = RootModule()->EmplaceOrReturn(modules);
-
-        m_Modules.push_back(mod);
-        //m_RootStack.push_back(mod->GetRoot());
-    }
-
-    void Parser::ParseEndModule()
-    {
-        EXPECT_DATA("endmodule",DiagnosticCode_None);
-        Consume();
-
-        m_Modules.pop_back();
-        //m_RootStack.pop_back();
     }
 
 	std::shared_ptr<ASTFunctionDeclaration> Parser::ParseFunctionDeclaration(const std::string& declareKeyword)
@@ -858,91 +603,6 @@ namespace clear
 		return decl;
 	}
 
-    void Parser::ParseSwitch() 
-    { 
-        EXPECT_DATA("switch", DiagnosticCode_None); 
-        Consume(); 
-
-        auto switchStatement = std::make_shared<ASTSwitch>(); 
-        switchStatement->Value = ParseExpr();
-
-        EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon);
-
-        Consume(); 
-
-        EXPECT_TOKEN(TokenType::EndLine, DiagnosticCode_None);
-
-        Consume();
-
-        bool hasDefault = false; 
-
-        while(Match("case")) 
-        { 
-            Consume();
-
-            while(Match(TokenType::EndLine)) 
-            { 
-                Consume(); 
-            } 
-            
-			SwitchCase switchCase;
-			
-            switchCase.Values.push_back(ParseExpr());
-
-            while(!Match(TokenType::Colon)) 
-            { 
-                EXPECT_TOKEN(TokenType::Comma, DiagnosticCode_ExpectedComma); 
-                Consume(); 
-                switchCase.Values.push_back(ParseExpr()); 
-            } 
-
-            Consume();
-
-            auto block = std::make_shared<ASTBlock>(); 
-            switchCase.CodeBlock = block; 
-
-            size_t rootLevel = m_RootStack.size();
-
-            m_RootStack.push_back(block); 
-
-            while(rootLevel < m_RootStack.size())
-            {
-                ParseStatement();
-            }
-
-			switchStatement->Cases.push_back(switchCase);
-
-            if(Match("default")) 
-            { 
-                hasDefault = true; 
-
-                Consume(); 
-                EXPECT_TOKEN(TokenType::Colon, DiagnosticCode_ExpectedColon); 
-                Consume(); 
-
-                block = std::make_shared<ASTBlock>(); 
-
-                switchStatement->DefaultCaseCodeBlock = block; 
-
-                size_t rootLevel = m_RootStack.size();
-
-                m_RootStack.push_back(block); 
-
-                while(rootLevel < m_RootStack.size())
-                {
-                    ParseStatement();
-                }
-
-                break; 
-            } 
-        } 
-
-        if(!hasDefault) 
-            switchStatement->DefaultCaseCodeBlock = std::make_shared<ASTBlock>(); 
-
-        Root()->Children.push_back(switchStatement);
-    }
-	
 	std::shared_ptr<ASTNodeBase> Parser::ParseExpr(int64_t minBindingPower)
 	{
 		Token token = Peak();
@@ -1225,12 +885,6 @@ namespace clear
 		return arrayType;
 	}
 
-    void Parser::ParseIndentation()
-    {
-        m_RootStack.pop_back();
-        Consume();
-    }
-
 	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
     {
         EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
@@ -1347,18 +1001,6 @@ namespace clear
         return {};
     }
 
-    void Parser::SavePosition()
-    {
-        m_RestorePoints.push_back(m_Position);
-    }
-
-    void Parser::RestorePosition()
-    {
-        CLEAR_VERIFY(!m_RestorePoints.empty(), " cannot restore position when there aren't any saved!");
-        m_Position = m_RestorePoints.back();
-        m_RestorePoints.pop_back();
-    }
-
     void Parser::SkipUntil(TokenType type)
     {
         while(!Match(type) && !Match(TokenType::EndOfFile))
@@ -1367,34 +1009,12 @@ namespace clear
         }
     }
 
-    size_t Parser::FindLastOf(TokenType type)
-    {
-        size_t current = m_Position;
-
-        SkipUntil(TokenType::EndLine);
-
-        while((size_t)m_Position-- > current)
-        {
-            if(Match(type))
-            {
-                size_t result = m_Position;
-                m_Position = current;
-                return result;
-            }
-        }
-
-        CLEAR_UNREACHABLE("couldn't find expected token");
-        
-        m_Position = current;
-        return current; 
-    }
-
     size_t Parser::GetLastBracket(TokenType openBracket, TokenType closeBracket)
     {
         size_t terminationIndex = 0;
 
-        SavePosition();
-
+		size_t index = m_Position;
+		
         int64_t bracketCount = 1;
 
         while(bracketCount)
@@ -1408,8 +1028,8 @@ namespace clear
         }
 
         terminationIndex = m_Position - 1;
-
-        RestorePosition();
+		
+		m_Position = index;
 
         return terminationIndex;
     }

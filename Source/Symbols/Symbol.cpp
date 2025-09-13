@@ -3,7 +3,6 @@
 #include "Core/Log.h"
 #include "Module.h"
 #include "Type.h"
-#include "FunctionCache.h"
 #include <llvm/IR/IRBuilder.h>
 
 
@@ -49,16 +48,6 @@ namespace clear
         symbol.Metadata = name;
 
         return symbol;
-    }
-
-    Symbol Symbol::CreateFunction(FunctionInstance* instance)
-    {
-        FunctionSymbol symbol = { instance };
-
-        return Symbol {
-            .Kind = SymbolKind::Function,
-            .Data = symbol
-        };
     }
 
 	Symbol Symbol::CreateFunction(std::shared_ptr<ASTFunctionDefinition> def)
@@ -200,11 +189,6 @@ namespace clear
         auto& value = std::get<ValueSymbol>(Data);
 
         return std::make_pair(value.Values[0], value.Types[0]);
-    }
-    FunctionInstance* Symbol::GetFunction() const
-    {
-        CLEAR_VERIFY(Kind == SymbolKind::Function, "cannot call Symbol::GetFunction() when kind is not Function");
-        return std::get<FunctionSymbol>(Data).Instance;
     }
     
     ValueSymbol Symbol::GetValueSymbol()

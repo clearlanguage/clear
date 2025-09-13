@@ -41,24 +41,9 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Class);
     }
 
-    bool Type::IsVariadic()
-    {
-        return m_Flags.test((size_t)TypeFlags::Variadic);
-    }
-
     bool Type::IsConst()
     {
         return m_Flags.test((size_t)TypeFlags::Constant);
-    }
-
-    bool Type::IsTrait()
-    {
-        return m_Flags.test((size_t)TypeFlags::Trait);
-    }
-
-    bool Type::IsEnum()
-    {
-        return m_Flags.test((size_t)TypeFlags::Enum);
     }
 
     bool Type::IsGeneric()
@@ -94,9 +79,6 @@ namespace clear
     {
         m_LLVMType = llvm::PointerType::get(context , 0);
         Toggle(TypeFlags::Pointer);
-
-        if(baseType && baseType->IsTrait())
-            Toggle(TypeFlags::Trait);
     }
 
     void PointerType::SetBaseType(std::shared_ptr<Type> type)
@@ -109,9 +91,6 @@ namespace clear
           m_Count(count)
     {
         Toggle(TypeFlags::Array);
-
-        if(baseType->IsTrait())
-            Toggle(TypeFlags::Trait);
     }
 
     std::string ArrayType::GetHash() const
@@ -193,74 +172,11 @@ namespace clear
 		return std::distance(m_MemberValues.begin(), it);
 	}
 
-    VariadicArgumentsHolder::VariadicArgumentsHolder()
-    {
-        Toggle(TypeFlags::Variadic);
-    }
-
     ConstantType::ConstantType(std::shared_ptr<Type> base)
         : m_Base(base)
     {
         Toggle(TypeFlags::Constant);
         Toggle(base->GetFlags());
-    }
-
-    TraitType::TraitType(const std::vector<std::string>& functions, const std::vector<std::pair<std::string, std::shared_ptr<Type>>>& members, const std::string& name)
-        : m_Functions(functions), m_Name(name), m_Members(members)
-    {
-        Toggle(TypeFlags::Trait);
-    }
-
-    bool TraitType::DoesClassImplementTrait(std::shared_ptr<ClassType> classTy)
-    {  
-        // const auto& members = classTy->GetMemberTypes();
-        //
-        // for(const auto& [name, type] : m_Members)
-        // {
-        //     if(!members.contains(name))
-        //         return false;
-        //
-        //     if(type->Get() != members.at(name)->Get())
-        //         return false;
-        // }
-        //
-        // std::string className = classTy->GetHash();
-        // const auto& classFunctions = classTy->GetFunctions();
-        //
-        // for(auto& function : m_Functions)
-        // {
-        //     size_t argBegin = function.find_first_of('$');
-        //
-        //     std::string name = function.substr(4, argBegin - 4);
-        //     std::string rest = function.substr(argBegin + 1);
-        //
-        //     std::string classFunctionName = std::format("_CLR{}.{}${}P{}", className, name, className, rest);
-        //     if(!classFunctions.contains(classFunctionName))
-        //         return false;
-        // }
-        //
-        // return true;
-	
-		CLEAR_UNREACHABLE("TODO");
-		return false;
-    }
-
-    EnumType::EnumType(std::shared_ptr<Type> integerType, const std::string& name)
-        : m_Type(integerType), m_Name(name)
-    {
-        Toggle(TypeFlags::Enum);
-        Toggle(integerType->GetFlags());
-    }
-
-    void EnumType::InsertEnumValue(const std::string& name, int64_t value)
-    {
-        m_EnumValues[name] = value;
-    }
-
-    int64_t EnumType::GetEnumValue(const std::string& name)
-    {
-        CLEAR_VERIFY(m_EnumValues.contains(name), "invalid enum value ", "name");
-        return m_EnumValues.at(name);
     }
 
     GenericType::GenericType(llvm::StringRef name)

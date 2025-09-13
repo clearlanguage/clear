@@ -3,7 +3,6 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Sema/Sema.h"
-#include <iostream>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
@@ -143,7 +142,7 @@ namespace clear
             return;
         }
 
-		m_CompilationUnits[path] = CompilationUnit { newModule, parser.GetResult() };
+		m_CompilationUnits[path] = CompilationUnit { newModule, newModule->GetRoot() };
     }
 
     void CompilationManager::GenerateIRAndObjectFiles()
