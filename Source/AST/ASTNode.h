@@ -207,6 +207,9 @@ namespace clear
 		virtual ~ASTAssignmentOperator() = default;
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::AssignmentOperator; }
 		virtual Symbol Codegen(CodegenContext&);
+	
+
+		AssignmentOperatorType GetAssignType() const { return m_Type; }
 
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;

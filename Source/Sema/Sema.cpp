@@ -64,9 +64,10 @@ namespace clear
 		{
 			Visit(decl->TypeResolver, context);
 			decl->ResolvedType = GetTypeFromNode(decl->TypeResolver);
-
+			
+			context.ValueReq = ValueRequired::RValue;
 			if (decl->Initializer)
-				decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue } );
+				decl->Initializer = Visit(decl->Initializer, context);
 		}
 		else 
 		{
@@ -76,8 +77,9 @@ namespace clear
 				Report(DiagnosticCode_None, Token());
 				return nullptr;
 			}
-
-			decl->Initializer = Visit(decl->Initializer, { .ValueReq = ValueRequired::RValue });
+			
+			context.ValueReq = ValueRequired::RValue;
+			decl->Initializer = Visit(decl->Initializer, context);
 			decl->ResolvedType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
 		}
 
@@ -370,6 +372,15 @@ namespace clear
 			case OperatorType::Address:
 			{
 				unaryExpr->Operand = Visit(unaryExpr->Operand, { ValueRequired::LValue });
+				break;
+			}
+			case OperatorType::Dereference:
+			{
+				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+				
+				if (context.ValueReq == ValueRequired::LValue)
+					return unaryExpr->Operand;
+					
 				break;
 			}
 			default:

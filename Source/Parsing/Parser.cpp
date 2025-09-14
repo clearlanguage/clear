@@ -138,13 +138,7 @@ namespace clear
             TokenType::EndLine, 
 		    TokenType::EndScope, 
 		    TokenType::Comma,  
-		    TokenType::Equals, 
-            TokenType::StarEquals, 
-            TokenType::SlashEquals, 
-            TokenType::PlusEquals, 
-            TokenType::MinusEquals, 
-            TokenType::PercentEquals, 
-            TokenType::RightBrace,
+		    TokenType::RightBrace,
             TokenType::EndOfFile, 
             TokenType::Semicolon
         });
@@ -582,7 +576,7 @@ namespace clear
 		if (Match(TokenType::Colon))
 		{
 			Consume();		
-			variableDecleration->TypeResolver = ParseExpr();
+			variableDecleration->TypeResolver = ParseExpr(2);
 		}
 
         bool hasBeenInitialized = false;
@@ -677,7 +671,7 @@ namespace clear
 			if (OperatorType op = GetBinaryOperator(Peak()); op != OperatorType::None)
 			{
 				OperatorInfo info = g_OperatorTable.at(op);
-					if (info.LeftBindingPower < minBindingPower)
+				if (info.LeftBindingPower < minBindingPower)
 					break;
 
 				lhs = info.InfixParse(this, lhs);
@@ -819,6 +813,14 @@ namespace clear
 				break;
 				
 			}
+		}
+
+		if (std::shared_ptr<ASTVariableDeclaration> decl = std::dynamic_pointer_cast<ASTVariableDeclaration>(lhs))
+		{
+			VERIFY_WITH_RETURN(opType == AssignmentOperatorType::Normal, DiagnosticCode_InvalidOperator, nullptr);
+
+			decl->Initializer = ParseExpr();
+			return decl;
 		}
 		
 		VERIFY_WITH_RETURN(opType != AssignmentOperatorType::None, DiagnosticCode_UnexpectedToken, nullptr);

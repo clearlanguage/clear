@@ -28,6 +28,7 @@ namespace clear {
 			case ASTNodeType::CastExpr:					return CloneCastExpr(std::dynamic_pointer_cast<ASTCastExpr>(node));		
 			case ASTNodeType::SizeofExpr:				return CloneSizeofExpr(std::dynamic_pointer_cast<ASTSizeofExpr>(node));		
 			case ASTNodeType::IsExpr:					return CloneIsExpr(std::dynamic_pointer_cast<ASTIsExpr>(node));		
+			case ASTNodeType::AssignmentOperator:		return CloneAssignmentOperator(std::dynamic_pointer_cast<ASTAssignmentOperator>(node));
 			default: break;
 	}	
 
@@ -77,7 +78,7 @@ namespace clear {
 			newNode->TypeResolver = Clone(node->TypeResolver);
 		
 		if (node->Initializer)
-			newNode->Initializer = Clone(newNode->Initializer);
+			newNode->Initializer = Clone(node->Initializer);
 
 		return newNode;
 	}
@@ -202,6 +203,16 @@ namespace clear {
 		isExpr->TypeNode = Clone(node->TypeNode);
 		
 		return isExpr;
+	}
+
+	std::shared_ptr<ASTAssignmentOperator> Cloner::CloneAssignmentOperator(std::shared_ptr<ASTAssignmentOperator> node)
+	{
+		std::shared_ptr<ASTAssignmentOperator> operator_ = std::make_shared<ASTAssignmentOperator>(node->GetAssignType());
+
+		operator_->Storage = Clone(node->Storage);
+		operator_->Value = Clone(node->Value);
+
+		return operator_;
 	}
 
 }

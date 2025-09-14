@@ -620,19 +620,6 @@ namespace clear
 
 		ValueSymbol value = data.GetValueSymbol();
 
-		//TODO: remove should be handled by semantic analyzer
-		if(value.ShouldMemcpy)
-		{
-			CLEAR_VERIFY(storage.GetType() == data.GetType(), "");
-			Symbol size = Symbol::GetUInt64(ctx.ClearModule, ctx.Builder, data.GetType()->As<PointerType>()->GetBaseType()->GetSizeInBytes(ctx.Module));
-			SymbolOps::Memcpy(storage, data, size, ctx.Builder);
-
-			return Symbol();
-		}
-
-		//TODO: this will be handled by semantic analyzer
-		HandleDifferentTypes(storage, data, ctx);
-
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
 			SymbolOps::Store(storage, data, ctx.Builder, ctx.Module, true);
@@ -815,7 +802,7 @@ namespace clear
 
 		llvm::Value* returnValue = ctx.Builder.CreateCall(functionPtr, args);
 
-		if (!functionSymbol.FunctionNode->ReturnType)
+		if (!functionSymbol.FunctionNode->ReturnTypeVal)
 			return Symbol();
 		
 		return Symbol::CreateValue(returnValue, functionSymbol.FunctionNode->ReturnTypeVal);
