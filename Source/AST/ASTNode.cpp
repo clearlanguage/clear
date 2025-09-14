@@ -374,17 +374,6 @@ namespace clear
 		CLEAR_VERIFY(lhsType->IsPointer(), "left hand side is not a pointer");
 		CLEAR_VERIFY(rhsType->IsIntegral(), "invalid pointer arithmetic");
 
-		if(rhsType->GetSizeInBytes(ctx.Module) != 64) 
-		{
-			rhsValue = TypeCasting::Cast(rhsValue, 
-										rhsType, 
-										ctx.TypeReg->GetType("int64"), 
-										ctx.Builder);
-
-			rhsType = ctx.TypeReg->GetType("int64");
-		}
-		
-
 		auto symPtrType = Symbol::CreateType(lhsType->As<PointerType>());
 
 		if(type == OperatorType::Add)
@@ -1011,7 +1000,7 @@ namespace clear
 		if(isConst)
 		{
 			Symbol valuePtr = Symbol::CreateValue(staticGlobal, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
-			return valuePtr;
+			return SymbolOps::Load(valuePtr, ctx.Builder);
 		}
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
@@ -1045,7 +1034,7 @@ namespace clear
 		}
 
 		Symbol valuePtr = Symbol::CreateValue(arrayAlloc, ctx.TypeReg->GetPointerTo(arrayType), /* shouldMemcpy = */ true);
-		return valuePtr;
+		return SymbolOps::Load(valuePtr, ctx.Builder);
 	}
 
 	Symbol ASTStructExpr::Codegen(CodegenContext& ctx)

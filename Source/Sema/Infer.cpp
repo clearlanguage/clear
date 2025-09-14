@@ -163,7 +163,13 @@ namespace clear
 
 		std::shared_ptr<Type> lhsType = InferTypeFromNode(binExpr->LeftSide);
 		std::shared_ptr<Type> rhsType = InferTypeFromNode(binExpr->RightSide);
-	
+		
+		if (lhsType->IsPointer() && rhsType->IsIntegral())
+		{
+			binExpr->ResultantType = lhsType;
+			return binExpr->ResultantType;
+		}
+
 		binExpr->ResultantType = GetCommonType(lhsType, rhsType);
 		return binExpr->ResultantType;
 	}

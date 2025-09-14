@@ -4,6 +4,7 @@
 #include "Core/Log.h"
 #include "Sema/Sema.h"
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
 
@@ -100,6 +101,11 @@ namespace clear
 		for (const auto& [path, unit] : m_CompilationUnits)
 		{
 			if (!unit.CompilationModule->GetModule()) continue;
+			if (llvm::verifyModule(*unit.CompilationModule->GetModule(), &llvm::errs()))
+			{
+				continue;
+			}
+
 			linker.linkInModule(unit.CompilationModule->TakeModule());
 		}
 	}
