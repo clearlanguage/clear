@@ -806,6 +806,31 @@ namespace clear
 
 		switch (assignmentType.GetType())
 		{
+			case TokenType::MinusEquals:
+			{
+				opType = AssignmentOperatorType::Sub;
+				break;
+			}
+			case TokenType::PlusEquals:
+			{
+				opType = AssignmentOperatorType::Add;
+				break;
+			}
+			case TokenType::StarEquals:
+			{
+				opType = AssignmentOperatorType::Mul;
+				break;
+			}
+			case TokenType::SlashEquals:
+			{
+				opType = AssignmentOperatorType::Div;
+				break;
+			}
+			case TokenType::PercentEquals:
+			{
+				opType = AssignmentOperatorType::Mod;
+				break;
+			}
 			case TokenType::Equals:
 			{
 				opType = AssignmentOperatorType::Normal;
@@ -1139,7 +1164,12 @@ namespace clear
 			case TokenType::Dot:                return OperatorType::Dot;
 			case TokenType::LeftBracket:        return OperatorType::Index;
 			case TokenType::Ellipses:           return OperatorType::Ellipsis;
-		
+			
+			case TokenType::StarEquals:
+			case TokenType::SlashEquals:
+			case TokenType::MinusEquals:
+			case TokenType::PlusEquals:
+			case TokenType::PercentEquals:
 			case TokenType::Equals:				return OperatorType::Assignment;
 		
 			default:
