@@ -170,6 +170,8 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context)
     {
+		if (!ast) return nullptr;
+
     	switch (ast->GetType()) 
 		{
     		case ASTNodeType::FunctionCall:				return Visit(std::dynamic_pointer_cast<ASTFunctionCall>(ast), context);
@@ -416,17 +418,22 @@ namespace clear
 			decl->ReturnTypeNode = Visit(decl->ReturnTypeNode);
 			decl->ReturnType = GetTypeFromNode(decl->ReturnTypeNode);
 		}
-		
-		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName(), SymbolEntryType::FunctionDeclaration);
+			
+		std::shared_ptr<Symbol> symbol = std::make_shared<Symbol>(Symbol::CreateFunction(std::make_shared<ASTFunctionDefinition>("")));
 
-		if (!symbol.has_value())
+		auto& function = symbol->GetFunctionSymbol();
+		function.FunctionNode->ReturnTypeVal = decl->ReturnType;
+
+		bool success = m_ScopeStack.back().Insert(decl->GetName(), SymbolEntryType::FunctionDeclaration, symbol);
+
+		if (!success)
 		{
 			// DiagnosticCode_AlreadyDefinedSymbol
 			Report(DiagnosticCode_None, Token());
 			return decl;
 		}
 
-		decl->DeclSymbol = symbol.value();
+		decl->DeclSymbol = symbol;
 		return decl;
 	}
 

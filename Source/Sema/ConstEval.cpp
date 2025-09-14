@@ -108,6 +108,11 @@ namespace clear
 
 				return llvm::dyn_cast<llvm::Constant>(value.Get());
 			}
+			case ASTNodeType::Variable:
+			{
+				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
+				return llvm::dyn_cast<llvm::Constant>(variable->Variable->GetLLVMValue());
+			}
  			case ASTNodeType::BinaryExpression:
 			{
 				return EvaluateBinaryExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));

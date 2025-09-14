@@ -603,6 +603,9 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseExpr(int64_t minBindingPower)
 	{
+		if (MatchAny(m_Terminators))
+			return nullptr;
+		
 		Token token = Peak();
 		std::shared_ptr<ASTNodeBase> lhs;
 

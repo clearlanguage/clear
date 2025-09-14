@@ -29,6 +29,8 @@ namespace clear {
 			case ASTNodeType::SizeofExpr:				return CloneSizeofExpr(std::dynamic_pointer_cast<ASTSizeofExpr>(node));		
 			case ASTNodeType::IsExpr:					return CloneIsExpr(std::dynamic_pointer_cast<ASTIsExpr>(node));		
 			case ASTNodeType::AssignmentOperator:		return CloneAssignmentOperator(std::dynamic_pointer_cast<ASTAssignmentOperator>(node));
+			case ASTNodeType::ArrayType:				return CloneArrayType(std::dynamic_pointer_cast<ASTArrayType>(node));
+			case ASTNodeType::IfExpression:				return CloneIfExpr(std::dynamic_pointer_cast<ASTIfExpression>(node));
 			default: break;
 	}	
 
@@ -127,7 +129,9 @@ namespace clear {
 	}
 
 	std::shared_ptr<ASTBlock> Cloner::CloneBlock(std::shared_ptr<ASTBlock> node)
-	{
+	{	
+		if (!node) return nullptr;
+		
 		std::shared_ptr<ASTBlock> newNode = std::make_shared<ASTBlock>();
 		for (auto child : node->Children)
 			newNode->Children.push_back(Clone(child));
@@ -213,6 +217,26 @@ namespace clear {
 		operator_->Value = Clone(node->Value);
 
 		return operator_;
+	}
+
+	std::shared_ptr<ASTArrayType> Cloner::CloneArrayType(std::shared_ptr<ASTArrayType> node)
+	{
+		std::shared_ptr<ASTArrayType> arrayType = std::make_shared<ASTArrayType>();
+		arrayType->TypeNode = Clone(node->TypeNode);
+		arrayType->SizeNode = Clone(node->SizeNode);
+
+		return arrayType;
+	}
+
+	std::shared_ptr<ASTIfExpression> Cloner::CloneIfExpr(std::shared_ptr<ASTIfExpression> node)
+	{
+		std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
+
+		for (const auto& block : node->ConditionalBlocks)
+			ifExpr->ConditionalBlocks.push_back({ .Condition = Clone(block.Condition), .CodeBlock = CloneBlock(block.CodeBlock) });
+		
+		ifExpr->ElseBlock = CloneBlock(node->ElseBlock);
+		return ifExpr;
 	}
 
 }
