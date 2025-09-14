@@ -506,6 +506,20 @@ namespace clear
                 }
             }
         }
+		else if (lhsType->isPointerTy() && rhsType->isIntegerTy())
+		{
+			if(insert2)
+				builder.restoreIP(*insert2);
+
+			rhs = Symbol::CreateValue(builder.CreateIntToPtr(valuer, lhsType, "cast"), typel);
+		}
+		else if (lhsType->isIntegerTy() && rhsType->isPointerTy())
+		{
+			if(insert1)
+				builder.restoreIP(*insert1);
+
+			lhs = Symbol::CreateValue(builder.CreateIntToPtr(valuel, rhsType, "cast"), typer);
+		}
         else
         {
             CLEAR_UNREACHABLE("unsupported type promotion");
