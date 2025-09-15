@@ -31,6 +31,7 @@ namespace clear {
 			case ASTNodeType::AssignmentOperator:		return CloneAssignmentOperator(std::dynamic_pointer_cast<ASTAssignmentOperator>(node));
 			case ASTNodeType::ArrayType:				return CloneArrayType(std::dynamic_pointer_cast<ASTArrayType>(node));
 			case ASTNodeType::IfExpression:				return CloneIfExpr(std::dynamic_pointer_cast<ASTIfExpression>(node));
+			case ASTNodeType::WhileLoop:				return CloneWhileLoop(std::dynamic_pointer_cast<ASTWhileExpression>(node));
 			default: break;
 	}	
 
@@ -238,5 +239,17 @@ namespace clear {
 		ifExpr->ElseBlock = CloneBlock(node->ElseBlock);
 		return ifExpr;
 	}
+
+	std::shared_ptr<ASTWhileExpression> Cloner::CloneWhileLoop(std::shared_ptr<ASTWhileExpression> node) {
+		std::shared_ptr<ASTWhileExpression> whileLoop = std::make_shared<ASTWhileExpression>();
+
+
+		ConditionalBlock block = { .Condition = Clone(node->WhileBlock.Condition), .CodeBlock = CloneBlock(node->WhileBlock.CodeBlock) };
+
+		whileLoop->WhileBlock = block;
+
+		return whileLoop;
+	}
+
 
 }

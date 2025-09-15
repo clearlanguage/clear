@@ -30,6 +30,8 @@ namespace clear {
 		std::shared_ptr<ASTAssignmentOperator> CloneAssignmentOperator(std::shared_ptr<ASTAssignmentOperator> node);
 		std::shared_ptr<ASTArrayType> CloneArrayType(std::shared_ptr<ASTArrayType> node);
 		std::shared_ptr<ASTIfExpression> CloneIfExpr(std::shared_ptr<ASTIfExpression> node);
+		std::shared_ptr<ASTWhileExpression> CloneWhileLoop(std::shared_ptr<ASTWhileExpression> node);
+
 
 		std::shared_ptr<Module> DestinationModule;
 		std::unordered_map<std::string, Symbol> SubstitutionMap;
