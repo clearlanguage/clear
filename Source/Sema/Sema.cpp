@@ -34,7 +34,7 @@ namespace clear
 	{
 		m_ScopeStack.emplace_back();
 		
-		for(auto node : ast->Children)
+		for(auto& node : ast->Children)
 			node = Visit(node, context);
 
 		m_ScopeStack.pop_back();
@@ -348,9 +348,7 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::LValue;
 		assignmentOp->Storage = Visit(assignmentOp->Storage, context);
-
-		auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
-
+		// auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
 		//if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
 		//	CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
 			//Report(DiagnosticCode_AssignConst, Token());
@@ -358,6 +356,26 @@ namespace clear
 	
 		context.ValueReq = ValueRequired::RValue;
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
+
+    	if (assignmentOp->Storage->GetType() == ASTNodeType::FunctionCall) {
+    		auto funcCallNode = std::dynamic_pointer_cast<ASTFunctionCall>(assignmentOp->Storage);
+    		auto clsType = funcCallNode->ClassType;
+    		CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_set"),"Class does not have array index overload ",clsType->GetHash())
+			auto setFunc = clsType->MemberFunctions.at("operator_set");
+
+    		auto funcCall = std::make_shared<ASTFunctionCall>( );
+    		funcCall->Callee = setFunc->GetFunctionSymbol().FunctionNode;
+    		funcCall->Arguments = funcCallNode->Arguments;
+    		funcCall->Arguments.push_back(assignmentOp->Value);
+
+    		auto var = std::make_shared<ASTVariable>(Token{});
+    		var->Variable = setFunc;
+
+    		funcCall->Callee = var;
+    		return funcCall;
+
+
+    	}
 
 		return assignmentOp;
 	}
@@ -604,7 +622,29 @@ namespace clear
 		if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
 		{
 			//TODO: check all values are ints and cast if needed
-		
+			auto targetType = m_TypeInferEngine.InferTypeFromNode(subscript->Target);
+			if (targetType->IsClass())
+			{
+				auto clsType = std::dynamic_pointer_cast<ClassType>(targetType);
+				CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_get"),"Class does not have array index overload ",clsType->GetHash())
+				auto memberFunc = clsType->MemberFunctions.at("operator_get");
+				auto funcCall = std::make_shared<ASTFunctionCall>( );
+				funcCall->Callee = memberFunc->GetFunctionSymbol().FunctionNode;
+				funcCall->ClassType = clsType;
+				funcCall->Arguments.push_back(subscript->Target );
+				funcCall->Arguments.insert(
+					funcCall->Arguments.end(),
+					subscript->SubscriptArgs.begin(),
+					subscript->SubscriptArgs.end()
+				);
+
+				auto var = std::make_shared<ASTVariable>(Token{});
+				var->Variable = memberFunc;
+
+				funcCall->Callee = var;
+				return funcCall;
+
+			}
 			if (context.ValueReq == ValueRequired::RValue)
 			{
 				std::shared_ptr<ASTLoad> load = std::make_shared<ASTLoad>();

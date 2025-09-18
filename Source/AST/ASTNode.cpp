@@ -845,7 +845,7 @@ namespace clear
 				llvm::SmallVector<llvm::Value*> indices;
 				indices.push_back(ctx.Builder.getInt64(0));
 					
-				std::shared_ptr<Type> resPtrType = operand.GetType()->As<PointerType>()->GetBaseType(); 
+				std::shared_ptr<Type> resPtrType = operand.GetType()->As<PointerType>()->GetBaseType();
 
 				for (auto index : SubscriptArgs)
 				{

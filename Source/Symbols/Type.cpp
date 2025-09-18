@@ -123,7 +123,7 @@ namespace clear
 			}
 			else 
 			{
-				m_MemberFunctions[memberName] = member;
+				MemberFunctions[memberName] = member;
 			}
 		}
 
@@ -135,9 +135,9 @@ namespace clear
 		std::string strName = std::string(name);
 		
 		{
-			auto it = m_MemberFunctions.find(strName);
+			auto it = MemberFunctions.find(strName);
 
-			if (it != m_MemberFunctions.end())
+			if (it != MemberFunctions.end())
 				return it->second;
 		}
 

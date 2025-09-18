@@ -182,11 +182,11 @@ namespace clear
 		std::optional<std::shared_ptr<Symbol>> GetMember(llvm::StringRef name);
 		std::optional<std::shared_ptr<Symbol>> GetMemberValueByIndex(size_t index);
 		std::optional<size_t> GetMemberValueIndex(llvm::StringRef name);
+		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> MemberFunctions;
 
     private:
 		llvm::StructType* m_LLVMType = nullptr;
 		llvm::MapVector<std::string, std::shared_ptr<Type>> m_MemberValues;
-		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> m_MemberFunctions;
 		std::string m_Name;
     };
     

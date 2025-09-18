@@ -87,7 +87,15 @@ namespace clear
 				if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
 				{
 					std::shared_ptr<Type> type = InferTypeFromNode(subscript->Target);
-					
+					if (type->IsClass())
+					{
+						auto clsType = std::dynamic_pointer_cast<ClassType>(type);
+						CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_get"),"Class does not have array index overload ",clsType->GetHash())
+						auto f = clsType->MemberFunctions.at("operator_get");
+						auto returnType =  f->GetFunctionSymbol().FunctionNode->ReturnTypeVal;
+						return returnType;
+
+					}
 					for (int64_t i = subscript->SubscriptArgs.size(); i > 0; i--)
 						type = type->IsArray() ? type->As<ArrayType>()->GetBaseType() : type->As<PointerType>()->GetBaseType();
  
@@ -109,6 +117,11 @@ namespace clear
 			case ASTNodeType::Import:
 			{
 				return nullptr;
+			}
+
+			case ASTNodeType::FunctionDefinition: {
+				auto funcDef = std::dynamic_pointer_cast<ASTFunctionDefinition>(node);
+				return funcDef->ReturnTypeVal;
 			}
 			default:
 			{

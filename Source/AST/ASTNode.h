@@ -262,7 +262,11 @@ namespace clear
 				
 	public:
 		std::shared_ptr<ASTNodeBase> Callee;
-		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
+		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> Arguments;
+		//TODO: Make a different node for this
+		std::shared_ptr<ClassType> ClassType;
+
+
 
 	private:
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
