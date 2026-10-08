@@ -214,6 +214,7 @@ namespace clear
 		bool IsVariant = false;
 		bool IsOptional = false; // ?T: cases none (tag 0) and some(value)
 		bool IsUnion = false;    // every field starts at offset 0
+		bool IsTypeVariant = false; // variant Number: int, float64 — a case per type, each holding one value
 		std::vector<VariantCase> Cases;
 
 		// inheritance: fields of Base come first, so a *Derived is also a valid *Base

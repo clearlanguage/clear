@@ -325,6 +325,7 @@ namespace clear
 			{"for",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFor(); }},
 			{"switch",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseSwitch(); }},
 			{"enum",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseEnum(); }},
+			{"variant",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseVariant(); }},
 			{"defer",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseDefer(); }},
 			{"const",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseConst(); }},
 			{"class",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
@@ -649,6 +650,63 @@ namespace clear
 		}
 
 		return switchNode;
+	}
+
+	// variant Number:          a value of one of these types, remembering which
+	//     int
+	//     float64
+	std::shared_ptr<ASTNodeBase> Parser::ParseVariant()
+	{
+		Token keyword = Consume(); // variant
+
+		auto enumNode = std::make_shared<ASTEnum>();
+		enumNode->Location = keyword;
+		enumNode->IsTypeVariant = true;
+
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+		enumNode->Name = Consume();
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		while (true)
+		{
+			while (Match(TokenType::EndLine) || Match(TokenType::Comma))
+				Consume();
+
+			if (Match(TokenType::EndOfFile))
+				break;
+
+			if (Match(TokenType::EndScope))
+			{
+				Consume();
+				break;
+			}
+
+			if (Match("function"))
+			{
+				auto method = ParseFunctionDefinition();
+
+				if (method)
+					enumNode->Methods.push_back(method);
+
+				continue;
+			}
+
+			Token start = Peak();
+			auto type = ParseExpr();
+
+			if (!type)
+				return nullptr;
+
+			auto field = std::make_shared<ASTVariableDeclaration>(Token(TokenType::Identifier, "value", start.GetSourceFile(), start.LineNumber, start.ColumnNumber));
+			field->TypeResolver = type;
+
+			enumNode->Members.push_back({ start, nullptr });
+			enumNode->Payloads.push_back({ field });
+		}
+
+		return enumNode;
 	}
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseEnum()

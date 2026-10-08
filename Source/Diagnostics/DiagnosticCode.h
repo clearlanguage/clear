@@ -94,6 +94,7 @@ namespace clear
 		DiagnosticCode_UnknownOperator,
 		DiagnosticCode_UseOperatorSyntax,
 		DiagnosticCode_VirtualNotNeeded,
+		DiagnosticCode_NotInVariant,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -188,6 +189,7 @@ namespace clear
 		"Unknown operator.",
 		"Special methods are written with ‘operator’.",
 		"‘virtual’ is not needed.",
+		"This type is not one of the variant's types.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -281,5 +283,6 @@ namespace clear
 		"‘{}.",
 		"‘{}’.",
 		"Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’.",
+		"‘{}.",
 	};
 }

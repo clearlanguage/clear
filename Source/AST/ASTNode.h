@@ -663,10 +663,11 @@ namespace clear
 		std::vector<std::vector<std::shared_ptr<ASTVariableDeclaration>>> Payloads; // per member, the data it carries
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> Methods;
 		bool HasPayloads = false;
+		bool IsTypeVariant = false; // `variant Number: int, float64`: each case is a type, named after it
 		std::shared_ptr<EnumType> EnumTy;
 		std::shared_ptr<Type> VariantTy; // rich enums (payloads or methods) are classes with a tag
 
-		bool IsRich() const { return HasPayloads || !Methods.empty(); }
+		bool IsRich() const { return HasPayloads || !Methods.empty() || IsTypeVariant; }
 	};
 
 	// an integer known at compile time (enum members, consts)
@@ -1041,6 +1042,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Subject; // the optional value
 		std::shared_ptr<Type> OptionalTy;
+		int64_t CaseIndex = -1;               // the case to read (default: some); a type variant reads the case of one type
 	};
 
 	// optional.value_or(default)

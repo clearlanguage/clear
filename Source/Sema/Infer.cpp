@@ -39,7 +39,9 @@ namespace clear
 				auto optional = node->GetType() == ASTNodeType::OptionalUnwrap ? std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->OptionalTy 
 																			   : std::dynamic_pointer_cast<ASTOptionalValueOr>(node)->OptionalTy;
 				auto classType = optional->As<ClassType>();
-				return classType->Cases[classType->FindCase("some").value()].Fields[0].second;
+				auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node);
+				size_t index = unwrap && unwrap->CaseIndex >= 0 ? (size_t)unwrap->CaseIndex : classType->FindCase("some").value();
+				return classType->Cases[index].Fields[0].second;
 			}
 			case ASTNodeType::Lambda:		return nullptr; // not analysed yet
 			case ASTNodeType::TupleExpr:	return std::dynamic_pointer_cast<ASTTupleExpr>(node)->TupleTy;

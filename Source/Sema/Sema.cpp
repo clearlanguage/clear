@@ -3499,6 +3499,7 @@ namespace clear
 	}
 
 	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
+	static std::optional<size_t> FindTypeCase(const std::shared_ptr<ClassType>& variant, const std::shared_ptr<Type>& type);
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context)
 	{
@@ -3548,6 +3549,41 @@ namespace clear
 		castExpr->TypeNode = Visit(castExpr->TypeNode, context);
 		castExpr->TargetType = GetTypeFromNode(castExpr->TypeNode);
 
+		if (!castExpr->Object || !castExpr->TargetType)
+			return castExpr;
+
+		auto sourceType = m_TypeInferEngine.InferTypeFromNode(castExpr->Object);
+
+		// value as Number: put it in the variant
+		if (castExpr->TargetType->IsClass() && castExpr->TargetType->As<ClassType>()->IsTypeVariant && sourceType != castExpr->TargetType)
+			return Coerce(AsValue(castExpr->Object), castExpr->TargetType);
+
+		// number as int: read it as that type, stopping the program if it holds another one
+		if (sourceType && sourceType->IsClass() && sourceType->As<ClassType>()->IsTypeVariant && sourceType != castExpr->TargetType)
+		{
+			auto variant = sourceType->As<ClassType>();
+			auto index = FindTypeCase(variant, castExpr->TargetType);
+
+			if (!index)
+			{
+				std::string names;
+				for (auto& c : variant->Cases)
+					names += (names.empty() ? "" : ", ") + c.Name;
+
+				Token location = GetNodeLocation(castExpr->Object);
+				location.SetData(std::format("{}’ never holds a {}; it holds one of: {}", variant->GetHash(), GetDisplayName(castExpr->TargetType), names));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_NotInVariant, 1);
+				return nullptr;
+			}
+
+			auto unwrap = std::make_shared<ASTOptionalUnwrap>();
+			unwrap->Location = castExpr->Location.GetData().empty() ? GetNodeLocation(castExpr->Object) : castExpr->Location;
+			unwrap->Subject = AsValue(castExpr->Object);
+			unwrap->OptionalTy = sourceType;
+			unwrap->CaseIndex = (int64_t)*index;
+			return unwrap;
+		}
+
 		return castExpr;
 	}
 
@@ -3576,7 +3612,15 @@ namespace clear
 			auto classType = objectType->As<ClassType>();
 			std::string caseName;
 
-			if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(isExpr->TypeNode); literal && literal->GetData().GetData() == "none")
+			if (classType->IsTypeVariant)
+			{
+				// number is int
+				auto typeNode = Visit(isExpr->TypeNode, SemaContext { .ValueReq = ValueRequired::Any });
+				auto type = typeNode ? GetTypeFromNode(typeNode) : nullptr;
+				auto index = FindTypeCase(classType, type);
+				caseName = index ? classType->Cases[*index].Name : (type ? GetDisplayName(type) : "?");
+			}
+			else if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(isExpr->TypeNode); literal && literal->GetData().GetData() == "none")
 				caseName = "none";
 			else if (auto var = std::dynamic_pointer_cast<ASTVariable>(isExpr->TypeNode))
 				caseName = var->GetName().GetData();
@@ -3691,6 +3735,10 @@ namespace clear
 				}
 
 				variantCase.Fields.push_back({ field->GetName().GetData(), fieldType });
+
+				// variant Number: int, float64 — the case is named after its type
+				if (enumNode->IsTypeVariant)
+					variantCase.Name = GetDisplayName(fieldType);
 			}
 
 			if (std::any_of(cases.begin(), cases.end(), [&](auto& c) { return c.Name == variantCase.Name; }))
@@ -3712,6 +3760,7 @@ namespace clear
 		}
 
 		classType->SetVariantBody(cases, methods);
+		classType->IsTypeVariant = enumNode->IsTypeVariant;
 
 		context.TypeHint = classType;
 
@@ -3833,7 +3882,15 @@ namespace clear
 					hasBindings = true;
 				}
 
-				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(namePart); literal && literal->GetData().GetData() == "none")
+				if (classType->IsTypeVariant)
+				{
+					// case int(x): the pattern names a type
+					auto typeNode = Visit(namePart, SemaContext { .ValueReq = ValueRequired::Any });
+					auto type = typeNode ? GetTypeFromNode(typeNode) : nullptr;
+					auto typeIndex = FindTypeCase(classType, type);
+					caseName = typeIndex ? classType->Cases[*typeIndex].Name : (type ? GetDisplayName(type) : "?");
+				}
+				else if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(namePart); literal && literal->GetData().GetData() == "none")
 					caseName = "none";
 				else if (auto var = std::dynamic_pointer_cast<ASTVariable>(namePart))
 					caseName = var->GetName().GetData();
@@ -4701,10 +4758,78 @@ namespace clear
 		return bits >= 64 || (uint64_t)*value < ((uint64_t)1 << bits);
 	}
 
+	// the case of a type variant that holds exactly `type`
+	static std::optional<size_t> FindTypeCase(const std::shared_ptr<ClassType>& variant, const std::shared_ptr<Type>& type)
+	{
+		for (size_t i = 0; type && i < variant->Cases.size(); i++)
+		{
+			auto& caseType = variant->Cases[i].Fields[0].second;
+
+			if (caseType == type || caseType->GetHash() == type->GetHash())
+				return i;
+		}
+
+		return std::nullopt;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target)
 	{
 		if (!node || !target)
 			return node;
+
+		// a value going into a type variant becomes the case of its type
+		if (target->IsClass() && target->As<ClassType>()->IsTypeVariant)
+		{
+			auto variant = target->As<ClassType>();
+			auto source = m_TypeInferEngine.InferTypeFromNode(node);
+
+			if (!source || source == target)
+				return node;
+
+			auto index = FindTypeCase(variant, source);
+
+			// no exact match: the one type it converts to (a number literal prefers its own kind: 2 -> int, 2.5 -> float)
+			if (!index)
+			{
+				bool literal = IsNumericLiteral(node);
+				std::vector<size_t> candidates;
+
+				for (size_t i = 0; i < variant->Cases.size(); i++)
+				{
+					if (IsImplicitlyConvertible(source, variant->Cases[i].Fields[0].second, literal))
+						candidates.push_back(i);
+				}
+
+				if (candidates.size() > 1 && literal)
+				{
+					std::erase_if(candidates, [&](size_t i)
+					{
+						auto caseType = variant->Cases[i].Fields[0].second;
+						return caseType->IsFloatingPoint() != source->IsFloatingPoint() || caseType->Get()->isIntegerTy(1);
+					});
+
+					if (candidates.size() > 1)
+						candidates.resize(1);
+				}
+
+				if (candidates.size() == 1)
+					index = candidates[0];
+			}
+
+			if (!index)
+			{
+				std::string names;
+				for (auto& c : variant->Cases)
+					names += (names.empty() ? "" : ", ") + c.Name;
+
+				Token location = GetNodeLocation(node);
+				location.SetData(std::format("{}’ cannot go into ‘{}’, which holds one of: {}", GetDisplayName(source), variant->GetHash(), names));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_NotInVariant, 1);
+				return node;
+			}
+
+			return BuildVariantConstruct(target, *index, { node }, {}, GetNodeLocation(node));
+		}
 
 		// ?T accepts none and anything that converts to T
 		if (target->IsClass() && target->As<ClassType>()->IsOptional)

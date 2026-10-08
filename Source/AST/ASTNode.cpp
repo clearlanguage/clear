@@ -2751,12 +2751,15 @@ namespace clear
 	{
 		Symbol subject = Subject->Codegen(ctx);
 		auto classType = OptionalTy->As<ClassType>();
-		size_t someIndex = classType->FindCase("some").value();
+		size_t someIndex = CaseIndex >= 0 ? (size_t)CaseIndex : classType->FindCase("some").value();
 
-		if (ctx.RuntimeChecks)
+		// a variant always checks: reading the wrong type would reinterpret its bytes
+		if (ctx.RuntimeChecks || classType->IsTypeVariant)
 		{
 			llvm::Value* tag = ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u });
-			EmitCheck(ctx, ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex)), "unwrapping an optional that is none", Location);
+			std::string message = classType->IsTypeVariant ? std::format("reading {} from a {} that holds another type", classType->Cases[someIndex].Name, classType->GetHash())
+														   : std::string("unwrapping an optional that is none");
+			EmitCheck(ctx, ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex)), message, Location);
 		}
 
 		llvm::Value* storage = SpillToStack(ctx, OptionalTy, subject.GetLLVMValue());

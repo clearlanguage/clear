@@ -360,3 +360,7 @@ Advice  = "‘{}’."
 [VirtualNotNeeded]
 Message = "‘virtual’ is not needed."
 Advice  = "Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’."
+
+[NotInVariant]
+Message = "This type is not one of the variant's types."
+Advice  = "‘{}."
