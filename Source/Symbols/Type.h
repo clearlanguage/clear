@@ -50,7 +50,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Generic, Enum, Tuple, Count
+        Generic, Enum, Tuple, Function, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -95,6 +95,7 @@ namespace clear
         bool IsGeneric();
         bool IsEnum();
         bool IsTuple();
+        bool IsFunction();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -260,6 +261,27 @@ namespace clear
     private:
         std::vector<std::shared_ptr<Type>> m_Elements;
         llvm::StructType* m_LLVMType;
+    };
+
+    // function(int, int) -> int: a pointer to a function with that signature (no captured state)
+    class FunctionPointerType : public Type
+    {
+    public:
+        FunctionPointerType(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType, llvm::LLVMContext& context);
+        virtual ~FunctionPointerType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        const auto& GetParameters() const { return m_Parameters; }
+        std::shared_ptr<Type> GetReturnType() const { return m_ReturnType; } // null for no value
+        llvm::FunctionType* GetFunctionType() const { return m_FunctionType; }
+
+    private:
+        std::vector<std::shared_ptr<Type>> m_Parameters;
+        std::shared_ptr<Type> m_ReturnType;
+        llvm::Type* m_LLVMType;
+        llvm::FunctionType* m_FunctionType;
     };
 
     // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics

@@ -33,6 +33,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseCastExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseIsExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseTernary();
+		std::shared_ptr<ASTNodeBase> ParseLambda();
+		std::shared_ptr<ASTNodeBase> ParseFunctionType();
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
 		std::shared_ptr<ASTNodeBase> ParseArrayType();
 		std::shared_ptr<ASTNodeBase> ParseSizeofExpr();

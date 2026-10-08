@@ -35,7 +35,8 @@ namespace clear
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
-		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure
+		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral
 	};
 
 	class ASTNodeBase;
@@ -275,6 +276,7 @@ namespace clear
 		bool IsVariadic = false;
 		bool SignatureResolved = false; // semantic analysis progress, see Sema::DeclareFunction
 		bool IsGenericInstance = false; // made from a generic template, reached through the template not by name
+		bool InferReturnType = false;   // lambdas: the return type is the type of the body
 		bool BodyResolved = false;
 
 	private:
@@ -297,6 +299,7 @@ namespace clear
 		std::shared_ptr<ClassType> ClassType;
 		bool IsBuiltinPrint = false; // print(...) is lowered to printf by the compiler
 		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> KeywordArguments; // f(name = value)
+		std::shared_ptr<Type> IndirectType; // calling a function value (a FunctionPointerType)
 
 
 
@@ -815,6 +818,63 @@ namespace clear
 		std::vector<std::shared_ptr<ASTNodeBase>> Targets; // names (for let) or storage expressions
 		std::shared_ptr<ASTNodeBase> Value;
 		bool IsDeclaration = false;
+	};
+
+	// lambda x, y: x + y   /   lambda (x: int) -> int: x * 2
+	class ASTLambda : public ASTNodeBase
+	{
+	public:
+		ASTLambda() = default;
+		virtual ~ASTLambda() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Lambda; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> Parameters; // TypeResolver is null when the type comes from context
+		std::shared_ptr<ASTNodeBase> ReturnType;
+		std::shared_ptr<ASTNodeBase> Body;
+	};
+
+	// function(int, int) -> int in a type position
+	class ASTFunctionTypeExpr : public ASTNodeBase
+	{
+	public:
+		ASTFunctionTypeExpr() = default;
+		virtual ~ASTFunctionTypeExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionTypeExpr; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol::CreateType(ResolvedType); }
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Parameters;
+		std::shared_ptr<ASTNodeBase> ReturnType;
+		std::shared_ptr<Type> ResolvedType;
+	};
+
+	// a named function used as a value (its address)
+	class ASTFunctionRef : public ASTNodeBase
+	{
+	public:
+		ASTFunctionRef() = default;
+		virtual ~ASTFunctionRef() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::FunctionRef; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<Symbol> Function;
+		std::shared_ptr<Type> FunctionTy;
+	};
+
+	// a type the compiler already knows, standing where a type expression would be
+	class ASTTypeLiteral : public ASTNodeBase
+	{
+	public:
+		ASTTypeLiteral(std::shared_ptr<Type> type) : ResolvedType(type) {}
+		virtual ~ASTTypeLiteral() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TypeLiteral; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol::CreateType(ResolvedType); }
+
+	public:
+		std::shared_ptr<Type> ResolvedType;
 	};
 
 	// branches to a panic when `ok` is false, code generation continues on the success path

@@ -62,6 +62,40 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Tuple);
     }
 
+    bool Type::IsFunction()
+    {
+        return m_Flags.test((size_t)TypeFlags::Function);
+    }
+
+    FunctionPointerType::FunctionPointerType(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType, llvm::LLVMContext& context)
+        : m_Parameters(parameters.begin(), parameters.end()), m_ReturnType(returnType)
+    {
+        llvm::SmallVector<llvm::Type*> types;
+
+        for (auto& parameter : m_Parameters)
+            types.push_back(parameter->Get());
+
+        m_FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::Type::getVoidTy(context), types, false);
+        m_LLVMType = llvm::PointerType::get(context, 0);
+
+        Toggle(TypeFlags::Function);
+    }
+
+    std::string FunctionPointerType::GetHash() const
+    {
+        std::string hash = "function(";
+
+        for (size_t i = 0; i < m_Parameters.size(); i++)
+            hash += (i ? ", " : "") + m_Parameters[i]->GetHash();
+
+        hash += ")";
+
+        if (m_ReturnType)
+            hash += " -> " + m_ReturnType->GetHash();
+
+        return hash;
+    }
+
     TupleType::TupleType(llvm::ArrayRef<std::shared_ptr<Type>> elements, llvm::LLVMContext& context)
         : m_Elements(elements.begin(), elements.end())
     {
@@ -249,6 +283,15 @@ namespace clear
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        if (auto function = std::dynamic_pointer_cast<FunctionPointerType>(type))
+        {
+            std::string name = "function(";
+            for (size_t i = 0; i < function->GetParameters().size(); i++)
+                name += (i ? ", " : "") + GetDisplayName(function->GetParameters()[i]);
+            name += ")";
+            return function->GetReturnType() ? name + " -> " + GetDisplayName(function->GetReturnType()) : name;
+        }
 
         if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
         {

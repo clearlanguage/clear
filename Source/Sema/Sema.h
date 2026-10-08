@@ -28,6 +28,8 @@ namespace clear
 		bool GlobalState = true;
 		bool InLoop = false;
 		std::shared_ptr<Type> ReturnType; // of the function being analysed, null for void
+		std::shared_ptr<Type> ExpectedType; // what the value being analysed will be converted to (gives lambdas their parameter types)
+		ASTFunctionDefinition* InferReturnFor = nullptr; // a lambda whose return type comes from its body
 	};
 	
 	struct CompilationUnit;
@@ -59,6 +61,10 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTupleExpr> tuple, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTLambda> lambda, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionTypeExpr> type, SemaContext context);
+		std::shared_ptr<Type> FunctionTypeOf(const std::shared_ptr<ASTFunctionDefinition>& function);
+		void DeclareInGlobalScope(const std::function<void()>& declare);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
@@ -100,6 +106,7 @@ namespace clear
 		bool IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral);
 		bool IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
 		std::shared_ptr<ASTNodeBase> CheckCall(std::shared_ptr<ASTFunctionCall> funcCall);
+		std::shared_ptr<ASTNodeBase> CheckIndirectCall(std::shared_ptr<ASTFunctionCall> funcCall);
 		std::shared_ptr<ASTNodeBase> LowerClassIteration(std::shared_ptr<ASTForExpression> forExpr, std::shared_ptr<ASTNodeBase> iterable);
 		std::shared_ptr<ASTNodeBase> CompleteStructValues(std::shared_ptr<ASTStructExpr> structExpr);
 		std::shared_ptr<ASTNodeBase> BuildConstruction(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTVariable> target);

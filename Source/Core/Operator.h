@@ -28,7 +28,7 @@ namespace clear
         Negation, Dot, Index, 
         Pow, Ternary, FunctionCall,
 		Subscript, StructInitializer,
-		ListInitializer, ArrayType, In, NotIn,
+		ListInitializer, ArrayType, In, NotIn, Lambda, FunctionType,
 
         Count
     };

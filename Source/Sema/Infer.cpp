@@ -21,6 +21,8 @@ namespace clear
 		{
 			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
 			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
+			case ASTNodeType::FunctionRef:	return std::dynamic_pointer_cast<ASTFunctionRef>(node)->FunctionTy;
+			case ASTNodeType::Lambda:		return nullptr; // not analysed yet
 			case ASTNodeType::TupleExpr:	return std::dynamic_pointer_cast<ASTTupleExpr>(node)->TupleTy;
 			case ASTNodeType::TupleGet:
 			{
@@ -256,6 +258,9 @@ namespace clear
 	{
 		if (funcCall->IsBuiltinPrint)
 			return m_Module->Lookup("void").value()->GetType();
+
+		if (funcCall->IndirectType)
+			return funcCall->IndirectType->As<FunctionPointerType>()->GetReturnType();
 
 		return InferTypeFromNode(funcCall->Callee);
 	}

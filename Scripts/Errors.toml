@@ -280,3 +280,11 @@ Advice  = "‘{}’."
 [CannotUnpack]
 Message = "Only a tuple or fixed array variable can be unpacked with ‘...’."
 Advice  = "‘{}’ cannot be spread into arguments. Store it in a variable first if it is the result of a call."
+
+[LambdaNeedsTypes]
+Message = "Cannot tell the type of a lambda parameter."
+Advice  = "Give ‘{}’ a type, e.g. lambda (x: int): ..., or use the lambda where a function type is expected."
+
+[ClosureNotFunction]
+Message = "A lambda that captures variables cannot be used as a plain function."
+Advice  = "It carries copies of the variables it uses. Accept it with a generic parameter, e.g. function apply[F](f: F, ...), or pass the values as arguments instead."

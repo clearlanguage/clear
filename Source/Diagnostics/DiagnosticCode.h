@@ -74,6 +74,8 @@ namespace clear
 		DiagnosticCode_PositionalAfterKeyword,
 		DiagnosticCode_UnknownKeyword,
 		DiagnosticCode_CannotUnpack,
+		DiagnosticCode_LambdaNeedsTypes,
+		DiagnosticCode_ClosureNotFunction,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -148,6 +150,8 @@ namespace clear
 		"A positional argument cannot follow a keyword argument.",
 		"Invalid keyword argument.",
 		"Only a tuple or fixed array variable can be unpacked with ‘...’.",
+		"Cannot tell the type of a lambda parameter.",
+		"A lambda that captures variables cannot be used as a plain function.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -221,5 +225,7 @@ namespace clear
 		"Move ‘{}’ before the name = value arguments.",
 		"‘{}’.",
 		"‘{}’ cannot be spread into arguments. Store it in a variable first if it is the result of a call.",
+		"Give ‘{}’ a type, e.g. lambda (x: int): ..., or use the lambda where a function type is expected.",
+		"It carries copies of the variables it uses. Accept it with a generic parameter, e.g. function apply[F](f: F, ...), or pass the values as arguments instead.",
 	};
 }

@@ -105,6 +105,53 @@ namespace clear {
 
 				return list;
 			}
+			case ASTNodeType::Lambda:
+			{
+				auto original = std::dynamic_pointer_cast<ASTLambda>(node);
+				auto lambda = std::make_shared<ASTLambda>();
+
+				for (auto& parameter : original->Parameters)
+					lambda->Parameters.push_back(CloneVariableDecl(parameter));
+
+				lambda->ReturnType = Clone(original->ReturnType);
+				lambda->Body = Clone(original->Body);
+				return lambda;
+			}
+			case ASTNodeType::FunctionTypeExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTFunctionTypeExpr>(node);
+				auto type = std::make_shared<ASTFunctionTypeExpr>();
+
+				for (auto& parameter : original->Parameters)
+					type->Parameters.push_back(Clone(parameter));
+
+				type->ReturnType = Clone(original->ReturnType);
+				return type;
+			}
+			case ASTNodeType::TupleExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTTupleExpr>(node);
+				auto tuple = std::make_shared<ASTTupleExpr>();
+
+				for (auto& value : original->Values)
+					tuple->Values.push_back(Clone(value));
+
+				return tuple;
+			}
+			case ASTNodeType::Destructure:
+			{
+				auto original = std::dynamic_pointer_cast<ASTDestructure>(node);
+				auto destructure = std::make_shared<ASTDestructure>();
+
+				for (auto& target : original->Targets)
+					destructure->Targets.push_back(Clone(target));
+
+				destructure->Value = Clone(original->Value);
+				destructure->IsDeclaration = original->IsDeclaration;
+				return destructure;
+			}
+			case ASTNodeType::TypeLiteral:
+				return node;
 			case ASTNodeType::Assert:
 			{
 				auto original = std::dynamic_pointer_cast<ASTAssert>(node);

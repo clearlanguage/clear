@@ -25,6 +25,7 @@
 namespace clear
 {
 	static bool IsStorageNode(const std::shared_ptr<ASTNodeBase>& node);
+	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
 
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
 		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule), 
@@ -165,6 +166,7 @@ namespace clear
 			context.ValueReq = ValueRequired::RValue;
 			if (decl->Initializer)
 			{
+				context.ExpectedType = decl->ResolvedType;
 				decl->Initializer = Visit(decl->Initializer, context);
 
 				if (!decl->Initializer)
@@ -298,6 +300,21 @@ namespace clear
 		
 		variable->Variable = symbol.value().Symbol;
 
+		// a function used as a value (not called) is its address
+		if (context.ValueReq == ValueRequired::RValue && variable->Variable->Kind == SymbolKind::Function)
+		{
+			auto function = variable->Variable->GetFunctionSymbol().FunctionNode;
+
+			if (function && function->SignatureResolved)
+			{
+				auto reference = std::make_shared<ASTFunctionRef>();
+				reference->Location = variable->GetName();
+				reference->Function = variable->Variable;
+				reference->FunctionTy = FunctionTypeOf(function);
+				return reference;
+			}
+		}
+
 		// reading a const with a known integer value becomes the value itself
 		if (context.ValueReq == ValueRequired::RValue)
 		{
@@ -351,6 +368,10 @@ namespace clear
 			case ASTNodeType::Contains:					return ast;
 			case ASTNodeType::Intrinsic:				return ast;
 			case ASTNodeType::TupleGet:					return ast;
+			case ASTNodeType::FunctionRef:				return ast;
+			case ASTNodeType::TypeLiteral:				return ast;
+			case ASTNodeType::Lambda:					return Visit(std::dynamic_pointer_cast<ASTLambda>(ast), context);
+			case ASTNodeType::FunctionTypeExpr:			return Visit(std::dynamic_pointer_cast<ASTFunctionTypeExpr>(ast), context);
 			case ASTNodeType::TupleExpr:				return Visit(std::dynamic_pointer_cast<ASTTupleExpr>(ast), context);
 			case ASTNodeType::Destructure:				return Visit(std::dynamic_pointer_cast<ASTDestructure>(ast), context);
 			case ASTNodeType::Sequence:
@@ -505,6 +526,8 @@ namespace clear
 		context.GlobalState = false;
 		context.ReturnType = func->ReturnTypeVal;
 		context.InLoop = false;
+		context.InferReturnFor = func->InferReturnType ? func.get() : nullptr;
+		context.ExpectedType = nullptr;
 
 		m_ScopeStack.emplace_back();
 
@@ -744,6 +767,13 @@ namespace clear
 		
 		for (auto& arg : funcCall->Arguments)
 		{
+			// a lambda without parameter types is analysed once the parameter it goes to is known (in CheckCall)
+			if (auto lambda = std::dynamic_pointer_cast<ASTLambda>(arg); lambda && std::any_of(lambda->Parameters.begin(), lambda->Parameters.end(), [](auto& p) { return !p->TypeResolver; }))
+			{
+				context.CallsiteArgs.push_back(nullptr);
+				continue;
+			}
+
 			arg = Visit(arg, context);
 
 			if (!arg)
@@ -809,6 +839,48 @@ namespace clear
 			auto callee = std::make_shared<ASTVariable>(target ? target->GetName() : Token());
 			callee->Variable = subscript->GeneratedType;
 			funcCall->Callee = callee;
+		}
+
+		// calling a value: a function pointer, or an object with __call__ (closures are such objects)
+		{
+			bool isFunctionName = false;
+
+			if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); var && var->Variable && 
+				(var->Variable->Kind == SymbolKind::Function || var->Variable->Kind == SymbolKind::Type))
+				isFunctionName = true;
+
+			if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+			{
+				// module.function(...) always names a function
+				auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide);
+				bool isModule = left && left->Variable && left->Variable->Kind == SymbolKind::Module;
+
+				// obj.method(...) is a method call unless the member is a field holding a function
+				auto objectType = isModule ? nullptr : m_TypeInferEngine.InferTypeFromNode(member->LeftSide);
+				auto classType = ClassOf(objectType);
+				auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+				isFunctionName = isModule || !classType || !name || classType->As<ClassType>()->MemberFunctions.contains(name->GetName().GetData());
+			}
+
+			if (!isFunctionName)
+			{
+				auto calleeType = m_TypeInferEngine.InferTypeFromNode(funcCall->Callee);
+
+				if (calleeType && calleeType->IsFunction())
+				{
+					funcCall->Callee = AsValue(funcCall->Callee);
+					funcCall->IndirectType = calleeType;
+					return CheckIndirectCall(funcCall);
+				}
+
+				if (auto classType = ClassOf(calleeType); classType && classType->As<ClassType>()->MemberFunctions.contains("__call__"))
+				{
+					EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__call__")->GetFunctionSymbol().FunctionNode);
+					std::vector<std::shared_ptr<ASTNodeBase>> arguments(funcCall->Arguments.begin(), funcCall->Arguments.end());
+					return CallMethod(funcCall->Callee, calleeType, "__call__", arguments, GetNodeLocation(funcCall->Callee));
+				}
+			}
 		}
 
 		// Point(1, 2) constructs a value of the class
@@ -964,7 +1036,46 @@ namespace clear
 		for (size_t i = 0; i < expected; i++)
 		{
 			auto parameterType = function->Arguments[i + offset] ? function->Arguments[i + offset]->ResolvedType : nullptr;
+
+			if (funcCall->Arguments[i]->GetType() == ASTNodeType::Lambda)
+			{
+				funcCall->Arguments[i] = Visit(funcCall->Arguments[i], SemaContext { .ValueReq = ValueRequired::RValue, .GlobalState = false, .ExpectedType = parameterType });
+
+				if (!funcCall->Arguments[i])
+					return nullptr;
+			}
+
 			funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], parameterType);
+		}
+
+		return funcCall;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CheckIndirectCall(std::shared_ptr<ASTFunctionCall> funcCall)
+	{
+		auto functionType = funcCall->IndirectType->As<FunctionPointerType>();
+		auto& parameters = functionType->GetParameters();
+		Token location = GetNodeLocation(funcCall->Callee);
+
+		if (!funcCall->KeywordArguments.empty() || funcCall->Arguments.size() != parameters.size())
+		{
+			location.SetData(std::format("{}’ expects {} argument{}, but {} {} given (function values take no keyword arguments", location.GetData(), parameters.size(), 
+										 parameters.size() == 1 ? "" : "s", funcCall->Arguments.size(), funcCall->Arguments.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_WrongArgumentCount, 1);
+			return nullptr;
+		}
+
+		for (size_t i = 0; i < parameters.size(); i++)
+		{
+			if (funcCall->Arguments[i]->GetType() == ASTNodeType::Lambda)
+			{
+				funcCall->Arguments[i] = Visit(funcCall->Arguments[i], SemaContext { .ValueReq = ValueRequired::RValue, .GlobalState = false, .ExpectedType = parameters[i] });
+
+				if (!funcCall->Arguments[i])
+					return nullptr;
+			}
+
+			funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], parameters[i]);
 		}
 
 		return funcCall;
@@ -979,6 +1090,17 @@ namespace clear
 
 		if (hadValue && !returnStatement->ReturnValue)
 			return nullptr; // the value itself was already reported
+
+		// a lambda's return type is whatever its body produces
+		if (context.InferReturnFor && returnStatement->ReturnValue && !context.InferReturnFor->ReturnTypeVal)
+		{
+			context.InferReturnFor->ReturnTypeVal = m_TypeInferEngine.InferTypeFromNode(returnStatement->ReturnValue);
+
+			if (context.InferReturnFor->ReturnTypeVal && context.InferReturnFor->ReturnTypeVal->Get()->isVoidTy())
+				context.InferReturnFor->ReturnTypeVal = nullptr;
+
+			context.ReturnType = context.InferReturnFor->ReturnTypeVal;
+		}
 
 		bool returnsValue = context.ReturnType && context.ReturnType->Get() && !context.ReturnType->Get()->isVoidTy();
 
@@ -1057,6 +1179,10 @@ namespace clear
 		//}
 	
 		context.ValueReq = ValueRequired::RValue;
+
+		if (assignmentOp->Storage && assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
+			context.ExpectedType = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
+
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
 		if (!assignmentOp->Storage || !assignmentOp->Value)
@@ -1906,6 +2032,342 @@ namespace clear
 		return tuple;
 	}
 
+	std::shared_ptr<Type> Sema::FunctionTypeOf(const std::shared_ptr<ASTFunctionDefinition>& function)
+	{
+		std::vector<std::shared_ptr<Type>> parameters;
+
+		for (auto& argument : function->Arguments)
+			parameters.push_back(argument ? argument->ResolvedType : nullptr);
+
+		return m_Module->GetTypeRegistry()->GetFunctionFrom(parameters, function->ReturnTypeVal);
+	}
+
+	void Sema::DeclareInGlobalScope(const std::function<void()>& declare)
+	{
+		// lambdas become top-level functions/classes: analyse them with only the file's global scopes
+		constexpr size_t globalScopes = 2;
+
+		if (m_ScopeStack.size() <= globalScopes)
+		{
+			declare();
+			return;
+		}
+
+		std::vector<SymbolTable> locals(std::make_move_iterator(m_ScopeStack.begin() + globalScopes), std::make_move_iterator(m_ScopeStack.end()));
+		m_ScopeStack.resize(globalScopes);
+
+		declare();
+
+		m_ScopeStack.insert(m_ScopeStack.end(), std::make_move_iterator(locals.begin()), std::make_move_iterator(locals.end()));
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionTypeExpr> type, SemaContext context)
+	{
+		std::vector<std::shared_ptr<Type>> parameters;
+
+		for (auto& parameter : type->Parameters)
+		{
+			parameter = Visit(parameter, context);
+			auto resolved = parameter ? GetTypeFromNode(parameter) : nullptr;
+
+			if (!resolved)
+			{
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(parameter ? parameter : type));
+				return nullptr;
+			}
+
+			parameters.push_back(resolved);
+		}
+
+		std::shared_ptr<Type> returnType;
+
+		if (type->ReturnType)
+		{
+			type->ReturnType = Visit(type->ReturnType, context);
+			returnType = type->ReturnType ? GetTypeFromNode(type->ReturnType) : nullptr;
+
+			if (!returnType)
+			{
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(type));
+				return nullptr;
+			}
+		}
+
+		type->ResolvedType = m_Module->GetTypeRegistry()->GetFunctionFrom(parameters, returnType);
+		return type;
+	}
+
+	static void CollectNames(const std::shared_ptr<ASTNodeBase>& node, std::vector<Token>& names)
+	{
+		// every name a lambda body mentions (the field after `.` is not a name of its own)
+		if (!node)
+			return;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Variable: names.push_back(std::dynamic_pointer_cast<ASTVariable>(node)->GetName()); break;
+			case ASTNodeType::BinaryExpression:
+			{
+				auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				CollectNames(binary->LeftSide, names);
+				if (binary->GetExpression() != OperatorType::Dot)
+					CollectNames(binary->RightSide, names);
+				break;
+			}
+			case ASTNodeType::UnaryExpression: CollectNames(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand, names); break;
+			case ASTNodeType::FunctionCall:
+			{
+				auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+				CollectNames(call->Callee, names);
+				for (auto& arg : call->Arguments) CollectNames(arg, names);
+				break;
+			}
+			case ASTNodeType::Subscript:
+			{
+				auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node);
+				CollectNames(subscript->Target, names);
+				for (auto& arg : subscript->SubscriptArgs) CollectNames(arg, names);
+				break;
+			}
+			case ASTNodeType::TernaryExpression:
+			{
+				auto ternary = std::dynamic_pointer_cast<ASTTernaryExpression>(node);
+				CollectNames(ternary->Condition, names);
+				CollectNames(ternary->Truthy, names);
+				CollectNames(ternary->Falsy, names);
+				break;
+			}
+			case ASTNodeType::CastExpr: CollectNames(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object, names); break;
+			case ASTNodeType::StructExpr:
+			{
+				auto structExpr = std::dynamic_pointer_cast<ASTStructExpr>(node);
+				for (auto& value : structExpr->Values) CollectNames(value, names);
+				break;
+			}
+			case ASTNodeType::TupleExpr:
+			{
+				for (auto& value : std::dynamic_pointer_cast<ASTTupleExpr>(node)->Values) CollectNames(value, names);
+				break;
+			}
+			case ASTNodeType::ListExpr:
+			{
+				for (auto& value : std::dynamic_pointer_cast<ASTListExpr>(node)->Values) CollectNames(value, names);
+				break;
+			}
+			case ASTNodeType::Lambda:
+			{
+				// names of a nested lambda that are not its own parameters are free here too
+				auto lambda = std::dynamic_pointer_cast<ASTLambda>(node);
+				std::vector<Token> inner;
+				CollectNames(lambda->Body, inner);
+
+				for (auto& name : inner)
+				{
+					bool isParameter = std::any_of(lambda->Parameters.begin(), lambda->Parameters.end(), [&](auto& p) { return p->GetName().GetData() == name.GetData(); });
+					if (!isParameter) names.push_back(name);
+				}
+				break;
+			}
+			default: break;
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTLambda> lambda, SemaContext context)
+	{
+		static size_t s_LambdaCounter = 0;
+		size_t id = s_LambdaCounter++;
+		Token location = lambda->Location;
+		auto token = [&](const std::string& text) { return Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+
+		// parameter types: written out, or taken from the function type the lambda is converted to
+		auto expected = context.ExpectedType && context.ExpectedType->IsFunction() ? context.ExpectedType->As<FunctionPointerType>() : nullptr;
+		std::vector<std::shared_ptr<Type>> parameterTypes;
+
+		for (size_t i = 0; i < lambda->Parameters.size(); i++)
+		{
+			auto& parameter = lambda->Parameters[i];
+			std::shared_ptr<Type> type;
+
+			if (parameter->TypeResolver)
+			{
+				Visit(parameter->TypeResolver, context);
+				type = GetTypeFromNode(parameter->TypeResolver);
+			}
+			else if (expected && expected->GetParameters().size() == lambda->Parameters.size())
+			{
+				type = expected->GetParameters()[i];
+			}
+
+			if (!type)
+			{
+				Report(DiagnosticCode_LambdaNeedsTypes, parameter->GetName());
+				return nullptr;
+			}
+
+			parameterTypes.push_back(type);
+		}
+
+		std::shared_ptr<Type> declaredReturn;
+
+		if (lambda->ReturnType)
+		{
+			Visit(lambda->ReturnType, context);
+			declaredReturn = GetTypeFromNode(lambda->ReturnType);
+		}
+		else if (expected && expected->GetReturnType())
+		{
+			declaredReturn = expected->GetReturnType();
+		}
+
+		// local variables the body uses are captured (copied) into a closure object
+		std::vector<Token> names;
+		CollectNames(lambda->Body, names);
+
+		std::vector<std::pair<Token, std::shared_ptr<Type>>> captures;
+		constexpr size_t globalScopes = 2;
+
+		for (auto& name : names)
+		{
+			bool isParameter = std::any_of(lambda->Parameters.begin(), lambda->Parameters.end(), [&](auto& p) { return p->GetName().GetData() == name.GetData(); });
+			bool alreadyCaptured = std::any_of(captures.begin(), captures.end(), [&](auto& c) { return c.first.GetData() == name.GetData(); });
+
+			if (isParameter || alreadyCaptured)
+				continue;
+
+			auto [entry, scopeIndex] = LookupSymbol(name.GetData());
+
+			if (entry && entry->Type == SymbolEntryType::Variable && scopeIndex >= globalScopes && entry->Symbol->Kind == SymbolKind::Value)
+			{
+				auto type = entry->Symbol->GetType();
+
+				if (entry->Symbol->GetLLVMValue() && type->IsPointer())
+					type = type->As<PointerType>()->GetBaseType();
+
+				captures.push_back({ name, type });
+			}
+		}
+
+		auto makeParameters = [&](std::shared_ptr<ASTFunctionDefinition> function)
+		{
+			for (size_t i = 0; i < lambda->Parameters.size(); i++)
+			{
+				auto parameter = std::make_shared<ASTVariableDeclaration>(lambda->Parameters[i]->GetName());
+				parameter->TypeResolver = std::make_shared<ASTTypeLiteral>(parameterTypes[i]);
+				function->Arguments.push_back(parameter);
+			}
+
+			if (declaredReturn)
+				function->ReturnType = std::make_shared<ASTTypeLiteral>(declaredReturn);
+			else
+				function->InferReturnType = true;
+		};
+
+		auto body = std::make_shared<ASTBlock>();
+		auto returnStatement = std::make_shared<ASTReturn>();
+		returnStatement->Location = location;
+		returnStatement->ReturnValue = lambda->Body;
+
+		if (captures.empty())
+		{
+			// nothing captured: an ordinary function, used through its address
+			auto function = std::make_shared<ASTFunctionDefinition>(std::format("__lambda_{}", id));
+			function->SetNameToken(token(function->GetName()));
+			function->Location = location;
+			makeParameters(function);
+			body->Children.push_back(returnStatement);
+			function->CodeBlock = body;
+
+			bool success = false;
+			DeclareInGlobalScope([&]()
+			{
+				success = DeclareFunction(function, SemaContext { .GlobalState = false });
+
+				if (success)
+					DefineFunction(function, SemaContext { .GlobalState = false });
+			});
+
+			if (!success)
+				return nullptr;
+
+			auto reference = std::make_shared<ASTFunctionRef>();
+			reference->Location = location;
+			reference->Function = function->FunctionSymbol;
+			reference->FunctionTy = FunctionTypeOf(function);
+			return reference;
+		}
+
+		// captures: a small class holding copies of them, called through __call__
+		auto closure = std::make_shared<ASTClass>(std::format("__closure_{}", id));
+		closure->Location = location;
+
+		for (auto& [name, type] : captures)
+		{
+			auto member = std::make_shared<ASTTypeSpecifier>(name.GetData());
+			member->TypeResolver = std::make_shared<ASTTypeLiteral>(type);
+			closure->Members.push_back(member);
+			closure->DefaultValues.push_back(nullptr);
+		}
+
+		bool success = false;
+		DeclareInGlobalScope([&]() { success = DeclareClassType(closure); });
+
+		if (!success)
+			return nullptr;
+
+		auto call = std::make_shared<ASTFunctionDefinition>("__call__");
+		call->SetNameToken(token("__call__"));
+		call->Location = location;
+
+		auto self = std::make_shared<ASTVariableDeclaration>(token("self"));
+		self->TypeResolver = std::make_shared<ASTTypeLiteral>(m_Module->GetTypeRegistry()->GetPointerTo(closure->ClassTy));
+		call->Arguments.push_back(self);
+		makeParameters(call);
+
+		// inside __call__ each captured name is a local copied from the closure
+		for (auto& [name, type] : captures)
+		{
+			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
+			access->Location = name;
+			access->LeftSide = std::make_shared<ASTVariable>(token("self"));
+			access->RightSide = std::make_shared<ASTVariable>(name);
+
+			auto local = std::make_shared<ASTVariableDeclaration>(name);
+			local->Initializer = access;
+			body->Children.push_back(local);
+		}
+
+		body->Children.push_back(returnStatement);
+		call->CodeBlock = body;
+		closure->MemberFunctions.push_back(call);
+
+		DeclareInGlobalScope([&]()
+		{
+			success = DeclareClassBody(closure, SemaContext { .GlobalState = false });
+
+			if (success)
+				DefineClass(closure, SemaContext { .GlobalState = false });
+		});
+
+		if (!success)
+			return nullptr;
+
+		// the lambda's value: the closure built from the current values of the captured variables
+		auto target = std::make_shared<ASTVariable>(token(closure->GetName()));
+		target->Variable = std::make_shared<Symbol>(Symbol::CreateType(closure->ClassTy));
+
+		auto value = std::make_shared<ASTStructExpr>();
+		value->Location = location;
+		value->TargetType = target;
+
+		for (auto& [name, type] : captures)
+			value->Values.push_back(std::make_shared<ASTVariable>(name));
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		valueContext.ExpectedType = nullptr;
+		return Visit(value, valueContext);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)
 	{
 		// evaluate the right side once into a hidden tuple, then hand out its elements:
@@ -2193,7 +2655,14 @@ namespace clear
 		valueContext.CallsiteArgs.clear();
 
 		for (auto& value : structExpr->Values)
-			value = Visit(value, valueContext);
+		{
+			// lambdas wait for the field type (see CompleteStructValues)
+			if (value->GetType() != ASTNodeType::Lambda)
+				value = Visit(value, valueContext);
+
+			if (!value)
+				return nullptr;
+		}
 
 		// `Box { 7 }` where Box is generic: work out the type arguments from the field values
 		if (auto var = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType); var && !var->Variable)
@@ -2256,6 +2725,15 @@ namespace clear
 		{
 			if (index < structExpr->Values.size())
 			{
+				// a lambda takes its parameter types from the field it is stored in
+				if (structExpr->Values[index]->GetType() == ASTNodeType::Lambda)
+				{
+					structExpr->Values[index] = Visit(structExpr->Values[index], SemaContext { .ValueReq = ValueRequired::RValue, .GlobalState = false, .ExpectedType = memberType });
+
+					if (!structExpr->Values[index])
+						return nullptr;
+				}
+
 				structExpr->Values[index] = Coerce(structExpr->Values[index], memberType);
 			}
 			else
@@ -2856,6 +3334,13 @@ namespace clear
 			return node;
 		}
 
+		// a lambda that captures variables is an object, not a plain function
+		if (target->IsFunction() && source->IsClass() && source->GetHash().starts_with("__closure_"))
+		{
+			Report(DiagnosticCode_ClosureNotFunction, GetNodeLocation(node));
+			return node;
+		}
+
 		if (!IsImplicitlyConvertible(source, target, isLiteral || IsConstantThatFits(node, target)))
 		{
 			Token location = GetNodeLocation(node);
@@ -3304,6 +3789,8 @@ namespace clear
 				auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(node);
 				return tuple->IsType ? tuple->TupleTy : nullptr;
 			}
+			case ASTNodeType::FunctionTypeExpr:	return std::dynamic_pointer_cast<ASTFunctionTypeExpr>(node)->ResolvedType;
+			case ASTNodeType::TypeLiteral:		return std::dynamic_pointer_cast<ASTTypeLiteral>(node)->ResolvedType;
 			default:
 			{
 				break;

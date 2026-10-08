@@ -150,6 +150,28 @@ namespace clear
         return slot;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetFunctionFrom(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType)
+    {
+        static std::map<std::vector<Type*>, std::shared_ptr<Type>> s_Functions;
+
+        // the return type goes first in the key, null meaning no value
+        std::vector<Type*> key = { returnType.get() };
+        for (auto& parameter : parameters)
+        {
+            if (!parameter)
+                return nullptr;
+
+            key.push_back(parameter.get());
+        }
+
+        auto& slot = s_Functions[key];
+
+        if (!slot)
+            slot = std::make_shared<FunctionPointerType>(parameters, returnType, *m_Context);
+
+        return slot;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)
     {
         CLEAR_VERIFY(type->IsIntegral(), "only works on integral types!");

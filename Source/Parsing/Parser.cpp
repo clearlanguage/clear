@@ -130,6 +130,8 @@ namespace clear
 		{OperatorType::And,     {4, 5}},
 		{OperatorType::Or,      {2, 3}},
 		{OperatorType::Ternary, {0, 1, [](Parser* p) { return p->ParseTernary();}}},
+		{OperatorType::Lambda,  {0, 1, [](Parser* p) { return p->ParseLambda();}}},
+		{OperatorType::FunctionType, {0, 1, [](Parser* p) { return p->ParseFunctionType();}}},
 		
 		{OperatorType::Assignment, {1, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
 	};
@@ -1403,6 +1405,115 @@ namespace clear
 		return ternaryExpr;
 	}
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseLambda()
+	{
+		Token keyword = Consume(); // lambda
+
+		auto lambda = std::make_shared<ASTLambda>();
+		lambda->Location = keyword;
+
+		if (Match(TokenType::LeftParen))
+		{
+			// lambda (x: int, y: int) -> int: body
+			Consume();
+
+			while (!Match(TokenType::RightParen))
+			{
+				auto parameter = ParseVariableDecleration().Node;
+
+				if (!parameter)
+					return nullptr;
+
+				lambda->Parameters.push_back(parameter);
+
+				if (Match(TokenType::Comma))
+				{
+					Consume();
+					continue;
+				}
+
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+			}
+
+			Consume(); // )
+
+			if (Match(TokenType::RightThinArrow))
+			{
+				Consume();
+				lambda->ReturnType = ParseExpr(2);
+			}
+		}
+		else
+		{
+			// lambda x, y: body (types come from where the lambda is used)
+			while (Match(TokenType::Identifier))
+			{
+				lambda->Parameters.push_back(std::make_shared<ASTVariableDeclaration>(Consume()));
+
+				if (!Match(TokenType::Comma))
+					break;
+
+				Consume();
+			}
+		}
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		lambda->Body = ParseExpr();
+
+		if (!lambda->Body)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
+			return nullptr;
+		}
+
+		return lambda;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseFunctionType()
+	{
+		// function(int, int) -> int
+		Token keyword = Consume();
+
+		auto type = std::make_shared<ASTFunctionTypeExpr>();
+		type->Location = keyword;
+
+		EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
+		Consume();
+
+		while (!Match(TokenType::RightParen))
+		{
+			auto parameter = ParseExpr(2);
+
+			if (!parameter)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+				break;
+			}
+
+			type->Parameters.push_back(parameter);
+
+			if (Match(TokenType::Comma))
+			{
+				Consume();
+				continue;
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+		}
+
+		Consume(); // )
+
+		if (Match(TokenType::RightThinArrow))
+		{
+			Consume();
+			type->ReturnType = ParseExpr(2);
+		}
+
+		return type;
+	}
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseListInitializerExpr()
 	{
 		EXPECT_TOKEN_RETURN(TokenType::LeftBrace, DiagnosticCode_None, nullptr);
@@ -1689,6 +1800,8 @@ namespace clear
 
 		if (current.GetData() == "not")    return OperatorType::Not;
 		if (current.GetData() == "when")   return OperatorType::Ternary;
+		if (current.GetData() == "lambda") return OperatorType::Lambda;
+		if (current.GetData() == "function") return OperatorType::FunctionType;
 		if (current.GetData() == "sizeof") return OperatorType::Sizeof;
 
 		return OperatorType::None;

@@ -914,7 +914,8 @@ namespace clear
 					return decl->ResolvedType->Get();
 				 });
 		
-		std::shared_ptr<Type> returnType = ReturnType ? ReturnType->Codegen(ctx).GetType() : nullptr;
+		// the analysed return type (lambdas have no return type written out)
+		std::shared_ptr<Type> returnType = ReturnTypeVal && !ReturnTypeVal->Get()->isVoidTy() ? ReturnTypeVal : nullptr;
 
 		functionSymbol.FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), argTypes, false);
 		functionSymbol.FunctionPtr = llvm::Function::Create(functionSymbol.FunctionType, Linkage, m_Name, ctx.Module);
@@ -984,8 +985,57 @@ namespace clear
 		return *FunctionSymbol;
 	}
 
+	// the function behind a symbol, generated on first use and declared in this module if it lives in another
+	static llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
+	{
+		FunctionSymbol& functionSymbol = symbol->GetFunctionSymbol();
+
+		if (!functionSymbol.FunctionPtr)
+		{
+			CodegenContext contextFromOther = functionSymbol.FunctionNode->SourceModule->GetCodegenContext();
+			functionSymbol.FunctionNode->Codegen(contextFromOther);
+		}
+
+		if (functionSymbol.FunctionNode->SourceModule == ctx.ClearModule)
+			return functionSymbol.FunctionPtr;
+
+		llvm::Function* local = ctx.Module.getFunction(functionSymbol.FunctionNode->GetName());
+
+		if (!local)
+			local = llvm::Function::Create(functionSymbol.FunctionType, llvm::Function::ExternalLinkage, functionSymbol.FunctionNode->GetName(), ctx.Module);
+
+		return local;
+	}
+
+	Symbol ASTFunctionRef::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(GetFunctionHere(Function, ctx), FunctionTy);
+	}
+
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
+		if (IndirectType)
+		{
+			// calling a function value
+			auto functionType = IndirectType->As<FunctionPointerType>();
+			llvm::Value* target = Callee->Codegen(ctx).GetLLVMValue();
+
+			std::vector<llvm::Value*> args;
+			std::vector<std::shared_ptr<Type>> types;
+			BuildArgs(ctx, args, types);
+			ConvertArguments(ctx, functionType->GetFunctionType(), args, types);
+
+			if (ctx.RuntimeChecks)
+				EmitCheck(ctx, ctx.Builder.CreateIsNotNull(target), "calling a null function", GetNodeLocation(Callee));
+
+			llvm::Value* result = ctx.Builder.CreateCall(functionType->GetFunctionType(), target, args);
+
+			if (!functionType->GetReturnType())
+				return Symbol();
+
+			return Symbol::CreateValue(result, functionType->GetReturnType());
+		}
+
 		if (IsBuiltinPrint)
 		{
 			llvm::SmallVector<Symbol> values;
