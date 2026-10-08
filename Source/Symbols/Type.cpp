@@ -7,6 +7,7 @@
 #include <functional>
 #include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/DataLayout.h>
 #include <memory>
 #include <format>
 
@@ -197,6 +198,73 @@ namespace clear
 		}
 
 		m_LLVMType->setBody(types);
+	}
+
+	static uint64_t StorageSizeOf(llvm::Type* type)
+	{
+		// semantic analysis runs before the target is known, the generic 64 bit layout gives the same sizes
+		static llvm::DataLayout layout("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
+		return type->isSized() ? layout.getTypeAllocSize(type).getFixedValue() : 0;
+	}
+
+	std::optional<size_t> ClassType::FindCase(llvm::StringRef name) const
+	{
+		for (size_t i = 0; i < Cases.size(); i++)
+		{
+			if (Cases[i].Name == name)
+				return i;
+		}
+
+		return std::nullopt;
+	}
+
+	void ClassType::SetVariantBody(llvm::ArrayRef<VariantCase> cases, llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> methods)
+	{
+		IsVariant = true;
+		Cases.assign(cases.begin(), cases.end());
+
+		uint64_t largest = 0;
+		llvm::LLVMContext& context = m_LLVMType->getContext();
+
+		for (auto& variantCase : Cases)
+		{
+			llvm::SmallVector<llvm::Type*> fields;
+
+			for (auto& [name, type] : variantCase.Fields)
+				fields.push_back(type->Get());
+
+			variantCase.Payload = llvm::StructType::get(context, fields);
+			largest = std::max(largest, StorageSizeOf(variantCase.Payload));
+		}
+
+		auto int32 = llvm::Type::getInt32Ty(context);
+		auto storage = llvm::ArrayType::get(llvm::Type::getInt64Ty(context), (largest + 7) / 8);
+		m_LLVMType->setBody({ int32, storage });
+
+		for (const auto& [name, method] : methods)
+			MemberFunctions[name] = method;
+	}
+
+	void ClassType::SetUnionBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members)
+	{
+		IsUnion = true;
+		uint64_t largest = 0;
+
+		for (const auto& [memberName, member] : members)
+		{
+			if (member->Kind == SymbolKind::Type)
+			{
+				m_MemberValues[memberName] = member->GetType();
+				largest = std::max(largest, StorageSizeOf(member->GetType()->Get()));
+			}
+			else
+			{
+				MemberFunctions[memberName] = member;
+			}
+		}
+
+		llvm::LLVMContext& context = m_LLVMType->getContext();
+		m_LLVMType->setBody({ llvm::ArrayType::get(llvm::Type::getInt64Ty(context), (largest + 7) / 8) });
 	}
 
 	std::optional<std::shared_ptr<Symbol>> ClassType::GetMember(llvm::StringRef name)

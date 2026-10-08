@@ -22,6 +22,22 @@ namespace clear
 			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
 			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
 			case ASTNodeType::FunctionRef:	return std::dynamic_pointer_cast<ASTFunctionRef>(node)->FunctionTy;
+			case ASTNodeType::VariantConstruct: return std::dynamic_pointer_cast<ASTVariantConstruct>(node)->VariantTy;
+			case ASTNodeType::VariantTag:	return std::dynamic_pointer_cast<ASTVariantTag>(node)->TagType;
+			case ASTNodeType::UnionConstruct: return std::dynamic_pointer_cast<ASTUnionConstruct>(node)->UnionTy;
+			case ASTNodeType::VariantField:
+			{
+				auto field = std::dynamic_pointer_cast<ASTVariantField>(node);
+				return field->VariantTy->As<ClassType>()->Cases[field->CaseIndex].Fields[field->FieldIndex].second;
+			}
+			case ASTNodeType::OptionalUnwrap:
+			case ASTNodeType::OptionalValueOr:
+			{
+				auto optional = node->GetType() == ASTNodeType::OptionalUnwrap ? std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->OptionalTy 
+																			   : std::dynamic_pointer_cast<ASTOptionalValueOr>(node)->OptionalTy;
+				auto classType = optional->As<ClassType>();
+				return classType->Cases[classType->FindCase("some").value()].Fields[0].second;
+			}
 			case ASTNodeType::Lambda:		return nullptr; // not analysed yet
 			case ASTNodeType::TupleExpr:	return std::dynamic_pointer_cast<ASTTupleExpr>(node)->TupleTy;
 			case ASTNodeType::TupleGet:

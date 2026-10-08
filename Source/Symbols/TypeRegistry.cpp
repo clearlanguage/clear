@@ -55,6 +55,9 @@ namespace clear
         m_Types["opaque_ptr"] = std::make_shared<PointerType>(nullptr, *m_Context);
 
         m_Types["void"] = std::make_shared<PrimitiveType>(*m_Context);
+
+        // the type of the `none` literal, converts to any optional ?T
+        m_Types["none"] = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(*m_Context), TypeFlagSet(), "none");
     }
 
     void TypeRegistry::RegisterType(const std::string& name, std::shared_ptr<Type> type)
@@ -187,6 +190,7 @@ namespace clear
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
         if(token.GetData() == "null") return m_Types["opaque_ptr"];
+        if(token.GetData() == "none") return GetType("none");
 
         if(token.IsType(TokenType::String))
         {

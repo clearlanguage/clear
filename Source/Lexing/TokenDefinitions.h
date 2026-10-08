@@ -115,7 +115,7 @@ namespace clear
          "function", "class", "when", "use", "otherwise", "for",
          "property", "declare", "enum", "sizeof", "is",
 
-        "not","and","or", "assert", "lambda",
+        "not","and","or", "assert", "lambda", "none", "union",
 
         "let", "const",
     };

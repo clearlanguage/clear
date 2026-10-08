@@ -36,7 +36,8 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral,
+		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
 	class ASTNodeBase;
@@ -534,6 +535,7 @@ namespace clear
 		std::shared_ptr<Type> ClassTy;
 		bool BodyDeclared = false;
 		bool LazyMethods = false; // generic instance: methods are analysed on first use
+		bool IsUnion = false;
 	
 	private:
 		std::string m_Name;
@@ -616,6 +618,7 @@ namespace clear
 		std::shared_ptr<ASTBlock> DefaultCaseCodeBlock;
 		std::vector<SwitchCase> Cases;
 		std::shared_ptr<ASTNodeBase> Value;
+		bool IsExhaustive = false; // every possible value has a case (only for enums)
 	};	
 	
 	// enum Color:
@@ -632,7 +635,13 @@ namespace clear
 	public:
 		Token Name;
 		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> Members; // value is null when automatic
+		std::vector<std::vector<std::shared_ptr<ASTVariableDeclaration>>> Payloads; // per member, the data it carries
+		std::vector<std::shared_ptr<ASTFunctionDefinition>> Methods;
+		bool HasPayloads = false;
 		std::shared_ptr<EnumType> EnumTy;
+		std::shared_ptr<Type> VariantTy; // rich enums (payloads or methods) are classes with a tag
+
+		bool IsRich() const { return HasPayloads || !Methods.empty(); }
 	};
 
 	// an integer known at compile time (enum members, consts)
@@ -877,6 +886,98 @@ namespace clear
 		std::shared_ptr<Type> ResolvedType;
 	};
 
+	// Shape.Circle(2.0): a rich enum value of one case
+	class ASTVariantConstruct : public ASTNodeBase
+	{
+	public:
+		ASTVariantConstruct() = default;
+		virtual ~ASTVariantConstruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariantConstruct; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<Type> VariantTy;
+		size_t CaseIndex = 0;
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+	};
+
+	// a payload field of a known case, read from the enum's storage (used by pattern bindings)
+	class ASTVariantField : public ASTNodeBase
+	{
+	public:
+		ASTVariantField() = default;
+		virtual ~ASTVariantField() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariantField; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Subject; // storage of the enum value
+		std::shared_ptr<Type> VariantTy;
+		size_t CaseIndex = 0;
+		size_t FieldIndex = 0;
+	};
+
+	// which case a rich enum value holds
+	class ASTVariantTag : public ASTNodeBase
+	{
+	public:
+		ASTVariantTag() = default;
+		virtual ~ASTVariantTag() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VariantTag; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Subject; // the enum value
+		std::shared_ptr<Type> TagType;
+	};
+
+	// optional.value: the value, panicking (when checks are on) if there is none
+	class ASTOptionalUnwrap : public ASTNodeBase
+	{
+	public:
+		ASTOptionalUnwrap() = default;
+		virtual ~ASTOptionalUnwrap() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::OptionalUnwrap; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Subject; // the optional value
+		std::shared_ptr<Type> OptionalTy;
+	};
+
+	// optional.value_or(default)
+	class ASTOptionalValueOr : public ASTNodeBase
+	{
+	public:
+		ASTOptionalValueOr() = default;
+		virtual ~ASTOptionalValueOr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::OptionalValueOr; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Subject;
+		std::shared_ptr<ASTNodeBase> Default;
+		std::shared_ptr<Type> OptionalTy;
+	};
+
+	// Number(f = 1.5): a union with one field set
+	class ASTUnionConstruct : public ASTNodeBase
+	{
+	public:
+		ASTUnionConstruct() = default;
+		virtual ~ASTUnionConstruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::UnionConstruct; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<Type> UnionTy;
+		std::shared_ptr<Type> FieldTy;
+		std::shared_ptr<ASTNodeBase> Value; // null: all zero
+	};
+
+	// the payload struct of a rich enum case, read out of a stored enum value
+	llvm::Value* LoadVariantPayload(CodegenContext& ctx, std::shared_ptr<Type> variantType, size_t caseIndex, llvm::Value* storage);
+
 	// branches to a panic when `ok` is false, code generation continues on the success path
 	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
 
@@ -965,5 +1066,6 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> TypeNode;
 		std::shared_ptr<Type> CompareType;
 		bool AreTypesSame = false;
+		bool Negate = false;
 	};
 } 

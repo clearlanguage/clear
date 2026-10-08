@@ -64,6 +64,13 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTLambda> lambda, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionTypeExpr> type, SemaContext context);
 		std::shared_ptr<Type> FunctionTypeOf(const std::shared_ptr<ASTFunctionDefinition>& function);
+		std::shared_ptr<Type> GetOptionalType(std::shared_ptr<Type> valueType);
+		bool DeclareVariantType(std::shared_ptr<ASTEnum> enumNode);
+		bool DeclareVariantBody(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		void DefineVariant(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> BuildVariantConstruct(std::shared_ptr<Type> variantType, size_t caseIndex, llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments,
+														   const std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>>& keywords, const Token& location);
+		std::shared_ptr<ASTNodeBase> LowerVariantSwitch(std::shared_ptr<ASTSwitch> switchNode, std::shared_ptr<Type> variantType, SemaContext context);
 		void DeclareInGlobalScope(const std::function<void()>& declare);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);

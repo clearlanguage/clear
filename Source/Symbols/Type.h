@@ -203,6 +203,26 @@ namespace clear
 		std::string GenericOrigin;
 		std::vector<std::shared_ptr<Type>> GenericArguments;
 
+		// rich enums: a tag plus storage big enough for the largest case's data
+		struct VariantCase
+		{
+			std::string Name;
+			std::vector<std::pair<std::string, std::shared_ptr<Type>>> Fields;
+			llvm::StructType* Payload = nullptr;
+		};
+
+		bool IsVariant = false;
+		bool IsOptional = false; // ?T: cases none (tag 0) and some(value)
+		bool IsUnion = false;    // every field starts at offset 0
+		std::vector<VariantCase> Cases;
+
+		std::optional<size_t> FindCase(llvm::StringRef name) const;
+
+		// lays the type out as { int32 tag, [n x i64] payload } for the given cases
+		void SetVariantBody(llvm::ArrayRef<VariantCase> cases, llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> methods);
+		// lays the type out as one block of storage shared by all fields
+		void SetUnionBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members);
+
     private:
 		llvm::StructType* m_LLVMType = nullptr;
 		llvm::MapVector<std::string, std::shared_ptr<Type>> m_MemberValues;

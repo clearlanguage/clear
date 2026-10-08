@@ -288,3 +288,19 @@ Advice  = "Give ‘{}’ a type, e.g. lambda (x: int): ..., or use the lambda wh
 [ClosureNotFunction]
 Message = "A lambda that captures variables cannot be used as a plain function."
 Advice  = "It carries copies of the variables it uses. Accept it with a generic parameter, e.g. function apply[F](f: F, ...), or pass the values as arguments instead."
+
+[SwitchNotExhaustive]
+Message = "Switch does not handle every case."
+Advice  = "Missing: {}. Add those cases or a default."
+
+[UnknownCase]
+Message = "Not a case of this enum."
+Advice  = "‘{}’."
+
+[NeedsCaseValues]
+Message = "This enum case carries data."
+Advice  = "Give its values: {}(...)."
+
+[UnionNeedsField]
+Message = "A union is built from at most one field."
+Advice  = "Name the field to set, e.g. {}(f = 1.5), or leave it empty for all zeros."

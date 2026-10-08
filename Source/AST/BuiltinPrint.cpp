@@ -100,6 +100,10 @@ namespace clear
 
 				Text(")");
 			}
+			else if (llvmType->isStructTy() && type && type->IsClass() && (type->As<ClassType>()->IsVariant || type->As<ClassType>()->IsUnion))
+			{
+				Variant(value, type->As<ClassType>());
+			}
 			else if (llvmType->isStructTy() && type && type->IsClass())
 			{
 				// dataclass style: Point(x=1, y=2)
@@ -140,6 +144,88 @@ namespace clear
 		}
 
 	private:
+		// rich enums and optionals print the case they hold (Shape.Circle(radius=2.0), some value or none),
+		// which is only known at run time: one branch per case, each printing its own part
+		void Variant(llvm::Value* value, std::shared_ptr<ClassType> classType)
+		{
+			auto& builder = m_Ctx.Builder;
+			Flush();
+
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			Symbol slot = CreateStackSlot(classType, value);
+
+			if (classType->IsUnion)
+			{
+				// every field reads the same bytes
+				Text(classType->GetHash());
+				Text("(");
+				unsigned index = 0;
+				for (const auto& [name, memberType] : classType->GetMemberValues())
+				{
+					if (index++ > 0) Text(", ");
+					Text(name);
+					Text("=");
+					Value(builder.CreateLoad(memberType->Get(), slot.GetLLVMValue()), memberType);
+				}
+				Text(")");
+				Flush();
+				return;
+			}
+
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(m_Ctx.Context, "print.variant.done", function);
+			llvm::Value* tag = builder.CreateExtractValue(value, { 0u });
+			llvm::SwitchInst* switchInst = builder.CreateSwitch(tag, done, (unsigned)classType->Cases.size());
+
+			for (size_t i = 0; i < classType->Cases.size(); i++)
+			{
+				auto& variantCase = classType->Cases[i];
+				llvm::BasicBlock* block = llvm::BasicBlock::Create(m_Ctx.Context, "print.case", function);
+				switchInst->addCase(builder.getInt32((uint32_t)i), block);
+				builder.SetInsertPoint(block);
+
+				llvm::Value* payload = LoadVariantPayload(m_Ctx, classType, i, slot.GetLLVMValue());
+
+				if (classType->IsOptional)
+				{
+					if (variantCase.Fields.empty())
+						Text("none");
+					else
+						Value(builder.CreateExtractValue(payload, { 0u }), variantCase.Fields[0].second);
+				}
+				else
+				{
+					Text(classType->GetHash() + "." + variantCase.Name);
+
+					if (!variantCase.Fields.empty())
+					{
+						Text("(");
+						for (unsigned f = 0; f < variantCase.Fields.size(); f++)
+						{
+							if (f > 0) Text(", ");
+							Text(variantCase.Fields[f].first);
+							Text("=");
+							Value(builder.CreateExtractValue(payload, { f }), variantCase.Fields[f].second);
+						}
+						Text(")");
+					}
+				}
+
+				Flush();
+				builder.CreateBr(done);
+			}
+
+			builder.SetInsertPoint(done);
+		}
+
+		Symbol CreateStackSlot(std::shared_ptr<Type> type, llvm::Value* value)
+		{
+			llvm::BasicBlock& entry = m_Ctx.Builder.GetInsertBlock()->getParent()->getEntryBlock();
+			llvm::IRBuilder<> entryBuilder(&entry, entry.getFirstInsertionPt());
+			llvm::Value* slot = entryBuilder.CreateAlloca(type->Get());
+			m_Ctx.Builder.CreateStore(value, slot);
+			return Symbol::CreateValue(slot, type);
+		}
+
 		void Float(llvm::Value* value)
 		{
 			auto& builder = m_Ctx.Builder;

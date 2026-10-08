@@ -63,6 +63,15 @@ namespace clear
 		{
 			ASTNodeType kind = kindOf(node);
 
+			// rich enums are classes underneath, they go through the class phases below
+			if (auto enumNode = std::dynamic_pointer_cast<ASTEnum>(node); enumNode && enumNode->IsRich())
+			{
+				if (!DeclareVariantType(enumNode))
+					node = nullptr;
+
+				continue;
+			}
+
 			if (kind == ASTNodeType::Import || kind == ASTNodeType::Enum || kind == ASTNodeType::GenericTemplate)
 				node = Visit(node, context);
 		}
@@ -76,6 +85,9 @@ namespace clear
 		for (auto& node : children)
 		{
 			if (auto classNode = std::dynamic_pointer_cast<ASTClass>(node); classNode && !DeclareClassBody(classNode, context))
+				node = nullptr;
+
+			if (auto enumNode = std::dynamic_pointer_cast<ASTEnum>(node); enumNode && enumNode->IsRich() && !DeclareVariantBody(enumNode, context))
 				node = nullptr;
 		}
 
@@ -111,6 +123,8 @@ namespace clear
 				DefineClass(classNode, context);
 			else if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(node))
 				DefineFunction(function, context);
+			else if (auto enumNode = std::dynamic_pointer_cast<ASTEnum>(node); enumNode && enumNode->IsRich())
+				DefineVariant(enumNode, context);
 		}
 
 		// failed declarations were replaced by null, drop them so code generation never sees them
@@ -369,6 +383,12 @@ namespace clear
 			case ASTNodeType::Intrinsic:				return ast;
 			case ASTNodeType::TupleGet:					return ast;
 			case ASTNodeType::FunctionRef:				return ast;
+			case ASTNodeType::VariantConstruct:			return ast;
+			case ASTNodeType::VariantField:				return ast;
+			case ASTNodeType::VariantTag:				return ast;
+			case ASTNodeType::OptionalUnwrap:			return ast;
+			case ASTNodeType::OptionalValueOr:			return ast;
+			case ASTNodeType::UnionConstruct:			return ast;
 			case ASTNodeType::TypeLiteral:				return ast;
 			case ASTNodeType::Lambda:					return Visit(std::dynamic_pointer_cast<ASTLambda>(ast), context);
 			case ASTNodeType::FunctionTypeExpr:			return Visit(std::dynamic_pointer_cast<ASTFunctionTypeExpr>(ast), context);
@@ -614,13 +634,19 @@ namespace clear
 			{
 				auto switchNode = std::dynamic_pointer_cast<ASTSwitch>(node);
 
-				if (!switchNode->DefaultCaseCodeBlock)
+				if (!switchNode->DefaultCaseCodeBlock && !switchNode->IsExhaustive)
 					return false;
 
 				for (auto& switchCase : switchNode->Cases)
 					if (!AlwaysReturns(switchCase.CodeBlock)) return false;
 
-				return AlwaysReturns(switchNode->DefaultCaseCodeBlock);
+				return !switchNode->DefaultCaseCodeBlock || AlwaysReturns(switchNode->DefaultCaseCodeBlock);
+			}
+			case ASTNodeType::Sequence:
+			{
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children)
+					if (AlwaysReturns(child)) return true;
+				return false;
 			}
 			case ASTNodeType::WhileLoop:
 			{
@@ -782,6 +808,62 @@ namespace clear
 			context.CallsiteArgs.push_back(m_TypeInferEngine.InferTypeFromNode(arg));
 		}
 		
+		// Shape.Circle(2.0): a rich enum case with data;  opt.value_or(d)
+		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide);
+			auto right = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+			if (left && right && !left->Variable)
+			{
+				auto [entry, scopeIndex] = LookupSymbol(left->GetName().GetData());
+
+				if (entry && entry->Symbol->Kind == SymbolKind::Type && entry->Symbol->GetType()->IsClass() && entry->Symbol->GetType()->As<ClassType>()->IsVariant)
+				{
+					auto variantType = entry->Symbol->GetType();
+					auto index = variantType->As<ClassType>()->FindCase(right->GetName().GetData());
+
+					if (index)
+						return BuildVariantConstruct(variantType, *index, funcCall->Arguments, funcCall->KeywordArguments, right->GetName());
+				}
+			}
+
+			if (right && right->GetName().GetData() == "value_or")
+			{
+				SemaContext storageContext = context;
+				storageContext.ValueReq = ValueRequired::LValue;
+				auto subject = Visit(member->LeftSide, storageContext);
+
+				if (!subject)
+					return nullptr;
+
+				auto subjectType = m_TypeInferEngine.InferTypeFromNode(subject);
+
+				if (subjectType && subjectType->IsClass() && subjectType->As<ClassType>()->IsOptional)
+				{
+					if (funcCall->Arguments.size() != 1)
+					{
+						Token where = right->GetName();
+						where.SetData("value_or’ expects 1 argument (the value to use when there is none");
+						m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, 8);
+						return nullptr;
+					}
+
+					auto classType = subjectType->As<ClassType>();
+					auto valueType = classType->Cases[classType->FindCase("some").value()].Fields[0].second;
+
+					auto valueOr = std::make_shared<ASTOptionalValueOr>();
+					valueOr->Location = right->GetName();
+					valueOr->Subject = AsValue(subject);
+					valueOr->Default = Coerce(funcCall->Arguments[0], valueType);
+					valueOr->OptionalTy = subjectType;
+					return valueOr;
+				}
+
+				member->LeftSide = subject;
+			}
+		}
+
 		// Box(7) on a generic class: infer the type arguments from the values, like Box { 7 }
 		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); var && !var->Variable)
 		{
@@ -1467,7 +1549,10 @@ namespace clear
 			node->FunctionSymbol = functionSymbol;
 		}
 		
-		classTy->SetBody(members);
+		if (classExpr->IsUnion)
+			classTy->SetUnionBody(members);
+		else
+			classTy->SetBody(members);
 
 		context.TypeHint = classTy;
 		
@@ -1709,6 +1794,15 @@ namespace clear
 	{
 		const std::string& name = enumNode->Name.GetData();
 
+		if (enumNode->IsRich())
+		{
+			if (!DeclareVariantType(enumNode) || !DeclareVariantBody(enumNode, context))
+				return nullptr;
+
+			DefineVariant(enumNode, context);
+			return enumNode;
+		}
+
 		if (m_Module->GetTypeRegistry()->GetType(name))
 		{
 			Report(DiagnosticCode_RedefinedIdentifier, enumNode->Name);
@@ -1760,6 +1854,9 @@ namespace clear
 
 		std::shared_ptr<Type> valueType = m_TypeInferEngine.InferTypeFromNode(switchNode->Value);
 
+		if (valueType && valueType->IsClass() && valueType->As<ClassType>()->IsVariant)
+			return LowerVariantSwitch(switchNode, valueType, context);
+
 		if (!valueType || !valueType->IsIntegral())
 		{
 			Report(DiagnosticCode_SwitchNotIntegral, GetNodeLocation(switchNode->Value));
@@ -1800,6 +1897,27 @@ namespace clear
 
 		if (switchNode->DefaultCaseCodeBlock)
 			Visit(switchNode->DefaultCaseCodeBlock, context);
+
+		// a switch over an enum without default must handle every member
+		if (valueType->IsEnum() && !switchNode->DefaultCaseCodeBlock)
+		{
+			std::string missing;
+
+			for (const auto& [member, value] : std::dynamic_pointer_cast<EnumType>(valueType)->GetValues())
+			{
+				if (!seen.contains(value))
+					missing += (missing.empty() ? "" : ", ") + member;
+			}
+
+			if (!missing.empty())
+			{
+				Token location = switchNode->Location;
+				location.SetData(missing);
+				Report(DiagnosticCode_SwitchNotExhaustive, location);
+			}
+
+			switchNode->IsExhaustive = missing.empty();
+		}
 
 		return switchNode;
 	}
@@ -2633,11 +2751,374 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTIsExpr> isExpr, SemaContext context)
 	{
-		isExpr->Object = Visit(isExpr->Object, context);
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		isExpr->Object = Visit(isExpr->Object, valueContext);
+
+		if (!isExpr->Object)
+			return nullptr;
+
+		// `shape is Shape.Circle`, `x is none`: compare which case the value holds
+		auto objectType = m_TypeInferEngine.InferTypeFromNode(isExpr->Object);
+
+		if (objectType && objectType->IsClass() && objectType->As<ClassType>()->IsVariant)
+		{
+			auto classType = objectType->As<ClassType>();
+			std::string caseName;
+
+			if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(isExpr->TypeNode); literal && literal->GetData().GetData() == "none")
+				caseName = "none";
+			else if (auto var = std::dynamic_pointer_cast<ASTVariable>(isExpr->TypeNode))
+				caseName = var->GetName().GetData();
+			else if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(isExpr->TypeNode); member && member->GetExpression() == OperatorType::Dot)
+			{
+				if (auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide))
+					caseName = name->GetName().GetData();
+			}
+
+			auto index = classType->FindCase(caseName);
+
+			if (!index)
+			{
+				Token location = GetNodeLocation(isExpr->TypeNode);
+				location.SetData(std::format("{}’ is not a case of ‘{}", caseName, GetDisplayName(objectType)));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_UnknownCase, std::max<size_t>(caseName.size(), 1));
+				return nullptr;
+			}
+
+			auto int32Type = m_Module->Lookup("int32").value()->GetType();
+			auto tag = std::make_shared<ASTVariantTag>();
+			tag->Subject = isExpr->Object;
+			tag->TagType = int32Type;
+
+			auto compare = std::make_shared<ASTBinaryExpression>(isExpr->Negate ? OperatorType::NotEqual : OperatorType::IsEqual);
+			compare->Location = isExpr->Location;
+			compare->LeftSide = tag;
+			compare->RightSide = std::make_shared<ASTConstantValue>((int64_t)*index, int32Type);
+			compare->ResultantType = Symbol::GetBooleanType(m_Module).GetType();
+			return compare;
+		}
+
 		isExpr->TypeNode = Visit(isExpr->TypeNode, context);
-		isExpr->AreTypesSame = m_TypeInferEngine.InferTypeFromNode(isExpr->Object) == GetTypeFromNode(isExpr->TypeNode);
+		isExpr->AreTypesSame = (objectType == GetTypeFromNode(isExpr->TypeNode)) != isExpr->Negate;
 
 		return isExpr;
+	}
+
+
+	std::shared_ptr<Type> Sema::GetOptionalType(std::shared_ptr<Type> valueType)
+	{
+		// ?T is the same type everywhere (like pointers), a rich enum with the cases none and some(value: T)
+		static std::map<Type*, std::shared_ptr<Type>> s_Optionals;
+		auto& slot = s_Optionals[valueType.get()];
+
+		if (!slot)
+		{
+			auto optional = std::make_shared<ClassType>("?" + valueType->GetHash(), *m_Module->GetContext());
+			optional->IsOptional = true;
+
+			ClassType::VariantCase none { .Name = "none" };
+			ClassType::VariantCase some { .Name = "some", .Fields = { { "value", valueType } } };
+			optional->SetVariantBody({ none, some }, {});
+
+			slot = optional;
+		}
+
+		return slot;
+	}
+
+	bool Sema::DeclareVariantType(std::shared_ptr<ASTEnum> enumNode)
+	{
+		if (enumNode->VariantTy)
+			return true;
+
+		const std::string& name = enumNode->Name.GetData();
+
+		if (m_Module->GetTypeRegistry()->GetType(name))
+		{
+			Report(DiagnosticCode_RedefinedIdentifier, enumNode->Name);
+			return false;
+		}
+
+		auto classType = m_Module->GetTypeRegistry()->CreateType<ClassType>(name, name, *m_Module->GetContext());
+		classType->IsVariant = true;
+		enumNode->VariantTy = classType;
+
+		m_Module->ExposeSymbol(name, std::make_shared<Symbol>(Symbol::CreateType(classType)));
+		return true;
+	}
+
+	bool Sema::DeclareVariantBody(std::shared_ptr<ASTEnum> enumNode, SemaContext context)
+	{
+		auto classType = enumNode->VariantTy->As<ClassType>();
+
+		if (!classType->Cases.empty())
+			return true; // already declared
+
+		if (enumNode->Members.empty())
+		{
+			Report(DiagnosticCode_ExpectedIdentifier, enumNode->Name);
+			return false;
+		}
+
+		std::vector<ClassType::VariantCase> cases;
+
+		for (size_t i = 0; i < enumNode->Members.size(); i++)
+		{
+			ClassType::VariantCase variantCase { .Name = enumNode->Members[i].first.GetData() };
+
+			for (auto& field : enumNode->Payloads[i])
+			{
+				if (field->TypeResolver)
+					Visit(field->TypeResolver, context);
+
+				auto fieldType = field->TypeResolver ? GetTypeFromNode(field->TypeResolver) : nullptr;
+
+				if (!fieldType)
+				{
+					Report(DiagnosticCode_ExpectedType, field->TypeResolver ? GetNodeLocation(field->TypeResolver) : field->GetName());
+					return false;
+				}
+
+				variantCase.Fields.push_back({ field->GetName().GetData(), fieldType });
+			}
+
+			if (std::any_of(cases.begin(), cases.end(), [&](auto& c) { return c.Name == variantCase.Name; }))
+			{
+				Report(DiagnosticCode_RedefinedIdentifier, enumNode->Members[i].first);
+				return false;
+			}
+
+			cases.push_back(variantCase);
+		}
+
+		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> methods;
+
+		for (auto& method : enumNode->Methods)
+		{
+			auto functionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(method));
+			methods.emplace_back(method->GetName(), functionSymbol);
+			method->FunctionSymbol = functionSymbol;
+		}
+
+		classType->SetVariantBody(cases, methods);
+
+		context.TypeHint = classType;
+
+		for (auto& method : enumNode->Methods)
+			DeclareFunction(method, context);
+
+		return true;
+	}
+
+	void Sema::DefineVariant(std::shared_ptr<ASTEnum> enumNode, SemaContext context)
+	{
+		context.TypeHint = enumNode->VariantTy;
+
+		for (auto& method : enumNode->Methods)
+		{
+			if (method->SignatureResolved && method->FunctionSymbol)
+				DefineFunction(method, context);
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::BuildVariantConstruct(std::shared_ptr<Type> variantType, size_t caseIndex, llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, 
+															  const std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>>& keywords, const Token& location)
+	{
+		auto classType = variantType->As<ClassType>();
+		auto& variantCase = classType->Cases[caseIndex];
+
+		// keyword arguments name the case's fields: Shape.Rect(height = 2, width = 1)
+		std::vector<std::shared_ptr<ASTNodeBase>> values(arguments.begin(), arguments.end());
+		values.resize(std::max(values.size(), variantCase.Fields.size()));
+
+		for (auto& [name, value] : keywords)
+		{
+			auto it = std::find_if(variantCase.Fields.begin(), variantCase.Fields.end(), [&](auto& field) { return field.first == name.GetData(); });
+
+			if (it == variantCase.Fields.end() || values[std::distance(variantCase.Fields.begin(), it)])
+			{
+				Token where = name;
+				where.SetData(std::format("{}’ is not a field of {}.{} (or is given twice", name.GetData(), classType->GetHash(), variantCase.Name));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+				return nullptr;
+			}
+
+			values[std::distance(variantCase.Fields.begin(), it)] = value;
+		}
+
+		if (values.size() != variantCase.Fields.size() || std::find(values.begin(), values.end(), nullptr) != values.end())
+		{
+			Token where = location;
+			size_t given = arguments.size() + keywords.size();
+			where.SetData(std::format("{}.{}’ expects {} value{}, but {} {} given", classType->GetHash(), variantCase.Name, variantCase.Fields.size(), 
+									  variantCase.Fields.size() == 1 ? "" : "s", given, given == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, std::max<size_t>(location.GetData().size(), 1));
+			return nullptr;
+		}
+
+		auto construct = std::make_shared<ASTVariantConstruct>();
+		construct->Location = location;
+		construct->VariantTy = variantType;
+		construct->CaseIndex = caseIndex;
+
+		for (size_t i = 0; i < values.size(); i++)
+			construct->Values.push_back(Coerce(values[i], variantCase.Fields[i].second));
+
+		return construct;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::LowerVariantSwitch(std::shared_ptr<ASTSwitch> switchNode, std::shared_ptr<Type> variantType, SemaContext context)
+	{
+		// switch shape:                      let __match = shape
+		//     case Circle(r): body     ->     switch __match.tag:
+		//                                          case 0: let r = <Circle field 0 of __match>; body
+		static size_t s_MatchCounter = 0;
+		auto classType = variantType->As<ClassType>();
+		Token location = switchNode->Location;
+		Token subjectToken(TokenType::Identifier, std::format("__match_{}", s_MatchCounter++), location.GetSourceFile(), location.LineNumber, location.ColumnNumber);
+
+		auto subjectSymbol = m_ScopeStack.back().InsertEmpty(subjectToken.GetData(), SymbolEntryType::Variable).value();
+		*subjectSymbol = Symbol::CreateValue(nullptr, variantType);
+
+		auto subjectDecl = std::make_shared<ASTVariableDeclaration>(subjectToken);
+		subjectDecl->Location = location;
+		subjectDecl->Initializer = switchNode->Value;
+		subjectDecl->ResolvedType = variantType;
+		subjectDecl->Variable = subjectSymbol;
+
+		auto subjectStorage = [&]()
+		{
+			auto var = std::make_shared<ASTVariable>(subjectToken);
+			var->Variable = subjectSymbol;
+			return var;
+		};
+
+		auto subjectValue = std::make_shared<ASTLoad>();
+		subjectValue->Operand = subjectStorage();
+
+		auto tag = std::make_shared<ASTVariantTag>();
+		tag->Subject = subjectValue;
+		tag->TagType = m_Module->Lookup("int32").value()->GetType();
+		switchNode->Value = tag;
+
+		std::unordered_set<int64_t> seen;
+
+		for (auto& switchCase : switchNode->Cases)
+		{
+			bool singlePattern = switchCase.Values.size() == 1;
+
+			for (auto& pattern : switchCase.Values)
+			{
+				// Shape.Circle(r) / Circle(r) / Shape.Empty / Empty / none
+				std::string caseName;
+				std::vector<std::shared_ptr<ASTNodeBase>> bindings;
+				bool hasBindings = false;
+				std::shared_ptr<ASTNodeBase> namePart = pattern;
+
+				if (auto call = std::dynamic_pointer_cast<ASTFunctionCall>(pattern))
+				{
+					namePart = call->Callee;
+					bindings.assign(call->Arguments.begin(), call->Arguments.end());
+					hasBindings = true;
+				}
+
+				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(namePart); literal && literal->GetData().GetData() == "none")
+					caseName = "none";
+				else if (auto var = std::dynamic_pointer_cast<ASTVariable>(namePart))
+					caseName = var->GetName().GetData();
+				else if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(namePart); member && member->GetExpression() == OperatorType::Dot)
+				{
+					if (auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide))
+						caseName = name->GetName().GetData();
+				}
+
+				auto index = classType->FindCase(caseName);
+				Token patternLocation = GetNodeLocation(pattern);
+
+				if (!index)
+				{
+					patternLocation.SetData(std::format("{}’ is not a case of ‘{}", caseName.empty() ? patternLocation.GetData() : caseName, GetDisplayName(variantType)));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, patternLocation, DiagnosticCode_UnknownCase, 1);
+					return nullptr;
+				}
+
+				if (!seen.insert((int64_t)*index).second)
+					Report(DiagnosticCode_DuplicateCase, patternLocation);
+
+				switchCase.Constants.push_back((int64_t)*index);
+
+				auto& fields = classType->Cases[*index].Fields;
+
+				if (hasBindings && (!singlePattern || bindings.size() != fields.size()))
+				{
+					patternLocation.SetData(std::format("{}’ has {} field{}, the pattern binds {} (a pattern with names must be alone in its case", 
+														caseName, fields.size(), fields.size() == 1 ? "" : "s", bindings.size()));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, patternLocation, DiagnosticCode_DestructureMismatch, 1);
+					return nullptr;
+				}
+
+				// each name becomes a local holding that field, `_` skips a field
+				std::vector<std::shared_ptr<ASTNodeBase>> declarations;
+
+				for (size_t i = 0; i < bindings.size(); i++)
+				{
+					auto name = std::dynamic_pointer_cast<ASTVariable>(bindings[i]);
+
+					if (!name)
+					{
+						Report(DiagnosticCode_ExpectedIdentifier, GetNodeLocation(bindings[i]));
+						return nullptr;
+					}
+
+					if (name->GetName().GetData() == "_")
+						continue;
+
+					auto field = std::make_shared<ASTVariantField>();
+					field->Subject = subjectStorage();
+					field->VariantTy = variantType;
+					field->CaseIndex = *index;
+					field->FieldIndex = i;
+
+					auto declaration = std::make_shared<ASTVariableDeclaration>(name->GetName());
+					declaration->Location = name->GetName();
+					declaration->Initializer = field;
+					declarations.push_back(declaration);
+				}
+
+				switchCase.CodeBlock->Children.insert(switchCase.CodeBlock->Children.begin(), declarations.begin(), declarations.end());
+			}
+
+			Visit(switchCase.CodeBlock, context);
+		}
+
+		if (switchNode->DefaultCaseCodeBlock)
+		{
+			Visit(switchNode->DefaultCaseCodeBlock, context);
+		}
+		else
+		{
+			std::string missing;
+
+			for (size_t i = 0; i < classType->Cases.size(); i++)
+			{
+				if (!seen.contains((int64_t)i))
+					missing += (missing.empty() ? "" : ", ") + classType->Cases[i].Name;
+			}
+
+			if (!missing.empty())
+			{
+				location.SetData(missing);
+				Report(DiagnosticCode_SwitchNotExhaustive, location);
+			}
+
+			switchNode->IsExhaustive = missing.empty();
+		}
+
+		auto sequence = std::make_shared<ASTSequence>();
+		sequence->Location = location;
+		sequence->Children = { subjectDecl, switchNode };
+		return sequence;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTLoopControlFlow> controlFlow, SemaContext context)
@@ -2711,6 +3192,18 @@ namespace clear
 		auto classType = type->As<ClassType>();
 		auto& members = classType->GetMemberValues();
 
+		// rich enums start as their first case, unions as all zero bytes
+		if (classType->IsVariant || classType->IsUnion)
+		{
+			if (!structExpr->Values.empty())
+			{
+				Report(classType->IsUnion ? DiagnosticCode_UnionNeedsField : DiagnosticCode_NeedsCaseValues, GetNodeLocation(structExpr->TargetType));
+				return nullptr;
+			}
+
+			return std::make_shared<ASTZero>(type);
+		}
+
 		if (structExpr->Values.size() > members.size())
 		{
 			Token location = GetNodeLocation(structExpr->TargetType);
@@ -2754,6 +3247,42 @@ namespace clear
 		auto classType = target->Variable->GetType()->As<ClassType>();
 		auto init = classType->MemberFunctions.find("__init__");
 
+		// Number(f = 1.5): a union is built with at most one field set
+		if (classType->IsUnion)
+		{
+			auto construct = std::make_shared<ASTUnionConstruct>();
+			construct->Location = funcCall->Location;
+			construct->UnionTy = classType;
+
+			if (funcCall->Arguments.size() + funcCall->KeywordArguments.size() > 1)
+			{
+				Report(DiagnosticCode_UnionNeedsField, target->GetName());
+				return nullptr;
+			}
+
+			if (!funcCall->KeywordArguments.empty())
+			{
+				auto& [name, value] = funcCall->KeywordArguments[0];
+				auto member = classType->GetMember(name.GetData());
+
+				if (!member || member.value()->Kind != SymbolKind::Type)
+				{
+					Report(DiagnosticCode_UnknownMember, name);
+					return nullptr;
+				}
+
+				construct->FieldTy = member.value()->GetType();
+				construct->Value = Coerce(value, construct->FieldTy);
+			}
+			else if (!funcCall->Arguments.empty())
+			{
+				construct->FieldTy = classType->GetMemberValueByIndex(0).value()->GetType();
+				construct->Value = Coerce(funcCall->Arguments[0], construct->FieldTy);
+			}
+
+			return construct;
+		}
+
 		if (init == classType->MemberFunctions.end())
 		{
 			// no __init__: Point(1, 2) fills the fields in order, exactly like Point { 1, 2 }
@@ -2761,6 +3290,38 @@ namespace clear
 			structExpr->Location = funcCall->Location;
 			structExpr->TargetType = target;
 			structExpr->Values.assign(funcCall->Arguments.begin(), funcCall->Arguments.end());
+
+			// Point(y = 2, x = 1): keyword arguments name fields, the others keep their defaults
+			if (!funcCall->KeywordArguments.empty())
+			{
+				auto& members = classType->GetMemberValues();
+				structExpr->Values.resize(members.size());
+
+				for (auto& [name, value] : funcCall->KeywordArguments)
+				{
+					auto index = classType->GetMemberValueIndex(name.GetData());
+
+					if (!index || structExpr->Values[*index])
+					{
+						Token where = name;
+						where.SetData(std::format("{}’ is not a field of ‘{}’ (or is given twice", name.GetData(), classType->GetHash()));
+						m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+						return nullptr;
+					}
+
+					structExpr->Values[*index] = value;
+				}
+
+				// fields left out use their default (or zero)
+				for (size_t i = 0; i < structExpr->Values.size(); i++)
+				{
+					if (!structExpr->Values[i])
+					{
+						auto defaultValue = i < classType->MemberDefaults.size() ? classType->MemberDefaults[i] : nullptr;
+						structExpr->Values[i] = defaultValue ? defaultValue : std::make_shared<ASTZero>(classType->GetMemberValueByIndex(i).value()->GetType());
+					}
+				}
+			}
 
 			return CompleteStructValues(structExpr);
 		}
@@ -3175,6 +3736,10 @@ namespace clear
 		if (from->IsEnum() || to->IsEnum())
 			return false;
 
+		// none only becomes an optional (handled in Coerce), never a plain value
+		if (from->GetHash() == "none" || to->GetHash() == "none")
+			return false;
+
 		// pointers: null converts to anything, otherwise the pointee must match (or be opaque)
 		if (src->isPointerTy() && dst->isPointerTy())
 		{
@@ -3272,6 +3837,23 @@ namespace clear
 	{
 		if (!node || !target)
 			return node;
+
+		// ?T accepts none and anything that converts to T
+		if (target->IsClass() && target->As<ClassType>()->IsOptional)
+		{
+			auto optional = target->As<ClassType>();
+			auto valueSource = m_TypeInferEngine.InferTypeFromNode(node);
+
+			if (valueSource == target)
+				return node;
+
+			if (valueSource && valueSource->GetHash() == "none")
+				return BuildVariantConstruct(target, optional->FindCase("none").value(), {}, {}, GetNodeLocation(node));
+
+			auto valueType = optional->Cases[optional->FindCase("some").value()].Fields[0].second;
+			auto converted = Coerce(node, valueType);
+			return BuildVariantConstruct(target, optional->FindCase("some").value(), { converted }, {}, GetNodeLocation(node));
+		}
 
 		// a tuple literal converts element by element
 		if (auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(node); tuple && !tuple->IsType && target->IsTuple())
@@ -3618,6 +4200,31 @@ namespace clear
 			return binaryExpr;
 		}
 		
+		// Shape.Empty: a rich enum case without data
+		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); 
+			var && var->Variable && var->Variable->Kind == SymbolKind::Type && var->Variable->GetType()->IsClass() && var->Variable->GetType()->As<ClassType>()->IsVariant)
+		{
+			auto variantType = var->Variable->GetType();
+			auto member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+			auto index = member ? variantType->As<ClassType>()->FindCase(member->GetName().GetData()) : std::nullopt;
+
+			if (!index)
+			{
+				Report(DiagnosticCode_UnknownMember, member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide));
+				return nullptr;
+			}
+
+			if (!variantType->As<ClassType>()->Cases[*index].Fields.empty())
+			{
+				Token location = member->GetName();
+				location.SetData(std::format("{}.{}", variantType->GetHash(), member->GetName().GetData()));
+				Report(DiagnosticCode_NeedsCaseValues, location);
+				return nullptr;
+			}
+
+			return BuildVariantConstruct(variantType, *index, {}, {}, member->GetName());
+		}
+
 		// Color.Red
 		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); 
 			var && var->Variable && var->Variable->Kind == SymbolKind::Type && var->Variable->GetType()->IsEnum())
@@ -3646,6 +4253,24 @@ namespace clear
 		{
 			Report(DiagnosticCode_InvalidMemberAccess, GetNodeLocation(binaryExpr->RightSide));
 			return nullptr;
+		}
+
+		// optional.value
+		if (lhsType->IsClass() && lhsType->As<ClassType>()->IsOptional)
+		{
+			auto member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+
+			if (!member || member->GetName().GetData() != "value")
+			{
+				Report(DiagnosticCode_UnknownMember, member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide));
+				return nullptr;
+			}
+
+			auto unwrap = std::make_shared<ASTOptionalUnwrap>();
+			unwrap->Location = member->GetName();
+			unwrap->Subject = AsValue(binaryExpr->LeftSide);
+			unwrap->OptionalTy = lhsType;
+			return unwrap;
 		}
 
 		while (lhsType->IsPointer())
@@ -3766,6 +4391,12 @@ namespace clear
 				{
 					std::shared_ptr<Type> base = GetTypeFromNode(unary->Operand);
 					return base ? m_Module->GetTypeRegistry()->GetPointerTo(base) : nullptr;
+				}
+
+				if (unary->GetOperatorType() == OperatorType::Optional)
+				{
+					std::shared_ptr<Type> base = GetTypeFromNode(unary->Operand);
+					return base ? GetOptionalType(base) : nullptr;
 				}
 			}
 			case ASTNodeType::Subscript:

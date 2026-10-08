@@ -672,6 +672,7 @@ namespace clear
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
 		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();
+		bool isUnion = lhsType->As<ClassType>()->IsUnion;
 
 		bool throughPointer = false;
 
@@ -687,6 +688,10 @@ namespace clear
 		// p.x where p is a pointer: p must not be null
 		if (throughPointer && ctx.RuntimeChecks)
 			EmitCheck(ctx, ctx.Builder.CreateIsNotNull(lhs.GetLLVMValue()), "accessing a field through a null pointer", member->GetName());
+
+		// every field of a union lives at the start of its storage
+		if (isUnion)
+			return Symbol::CreateValue(lhs.GetLLVMValue(), memberPtrType.GetType());
 		
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
@@ -2156,6 +2161,14 @@ namespace clear
 		llvm::BasicBlock* endBlock     = llvm::BasicBlock::Create(ctx.Context, "switch.end");
 		llvm::BasicBlock* defaultBlock = DefaultCaseCodeBlock ? llvm::BasicBlock::Create(ctx.Context, "switch.default") : endBlock;
 
+		// every case is handled: tell LLVM no other value can occur
+		if (IsExhaustive && !DefaultCaseCodeBlock)
+		{
+			defaultBlock = llvm::BasicBlock::Create(ctx.Context, "switch.impossible", function);
+			llvm::IRBuilder<> impossible(defaultBlock);
+			impossible.CreateUnreachable();
+		}
+
 		llvm::SwitchInst* switchInst = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultBlock, (unsigned)Cases.size());
 
 		for (auto& switchCase : Cases)
@@ -2314,6 +2327,116 @@ namespace clear
 
 		CLEAR_UNREACHABLE("unknown intrinsic ", Name);
 		return Symbol();
+	}
+
+	llvm::Value* LoadVariantPayload(CodegenContext& ctx, std::shared_ptr<Type> variantType, size_t caseIndex, llvm::Value* storage)
+	{
+		auto& variantCase = variantType->As<ClassType>()->Cases[caseIndex];
+		llvm::Value* payload = ctx.Builder.CreateStructGEP(variantType->Get(), storage, 1, "payload");
+		return ctx.Builder.CreateLoad(variantCase.Payload, payload);
+	}
+
+	// keeps a value in a stack slot so parts of it can be addressed
+	static llvm::Value* SpillToStack(CodegenContext& ctx, std::shared_ptr<Type> type, llvm::Value* value)
+	{
+		Symbol slot = CreateAlloca(type, ctx);
+		ctx.Builder.CreateStore(value, slot.GetLLVMValue());
+		return slot.GetLLVMValue();
+	}
+
+	Symbol ASTVariantConstruct::Codegen(CodegenContext& ctx)
+	{
+		auto classType = VariantTy->As<ClassType>();
+		auto& variantCase = classType->Cases[CaseIndex];
+
+		// fill the case's payload, then store tag and payload into a zeroed value
+		llvm::Value* payload = llvm::UndefValue::get(variantCase.Payload);
+
+		for (size_t i = 0; i < Values.size(); i++)
+		{
+			Symbol value = Values[i]->Codegen(ctx);
+			Symbol fieldType = Symbol::CreateType(variantCase.Fields[i].second);
+			value = SymbolOps::Cast(value, fieldType, ctx.Builder);
+			payload = ctx.Builder.CreateInsertValue(payload, value.GetLLVMValue(), { (unsigned)i });
+		}
+
+		llvm::Value* storage = SpillToStack(ctx, VariantTy, llvm::Constant::getNullValue(VariantTy->Get()));
+		ctx.Builder.CreateStore(ctx.Builder.getInt32((uint32_t)CaseIndex), ctx.Builder.CreateStructGEP(VariantTy->Get(), storage, 0));
+
+		if (!Values.empty())
+			ctx.Builder.CreateStore(payload, ctx.Builder.CreateStructGEP(VariantTy->Get(), storage, 1));
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(VariantTy->Get(), storage), VariantTy);
+	}
+
+	Symbol ASTVariantField::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		llvm::Value* payload = LoadVariantPayload(ctx, VariantTy, CaseIndex, subject.GetLLVMValue());
+
+		auto fieldType = VariantTy->As<ClassType>()->Cases[CaseIndex].Fields[FieldIndex].second;
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(payload, { (unsigned)FieldIndex }), fieldType);
+	}
+
+	Symbol ASTVariantTag::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u }, "tag"), TagType);
+	}
+
+	Symbol ASTOptionalUnwrap::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		auto classType = OptionalTy->As<ClassType>();
+		size_t someIndex = classType->FindCase("some").value();
+
+		if (ctx.RuntimeChecks)
+		{
+			llvm::Value* tag = ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u });
+			EmitCheck(ctx, ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex)), "unwrapping an optional that is none", Location);
+		}
+
+		llvm::Value* storage = SpillToStack(ctx, OptionalTy, subject.GetLLVMValue());
+		llvm::Value* payload = LoadVariantPayload(ctx, OptionalTy, someIndex, storage);
+		auto valueType = classType->Cases[someIndex].Fields[0].second;
+
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(payload, { 0u }), valueType);
+	}
+
+	Symbol ASTOptionalValueOr::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		auto classType = OptionalTy->As<ClassType>();
+		size_t someIndex = classType->FindCase("some").value();
+		auto valueType = classType->Cases[someIndex].Fields[0].second;
+
+		llvm::Value* storage = SpillToStack(ctx, OptionalTy, subject.GetLLVMValue());
+		llvm::Value* payload = LoadVariantPayload(ctx, OptionalTy, someIndex, storage);
+		llvm::Value* value = ctx.Builder.CreateExtractValue(payload, { 0u });
+
+		Symbol fallback = Default->Codegen(ctx);
+		Symbol valueTypeSymbol = Symbol::CreateType(valueType);
+		fallback = SymbolOps::Cast(fallback, valueTypeSymbol, ctx.Builder);
+
+		llvm::Value* tag = ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u });
+		llvm::Value* hasValue = ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex));
+
+		return Symbol::CreateValue(ctx.Builder.CreateSelect(hasValue, value, fallback.GetLLVMValue()), valueType);
+	}
+
+	Symbol ASTUnionConstruct::Codegen(CodegenContext& ctx)
+	{
+		llvm::Value* storage = SpillToStack(ctx, UnionTy, llvm::Constant::getNullValue(UnionTy->Get()));
+
+		if (Value)
+		{
+			Symbol value = Value->Codegen(ctx);
+			Symbol fieldType = Symbol::CreateType(FieldTy);
+			value = SymbolOps::Cast(value, fieldType, ctx.Builder);
+			ctx.Builder.CreateStore(value.GetLLVMValue(), storage);
+		}
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(UnionTy->Get(), storage), UnionTy);
 	}
 
 	Symbol ASTTupleExpr::Codegen(CodegenContext& ctx)

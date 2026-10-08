@@ -97,6 +97,7 @@ namespace clear
 		{OperatorType::BitwiseNot,    {0, 26}},
 		{OperatorType::Address,       {0, 26}},
 		{OperatorType::Dereference,   {0, 26}},
+		{OperatorType::Optional,      {0, 26}},
 
 		{OperatorType::Cast,		  {24, 25, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseCastExpr(node); }}},
 		{OperatorType::Power,         {23, 22}},
@@ -327,6 +328,7 @@ namespace clear
 			{"defer",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseDefer(); }},
 			{"const",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseConst(); }},
 			{"class",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
+			{"union",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
 			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
 			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
@@ -672,10 +674,49 @@ namespace clear
 				break;
 			}
 
+			// methods make this a rich enum
+			if (Match("function"))
+			{
+				auto method = ParseFunctionDefinition();
+
+				if (method)
+					enumNode->Methods.push_back(method);
+
+				continue;
+			}
+
 			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 			Token name = Consume();
 
 			std::shared_ptr<ASTNodeBase> value;
+			std::vector<std::shared_ptr<ASTVariableDeclaration>> payload;
+
+			// Circle(radius: float64): a case carrying data
+			if (Match(TokenType::LeftParen))
+			{
+				Consume();
+
+				while (!Match(TokenType::RightParen))
+				{
+					auto field = ParseVariableDecleration().Node;
+
+					if (!field)
+						return nullptr;
+
+					payload.push_back(field);
+
+					if (Match(TokenType::Comma))
+					{
+						Consume();
+						continue;
+					}
+
+					EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+				}
+
+				Consume(); // )
+				enumNode->HasPayloads = true;
+			}
 
 			if (Match(TokenType::Equals))
 			{
@@ -684,6 +725,7 @@ namespace clear
 			}
 
 			enumNode->Members.push_back({ name, value });
+			enumNode->Payloads.push_back(payload);
 		}
 
 		return enumNode;
@@ -1071,7 +1113,7 @@ namespace clear
 			case TokenType::Keyword:
 			default:
 			{
-				if (token.GetData() == "true" || token.GetData() == "false" || token.GetData() == "null")
+				if (token.GetData() == "true" || token.GetData() == "false" || token.GetData() == "null" || token.GetData() == "none")
 				{
 					lhs = std::make_shared<ASTNodeLiteral>(token);
 					Consume();
@@ -1377,7 +1419,16 @@ namespace clear
 		OperatorInfo info = g_OperatorTable.at(OperatorType::Is);
 
 		std::shared_ptr<ASTIsExpr> isExpr = std::make_shared<ASTIsExpr>();
+		isExpr->Location = Prev();
 		isExpr->Object = lhs;
+
+		// x is not none
+		if (Match("not"))
+		{
+			Consume();
+			isExpr->Negate = true;
+		}
+
 		isExpr->TypeNode = ParseExpr(info.RightBindingPower);
 
 		return isExpr;
@@ -1581,13 +1632,21 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
     {
-        EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
+        // `union Name:` is parsed like a class whose fields share storage
+        bool isUnion = Match("union");
+
+        if (!isUnion)
+        {
+            EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
+        }
+
         Consume();
 
         EXPECT_TOKEN_RETURN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier, nullptr);
         std::string className = Consume().GetData();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
+        classNode->IsUnion = isUnion;
 		std::shared_ptr<ASTGenericTemplate> genericTemplate;
 
         if(Match(TokenType::LeftBracket))
@@ -1794,6 +1853,7 @@ namespace clear
 			case TokenType::LeftBracket:		return OperatorType::ArrayType;
 			case TokenType::Ampersand:			return OperatorType::Address;
 			case TokenType::Telda:				return OperatorType::BitwiseNot;
+			case TokenType::QuestionMark:		return OperatorType::Optional;
 			default:
 				break;
 		}
