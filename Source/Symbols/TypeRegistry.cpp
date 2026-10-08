@@ -153,6 +153,17 @@ namespace clear
         return slot;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetCoroutineOf(bool isTask, std::shared_ptr<Type> value)
+    {
+        static std::map<std::pair<bool, Type*>, std::shared_ptr<Type>> s_Coroutines;
+        auto& slot = s_Coroutines[{ isTask, value.get() }];
+
+        if (!slot)
+            slot = std::make_shared<CoroutineType>(isTask ? CoroutineType::Kind::Task : CoroutineType::Kind::Generator, value, *m_Context);
+
+        return slot;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetFunctionFrom(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType)
     {
         static std::map<std::vector<Type*>, std::shared_ptr<Type>> s_Functions;

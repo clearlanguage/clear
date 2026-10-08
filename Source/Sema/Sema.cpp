@@ -146,7 +146,7 @@ namespace clear
 			return type;
 		}
 
-		Visit(type->TypeResolver, context);
+		if (auto resolved = Visit(type->TypeResolver, context)) type->TypeResolver = resolved;
 		type->ResolvedType = GetTypeFromNode(type->TypeResolver);
 
 		if (!type->ResolvedType)
@@ -169,7 +169,7 @@ namespace clear
 	{
 		if (decl->TypeResolver)
 		{
-			Visit(decl->TypeResolver, context);
+			if (auto resolved = Visit(decl->TypeResolver, context)) decl->TypeResolver = resolved;
 			decl->ResolvedType = GetTypeFromNode(decl->TypeResolver);
 			
 			if (!decl->ResolvedType)
@@ -384,7 +384,29 @@ namespace clear
 			case ASTNodeType::Zero:						return ast;
 			case ASTNodeType::Assert:					return Visit(std::dynamic_pointer_cast<ASTAssert>(ast), context);
 			case ASTNodeType::Contains:					return ast;
-			case ASTNodeType::Intrinsic:				return ast;
+			case ASTNodeType::Intrinsic:
+			{
+				auto intrinsic = std::dynamic_pointer_cast<ASTIntrinsic>(ast);
+
+				if (intrinsic->Unanalysed)
+				{
+					intrinsic->Unanalysed = false;
+					SemaContext valueContext = context;
+					valueContext.ValueReq = ValueRequired::RValue;
+
+					for (auto& argument : intrinsic->Arguments)
+					{
+						argument = Visit(argument, valueContext);
+
+						if (!argument)
+							return nullptr;
+					}
+				}
+
+				return ast;
+			}
+			case ASTNodeType::Yield:					return Visit(std::dynamic_pointer_cast<ASTYield>(ast), context);
+			case ASTNodeType::Await:					return Visit(std::dynamic_pointer_cast<ASTAwait>(ast), context);
 			case ASTNodeType::TupleGet:					return ast;
 			case ASTNodeType::FunctionRef:				return ast;
 			case ASTNodeType::VTableRef:				return ast;
@@ -481,7 +503,7 @@ namespace clear
 		
 		if (func->ReturnType)
 		{
-			Visit(func->ReturnType, context);
+			if (auto resolved = Visit(func->ReturnType, context)) func->ReturnType = resolved;
 			func->ReturnTypeVal = GetTypeFromNode(func->ReturnType);
 
 			if (!func->ReturnTypeVal)
@@ -490,6 +512,19 @@ namespace clear
 				m_ScopeStack.pop_back();
 				return false;
 			}
+		}
+
+		// async function f() -> T  returns a Task[T];  a function returning Generator[T] is a generator
+		if (func->IsAsync)
+		{
+			func->CoroutineKind = 2;
+			func->CoroutineValue = func->ReturnTypeVal && func->ReturnTypeVal->Get() && !func->ReturnTypeVal->Get()->isVoidTy() ? func->ReturnTypeVal : nullptr;
+			func->ReturnTypeVal = m_Module->GetTypeRegistry()->GetCoroutineOf(true, func->CoroutineValue);
+		}
+		else if (auto coroutine = std::dynamic_pointer_cast<CoroutineType>(func->ReturnTypeVal); coroutine && coroutine->GetKind() == CoroutineType::Kind::Generator)
+		{
+			func->CoroutineKind = 1;
+			func->CoroutineValue = coroutine->GetValueType();
 		}
 
 		if (context.TypeHint)
@@ -555,6 +590,14 @@ namespace clear
 		context.GlobalState = false;
 		context.ReturnType = func->ReturnTypeVal;
 		context.InLoop = false;
+		context.CoroutineKind = func->CoroutineKind;
+		context.CoroutineValue = func->CoroutineValue;
+
+		// a generator only yields (`return` just ends it), a task's `return` gives its result
+		if (func->CoroutineKind == 1)
+			context.ReturnType = nullptr;
+		else if (func->CoroutineKind == 2)
+			context.ReturnType = func->CoroutineValue;
 		context.InferReturnFor = func->InferReturnType ? func.get() : nullptr;
 		context.ExpectedType = nullptr;
 
@@ -570,7 +613,8 @@ namespace clear
 		m_ScopeStack.pop_back();
 
 		// every path through a function with a return type must return a value (main may end and return 0, like C)
-		bool returnsValue = func->ReturnTypeVal && func->ReturnTypeVal->Get() && !func->ReturnTypeVal->Get()->isVoidTy();
+		bool returnsValue = func->CoroutineKind ? (func->CoroutineKind == 2 && func->CoroutineValue != nullptr) 
+												: func->ReturnTypeVal && func->ReturnTypeVal->Get() && !func->ReturnTypeVal->Get()->isVoidTy();
 		bool isMain = func->GetNameToken().GetData() == "main" && !context.TypeHint;
 
 		if (returnsValue && !isMain && !AlwaysReturns(func->CodeBlock))
@@ -957,6 +1001,18 @@ namespace clear
 			auto callee = std::make_shared<ASTVariable>(target ? target->GetName() : Token());
 			callee->Variable = subscript->GeneratedType;
 			funcCall->Callee = callee;
+		}
+
+		// methods of Generator[T] and Task[T] handles
+		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide);
+			bool isModule = left && left->Variable && left->Variable->Kind == SymbolKind::Module;
+			auto objectType = isModule ? nullptr : m_TypeInferEngine.InferTypeFromNode(member->LeftSide);
+			auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+			if (objectType && std::dynamic_pointer_cast<CoroutineType>(objectType) && name)
+				return CoroutineMethod(funcCall, member->LeftSide, objectType, name->GetName());
 		}
 
 		// calling a value: a function pointer, or an object with __call__ (closures are such objects)
@@ -2169,6 +2225,45 @@ namespace clear
 			if (forExpr->IterableType && (forExpr->IterableType->IsClass() || isClassPointer))
 				return Visit(LowerClassIteration(forExpr, pristineIterable), context);
 
+			// for x in generator:   ->   let g = generator;  defer destroy(g);  while advance(g): let x = value(g); body
+			if (auto generator = std::dynamic_pointer_cast<CoroutineType>(forExpr->IterableType); generator && generator->GetKind() == CoroutineType::Kind::Generator)
+			{
+				static size_t s_GeneratorCounter = 0;
+				Token location = forExpr->Location;
+				auto token = [&](const std::string& text) { return Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+				std::string handleName = std::format("__generator_{}", s_GeneratorCounter++);
+
+				auto intrinsic = [&](const std::string& name, std::shared_ptr<Type> result)
+				{
+					auto node = std::make_shared<ASTIntrinsic>(name, result);
+					node->Location = location;
+					node->Unanalysed = true;
+					node->Arguments.push_back(std::make_shared<ASTVariable>(token(handleName)));
+					return node;
+				};
+
+				auto handle = std::make_shared<ASTVariableDeclaration>(token(handleName));
+				handle->Location = location;
+				handle->Initializer = pristineIterable;
+
+				auto destroy = std::make_shared<ASTDefer>();
+				destroy->Expr = intrinsic("coro_destroy", nullptr);
+
+				auto element = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
+				element->Location = forExpr->VariableName;
+				element->Initializer = intrinsic("coro_value", generator->GetValueType());
+
+				auto loop = std::make_shared<ASTWhileExpression>();
+				loop->WhileBlock.Condition = intrinsic("coro_advance", Symbol::GetBooleanType(m_Module).GetType());
+				loop->WhileBlock.CodeBlock = std::make_shared<ASTBlock>();
+				loop->WhileBlock.CodeBlock->Children.push_back(element);
+				loop->WhileBlock.CodeBlock->Children.insert(loop->WhileBlock.CodeBlock->Children.end(), forExpr->CodeBlock->Children.begin(), forExpr->CodeBlock->Children.end());
+
+				auto block = std::make_shared<ASTBlock>();
+				block->Children = { handle, destroy, loop };
+				return Visit(block, context);
+			}
+
 			if (!forExpr->IterableType || !forExpr->IterableType->IsArray())
 			{
 				Report(DiagnosticCode_NotIterable, GetNodeLocation(forExpr->Iterable));
@@ -2585,6 +2680,95 @@ namespace clear
 		where.SetData(GetDisplayName(type));
 		Report(DiagnosticCode_NoLength, where);
 		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTYield> yield, SemaContext context)
+	{
+		if (context.CoroutineKind != 1)
+		{
+			Report(DiagnosticCode_YieldOutsideGenerator, yield->Location);
+			return nullptr;
+		}
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		valueContext.ExpectedType = context.CoroutineValue;
+		yield->Value = Visit(yield->Value, valueContext);
+
+		if (!yield->Value)
+			return nullptr;
+
+		yield->Value = Coerce(yield->Value, context.CoroutineValue);
+		return yield;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAwait> await, SemaContext context)
+	{
+		if (context.CoroutineKind != 2)
+		{
+			Report(DiagnosticCode_AwaitOutsideAsync, await->Location);
+			return nullptr;
+		}
+
+		if (await->IsPause)
+			return await;
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		await->Operand = Visit(await->Operand, valueContext);
+
+		if (!await->Operand)
+			return nullptr;
+
+		auto task = std::dynamic_pointer_cast<CoroutineType>(m_TypeInferEngine.InferTypeFromNode(await->Operand));
+
+		if (!task || task->GetKind() != CoroutineType::Kind::Task)
+		{
+			Token where = GetNodeLocation(await->Operand);
+			where.SetData(GetDisplayName(m_TypeInferEngine.InferTypeFromNode(await->Operand)));
+			Report(DiagnosticCode_NotAwaitable, where);
+			return nullptr;
+		}
+
+		await->ValueType = task->GetValueType();
+		return await;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CoroutineMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> type, const Token& name)
+	{
+		auto coroutine = type->As<CoroutineType>();
+		bool isTask = coroutine->GetKind() == CoroutineType::Kind::Task;
+		auto boolType = Symbol::GetBooleanType(m_Module).GetType();
+		const std::string& method = name.GetData();
+
+		// task.run():       run to the end and give the result (then the task is gone)
+		// x.resume():       run until the next suspension (yield, pause or the end); true when finished
+		// gen.advance():    resume, true when a new value is ready
+		// x.done(), x.value() / task.result(), x.free()
+		struct Entry { const char* Intrinsic; std::shared_ptr<Type> Result; bool TaskOnly; bool GeneratorOnly; };
+
+		Entry entry {};
+		if (method == "run")                         entry = { "task_run", coroutine->GetValueType(), true, false };
+		else if (method == "resume")                 entry = { "coro_resume", boolType, false, false };
+		else if (method == "advance")                entry = { "coro_advance", boolType, false, true };
+		else if (method == "done")                   entry = { "coro_done", boolType, false, false };
+		else if (method == "value" || method == "result") entry = { "coro_value", coroutine->GetValueType(), false, false };
+		else if (method == "free")                   entry = { "coro_destroy", nullptr, false, false };
+
+		if (!entry.Intrinsic || (entry.TaskOnly && !isTask) || (entry.GeneratorOnly && isTask) || 
+			!funcCall->Arguments.empty() || !funcCall->KeywordArguments.empty() ||
+			((method == "value" || method == "result") && !coroutine->GetValueType()))
+		{
+			Token where = name;
+			where.SetData(std::format("{}’ of ‘{}", method, GetDisplayName(type)));
+			Report(DiagnosticCode_UnknownMember, where);
+			return nullptr;
+		}
+
+		auto intrinsic = std::make_shared<ASTIntrinsic>(entry.Intrinsic, entry.Result);
+		intrinsic->Location = name;
+		intrinsic->Arguments.push_back(AsValue(object));
+		return intrinsic;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
@@ -4066,6 +4250,34 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSubscript> subscript, SemaContext context)
 	{
+		// Generator[T] and Task[T] are built in (unless the program has its own)
+		if (auto target = std::dynamic_pointer_cast<ASTVariable>(subscript->Target); target && !target->Variable &&
+			(target->GetName().GetData() == "Generator" || target->GetName().GetData() == "Task") && !LookupSymbol(target->GetName().GetData()).first)
+		{
+			if (subscript->SubscriptArgs.size() != 1)
+			{
+				Report(DiagnosticCode_ExpectedType, target->GetName());
+				return nullptr;
+			}
+
+			auto argument = Visit(subscript->SubscriptArgs[0], SemaContext { .ValueReq = ValueRequired::Any, .TypeHint = context.TypeHint });
+			auto valueType = argument ? GetTypeFromNode(argument) : nullptr;
+			bool isNone = !valueType && argument && argument->GetType() == ASTNodeType::Variable && std::dynamic_pointer_cast<ASTVariable>(argument)->GetName().GetData() == "none";
+
+			if (!valueType && !isNone)
+			{
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(subscript->SubscriptArgs[0]));
+				return nullptr;
+			}
+
+			if (valueType && valueType->GetHash() == "none")
+				valueType = nullptr;
+
+			auto literal = std::make_shared<ASTTypeLiteral>(m_Module->GetTypeRegistry()->GetCoroutineOf(target->GetName().GetData() == "Task", valueType));
+			literal->Location = target->GetName();
+			return literal;
+		}
+
 		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue, .TypeHint = context.TypeHint, .AllowGenericInferenceFromArgs = false });
 		subscript->Meaning = SubscriptSemantic::Generic;
 
@@ -4845,6 +5057,10 @@ namespace clear
 		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
 
 		if (!lhsType)
+			return binaryExpr;
+
+		// task.run(), gen.advance() ...: the call that follows handles these
+		if (std::dynamic_pointer_cast<CoroutineType>(lhsType))
 			return binaryExpr;
 
 		if (!lhsType->IsPointer() && !lhsType->IsClass())

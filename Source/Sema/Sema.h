@@ -30,6 +30,8 @@ namespace clear
 		std::shared_ptr<Type> ReturnType; // of the function being analysed, null for void
 		std::shared_ptr<Type> ExpectedType; // what the value being analysed will be converted to (gives lambdas their parameter types)
 		ASTFunctionDefinition* InferReturnFor = nullptr; // a lambda whose return type comes from its body
+		int CoroutineKind = 0;                 // inside a generator (1) or an async function (2)
+		std::shared_ptr<Type> CoroutineValue;  // what a generator yields
 	};
 	
 	struct CompilationUnit;
@@ -108,6 +110,9 @@ namespace clear
 		bool CheckTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<ClassType> trait, const Token& location);
 		std::shared_ptr<ClassType> FindTrait(const std::string& name, std::shared_ptr<Module> home);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTMacro> macro, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTYield> yield, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAwait> await, SemaContext context);
+		std::shared_ptr<ASTNodeBase> CoroutineMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> type, const Token& name);
 		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);

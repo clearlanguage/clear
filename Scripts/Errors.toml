@@ -336,3 +336,15 @@ Advice  = "‘{}’ keeps expanding into itself. A macro may use other macros, b
 [NotHashable]
 Message = "This value cannot be hashed."
 Advice  = "‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method."
+
+[YieldOutsideGenerator]
+Message = "‘yield’ is only allowed in a generator."
+Advice  = "Declare the function as returning Generator[T], e.g. function {}s() -> Generator[int]:"
+
+[AwaitOutsideAsync]
+Message = "‘await’ is only allowed in an async function."
+Advice  = "Mark the function ‘async function’, or run the task from ordinary code with task.run() ({})."
+
+[NotAwaitable]
+Message = "Only a Task can be awaited."
+Advice  = "‘{}’ is not the result of calling an async function."

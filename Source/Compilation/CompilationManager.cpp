@@ -552,12 +552,6 @@ namespace clear
 
     void CompilationManager::OptimizeModule()
     {
-        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::None) 
-           return;
-
-        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::Debugging) 
-            return;
-
         llvm::PipelineTuningOptions tuning;
         tuning.LoopVectorization = true;
         tuning.SLPVectorization = true;
@@ -594,7 +588,9 @@ namespace clear
                 break;
 
             default:
-                return;
+                // no optimization, but coroutines (generators, async functions) still have to be split into their parts
+                modulePM = passBuilder.buildO0DefaultPipeline(llvm::OptimizationLevel::O0);
+                break;
         }
 
 

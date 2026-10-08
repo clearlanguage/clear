@@ -79,6 +79,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseDefer();
 		std::shared_ptr<ASTNodeBase> ParseConst();
 		std::shared_ptr<ASTNodeBase> ParseMacro();
+		std::shared_ptr<ASTNodeBase> ParseAsync();
+		std::shared_ptr<ASTNodeBase> ParseYield();
 		std::shared_ptr<ASTImport> ParseImport();
 		std::shared_ptr<ASTNodeBase> ParseLoopControl();
 		std::shared_ptr<ASTNodeBase> ParseAssert();

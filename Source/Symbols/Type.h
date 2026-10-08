@@ -317,6 +317,29 @@ namespace clear
         llvm::FunctionType* m_FunctionType;
     };
 
+    // Generator[T] (a function that yields) and Task[T] (an async function): a handle to a suspended
+    // LLVM coroutine. The handle is one pointer; the frame is allocated when the coroutine is called.
+    class CoroutineType : public Type
+    {
+    public:
+        enum class Kind { Generator, Task };
+
+        CoroutineType(Kind kind, std::shared_ptr<Type> value, llvm::LLVMContext& context)
+            : m_Kind(kind), m_Value(value), m_LLVMType(llvm::PointerType::get(context, 0)) {}
+        virtual ~CoroutineType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        Kind GetKind() const { return m_Kind; }
+        std::shared_ptr<Type> GetValueType() const { return m_Value; } // null for Task[none]
+
+    private:
+        Kind m_Kind;
+        std::shared_ptr<Type> m_Value;
+        llvm::Type* m_LLVMType;
+    };
+
     // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics
     std::string GetDisplayName(const std::shared_ptr<Type>& type);
 

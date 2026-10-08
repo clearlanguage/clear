@@ -36,7 +36,7 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await,
 		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
@@ -64,6 +64,16 @@ namespace clear
 		size_t LoopDeferBase = 0;     // first block inside the innermost loop
 
 		bool RuntimeChecks = false;
+
+		// inside a generator or async function: where suspending and destroying lead
+		struct CoroutineState
+		{
+			llvm::Value* Handle = nullptr;
+			llvm::BasicBlock* Cleanup = nullptr; // frees the frame (the coroutine was destroyed)
+			llvm::BasicBlock* Suspend = nullptr; // returns to whoever resumed the coroutine
+			llvm::AllocaInst* Promise = nullptr; // the yielded value or the task's result
+		};
+		CoroutineState* Coroutine = nullptr;
 
 		std::shared_ptr<clear::Module> ClearModule;
 		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls where a function is being called from another module
@@ -266,6 +276,9 @@ namespace clear
 		const Token& GetNameToken() const { return m_NameToken; }
 		void SetNameToken(const Token& token) { m_NameToken = token; }
 
+		void BeginCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine, llvm::BasicBlock* entry, llvm::BasicBlock* returnBlock);
+		void EndCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine);
+
 	public:
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
 		std::shared_ptr<ASTNodeBase> ReturnType;
@@ -280,6 +293,9 @@ namespace clear
 		bool InferReturnType = false;   // lambdas: the return type is the type of the body
 		bool BodyResolved = false;
 		bool IsVirtual = false;         // `virtual function`: called through the class's vtable
+		bool IsAsync = false;           // `async function`: returns a Task, may `await`
+		int CoroutineKind = 0;          // 0 a plain function, 1 a generator (yields), 2 an async task
+		std::shared_ptr<Type> CoroutineValue; // what is yielded, or the task's result (null for none)
 		bool IsProperty = false;        // `property name(self)`: read as obj.name, set as obj.name = v
 
 	private:
@@ -766,6 +782,7 @@ namespace clear
 		std::string Name;
 		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
 		std::shared_ptr<Type> ResultType;
+		bool Unanalysed = false; // built from source-level nodes: analyse the arguments when visited
 	};
 
 	// (a, b, c): a tuple value, or a tuple type when every element names a type
@@ -879,6 +896,35 @@ namespace clear
 	public:
 		std::shared_ptr<Symbol> Function;
 		std::shared_ptr<Type> FunctionTy;
+	};
+
+	// yield value: hands a value to the loop that resumed this generator, then waits to be resumed
+	class ASTYield : public ASTNodeBase
+	{
+	public:
+		ASTYield() = default;
+		virtual ~ASTYield() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Yield; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Value;
+	};
+
+	// await task: runs the task, passing its suspensions on to whoever runs this one, and gives its result
+	// (with no operand, `await pause()`: suspends once so other tasks get a turn)
+	class ASTAwait : public ASTNodeBase
+	{
+	public:
+		ASTAwait() = default;
+		virtual ~ASTAwait() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Await; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
+		std::shared_ptr<Type> ValueType; // the task's result, null for none
+		bool IsPause = false;
 	};
 
 	// macro name(a, b): a block of code pasted in, with its arguments, wherever name!(x, y) is written

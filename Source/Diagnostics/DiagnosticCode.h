@@ -88,6 +88,9 @@ namespace clear
 		DiagnosticCode_PropertyNotSettable,
 		DiagnosticCode_MacroTooDeep,
 		DiagnosticCode_NotHashable,
+		DiagnosticCode_YieldOutsideGenerator,
+		DiagnosticCode_AwaitOutsideAsync,
+		DiagnosticCode_NotAwaitable,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -176,6 +179,9 @@ namespace clear
 		"This property has no setter.",
 		"Macro expansion is nested too deeply.",
 		"This value cannot be hashed.",
+		"‘yield’ is only allowed in a generator.",
+		"‘await’ is only allowed in an async function.",
+		"Only a Task can be awaited.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -263,5 +269,8 @@ namespace clear
 		"Add ‘property {}(self, value: T)’ to the class to allow assigning to it.",
 		"‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly.",
 		"‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method.",
+		"Declare the function as returning Generator[T], e.g. function {}s() -> Generator[int]:",
+		"Mark the function ‘async function’, or run the task from ordinary code with task.run() ({}).",
+		"‘{}’ is not the result of calling an async function.",
 	};
 }

@@ -331,6 +331,8 @@ namespace clear
 			{"union",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"trait",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"macro",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseMacro(); }},
+			{"async",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseAsync(); }},
+			{"yield",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseYield(); }},
 			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
 			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
 			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
@@ -809,6 +811,37 @@ namespace clear
 		return function;
 	}
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseAsync()
+	{
+		Token keyword = Consume(); // async
+
+		if (!Match("function"))
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Peak(), DiagnosticCode_UnexpectedToken);
+			return nullptr;
+		}
+
+		auto node = ParseFunctionOrGeneric();
+
+		if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(node))
+			function->IsAsync = true;
+		else if (auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(node))
+		{
+			if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(generic->TemplateNode))
+				function->IsAsync = true;
+		}
+
+		return node;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseYield()
+	{
+		auto yield = std::make_shared<ASTYield>();
+		yield->Location = Consume();
+		yield->Value = ParseExpr();
+		return yield;
+	}
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseMacro()
 	{
 		EXPECT_DATA_RETURN("macro", DiagnosticCode_None, nullptr);
@@ -1105,6 +1138,31 @@ namespace clear
 			}
 			case TokenType::Identifier:
 			{
+				// await task  /  await pause()
+				if (token.GetData() == "await" && m_Position + 1 < m_Tokens.size() && 
+					(m_Tokens[m_Position + 1].IsType(TokenType::Identifier) || m_Tokens[m_Position + 1].IsType(TokenType::LeftParen)))
+				{
+					Consume();
+					auto await = std::make_shared<ASTAwait>();
+					await->Location = token;
+
+					if (Match("pause") && m_Position + 2 < m_Tokens.size() && m_Tokens[m_Position + 1].IsType(TokenType::LeftParen) && m_Tokens[m_Position + 2].IsType(TokenType::RightParen))
+					{
+						Consume(); Consume(); Consume();
+						await->IsPause = true;
+					}
+					else
+					{
+						await->Operand = ParseExpr(g_OperatorTable.at(OperatorType::Dereference).RightBindingPower);
+
+						if (!await->Operand)
+							return nullptr;
+					}
+
+					lhs = await;
+					break;
+				}
+
 				// name!(a, b): a macro use
 				if (m_Position + 2 < m_Tokens.size() && m_Tokens[m_Position + 1].IsType(TokenType::Bang) && m_Tokens[m_Position + 2].IsType(TokenType::LeftParen))
 				{

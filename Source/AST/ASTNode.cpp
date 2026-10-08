@@ -914,6 +914,155 @@ namespace clear
 	{
 	}
 
+	// generators and async functions are LLVM coroutines (switch-resumed). The call allocates the frame
+	// (LLVM removes the allocation when the coroutine does not outlive its caller), runs up to the first
+	// suspension and returns the handle; resuming continues from the last suspension.
+	static llvm::Value* CoroutineSuspend(CodegenContext& ctx, bool final, llvm::BasicBlock* resume)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(final) });
+		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
+		branch->addCase(builder.getInt8(0), resume);
+		branch->addCase(builder.getInt8(1), ctx.Coroutine->Cleanup);
+		return state;
+	}
+
+	void ASTFunctionDefinition::BeginCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine, llvm::BasicBlock* entry, llvm::BasicBlock* returnBlock)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+		function->addFnAttr(llvm::Attribute::PresplitCoroutine);
+
+		// the promise holds what was yielded, or the task's result; the caller reads it through the handle
+		if (CoroutineValue)
+		{
+			llvm::IRBuilder<> entryBuilder(entry, entry->getFirstInsertionPt());
+			coroutine.Promise = entryBuilder.CreateAlloca(CoroutineValue->Get(), nullptr, "promise");
+			coroutine.Promise->setAlignment(llvm::Align(16));
+		}
+
+		llvm::Value* nullPointer = llvm::ConstantPointerNull::get(builder.getPtrTy());
+		llvm::Value* id = builder.CreateIntrinsic(llvm::Intrinsic::coro_id, {}, 
+			{ builder.getInt32(16), coroutine.Promise ? (llvm::Value*)coroutine.Promise : nullPointer, nullPointer, nullPointer });
+
+		llvm::BasicBlock* start = builder.GetInsertBlock();
+		llvm::BasicBlock* allocate = llvm::BasicBlock::Create(ctx.Context, "coro.alloc", function);
+		llvm::BasicBlock* begin = llvm::BasicBlock::Create(ctx.Context, "coro.begin", function);
+		builder.CreateCondBr(builder.CreateIntrinsic(llvm::Intrinsic::coro_alloc, {}, { id }), allocate, begin);
+
+		builder.SetInsertPoint(allocate);
+		llvm::FunctionCallee malloc = ctx.Module.getOrInsertFunction("malloc", llvm::FunctionType::get(builder.getPtrTy(), { builder.getInt64Ty() }, false));
+		llvm::Value* memory = builder.CreateCall(malloc, { builder.CreateIntrinsic(llvm::Intrinsic::coro_size, { builder.getInt64Ty() }, {}) });
+		builder.CreateBr(begin);
+
+		builder.SetInsertPoint(begin);
+		llvm::PHINode* frame = builder.CreatePHI(builder.getPtrTy(), 2);
+		frame->addIncoming(nullPointer, start);
+		frame->addIncoming(memory, allocate);
+		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
+
+		// destroying the coroutine frees its frame; suspending returns the handle to the caller
+		coroutine.Cleanup = llvm::BasicBlock::Create(ctx.Context, "coro.cleanup", function);
+		coroutine.Suspend = llvm::BasicBlock::Create(ctx.Context, "coro.suspend", function);
+		llvm::BasicBlock* release = llvm::BasicBlock::Create(ctx.Context, "coro.free", function);
+
+		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
+		llvm::Value* toFree = cleanup.CreateIntrinsic(llvm::Intrinsic::coro_free, {}, { id, coroutine.Handle });
+		cleanup.CreateCondBr(cleanup.CreateIsNotNull(toFree), release, coroutine.Suspend);
+
+		llvm::IRBuilder<> freeing(release);
+		llvm::FunctionCallee free = ctx.Module.getOrInsertFunction("free", llvm::FunctionType::get(freeing.getVoidTy(), { freeing.getPtrTy() }, false));
+		freeing.CreateCall(free, { toFree });
+		freeing.CreateBr(coroutine.Suspend);
+
+		llvm::IRBuilder<> suspend(coroutine.Suspend);
+		suspend.CreateIntrinsic(llvm::Intrinsic::coro_end, {}, { coroutine.Handle, suspend.getInt1(false), llvm::ConstantTokenNone::get(ctx.Context) });
+		suspend.CreateRet(coroutine.Handle);
+
+		// nothing runs until the first resume (so a generator does no work before it is iterated)
+		llvm::BasicBlock* run = llvm::BasicBlock::Create(ctx.Context, "coro.start", function);
+		CoroutineSuspend(ctx, false, run);
+		builder.SetInsertPoint(run);
+
+		// `return value` in a task stores the result in the promise, then reaches the final suspension
+		ctx.ReturnAlloca = CoroutineKind == 2 ? coroutine.Promise : nullptr;
+		ctx.ReturnType = CoroutineKind == 2 ? CoroutineValue : nullptr;
+		ctx.ReturnBlock = returnBlock;
+	}
+
+	void ASTFunctionDefinition::EndCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine)
+	{
+		// the final suspension: done() is true from here on, resuming again is not allowed
+		auto& builder = ctx.Builder;
+		llvm::BasicBlock* invalid = llvm::BasicBlock::Create(ctx.Context, "coro.resumed_after_end", builder.GetInsertBlock()->getParent());
+		CoroutineSuspend(ctx, true, invalid);
+
+		builder.SetInsertPoint(invalid);
+		builder.CreateUnreachable();
+	}
+
+	Symbol ASTYield::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Value->Codegen(ctx);
+		ctx.Builder.CreateStore(value.GetLLVMValue(), ctx.Coroutine->Promise);
+
+		llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "yield.resume", ctx.Builder.GetInsertBlock()->getParent());
+		CoroutineSuspend(ctx, false, resume);
+		ctx.Builder.SetInsertPoint(resume);
+		return Symbol();
+	}
+
+	Symbol ASTAwait::Codegen(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		if (IsPause)
+		{
+			llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "pause.resume", function);
+			CoroutineSuspend(ctx, false, resume);
+			builder.SetInsertPoint(resume);
+			return Symbol();
+		}
+
+		// run the task; each time it suspends, suspend this one too (whoever runs us decides when to continue)
+		llvm::Value* task = Operand->Codegen(ctx).GetLLVMValue();
+
+		llvm::BasicBlock* step = llvm::BasicBlock::Create(ctx.Context, "await.step", function);
+		llvm::BasicBlock* wait = llvm::BasicBlock::Create(ctx.Context, "await.wait", function);
+		llvm::BasicBlock* finished = llvm::BasicBlock::Create(ctx.Context, "await.done", function);
+		llvm::BasicBlock* abandon = llvm::BasicBlock::Create(ctx.Context, "await.abandon", function);
+		builder.CreateBr(step);
+
+		builder.SetInsertPoint(step);
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { task });
+		builder.CreateCondBr(builder.CreateIntrinsic(llvm::Intrinsic::coro_done, {}, { task }), finished, wait);
+
+		// destroyed while waiting: the awaited task goes too
+		builder.SetInsertPoint(abandon);
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
+		builder.CreateBr(ctx.Coroutine->Cleanup);
+
+		builder.SetInsertPoint(wait);
+		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(false) });
+		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
+		branch->addCase(builder.getInt8(0), step);
+		branch->addCase(builder.getInt8(1), abandon);
+
+		builder.SetInsertPoint(finished);
+		llvm::Value* result = nullptr;
+
+		if (ValueType)
+		{
+			llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { task, builder.getInt32(16), builder.getInt1(false) });
+			result = builder.CreateLoad(ValueType->Get(), promise, "await.result");
+		}
+
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
+
+		return ValueType ? Symbol::CreateValue(result, ValueType) : Symbol();
+	}
+
 	Symbol ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
 		auto& module  = ctx.Module;
@@ -964,6 +1113,12 @@ namespace clear
 		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), body);
 		builder.SetInsertPoint(body);
 
+		CodegenContext::CoroutineState coroutine;
+		ValueRestoreGuard guard5(ctx.Coroutine, CoroutineKind ? &coroutine : nullptr);
+
+		if (CoroutineKind)
+			BeginCoroutine(ctx, coroutine, entry, returnBlock);
+
 		CodeBlock->Codegen(ctx);
 
 		auto currip = builder.saveIP();
@@ -972,6 +1127,21 @@ namespace clear
 		builder.CreateBr(body);
 
 		builder.restoreIP(currip);
+
+		if (CoroutineKind)
+		{
+			if (!builder.GetInsertBlock()->getTerminator())
+				builder.CreateBr(returnBlock);
+
+			functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
+			builder.SetInsertPoint(returnBlock);
+			EndCoroutine(ctx, coroutine);
+
+			auto& ip = s_InsertPoints.top();
+			builder.restoreIP(ip);
+			s_InsertPoints.pop();
+			return *FunctionSymbol;
+		}
 
 		// falling off the end (only main may do that with a return type) returns zero
 		if(!builder.GetInsertBlock()->getTerminator())
@@ -2382,6 +2552,80 @@ namespace clear
 			llvm::FunctionCallee strstr = ctx.Module.getOrInsertFunction("strstr", llvm::FunctionType::get(builder.getPtrTy(), { builder.getPtrTy(), builder.getPtrTy() }, false));
 			llvm::Value* position = builder.CreateCall(strstr, { args[1], args[0] });
 			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+		}
+
+		// Generator[T] / Task[T] handles
+		if (Name.starts_with("coro_") || Name == "task_run")
+		{
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::Value* handle = args[0];
+			auto done = [&]() { return builder.CreateIntrinsic(llvm::Intrinsic::coro_done, {}, { handle }); };
+			auto value = [&](std::shared_ptr<Type> type)
+			{
+				llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { handle, builder.getInt32(16), builder.getInt1(false) });
+				return builder.CreateLoad(type->Get(), promise, "coro.value");
+			};
+
+			if (Name == "coro_done")
+				return Symbol::CreateValue(done(), ResultType);
+
+			if (Name == "coro_value")
+				return Symbol::CreateValue(value(ResultType), ResultType);
+
+			if (Name == "coro_destroy")
+			{
+				llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "coro.destroy", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "coro.destroyed", function);
+				builder.CreateCondBr(builder.CreateIsNotNull(handle), destroy, after);
+				builder.SetInsertPoint(destroy);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+				builder.CreateBr(after);
+				builder.SetInsertPoint(after);
+				return Symbol();
+			}
+
+			// resume (unless already finished), then report: resume -> finished?  advance -> a new value?
+			if (Name == "coro_resume" || Name == "coro_advance")
+			{
+				llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "coro.resume", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "coro.resumed", function);
+				llvm::BasicBlock* before = builder.GetInsertBlock();
+				builder.CreateCondBr(done(), after, resume);
+
+				builder.SetInsertPoint(resume);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
+				llvm::Value* finishedNow = done();
+				llvm::BasicBlock* resumed = builder.GetInsertBlock();
+				builder.CreateBr(after);
+
+				builder.SetInsertPoint(after);
+				llvm::PHINode* finished = builder.CreatePHI(builder.getInt1Ty(), 2);
+				finished->addIncoming(builder.getTrue(), before);
+				finished->addIncoming(finishedNow, resumed);
+
+				llvm::Value* result = Name == "coro_resume" ? (llvm::Value*)finished : builder.CreateNot(finished);
+				return Symbol::CreateValue(result, ResultType);
+			}
+
+			if (Name == "task_run")
+			{
+				llvm::BasicBlock* check = llvm::BasicBlock::Create(ctx.Context, "run.check", function);
+				llvm::BasicBlock* step = llvm::BasicBlock::Create(ctx.Context, "run.step", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "run.done", function);
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(check);
+				builder.CreateCondBr(done(), after, step);
+
+				builder.SetInsertPoint(step);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(after);
+				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
+			}
 		}
 
 		if (Name == "hash_int")

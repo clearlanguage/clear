@@ -360,10 +360,19 @@ namespace clear
         return it->second;
     }
 
+    std::string CoroutineType::GetHash() const
+    {
+        return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");
+    }
+
     std::string GetDisplayName(const std::shared_ptr<Type>& type)
     {
         if (!type)
             return "void";
+
+        if (auto coroutine = std::dynamic_pointer_cast<CoroutineType>(type))
+            return std::format("{}[{}]", coroutine->GetKind() == CoroutineType::Kind::Generator ? "Generator" : "Task", 
+                               coroutine->GetValueType() ? GetDisplayName(coroutine->GetValueType()) : "none");
 
         if (type->GetHash() == "str")
             return "str";

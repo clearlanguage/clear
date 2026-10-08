@@ -45,6 +45,20 @@ namespace clear {
 					call->Arguments.push_back(Clone(argument));
 				return call;
 			}
+			case ASTNodeType::Yield:
+			{
+				auto yield = std::make_shared<ASTYield>();
+				yield->Value = Clone(std::dynamic_pointer_cast<ASTYield>(node)->Value);
+				return yield;
+			}
+			case ASTNodeType::Await:
+			{
+				auto original = std::dynamic_pointer_cast<ASTAwait>(node);
+				auto await = std::make_shared<ASTAwait>();
+				await->Operand = Clone(original->Operand);
+				await->IsPause = original->IsPause;
+				return await;
+			}
 			case ASTNodeType::Sequence:
 			{
 				auto sequence = std::make_shared<ASTSequence>();
@@ -244,6 +258,7 @@ namespace clear {
 		newNode->Linkage = node->Linkage;
 		newNode->IsVirtual = node->IsVirtual;
 		newNode->IsProperty = node->IsProperty;
+		newNode->IsAsync = node->IsAsync;
 
 		return newNode;
 	}
