@@ -22,6 +22,7 @@ namespace clear
 	struct SemaContext
 	{
 		ValueRequired ValueReq = ValueRequired::Any;
+		bool AssignmentTarget = false;         // the storage of `x = v`: obj[i] there becomes obj.__setitem__(i, v)
 		std::shared_ptr<Type> TypeHint;
 		llvm::SmallVector<std::shared_ptr<Type>> CallsiteArgs;
 		bool AllowGenericInferenceFromArgs = true;
