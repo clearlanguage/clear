@@ -1974,7 +1974,16 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::RValue;
 		for (auto& value : listExpr->Values)
+		{
 			value = Visit(value, context);
+
+			if (!value)
+				return nullptr;
+		}
+
+		// `{}` has no type of its own, it takes the type of whatever it initializes (see Coerce)
+		if (listExpr->Values.empty())
+			return listExpr;
 		
 		std::shared_ptr<Type> targetBaseType = m_TypeInferEngine.InferTypeFromNode(listExpr->Values[0]);
 
@@ -2098,6 +2107,29 @@ namespace clear
 	{
 		if (!node || !target)
 			return node;
+
+		// an array literal for a declared array: convert each element, missing elements are zero (`{}` is all zeros)
+		if (auto list = std::dynamic_pointer_cast<ASTListExpr>(node); list && target->IsArray())
+		{
+			auto arrayType = target->As<ArrayType>();
+
+			if (list->Values.size() > arrayType->GetArraySize())
+			{
+				Token location = GetNodeLocation(node);
+				location.SetData(std::format("{} values do not fit in ‘{}", list->Values.size(), GetDisplayName(target)));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ImplicitConversion, 1);
+				return node;
+			}
+
+			for (auto& value : list->Values)
+				value = Coerce(value, arrayType->GetBaseType());
+
+			while (list->Values.size() < arrayType->GetArraySize())
+				list->Values.push_back(std::make_shared<ASTZero>(arrayType->GetBaseType()));
+
+			list->ListType = target;
+			return list;
+		}
 
 		std::shared_ptr<Type> source = m_TypeInferEngine.InferTypeFromNode(node);
 

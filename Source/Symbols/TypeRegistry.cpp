@@ -49,7 +49,7 @@ namespace clear
         m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(*m_Context),  floatingFlags, "float32");
         m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(*m_Context), floatingFlags, "float64");
         
-        m_Types["float"] = m_Types["float32"];
+        m_Types["float"] = m_Types["float64"]; // like Python, float is double precision
 
         m_Types["opaque_ptr"] = std::make_shared<PointerType>(nullptr, *m_Context);
 

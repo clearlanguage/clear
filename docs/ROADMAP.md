@@ -74,7 +74,7 @@ Everything here is already "in the language" on paper but fails today.
 for i in 0..10:            // exclusive range
     print(i)
 
-for x in numbers:          // any fixed array
+for x in numbers:          // arrays, and classes with __len__/__getitem__
     total += x
 
 defer free(buffer)         // runs when the scope exits
@@ -95,55 +95,70 @@ enum Color:
 print("total:", total, "avg:", total / count)   // built-in, type-aware
 ```
 
-- [ ] `for … in` over ranges (`a..b`, `a..=b`) and fixed arrays.
-- [ ] `defer` (LIFO, runs on every exit path: return, break, continue).
-- [ ] `switch` / `case` / `default` (no fallthrough; comma lists).
-- [ ] `enum` with explicit or automatic values, scoped (`Color.Red`).
-- [ ] `print(...)`: built-in, variadic, picks the format from each
+- [x] `for … in` over ranges (`a..b`, `a..=b`), fixed arrays, and any
+      class with `__len__` + `__getitem__` (lowered to an index loop).
+- [x] `defer` (LIFO, runs on every exit path: return, break, continue).
+- [x] `switch` / `case` / `default` (no fallthrough; comma lists).
+- [x] `enum` with explicit or automatic values, scoped (`Color.Red`),
+      never mixing with plain integers without `as`.
+- [x] `print(...)`: built-in, variadic, picks the format from each
       argument's type. Lowered to a single `printf` call at compile time, so
       it costs no more than writing the format string by hand.
-- [ ] `const` locals/globals with compile-time evaluation.
-- [ ] Char literals (`'a'`) as `int8`.
+- [x] `const` locals/globals with compile-time evaluation (usable in array
+      sizes and case labels).
+- [x] Char literals (`'a'`) as `int8`.
+- [x] Top-level declarations usable before the line that defines them.
+- [x] Checked calls: argument count and implicit conversions.
 
 ## Phase 3: Types and abstraction
 
-- [ ] Python-style operator overloading through dunder methods:
-      `__add__`, `__sub__`, `__mul__`, `__div__`, `__eq__`, `__lt__`, …,
-      `__getitem__`, `__setitem__`. The current `operator_get` and
-      `operator_set` are renamed to these.
-- [ ] Constructors and destructors (`__construct__`, `__destruct__`),
-      destructors called at scope exit (deterministic, like RAII).
-- [ ] Generic functions (`function max[T](a: T, b: T) -> T`).
+- [x] Python-style operator overloading through dunder methods:
+      `__add__ __sub__ __mul__ __div__ __mod__ __eq__ __ne__ __lt__ __le__
+      __gt__ __ge__ __getitem__ __setitem__ __len__`.
+- [x] Construction: `Point(1, 2)` (memberwise, dataclass style), field
+      defaults, `__init__` running on a stack value.
+- [x] Generic functions (`function max[T](a: T, b: T) -> T`), with type
+      arguments inferred through pointers, arrays and generic classes.
+- [x] Methods of generic classes are only analysed when used.
+- [ ] Destructors (`__del__`) called at scope exit. Needs move semantics
+      first, or copies would free twice.
 - [ ] Slices `[]T` (pointer + length) for passing arrays of any length;
       bounds-checked in debug builds.
 - [ ] Optionals `?T` with `if value is some:` style unwrapping.
 - [ ] Tagged unions / variants.
 - [ ] Traits/interfaces with static dispatch (monomorphised, zero cost).
 - [ ] Lambdas (non-capturing first, then capturing by explicit list).
+- [ ] Generic methods (type parameters on a method of a class).
+- [ ] An owned, length-tracked `String` type with `+` and comparisons.
 
 ## Phase 4: Performance
 
 Clear's promise is C-level speed, so this is measured, not assumed.
 
-- [ ] All `alloca`s in the entry block (today array literals inside loops
-      grow the stack every iteration).
+- [x] All `alloca`s in the entry block.
+- [x] Non-exported functions and globals get internal linkage in
+      executables so LLVM can inline and remove them; functions are
+      `nounwind`.
+- [x] The optimizer runs with the target machine's cost model (this took
+      matrix multiply from 1.7x to 1.0x of `clang -O3`).
+- [x] `--native` / `--cpu=<name>` targets; `clearc run` uses the host CPU.
+- [x] Benchmarks in `Benchmarks/` comparing against equivalent C, reported
+      in CI.
 - [ ] Struct/array literals built in registers instead of `memcpy` from a
-      global constant.
-- [ ] Non-exported functions get internal linkage so LLVM can inline and
-      remove them; mark functions `nounwind`.
-- [ ] Honour `BuildConfig` CPU features / `-march=native`-style targets.
+      global constant (only matters at -O0).
 - [ ] Debug info (`DebugInfo = true`) so gdb/lldb work.
-- [ ] Benchmarks in `Benchmarks/` comparing against equivalent C, run in CI
-      to catch regressions.
+- [ ] Optional bounds checks for arrays and slices in debug builds.
 - [ ] Compiler speed: parse files in parallel; reduce `shared_ptr` churn
       in the AST.
 
 ## Phase 5: Standard library and tooling
 
-- [ ] Rewrite `Standard/` in current syntax and test it: `math`, `memory`
-      (allocator), `string` (owned, length-tracked), `list[T]` (dynamic
-      array), `map[K, V]`, `io` (files, stdin).
-- [ ] Module search path so `import "math"` finds the standard library.
+- [x] `Standard/` rewritten in current syntax and tested: `math`, `memory`,
+      `list` (`List[T]`), `string` (C string helpers).
+- [x] Imports are followed automatically; `import "math"` finds the
+      standard library; files can use each other's functions, classes and
+      globals.
+- [ ] `map[K, V]`, `io` (files, stdin), an owned string type.
 - [ ] `clearc fmt` formatter.
 - [ ] Language server (diagnostics + go-to-definition) built on the same
       front end.
