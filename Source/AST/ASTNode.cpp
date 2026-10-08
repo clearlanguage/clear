@@ -112,8 +112,26 @@ namespace clear
 	{
 		bool inFunction = ctx.Builder.GetInsertBlock() != nullptr;
 
-		if (inFunction)
-			ctx.Defers->emplace_back();
+		if (!inFunction)
+		{
+			// top level: external declarations, then globals (their initializers may call anything), then the rest
+			auto emitWhere = [&](auto predicate)
+			{
+				for (auto& child : Children)
+				{
+					if (child && predicate(child->GetType()))
+						child->Codegen(ctx);
+				}
+			};
+
+			emitWhere([](ASTNodeType type) { return type == ASTNodeType::FunctionDecleration; });
+			emitWhere([](ASTNodeType type) { return type == ASTNodeType::VariableDecleration; });
+			emitWhere([](ASTNodeType type) { return type != ASTNodeType::FunctionDecleration && type != ASTNodeType::VariableDecleration; });
+
+			return Symbol();
+		}
+
+		ctx.Defers->emplace_back();
 
 		for (auto child : Children)
 		{
@@ -507,6 +525,14 @@ namespace clear
 
 		auto memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName().GetData()).value();
 
+		// a temporary (e.g. `Pair { 1, 2 }.sum()`) needs a home in memory before it can be addressed
+		if (lhs.GetType()->IsClass())
+		{
+			Symbol storage = CreateAlloca(lhsType, ctx);
+			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
+			lhs = storage;
+		}
+
 		if (memberSymbol->Kind == SymbolKind::Function)
 		{
 			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->ResolvedType;
@@ -521,15 +547,8 @@ namespace clear
 		
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
-		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();	
-		
-		if (lhs.GetType()->IsClass())
-		{
-			Symbol storage = CreateAlloca(lhsType, ctx);
-			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
-			lhs = storage;
-		}
-		
+		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();
+
 		while (lhs.GetType()->IsPointer())
 		{
 			if (lhs.GetType()->As<PointerType>()->GetBaseType()->IsClass())
@@ -767,6 +786,10 @@ namespace clear
 		auto& builder = ctx.Builder;
 		
 		auto& functionSymbol = FunctionSymbol->GetFunctionSymbol();
+
+		// a function used before its definition was generated at the first call already
+		if (functionSymbol.FunctionPtr && !functionSymbol.FunctionPtr->isDeclaration())
+			return *FunctionSymbol;
 		
 		llvm::SmallVector<llvm::Type*> argTypes;
 		std::transform(Arguments.begin(), Arguments.end(), std::back_inserter(argTypes), [](std::shared_ptr<ASTVariableDeclaration> decl)
@@ -1074,14 +1097,18 @@ namespace clear
 			llvm::FunctionType* functionType = llvm::FunctionType::get(ReturnType->Get(), types, isVariadic);
 			llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 			
-			*DeclSymbol = Symbol::CreateFunction(nullptr);
 			auto& funcSymbol = DeclSymbol->GetFunctionSymbol();
 			
 			funcSymbol.FunctionPtr = llvm::dyn_cast<llvm::Function>(callee.getCallee());
 			funcSymbol.FunctionType = functionType;
-			funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
+
+			// keep the node semantic analysis made (it knows the parameters), just complete it
+			if (!funcSymbol.FunctionNode)
+				funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
+
+			funcSymbol.FunctionNode->SetName(m_Name);
 			funcSymbol.FunctionNode->SourceModule = ctx.ClearModule;
-			funcSymbol.FunctionNode->ReturnTypeVal = ReturnType;	
+			funcSymbol.FunctionNode->ReturnTypeVal = ReturnType->Get()->isVoidTy() ? nullptr : ReturnType;
 			
 			return *DeclSymbol;
 		}

@@ -76,10 +76,20 @@ namespace clear
 	private:
 		void Report(DiagnosticCode code, Token token);
 		std::shared_ptr<ASTNodeBase> VisitDeclaration(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
+		void VisitTopLevel(std::shared_ptr<ASTBlock> ast, SemaContext context);
+
+		bool DeclareFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context);
+		void DefineFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context);
+
+		bool DeclareClassType(std::shared_ptr<ASTClass> classExpr);
+		bool DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context);
+		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 
 		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
 		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
 		bool IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral);
+		bool IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
+		std::shared_ptr<ASTNodeBase> CheckCall(std::shared_ptr<ASTFunctionCall> funcCall);
 		
 		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	

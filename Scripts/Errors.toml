@@ -163,7 +163,7 @@ Advice  = "Add a value after ‘{}’ that matches the function's return type."
 
 [WrongArgumentCount]
 Message = "Wrong number of arguments in function call."
-Advice  = "Check the call to ‘{}’ against the function's parameter list."
+Advice  = "‘{}."
 
 [ArgumentTypeMismatch]
 Message = "Argument type does not match the parameter type."

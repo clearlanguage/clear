@@ -161,7 +161,7 @@ namespace clear
 		"The operands near ‘{}’ have incompatible types. Use ‘as’ to convert explicitly.",
 		"The value near ‘{}’ cannot be converted to the declared return type.",
 		"Add a value after ‘{}’ that matches the function's return type.",
-		"Check the call to ‘{}’ against the function's parameter list.",
+		"‘{}.",
 		"The argument near ‘{}’ cannot be converted implicitly. Use ‘as’ to convert explicitly.",
 		"‘{}’ is not a function or method.",
 		"The left side near ‘{}’ must be a variable, field, dereferenced pointer or index.",

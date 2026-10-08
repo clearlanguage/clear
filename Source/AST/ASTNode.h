@@ -267,6 +267,8 @@ namespace clear
 		std::shared_ptr<Symbol> FunctionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(nullptr));	
 		llvm::Function::LinkageTypes Linkage = llvm::Function::ExternalLinkage;
 		bool IsVariadic = false;
+		bool SignatureResolved = false; // semantic analysis progress, see Sema::DeclareFunction
+		bool BodyResolved = false;
 
 	private:
 		std::string m_Name;
@@ -519,6 +521,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
 		std::shared_ptr<Type> ClassTy;
+		bool BodyDeclared = false;
 	
 	private:
 		std::string m_Name;

@@ -33,13 +33,85 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTBlock> ast, SemaContext context)
 	{
 		m_ScopeStack.emplace_back();
-		
-		for(auto& node : ast->Children)
-			node = Visit(node, context);
+
+		if (context.GlobalState)
+		{
+			VisitTopLevel(ast, context);
+		}
+		else 
+		{
+			for(auto& node : ast->Children)
+				node = Visit(node, context);
+		}
 
 		m_ScopeStack.pop_back();
 
 		return ast;
+	}
+
+	void Sema::VisitTopLevel(std::shared_ptr<ASTBlock> ast, SemaContext context)
+	{
+		// Declarations at the top of a file can be used before the line they are written on, so they are
+		// analysed in phases: names and types first, then signatures, then globals, then function bodies.
+		auto kindOf = [](const std::shared_ptr<ASTNodeBase>& node) { return node ? node->GetType() : ASTNodeType::Base; };
+		auto& children = ast->Children;
+
+		for (auto& node : children)
+		{
+			ASTNodeType kind = kindOf(node);
+
+			if (kind == ASTNodeType::Import || kind == ASTNodeType::Enum || kind == ASTNodeType::GenericTemplate)
+				node = Visit(node, context);
+		}
+
+		for (auto& node : children)
+		{
+			if (auto classNode = std::dynamic_pointer_cast<ASTClass>(node); classNode && !DeclareClassType(classNode))
+				node = nullptr;
+		}
+
+		for (auto& node : children)
+		{
+			if (auto classNode = std::dynamic_pointer_cast<ASTClass>(node); classNode && !DeclareClassBody(classNode, context))
+				node = nullptr;
+		}
+
+		for (auto& node : children)
+		{
+			if (kindOf(node) == ASTNodeType::FunctionDecleration)
+				node = Visit(node, context);
+			else if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(node); function && !DeclareFunction(function, context))
+				node = nullptr;
+		}
+
+		for (auto& node : children)
+		{
+			switch (kindOf(node))
+			{
+				case ASTNodeType::Import:
+				case ASTNodeType::Enum:
+				case ASTNodeType::GenericTemplate:
+				case ASTNodeType::Class:
+				case ASTNodeType::FunctionDefinition:
+				case ASTNodeType::FunctionDecleration:
+				case ASTNodeType::Base:
+					break;
+				default:
+					node = Visit(node, context);
+					break;
+			}
+		}
+
+		for (auto& node : children)
+		{
+			if (auto classNode = std::dynamic_pointer_cast<ASTClass>(node))
+				DefineClass(classNode, context);
+			else if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(node))
+				DefineFunction(function, context);
+		}
+
+		// failed declarations were replaced by null, drop them so code generation never sees them
+		std::erase(children, nullptr);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type, SemaContext context)
@@ -269,9 +341,19 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
 	{	
-		bool globalState = context.GlobalState;
+		if (!func->SignatureResolved && !DeclareFunction(func, context))
+			return func;
+
+		DefineFunction(func, context);
+		return func;
+	}
+
+	bool Sema::DeclareFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
+	{
+		func->SignatureResolved = true;
 		context.GlobalState = false;
 
+		// parameters live in their own scope while the signature is resolved, DefineFunction re-adds them for the body
 		m_ScopeStack.emplace_back();
 
 		for (auto arg : func->Arguments)
@@ -289,13 +371,10 @@ namespace clear
 			{
 				Report(DiagnosticCode_ExpectedType, GetNodeLocation(func->ReturnType));
 				m_ScopeStack.pop_back();
-				return func;
+				return false;
 			}
 		}
 
-		context.ReturnType = func->ReturnTypeVal;
-		context.InLoop = false;
-			
 		if (context.TypeHint)
 			func->SetName(std::format("{}.{}", context.TypeHint->GetHash(), func->GetName()));
 
@@ -315,13 +394,13 @@ namespace clear
 				*symbol.value() = Symbol::CreateFunction(nullptr);
 		}
 
+		m_ScopeStack.pop_back();
+
 		if (!symbol.has_value())
 		{
 			Report(DiagnosticCode_RedefinedIdentifier, func->GetNameToken());
-			m_ScopeStack.pop_back();
-			return func;
+			return false;
 		}
-		
 		
 		m_Module->ExposeSymbol(func->GetName(), symbol.value());
 		func->SetName(mangledName);
@@ -340,12 +419,30 @@ namespace clear
 		func->FunctionSymbol = fnSymbolPtr;
 		func->SourceModule = m_Module;	
 
-		Visit(func->CodeBlock, context);	
-		
-		m_ScopeStack.pop_back();
-		
+		return true;
+	}
 
-		return func;
+	void Sema::DefineFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context)
+	{
+		if (func->BodyResolved)
+			return;
+
+		func->BodyResolved = true;
+
+		context.GlobalState = false;
+		context.ReturnType = func->ReturnTypeVal;
+		context.InLoop = false;
+
+		m_ScopeStack.emplace_back();
+
+		for (auto arg : func->Arguments)
+		{
+			if (arg && arg->Variable)
+				m_ScopeStack.back().Insert(arg->GetName().GetData(), SymbolEntryType::Variable, arg->Variable);
+		}
+
+		Visit(func->CodeBlock, context);	
+		m_ScopeStack.pop_back();
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
@@ -374,10 +471,110 @@ namespace clear
 		for (auto& arg : funcCall->Arguments)
 		{
 			arg = Visit(arg, context);
+
+			if (!arg)
+				return nullptr;
+
 			context.CallsiteArgs.push_back(m_TypeInferEngine.InferTypeFromNode(arg));
 		}
 		
-		Visit(funcCall->Callee, context);
+		// the callee is a name or a member, not a value that should be loaded
+		SemaContext calleeContext = context;
+		calleeContext.ValueReq = ValueRequired::Any;
+		funcCall->Callee = Visit(funcCall->Callee, calleeContext);
+
+		if (!funcCall->Callee)
+			return nullptr;
+
+		return CheckCall(funcCall);
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CheckCall(std::shared_ptr<ASTFunctionCall> funcCall)
+	{
+		std::shared_ptr<ASTFunctionDefinition> function;
+		bool isMethod = false;
+		Token location = GetNodeLocation(funcCall->Callee);
+
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee))
+		{
+			if (!var->Variable)
+				return funcCall;
+
+			if (var->Variable->Kind != SymbolKind::Function)
+			{
+				Report(DiagnosticCode_NotCallable, var->GetName());
+				return nullptr;
+			}
+
+			function = var->Variable->GetFunctionSymbol().FunctionNode;
+		}
+		else if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+			auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide);
+
+			if (!name)
+				return funcCall;
+
+			location = name->GetName();
+
+			if (left && left->Variable && left->Variable->Kind == SymbolKind::Module)
+			{
+				// module.function(...)
+				auto& exposed = left->Variable->GetModule()->GetExposedSymbols();
+				auto it = exposed.find(name->GetName().GetData());
+
+				if (it != exposed.end() && it->second->Kind == SymbolKind::Function)
+					function = it->second->GetFunctionSymbol().FunctionNode;
+			}
+			else
+			{
+				// object.method(...): the object is passed as the hidden first argument
+				auto objectType = m_TypeInferEngine.InferTypeFromNode(member->LeftSide);
+
+				while (objectType && objectType->IsPointer())
+					objectType = objectType->As<PointerType>()->GetBaseType();
+
+				if (objectType && objectType->IsClass())
+				{
+					auto symbol = objectType->As<ClassType>()->GetMember(name->GetName().GetData());
+
+					if (symbol && symbol.value()->Kind == SymbolKind::Function)
+					{
+						function = symbol.value()->GetFunctionSymbol().FunctionNode;
+						isMethod = true;
+					}
+					else if (symbol)
+					{
+						Report(DiagnosticCode_NotCallable, name->GetName());
+						return nullptr;
+					}
+				}
+			}
+		}
+
+		if (!function)
+			return funcCall;
+
+		size_t offset = isMethod ? 1 : 0;
+		size_t expected = function->Arguments.size() >= offset ? function->Arguments.size() - offset : 0;
+		size_t given = funcCall->Arguments.size();
+
+		if (function->IsVariadic ? given < expected : given != expected)
+		{
+			Token where = location;
+			where.SetData(std::format("{}’ expects {}{} argument{}, but {} {} given", where.GetData(), function->IsVariadic ? "at least " : "", 
+									  expected, expected == 1 ? "" : "s", given, given == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, std::max<size_t>(location.GetData().size(), 1));
+			return nullptr;
+		}
+
+		for (size_t i = 0; i < expected; i++)
+		{
+			auto parameterType = function->Arguments[i + offset] ? function->Arguments[i + offset]->ResolvedType : nullptr;
+			funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], parameterType);
+		}
+
 		return funcCall;
 	}
 
@@ -601,7 +798,21 @@ namespace clear
 		std::shared_ptr<Symbol> symbol = std::make_shared<Symbol>(Symbol::CreateFunction(std::make_shared<ASTFunctionDefinition>("")));
 
 		auto& function = symbol->GetFunctionSymbol();
-		function.FunctionNode->ReturnTypeVal = decl->ReturnType;
+		function.FunctionNode->ReturnTypeVal = decl->ReturnType->Get()->isVoidTy() ? nullptr : decl->ReturnType;
+		function.FunctionNode->SetName(decl->GetName());
+
+		for (auto& arg : decl->Arguments)
+		{
+			if (arg->IsVariadic)
+			{
+				function.FunctionNode->IsVariadic = true;
+				break;
+			}
+
+			auto parameter = std::make_shared<ASTVariableDeclaration>(Token(TokenType::Identifier, arg->GetName()));
+			parameter->ResolvedType = arg->ResolvedType;
+			function.FunctionNode->Arguments.push_back(parameter);
+		}
 
 		bool success = m_ScopeStack.back().Insert(decl->GetName(), SymbolEntryType::FunctionDeclaration, symbol);
 
@@ -617,12 +828,53 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTClass> classExpr, SemaContext context) 
 	{
+		if (!DeclareClassType(classExpr) || !DeclareClassBody(classExpr, context))
+			return nullptr;
+
+		DefineClass(classExpr, context);
+		return classExpr;
+	}
+
+	bool Sema::DeclareClassType(std::shared_ptr<ASTClass> classExpr)
+	{
+		if (classExpr->ClassTy)
+			return true;
+
+		if (m_Module->GetTypeRegistry()->GetType(classExpr->GetName()))
+		{
+			Report(DiagnosticCode_RedefinedIdentifier, Token(TokenType::Identifier, classExpr->GetName()));
+			return false;
+		}
+
+		// the (still empty) type exists from here on, so classes can refer to each other in any order
 		auto classTy = m_Module->GetTypeRegistry()->CreateType<ClassType>(classExpr->GetName(), classExpr->GetName(), *m_Module->GetContext());
+		classExpr->ClassTy = classTy;
+
+		// a generic instance being created: make the type visible now so it can name itself (e.g. `self: *Box[T]`)
+		if (auto it = m_PendingInstances.find(classExpr.get()); it != m_PendingInstances.end())
+			*it->second->GetGeneric().GeneratedSymbol = Symbol::CreateType(classTy);
+
+		m_Module->ExposeSymbol(classExpr->GetName(), std::make_shared<Symbol>(Symbol::CreateType(classTy)));
+		return true;
+	}
+
+	bool Sema::DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context)
+	{
+		if (classExpr->BodyDeclared)
+			return true;
+
+		classExpr->BodyDeclared = true;
+
+		auto classTy = classExpr->ClassTy->As<ClassType>();
 		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> members;
 
 		for (auto node : classExpr->Members) 
 		{
 			Visit(node, context);
+
+			if (!node->ResolvedType)
+				return false;
+
 			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateType(node->ResolvedType)));
 		}
 		
@@ -640,23 +892,25 @@ namespace clear
 		}
 		
 		classTy->SetBody(members);
-		classExpr->ClassTy = classTy;
 
-		// a generic instance being created: make the type visible now so its own methods can name it (e.g. `self: *Box[T]`)
-		if (auto it = m_PendingInstances.find(classExpr.get()); it != m_PendingInstances.end())
-			*it->second->GetGeneric().GeneratedSymbol = Symbol::CreateType(classTy);
 		context.TypeHint = classTy;
 		
 		for (auto node : classExpr->MemberFunctions)
-		{
-			Visit(node, context);
-		}
-	
-	
-		m_Module->ExposeSymbol(classExpr->GetName(), std::make_shared<Symbol>(Symbol::CreateType(classTy)));
-		return classExpr;
+			DeclareFunction(node, context);
+
+		return true;
 	}
 
+	void Sema::DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context)
+	{
+		context.TypeHint = classExpr->ClassTy;
+
+		for (auto node : classExpr->MemberFunctions)
+		{
+			if (node->SignatureResolved && node->FunctionSymbol)
+				DefineFunction(node, context);
+		}
+	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTIfExpression> ifExpr, SemaContext context)
 	{
@@ -1374,6 +1628,40 @@ namespace clear
 		return false;
 	}
 
+	bool Sema::IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target)
+	{
+		// a compile-time integer behaves like a literal as long as the target can hold it exactly
+		auto source = m_TypeInferEngine.InferTypeFromNode(node);
+
+		if (!source || source->IsEnum() || !source->IsIntegral() || source->GetHash() == "bool")
+			return false;
+
+		auto value = EvaluateInteger(node);
+
+		if (!value || !target->Get())
+			return false;
+
+		if (target->Get()->isFloatingPointTy())
+			return true;
+
+		if (!target->IsIntegral() || target->Get()->isIntegerTy(1))
+			return false;
+
+		unsigned bits = target->Get()->getIntegerBitWidth();
+
+		if (target->IsSigned())
+		{
+			if (bits >= 64) return true;
+			int64_t limit = (int64_t)1 << (bits - 1);
+			return *value >= -limit && *value < limit;
+		}
+
+		if (*value < 0)
+			return false;
+
+		return bits >= 64 || (uint64_t)*value < ((uint64_t)1 << bits);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target)
 	{
 		if (!node || !target)
@@ -1384,7 +1672,7 @@ namespace clear
 		if (!source || source == target)
 			return node;
 
-		if (!IsImplicitlyConvertible(source, target, IsNumericLiteral(node)))
+		if (!IsImplicitlyConvertible(source, target, IsNumericLiteral(node) || IsConstantThatFits(node, target)))
 		{
 			Token location = GetNodeLocation(node);
 			size_t width = std::max<size_t>(location.GetData().size(), 1);
