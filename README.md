@@ -35,6 +35,8 @@ function main() -> int32:
     return 0
 ```
 
+**New here? Read [docs/GUIDE.md](docs/GUIDE.md)**: it covers setting up, testing, and every feature, with a runnable program for each in [`examples/`](examples).
+
 The design rules every feature follows are in [docs/ROADMAP.md](docs/ROADMAP.md), together with the plan for what comes next.
 
 ---
@@ -168,7 +170,7 @@ function max[T](a: T, b: T) -> T:                            // generic, T is in
     return when a > b use a otherwise b
 ```
 
-Functions are values. Lambdas take their parameter types from where they are used, and capture variables by reference:
+Functions are values. Lambdas take their parameter types from where they are used. A lambda that uses outside variables keeps its own copies of them, made when the lambda is created:
 
 ```clear
 function apply(f: function(int) -> int, x: int) -> int:
