@@ -21,6 +21,12 @@ namespace clear
 		{
 			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
 			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
+			case ASTNodeType::TupleExpr:	return std::dynamic_pointer_cast<ASTTupleExpr>(node)->TupleTy;
+			case ASTNodeType::TupleGet:
+			{
+				auto get = std::dynamic_pointer_cast<ASTTupleGet>(node);
+				return get->TupleTy->As<TupleType>()->GetElements()[get->Index];
+			}
 			case ASTNodeType::Intrinsic:	return std::dynamic_pointer_cast<ASTIntrinsic>(node)->ResultType;
 			case ASTNodeType::Slot:			return std::dynamic_pointer_cast<ASTSlot>(node)->ValueType;
 			case ASTNodeType::Construct:	return std::dynamic_pointer_cast<ASTConstruct>(node)->ClassTy;

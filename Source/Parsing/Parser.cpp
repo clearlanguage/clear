@@ -122,7 +122,7 @@ namespace clear
 		{OperatorType::GreaterThanEqual,{8, 9}},
 		{OperatorType::IsEqual,         {8, 9}},
 		{OperatorType::NotEqual,        {8, 9}},
-		{OperatorType::Ellipsis,        {8, 9}},
+		{OperatorType::Ellipsis,        {30, 31}},
 		{OperatorType::In,              {8, 9}},
 		{OperatorType::NotIn,           {8, 9}},
 
@@ -347,8 +347,61 @@ namespace clear
             return ParseBlock();
         }
 
-		return ParseExpr();
+		auto first = ParseExpr();
+
+		// a, b = b, a
+		if (first && Match(TokenType::Comma))
+		{
+			auto destructure = std::make_shared<ASTDestructure>();
+			destructure->Location = GetNodeLocation(first);
+			destructure->Targets.push_back(first);
+
+			while (Match(TokenType::Comma))
+			{
+				Consume();
+				auto target = ParseExpr(2); // stop before `=`
+
+				if (!target)
+					break;
+
+				destructure->Targets.push_back(target);
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::Equals, DiagnosticCode_ExpectedAssignment, nullptr);
+			Consume();
+
+			destructure->Value = ParseTupleOrExpr();
+			return destructure;
+		}
+
+		return first;
     }
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseTupleOrExpr()
+	{
+		// a, b without parentheses (in return and on the right of a destructuring assignment)
+		auto first = ParseExpr();
+
+		if (!first || !Match(TokenType::Comma))
+			return first;
+
+		auto tuple = std::make_shared<ASTTupleExpr>();
+		tuple->Location = GetNodeLocation(first);
+		tuple->Values.push_back(first);
+
+		while (Match(TokenType::Comma))
+		{
+			Consume();
+			auto element = ParseExpr();
+
+			if (!element)
+				break;
+
+			tuple->Values.push_back(element);
+		}
+
+		return tuple;
+	}
 
   	std::shared_ptr<ASTReturn> Parser::ParseReturn()
     {
@@ -357,7 +410,7 @@ namespace clear
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
         returnStatement->Location = keyword;
-        returnStatement->ReturnValue = ParseExpr();
+        returnStatement->ReturnValue = ParseTupleOrExpr(); // return a, b
 
 		return returnStatement;
     }
@@ -820,6 +873,10 @@ namespace clear
         size_t terminationIndex = GetLastBracket(TokenType::LeftParen, TokenType::RightParen);
         auto decleration = std::make_shared<ASTFunctionDeclaration>(functionName);
 
+        // in a declaration `...` marks C varargs, it is not the unpack operator
+        m_ParsingDeclaration = true;
+        struct ResetFlag { bool& Flag; ~ResetFlag() { Flag = false; } } resetFlag { m_ParsingDeclaration };
+
         // params
         while(!MatchAny(m_Terminators) && m_Position < terminationIndex)
         {
@@ -966,8 +1023,37 @@ namespace clear
 			}
 			case TokenType::LeftParen:
 			{
-				Consume(); // (
+				Token open = Consume(); // (
 				lhs = ParseExpr();
+
+				// (a, b) is a tuple, (a,) a tuple with one element
+				if (Match(TokenType::Comma))
+				{
+					auto tuple = std::make_shared<ASTTupleExpr>();
+					tuple->Location = open;
+					tuple->Values.push_back(lhs);
+
+					while (Match(TokenType::Comma))
+					{
+						Consume();
+
+						if (Match(TokenType::RightParen))
+							break;
+
+						auto element = ParseExpr();
+
+						if (!element)
+						{
+							EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+							break;
+						}
+
+						tuple->Values.push_back(element);
+					}
+
+					lhs = tuple;
+				}
+
 				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
 				Consume(); // )
 
@@ -1486,7 +1572,43 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Parser::ParseLet()
 	{
 		EXPECT_DATA_RETURN("let", DiagnosticCode_None, nullptr);
-		Consume();
+		Token keyword = Consume();
+
+		// let q, r = divmod(7, 2)   /   let (q, r) = ...
+		bool parenthesized = Match(TokenType::LeftParen) && Next().IsType(TokenType::Identifier);
+		size_t afterParen = parenthesized ? m_Position + 1 : m_Position;
+		bool isDestructure = afterParen + 1 < m_Tokens.size() && m_Tokens[afterParen].IsType(TokenType::Identifier) && m_Tokens[afterParen + 1].IsType(TokenType::Comma);
+
+		if (isDestructure)
+		{
+			if (parenthesized)
+				Consume();
+
+			auto destructure = std::make_shared<ASTDestructure>();
+			destructure->Location = keyword;
+			destructure->IsDeclaration = true;
+
+			do
+			{
+				if (Match(TokenType::Comma))
+					Consume();
+
+				EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+				destructure->Targets.push_back(std::make_shared<ASTVariable>(Consume()));
+			} while (Match(TokenType::Comma));
+
+			if (parenthesized)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+				Consume();
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::Equals, DiagnosticCode_ExpectedAssignment, nullptr);
+			Consume();
+
+			destructure->Value = ParseTupleOrExpr();
+			return destructure;
+		}
 
 		auto decleration = ParseVariableDecleration();
 		return decleration.Node;
@@ -1600,7 +1722,6 @@ namespace clear
 			case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
 			case TokenType::Dot:                return OperatorType::Dot;
 			case TokenType::LeftBracket:        return OperatorType::Index;
-			case TokenType::Ellipses:           return OperatorType::Ellipsis;
 			
 			case TokenType::StarEquals:
 			case TokenType::SlashEquals:
@@ -1636,6 +1757,7 @@ namespace clear
 			case TokenType::LeftParen:			return OperatorType::FunctionCall;
 			case TokenType::LeftBracket:		return OperatorType::Subscript;
 			case TokenType::LeftBrace:			return OperatorType::StructInitializer;
+			case TokenType::Ellipses:			return m_ParsingDeclaration ? OperatorType::None : OperatorType::Ellipsis; // f(values...)
 			default:
 				break;
 		}

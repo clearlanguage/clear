@@ -50,7 +50,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Generic, Enum, Count
+        Generic, Enum, Tuple, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -94,6 +94,7 @@ namespace clear
         bool IsConst();
         bool IsGeneric();
         bool IsEnum();
+        bool IsTuple();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -242,6 +243,23 @@ namespace clear
         std::string m_Name;
         std::shared_ptr<Type> m_Underlying;
         llvm::MapVector<std::string, int64_t> m_Values;
+    };
+
+    // (int, float64): a fixed group of values, laid out like a struct with unnamed fields
+    class TupleType : public Type
+    {
+    public:
+        TupleType(llvm::ArrayRef<std::shared_ptr<Type>> elements, llvm::LLVMContext& context);
+        virtual ~TupleType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        const auto& GetElements() const { return m_Elements; }
+
+    private:
+        std::vector<std::shared_ptr<Type>> m_Elements;
+        llvm::StructType* m_LLVMType;
     };
 
     // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics

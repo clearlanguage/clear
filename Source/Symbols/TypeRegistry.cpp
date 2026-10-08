@@ -128,6 +128,28 @@ namespace clear
         return slot;
     }
 
+    std::shared_ptr<Type> TypeRegistry::GetTupleFrom(llvm::ArrayRef<std::shared_ptr<Type>> elements)
+    {
+        // canonical across modules, like pointers: (int, str) is one type everywhere
+        static std::map<std::vector<Type*>, std::shared_ptr<Type>> s_Tuples;
+
+        std::vector<Type*> key;
+        for (auto& element : elements)
+        {
+            if (!element)
+                return nullptr;
+
+            key.push_back(element.get());
+        }
+
+        auto& slot = s_Tuples[key];
+
+        if (!slot)
+            slot = std::make_shared<TupleType>(elements, *m_Context);
+
+        return slot;
+    }
+
     std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)
     {
         CLEAR_VERIFY(type->IsIntegral(), "only works on integral types!");

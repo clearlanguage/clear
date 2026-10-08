@@ -64,6 +64,7 @@ namespace clear
 		std::shared_ptr<ASTBlock>    ParseCodeBlock();
 		std::shared_ptr<ASTNodeBase> ParseStatement();
 		std::shared_ptr<ASTNodeBase> ParseGeneral();
+		std::shared_ptr<ASTNodeBase> ParseTupleOrExpr();
 		std::shared_ptr<ASTFunctionDefinition> ParseFunctionDefinition(bool descriptionOnly = false);
 		std::shared_ptr<ASTNodeBase> ParseFunctionOrGeneric();
 		std::shared_ptr<ASTFunctionDeclaration> ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
@@ -111,5 +112,6 @@ namespace clear
 
         DiagnosticsBuilder& m_DiagnosticsBuilder;
         std::shared_ptr<ASTGenericTemplate> m_PendingGeneric; // type parameters of the function being parsed
+        bool m_ParsingDeclaration = false;
     };
 }

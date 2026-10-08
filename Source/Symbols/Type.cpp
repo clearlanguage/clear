@@ -57,6 +57,35 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Enum);
     }
 
+    bool Type::IsTuple()
+    {
+        return m_Flags.test((size_t)TypeFlags::Tuple);
+    }
+
+    TupleType::TupleType(llvm::ArrayRef<std::shared_ptr<Type>> elements, llvm::LLVMContext& context)
+        : m_Elements(elements.begin(), elements.end())
+    {
+        llvm::SmallVector<llvm::Type*> types;
+
+        for (auto& element : m_Elements)
+            types.push_back(element->Get());
+
+        m_LLVMType = llvm::StructType::get(context, types);
+
+        Toggle(TypeFlags::Compound);
+        Toggle(TypeFlags::Tuple);
+    }
+
+    std::string TupleType::GetHash() const
+    {
+        std::string hash = "(";
+
+        for (size_t i = 0; i < m_Elements.size(); i++)
+            hash += (i ? ", " : "") + m_Elements[i]->GetHash();
+
+        return hash + ")";
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
         m_Flags.flip((size_t)flag);
@@ -220,6 +249,14 @@ namespace clear
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+        {
+            std::string name = "(";
+            for (size_t i = 0; i < tuple->GetElements().size(); i++)
+                name += (i ? ", " : "") + GetDisplayName(tuple->GetElements()[i]);
+            return name + ")";
+        }
 
         return type->GetHash();
     }

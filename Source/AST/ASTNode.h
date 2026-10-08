@@ -35,7 +35,7 @@ namespace clear
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
-		Assert, Contains, Intrinsic
+		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure
 	};
 
 	class ASTNodeBase;
@@ -191,6 +191,7 @@ namespace clear
 		std::shared_ptr<Type> ResolvedType;
 		bool IsConst = false;
 		bool IsParameter = false;
+		std::shared_ptr<ASTNodeBase> DefaultValue; // parameters: used when a call leaves the argument out
 
 	private:
 		Token m_Name;
@@ -295,6 +296,7 @@ namespace clear
 		//TODO: Make a different node for this
 		std::shared_ptr<ClassType> ClassType;
 		bool IsBuiltinPrint = false; // print(...) is lowered to printf by the compiler
+		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> KeywordArguments; // f(name = value)
 
 
 
@@ -744,6 +746,75 @@ namespace clear
 		std::string Name;
 		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
 		std::shared_ptr<Type> ResultType;
+	};
+
+	// (a, b, c): a tuple value, or a tuple type when every element names a type
+	class ASTTupleExpr : public ASTNodeBase
+	{
+	public:
+		ASTTupleExpr() = default;
+		virtual ~ASTTupleExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TupleExpr; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Values;
+		std::shared_ptr<Type> TupleTy;
+		bool IsType = false;
+	};
+
+	// tuple[i] with a constant index
+	class ASTTupleGet : public ASTNodeBase
+	{
+	public:
+		ASTTupleGet() = default;
+		virtual ~ASTTupleGet() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::TupleGet; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Tuple;  // storage (address) when TupleIsStorage, otherwise the value
+		bool TupleIsStorage = false;
+		bool WantAddress = false;            // used as the target of an assignment
+		size_t Index = 0;
+		std::shared_ptr<Type> TupleTy;
+	};
+
+	// statements that run in the enclosing scope (unlike a block, they open no scope of their own)
+	class ASTSequence : public ASTNodeBase
+	{
+	public:
+		ASTSequence() = default;
+		virtual ~ASTSequence() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Sequence; }
+		virtual Symbol Codegen(CodegenContext& ctx) override
+		{
+			for (auto& child : Children)
+			{
+				if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
+					break;
+				child->Codegen(ctx);
+			}
+			return Symbol();
+		}
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Children;
+	};
+
+	// a, b = b, a   /   let q, r = divmod(7, 2)
+	class ASTDestructure : public ASTNodeBase
+	{
+	public:
+		ASTDestructure() = default;
+		virtual ~ASTDestructure() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Destructure; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		std::vector<std::shared_ptr<ASTNodeBase>> Targets; // names (for let) or storage expressions
+		std::shared_ptr<ASTNodeBase> Value;
+		bool IsDeclaration = false;
 	};
 
 	// branches to a panic when `ok` is false, code generation continues on the success path

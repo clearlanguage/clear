@@ -58,6 +58,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSwitch> switchNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTupleExpr> tuple, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> AsValue(std::shared_ptr<ASTNodeBase> node);

@@ -2266,6 +2266,43 @@ namespace clear
 		return Symbol();
 	}
 
+	Symbol ASTTupleExpr::Codegen(CodegenContext& ctx)
+	{
+		if (IsType)
+			return Symbol::CreateType(TupleTy);
+
+		// build the value in registers, element by element
+		auto& elements = TupleTy->As<TupleType>()->GetElements();
+		llvm::Value* tuple = llvm::UndefValue::get(TupleTy->Get());
+
+		for (size_t i = 0; i < Values.size(); i++)
+		{
+			Symbol value = Values[i]->Codegen(ctx);
+			Symbol elementType = Symbol::CreateType(elements[i]);
+			value = SymbolOps::Cast(value, elementType, ctx.Builder);
+			tuple = ctx.Builder.CreateInsertValue(tuple, value.GetLLVMValue(), { (unsigned)i });
+		}
+
+		return Symbol::CreateValue(tuple, TupleTy);
+	}
+
+	Symbol ASTTupleGet::Codegen(CodegenContext& ctx)
+	{
+		Symbol tuple = Tuple->Codegen(ctx);
+		auto elementType = TupleTy->As<TupleType>()->GetElements()[Index];
+
+		if (!TupleIsStorage)
+			return Symbol::CreateValue(ctx.Builder.CreateExtractValue(tuple.GetLLVMValue(), { (unsigned)Index }), elementType);
+
+		llvm::Value* address = ctx.Builder.CreateStructGEP(TupleTy->Get(), tuple.GetLLVMValue(), (unsigned)Index);
+		auto pointerType = ctx.ClearModule->GetTypeRegistry()->GetPointerTo(elementType);
+
+		if (WantAddress)
+			return Symbol::CreateValue(address, pointerType);
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(elementType->Get(), address), elementType);
+	}
+
 	Symbol ASTTemporary::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Operand->Codegen(ctx);

@@ -70,6 +70,10 @@ namespace clear
 		DiagnosticCode_ShiftOutOfRange,
 		DiagnosticCode_LiteralOutOfRange,
 		DiagnosticCode_MissingReturn,
+		DiagnosticCode_DestructureMismatch,
+		DiagnosticCode_PositionalAfterKeyword,
+		DiagnosticCode_UnknownKeyword,
+		DiagnosticCode_CannotUnpack,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -140,6 +144,10 @@ namespace clear
 		"Shift amount is out of range.",
 		"Literal does not fit in the target type.",
 		"Function might end without returning a value.",
+		"The number of names does not match the number of values.",
+		"A positional argument cannot follow a keyword argument.",
+		"Invalid keyword argument.",
+		"Only a tuple or fixed array variable can be unpacked with ‘...’.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -209,5 +217,9 @@ namespace clear
 		"Shifting by ‘{}).",
 		"‘{}’. Use a wider type or an explicit ‘as’ if wrapping is intended.",
 		"Every path through ‘{}’ must end with a return statement.",
+		"Cannot unpack ‘{}.",
+		"Move ‘{}’ before the name = value arguments.",
+		"‘{}’.",
+		"‘{}’ cannot be spread into arguments. Store it in a variable first if it is the result of a call.",
 	};
 }

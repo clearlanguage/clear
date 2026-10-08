@@ -24,6 +24,8 @@
 
 namespace clear
 {
+	static bool IsStorageNode(const std::shared_ptr<ASTNodeBase>& node);
+
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
 		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule), 
 		  m_CompilationUnits(compilationUnits)
@@ -348,6 +350,15 @@ namespace clear
 			case ASTNodeType::Assert:					return Visit(std::dynamic_pointer_cast<ASTAssert>(ast), context);
 			case ASTNodeType::Contains:					return ast;
 			case ASTNodeType::Intrinsic:				return ast;
+			case ASTNodeType::TupleGet:					return ast;
+			case ASTNodeType::TupleExpr:				return Visit(std::dynamic_pointer_cast<ASTTupleExpr>(ast), context);
+			case ASTNodeType::Destructure:				return Visit(std::dynamic_pointer_cast<ASTDestructure>(ast), context);
+			case ASTNodeType::Sequence:
+			{
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(ast)->Children)
+					child = Visit(child, context);
+				return ast;
+			}
 			case ASTNodeType::Slot:						return ast;
 			case ASTNodeType::Construct:				return ast;
 			case ASTNodeType::Load:						return ast; // already analysed (shared default values)
@@ -393,7 +404,28 @@ namespace clear
 			if (arg)	
 			{
 				arg->IsParameter = true;
+
+				// `b: int = 2`: the default is evaluated at each call that leaves b out, not in the callee
+				if (arg->Initializer && !arg->DefaultValue)
+				{
+					arg->DefaultValue = arg->Initializer;
+					arg->Initializer = nullptr;
+				}
+
 				Visit(arg, context);
+
+				if (arg->DefaultValue && arg->ResolvedType)
+				{
+					// like Python, a default is evaluated outside the function: it cannot see the parameters
+					SymbolTable parameters = std::move(m_ScopeStack.back());
+					m_ScopeStack.pop_back();
+
+					SemaContext valueContext = context;
+					valueContext.ValueReq = ValueRequired::RValue;
+					arg->DefaultValue = Coerce(Visit(arg->DefaultValue, valueContext), arg->ResolvedType);
+
+					m_ScopeStack.push_back(std::move(parameters));
+				}
 			}
 		}
 		
@@ -583,6 +615,107 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::RValue;
 
+		// f(a, b = 3): `name = value` arguments are keyword arguments, matched to parameters by name in CheckCall
+		{
+			llvm::SmallVector<std::shared_ptr<ASTNodeBase>> positional;
+
+			for (auto& arg : funcCall->Arguments)
+			{
+				auto assignment = std::dynamic_pointer_cast<ASTAssignmentOperator>(arg);
+				auto name = assignment ? std::dynamic_pointer_cast<ASTVariable>(assignment->Storage) : nullptr;
+
+				if (assignment && name && assignment->GetAssignType() == AssignmentOperatorType::Normal)
+				{
+					funcCall->KeywordArguments.push_back({ name->GetName(), assignment->Value });
+					continue;
+				}
+
+				if (!funcCall->KeywordArguments.empty())
+				{
+					Report(DiagnosticCode_PositionalAfterKeyword, GetNodeLocation(arg));
+					return nullptr;
+				}
+
+				positional.push_back(arg);
+			}
+
+			funcCall->Arguments = positional;
+
+			for (auto& [name, value] : funcCall->KeywordArguments)
+			{
+				SemaContext valueContext = context;
+				valueContext.ValueReq = ValueRequired::RValue;
+				value = Visit(value, valueContext);
+
+				if (!value)
+					return nullptr;
+			}
+		}
+
+		// f(values...): a tuple or fixed array becomes one argument per element
+		{
+			llvm::SmallVector<std::shared_ptr<ASTNodeBase>> expanded;
+
+			for (auto& arg : funcCall->Arguments)
+			{
+				auto unpack = std::dynamic_pointer_cast<ASTUnaryExpression>(arg);
+
+				if (!unpack || unpack->GetOperatorType() != OperatorType::Ellipsis)
+				{
+					expanded.push_back(arg);
+					continue;
+				}
+
+				SemaContext storageContext = context;
+				storageContext.ValueReq = ValueRequired::LValue;
+				auto source = Visit(unpack->Operand, storageContext);
+
+				if (!source)
+					return nullptr;
+
+				auto type = m_TypeInferEngine.InferTypeFromNode(source);
+				Token location = GetNodeLocation(source);
+
+				if (!type || (!type->IsTuple() && !type->IsArray()) || !IsStorageNode(source))
+				{
+					location.SetData(GetDisplayName(type));
+					Report(DiagnosticCode_CannotUnpack, location);
+					return nullptr;
+				}
+
+				size_t count = type->IsTuple() ? type->As<TupleType>()->GetElements().size() : type->As<ArrayType>()->GetArraySize();
+				auto int64Type = m_Module->Lookup("int64").value()->GetType();
+
+				for (size_t i = 0; i < count; i++)
+				{
+					if (type->IsTuple())
+					{
+						auto get = std::make_shared<ASTTupleGet>();
+						get->Location = location;
+						get->Tuple = source;
+						get->TupleIsStorage = true;
+						get->Index = i;
+						get->TupleTy = type;
+						expanded.push_back(get);
+					}
+					else
+					{
+						auto element = std::make_shared<ASTSubscript>();
+						element->Location = location;
+						element->Target = source;
+						element->Meaning = SubscriptSemantic::ArrayIndex;
+						element->SubscriptArgs.push_back(std::make_shared<ASTConstantValue>((int64_t)i, int64Type));
+
+						auto load = std::make_shared<ASTLoad>();
+						load->Operand = element;
+						expanded.push_back(load);
+					}
+				}
+			}
+
+			funcCall->Arguments = expanded;
+		}
+
 		// len(x) is built in unless the program defines its own len
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "len")
 		{
@@ -759,6 +892,64 @@ namespace clear
 
 		size_t offset = isMethod ? 1 : 0;
 		size_t expected = function->Arguments.size() >= offset ? function->Arguments.size() - offset : 0;
+
+		// place keyword arguments by name, then fill what is still missing from parameter defaults
+		if (!funcCall->KeywordArguments.empty() || funcCall->Arguments.size() < expected)
+		{
+			std::vector<std::shared_ptr<ASTNodeBase>> slots(std::max(expected, funcCall->Arguments.size()));
+
+			for (size_t i = 0; i < funcCall->Arguments.size(); i++)
+				slots[i] = funcCall->Arguments[i];
+
+			for (auto& [name, value] : funcCall->KeywordArguments)
+			{
+				auto it = std::find_if(function->Arguments.begin() + offset, function->Arguments.end(), 
+									   [&](auto& parameter) { return parameter && parameter->GetName().GetData() == name.GetData(); });
+
+				if (it == function->Arguments.end())
+				{
+					Token where = name;
+					where.SetData(std::format("{}’ is not a parameter of ‘{}", name.GetData(), location.GetData()));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+					return nullptr;
+				}
+
+				size_t index = std::distance(function->Arguments.begin(), it) - offset;
+
+				if (slots[index])
+				{
+					Token where = name;
+					where.SetData(std::format("{}’ is given more than once (‘{}", name.GetData(), name.GetData()));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+					return nullptr;
+				}
+
+				slots[index] = value;
+			}
+
+			for (size_t i = 0; i < expected; i++)
+			{
+				if (!slots[i] && function->Arguments[i + offset]->DefaultValue)
+					slots[i] = function->Arguments[i + offset]->DefaultValue;
+			}
+
+			// the arguments now are positional, up to the last one that was given
+			while (!slots.empty() && !slots.back())
+				slots.pop_back();
+
+			if (std::find(slots.begin(), slots.end(), nullptr) != slots.end())
+			{
+				size_t missing = std::distance(slots.begin(), std::find(slots.begin(), slots.end(), nullptr));
+				Token where = location;
+				where.SetData(std::format("{}’ is missing a value for ‘{}", location.GetData(), function->Arguments[missing + offset]->GetName().GetData()));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, std::max<size_t>(location.GetData().size(), 1));
+				return nullptr;
+			}
+
+			funcCall->Arguments.assign(slots.begin(), slots.end());
+			funcCall->KeywordArguments.clear();
+		}
+
 		size_t given = funcCall->Arguments.size();
 
 		if (function->IsVariadic ? given < expected : given != expected)
@@ -1682,6 +1873,113 @@ namespace clear
 		return notNode;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTupleExpr> tuple, SemaContext context)
+	{
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		std::vector<std::shared_ptr<Type>> types;
+		bool allTypes = true;
+
+		for (auto& value : tuple->Values)
+		{
+			value = Visit(value, valueContext);
+
+			if (!value)
+				return nullptr;
+
+			auto asType = GetTypeFromNode(value);
+			allTypes = allTypes && asType;
+			types.push_back(asType ? asType : m_TypeInferEngine.InferTypeFromNode(value));
+		}
+
+		// (int, str) names a tuple type, (1, "a") is a tuple value
+		tuple->IsType = allTypes;
+		tuple->TupleTy = m_Module->GetTypeRegistry()->GetTupleFrom(types);
+
+		if (!tuple->TupleTy)
+		{
+			Report(DiagnosticCode_NeedsTypeOrValue, GetNodeLocation(tuple));
+			return nullptr;
+		}
+
+		return tuple;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)
+	{
+		// evaluate the right side once into a hidden tuple, then hand out its elements:
+		//     let __destructure = value
+		//     target0 = __destructure[0]   (or `let name0 = ...`)
+		static size_t s_Counter = 0;
+		Token location = destructure->Location;
+		std::string hiddenName = std::format("__destructure_{}", s_Counter++);
+		Token hiddenToken(TokenType::Identifier, hiddenName, location.GetSourceFile(), location.LineNumber, location.ColumnNumber);
+
+		auto hidden = std::make_shared<ASTVariableDeclaration>(hiddenToken);
+		hidden->Location = location;
+		hidden->Initializer = destructure->Value;
+
+		auto sequence = std::make_shared<ASTSequence>();
+		sequence->Location = location;
+
+		auto visitedHidden = Visit(hidden, context);
+
+		if (!visitedHidden)
+			return nullptr;
+
+		sequence->Children.push_back(visitedHidden);
+
+		auto valueType = hidden->ResolvedType;
+		size_t count = destructure->Targets.size();
+		size_t available = valueType->IsTuple() ? valueType->As<TupleType>()->GetElements().size() 
+						 : valueType->IsArray() ? valueType->As<ArrayType>()->GetArraySize() : 0;
+
+		if (available != count)
+		{
+			Token where = GetNodeLocation(destructure->Value);
+			where.SetData(std::format("{}’ into {} names", GetDisplayName(valueType), count));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_DestructureMismatch, 1);
+			return nullptr;
+		}
+
+		for (size_t i = 0; i < count; i++)
+		{
+			auto element = std::make_shared<ASTSubscript>();
+			element->Location = location;
+			element->Target = std::make_shared<ASTVariable>(hiddenToken);
+			element->SubscriptArgs.push_back(std::make_shared<ASTNodeLiteral>(Token(TokenType::Number, std::to_string(i), location.GetSourceFile(), location.LineNumber, location.ColumnNumber)));
+
+			std::shared_ptr<ASTNodeBase> statement;
+
+			if (destructure->IsDeclaration)
+			{
+				auto name = std::dynamic_pointer_cast<ASTVariable>(destructure->Targets[i]);
+				auto decl = std::make_shared<ASTVariableDeclaration>(name->GetName());
+				decl->Location = name->GetName();
+				decl->Initializer = element;
+				statement = decl;
+			}
+			else
+			{
+				auto assignment = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+				assignment->Location = location;
+				assignment->Storage = destructure->Targets[i];
+				assignment->Value = element;
+				statement = assignment;
+			}
+
+			statement = Visit(statement, context);
+
+			if (!statement)
+				return nullptr;
+
+			sequence->Children.push_back(statement);
+		}
+
+		return sequence;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
@@ -2227,6 +2525,30 @@ namespace clear
 				return CheckCall(funcCall);
 			}
 
+			// tuple[i]: the index must be a constant
+			if (targetType->IsTuple())
+			{
+				auto tupleType = targetType->As<TupleType>();
+				auto value = subscript->SubscriptArgs.size() == 1 ? EvaluateInteger(subscript->SubscriptArgs[0]) : std::nullopt;
+
+				if (!value || *value < 0 || (size_t)*value >= tupleType->GetElements().size())
+				{
+					Token location = GetNodeLocation(subscript->SubscriptArgs.empty() ? subscript->Target : subscript->SubscriptArgs[0]);
+					location.SetData(std::format("{}’ (a tuple of {} needs a constant index 0 to {}", location.GetData(), tupleType->GetElements().size(), tupleType->GetElements().size() - 1));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_IndexOutOfRange, 1);
+					return nullptr;
+				}
+
+				auto get = std::make_shared<ASTTupleGet>();
+				get->Location = GetNodeLocation(subscript->Target);
+				get->Tuple = subscript->Target;
+				get->TupleIsStorage = IsStorageNode(subscript->Target);
+				get->WantAddress = context.ValueReq == ValueRequired::LValue;
+				get->Index = (size_t)*value;
+				get->TupleTy = tupleType;
+				return get;
+			}
+
 			// a constant index into a fixed array is checked right here
 			if (targetType->IsArray() && subscript->SubscriptArgs.size() >= 1)
 			{
@@ -2472,6 +2794,26 @@ namespace clear
 	{
 		if (!node || !target)
 			return node;
+
+		// a tuple literal converts element by element
+		if (auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(node); tuple && !tuple->IsType && target->IsTuple())
+		{
+			auto& elements = target->As<TupleType>()->GetElements();
+
+			if (elements.size() != tuple->Values.size())
+			{
+				Token location = GetNodeLocation(node);
+				location.SetData(std::format("{}’ to ‘{}", GetDisplayName(tuple->TupleTy), GetDisplayName(target)));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ImplicitConversion, 1);
+				return node;
+			}
+
+			for (size_t i = 0; i < elements.size(); i++)
+				tuple->Values[i] = Coerce(tuple->Values[i], elements[i]);
+
+			tuple->TupleTy = target;
+			return tuple;
+		}
 
 		// an array literal for a declared array: convert each element, missing elements are zero (`{}` is all zeros)
 		if (auto list = std::dynamic_pointer_cast<ASTListExpr>(node); list && target->IsArray())
@@ -2956,6 +3298,11 @@ namespace clear
 			{
 				std::shared_ptr<ASTArrayType> arrayType = std::dynamic_pointer_cast<ASTArrayType>(node);
 				return arrayType->GeneratedArrayType;
+			}
+			case ASTNodeType::TupleExpr:
+			{
+				auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(node);
+				return tuple->IsType ? tuple->TupleTy : nullptr;
 			}
 			default:
 			{

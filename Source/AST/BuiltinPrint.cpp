@@ -87,6 +87,19 @@ namespace clear
 
 				Text("]");
 			}
+			else if (llvmType->isStructTy() && type && type->IsTuple())
+			{
+				auto& elements = type->As<TupleType>()->GetElements();
+				Text("(");
+
+				for (unsigned i = 0; i < elements.size(); i++)
+				{
+					if (i > 0) Text(", ");
+					Value(builder.CreateExtractValue(value, { i }), elements[i]);
+				}
+
+				Text(")");
+			}
 			else if (llvmType->isStructTy() && type && type->IsClass())
 			{
 				// dataclass style: Point(x=1, y=2)
