@@ -127,6 +127,9 @@ namespace clear
 		Visit(type->TypeResolver, context);
 		type->ResolvedType = GetTypeFromNode(type->TypeResolver);
 
+		if (!type->ResolvedType)
+			Report(DiagnosticCode_ExpectedType, GetNodeLocation(type->TypeResolver));
+
 		return type;
 	}
 
@@ -319,6 +322,10 @@ namespace clear
 			case ASTNodeType::Switch:					return Visit(std::dynamic_pointer_cast<ASTSwitch>(ast), context);
 			case ASTNodeType::Defer:					return Visit(std::dynamic_pointer_cast<ASTDefer>(ast), context);
 			case ASTNodeType::ConstantValue:			return ast;
+			case ASTNodeType::Zero:						return ast;
+			case ASTNodeType::Slot:						return ast;
+			case ASTNodeType::Construct:				return ast;
+			case ASTNodeType::Load:						return ast; // already analysed (shared default values)
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
 			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
 			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
@@ -478,6 +485,28 @@ namespace clear
 			context.CallsiteArgs.push_back(m_TypeInferEngine.InferTypeFromNode(arg));
 		}
 		
+		// Box(7) on a generic class: infer the type arguments from the values, like Box { 7 }
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); var && !var->Variable)
+		{
+			auto [entry, scopeIndex] = LookupSymbol(var->GetName().GetData());
+
+			if (entry && entry->Symbol->Kind == SymbolKind::GenericTemplate)
+			{
+				auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(entry->Symbol->GetGenericTemplate().GenericTemplate);
+				auto classNode = generic ? std::dynamic_pointer_cast<ASTClass>(generic->TemplateNode) : nullptr;
+				bool hasInit = classNode && std::any_of(classNode->MemberFunctions.begin(), classNode->MemberFunctions.end(), 
+														[](auto& fn) { return fn->GetName() == "__init__"; });
+
+				if (classNode && !hasInit)
+				{
+					var->Variable = InstantiateFromValues(var, entry->Symbol, scopeIndex, funcCall->Arguments);
+
+					if (!var->Variable)
+						return nullptr;
+				}
+			}
+		}
+
 		// the callee is a name or a member, not a value that should be loaded
 		SemaContext calleeContext = context;
 		calleeContext.ValueReq = ValueRequired::Any;
@@ -485,6 +514,13 @@ namespace clear
 
 		if (!funcCall->Callee)
 			return nullptr;
+
+		// Point(1, 2) constructs a value of the class
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); 
+			var && var->Variable && var->Variable->Kind == SymbolKind::Type && var->Variable->GetType()->IsClass())
+		{
+			return BuildConstruction(funcCall, var);
+		}
 
 		return CheckCall(funcCall);
 	}
@@ -877,10 +913,21 @@ namespace clear
 			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateType(node->ResolvedType)));
 		}
 		
-		for (auto node : classExpr->DefaultValues)
+		classTy->MemberDefaults.clear();
+
+		for (size_t i = 0; i < classExpr->DefaultValues.size(); i++)
 		{
+			auto& node = classExpr->DefaultValues[i];
+
 			if (node)
-				Visit(node, context);
+			{
+				SemaContext valueContext = context;
+				valueContext.ValueReq = ValueRequired::RValue;
+				node = Visit(node, valueContext);
+				node = Coerce(node, classExpr->Members[i]->ResolvedType);
+			}
+
+			classTy->MemberDefaults.push_back(node);
 		}
 
 		for (auto node : classExpr->MemberFunctions)
@@ -1252,6 +1299,10 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context)
 	{
+		// casts inserted by Coerce are already complete
+		if (castExpr->TargetType && !castExpr->TypeNode)
+			return castExpr;
+
 		castExpr->Object = Visit(castExpr->Object, context);
 		castExpr->TypeNode = Visit(castExpr->TypeNode, context);
 		castExpr->TargetType = GetTypeFromNode(castExpr->TypeNode);
@@ -1306,7 +1357,7 @@ namespace clear
 					return nullptr;
 
 				var->Variable = generated;
-				return structExpr;
+				return CompleteStructValues(structExpr);
 			}
 		}
 
@@ -1314,8 +1365,100 @@ namespace clear
 		typeContext.AllowGenericInferenceFromArgs = false;
 		typeContext.CallsiteArgs.clear();
 		structExpr->TargetType = Visit(structExpr->TargetType, typeContext);
+
+		if (!structExpr->TargetType)
+			return nullptr;
 		
+		return CompleteStructValues(structExpr);
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CompleteStructValues(std::shared_ptr<ASTStructExpr> structExpr)
+	{
+		auto type = GetTypeFromNode(structExpr->TargetType);
+
+		if (!type && structExpr->TargetType->GetType() == ASTNodeType::Variable)
+		{
+			auto var = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType);
+			type = var->Variable && var->Variable->Kind == SymbolKind::Type ? var->Variable->GetType() : nullptr;
+		}
+
+		if (!type || !type->IsClass())
+		{
+			Report(DiagnosticCode_ExpectedType, GetNodeLocation(structExpr->TargetType));
+			return nullptr;
+		}
+
+		auto classType = type->As<ClassType>();
+		auto& members = classType->GetMemberValues();
+
+		if (structExpr->Values.size() > members.size())
+		{
+			Token location = GetNodeLocation(structExpr->TargetType);
+			location.SetData(std::format("{}’ has {} field{}, but {} value{} given", classType->GetHash(), members.size(), members.size() == 1 ? "" : "s", 
+										 structExpr->Values.size(), structExpr->Values.size() == 1 ? " was" : "s were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_TooManyValues, classType->GetHash().size());
+			return nullptr;
+		}
+
+		size_t index = 0;
+		for (const auto& [name, memberType] : members)
+		{
+			if (index < structExpr->Values.size())
+			{
+				structExpr->Values[index] = Coerce(structExpr->Values[index], memberType);
+			}
+			else
+			{
+				// fields that were not given take their default, or zero
+				auto defaultValue = index < classType->MemberDefaults.size() ? classType->MemberDefaults[index] : nullptr;
+				structExpr->Values.push_back(defaultValue ? defaultValue : std::make_shared<ASTZero>(memberType));
+			}
+
+			index++;
+		}
+
 		return structExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::BuildConstruction(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTVariable> target)
+	{
+		auto classType = target->Variable->GetType()->As<ClassType>();
+		auto init = classType->MemberFunctions.find("__init__");
+
+		if (init == classType->MemberFunctions.end())
+		{
+			// no __init__: Point(1, 2) fills the fields in order, exactly like Point { 1, 2 }
+			auto structExpr = std::make_shared<ASTStructExpr>();
+			structExpr->Location = funcCall->Location;
+			structExpr->TargetType = target;
+			structExpr->Values.assign(funcCall->Arguments.begin(), funcCall->Arguments.end());
+
+			return CompleteStructValues(structExpr);
+		}
+
+		// default-initialize, then run __init__(&object, args...)
+		auto initial = std::make_shared<ASTStructExpr>();
+		initial->TargetType = target;
+
+		auto construct = std::make_shared<ASTConstruct>();
+		construct->Location = funcCall->Location;
+		construct->ClassTy = classType;
+		construct->Initial = CompleteStructValues(initial);
+		construct->Self = std::make_shared<ASTSlot>(m_Module->GetTypeRegistry()->GetPointerTo(classType));
+
+		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__init__", target->GetName().GetSourceFile(), target->GetName().LineNumber, target->GetName().ColumnNumber));
+		callee->Variable = init->second;
+
+		construct->InitCall = std::make_shared<ASTFunctionCall>();
+		construct->InitCall->Location = funcCall->Location;
+		construct->InitCall->Callee = callee;
+		construct->InitCall->Arguments.push_back(construct->Self);
+		construct->InitCall->Arguments.append(funcCall->Arguments.begin(), funcCall->Arguments.end());
+
+		if (!construct->Initial || !CheckCall(construct->InitCall))
+			return nullptr;
+
+		return construct;
 	}
 
 	std::pair<std::optional<SymbolEntry>, size_t> Sema::LookupSymbol(llvm::StringRef name)

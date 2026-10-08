@@ -61,6 +61,7 @@ namespace clear
 		DiagnosticCode_SwitchNotIntegral,
 		DiagnosticCode_MissingOperatorOverload,
 		DiagnosticCode_BadOperatorSignature,
+		DiagnosticCode_TooManyValues,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -122,6 +123,7 @@ namespace clear
 		"Switch value must be an integer or an enum.",
 		"Operator is not defined for this class.",
 		"Operator method has the wrong number of parameters.",
+		"Too many values for this class.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -182,5 +184,6 @@ namespace clear
 		"‘{}’ cannot be switched on. Use if/elseif for other types.",
 		"‘{}’. Define the dunder method on the class to support the operator.",
 		"‘{}’ must take exactly two parameters: self and the other operand.",
+		"‘{}.",
 	};
 }

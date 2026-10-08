@@ -170,6 +170,7 @@ namespace clear
     };
 	
     struct Symbol;
+    class ASTNodeBase;
 	
     class ClassType : public Type
     {
@@ -185,6 +186,7 @@ namespace clear
 		std::optional<size_t> GetMemberValueIndex(llvm::StringRef name);
 		const auto& GetMemberValues() const { return m_MemberValues; }
 		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> MemberFunctions;
+		std::vector<std::shared_ptr<ASTNodeBase>> MemberDefaults; // per field, null when the field has no default
 
     private:
 		llvm::StructType* m_LLVMType = nullptr;

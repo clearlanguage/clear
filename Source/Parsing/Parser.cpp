@@ -1330,7 +1330,8 @@ namespace clear
 			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
 			Consume();
 
-            typeSpec->TypeResolver = ParseExpr();
+            // stop before `=` so `x: int = 5` is a type followed by a default, not an assignment
+            typeSpec->TypeResolver = ParseExpr(2);
 
             if(Match(TokenType::Equals))
             {

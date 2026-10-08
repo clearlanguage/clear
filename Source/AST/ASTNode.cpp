@@ -2000,6 +2000,23 @@ namespace clear
 		return Symbol();
 	}
 
+	Symbol ASTZero::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(llvm::Constant::getNullValue(ValueType->Get()), ValueType);
+	}
+
+	Symbol ASTConstruct::Codegen(CodegenContext& ctx)
+	{
+		Symbol storage = CreateAlloca(ClassTy, ctx);
+		Symbol initial = Initial->Codegen(ctx);
+		SymbolOps::Store(storage, initial, ctx.Builder, ctx.Module, true);
+
+		Self->Value = storage;
+		InitCall->Codegen(ctx);
+
+		return SymbolOps::Load(storage, ctx.Builder);
+	}
+
 	Symbol ASTTemporary::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Operand->Codegen(ctx);

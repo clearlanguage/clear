@@ -228,3 +228,7 @@ Advice  = "‘{}’. Define the dunder method on the class to support the operat
 [BadOperatorSignature]
 Message = "Operator method has the wrong number of parameters."
 Advice  = "‘{}’ must take exactly two parameters: self and the other operand."
+
+[TooManyValues]
+Message = "Too many values for this class."
+Advice  = "‘{}."

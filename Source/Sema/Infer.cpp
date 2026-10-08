@@ -19,6 +19,9 @@ namespace clear
 
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
+			case ASTNodeType::Slot:			return std::dynamic_pointer_cast<ASTSlot>(node)->ValueType;
+			case ASTNodeType::Construct:	return std::dynamic_pointer_cast<ASTConstruct>(node)->ClassTy;
 			case ASTNodeType::Temporary:
 			{
 				auto temporary = std::dynamic_pointer_cast<ASTTemporary>(node);

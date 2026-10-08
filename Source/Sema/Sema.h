@@ -90,6 +90,8 @@ namespace clear
 		bool IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral);
 		bool IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
 		std::shared_ptr<ASTNodeBase> CheckCall(std::shared_ptr<ASTFunctionCall> funcCall);
+		std::shared_ptr<ASTNodeBase> CompleteStructValues(std::shared_ptr<ASTStructExpr> structExpr);
+		std::shared_ptr<ASTNodeBase> BuildConstruction(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTVariable> target);
 		
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 

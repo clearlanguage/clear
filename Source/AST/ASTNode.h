@@ -34,7 +34,7 @@ namespace clear
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
-		ForLoop, Enum, ConstantValue, Temporary
+		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot
 	};
 
 	class ASTNodeBase;
@@ -649,6 +649,49 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Operand;
 		std::shared_ptr<Type> ValueType;
+	};
+
+	// the all-zero value of a type (used for fields without a default)
+	class ASTZero : public ASTNodeBase
+	{
+	public:
+		ASTZero(std::shared_ptr<Type> type) : ValueType(type) {}
+		virtual ~ASTZero() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Zero; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// a value supplied by the node that owns it during code generation (the object being constructed)
+	class ASTSlot : public ASTNodeBase
+	{
+	public:
+		ASTSlot(std::shared_ptr<Type> type) : ValueType(type) {}
+		virtual ~ASTSlot() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Slot; }
+		virtual Symbol Codegen(CodegenContext&) override { return Value; }
+
+	public:
+		std::shared_ptr<Type> ValueType; // type of Value (a pointer to the object)
+		Symbol Value;
+	};
+
+	// Point(1, 2) on a class with __init__: default-initialize a stack value, then run __init__ on it
+	class ASTConstruct : public ASTNodeBase
+	{
+	public:
+		ASTConstruct() = default;
+		virtual ~ASTConstruct() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Construct; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<Type> ClassTy;
+		std::shared_ptr<ASTNodeBase> Initial;    // the default-initialized value
+		std::shared_ptr<ASTSlot> Self;           // receives the address of the object
+		std::shared_ptr<ASTFunctionCall> InitCall;
 	};
 
 	// runs every pending defer from the innermost block down to `downTo`, newest first
