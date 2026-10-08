@@ -38,6 +38,7 @@ namespace clear
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
         bool CheckErrors();
 		void CollectTopLevelSymbols();
+		void CollectBaseClassNames();
 		void CompileModules();
 		void CompileModule(CompilationUnit& unit);
 		void LinkModules();

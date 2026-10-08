@@ -559,6 +559,7 @@ namespace clear
 		bool LazyMethods = false; // generic instance: methods are analysed on first use
 		bool IsUnion = false;
 		bool IsTrait = false;                             // `trait Name:` method signatures a class promises to have
+		std::string TemplateName;                         // for an instance of a generic class: the template's name
 		std::vector<std::shared_ptr<ASTNodeBase>> Bases;  // class Dog(Animal, Named): one base class, any number of traits
 	
 	private:

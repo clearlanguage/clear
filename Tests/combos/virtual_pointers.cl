@@ -1,7 +1,7 @@
 class Shape:
     name: str
 
-    virtual function area(self: *Shape) -> float64:
+    function area(self: *Shape) -> float64:
         return 0.0
 
 class Square(Shape):

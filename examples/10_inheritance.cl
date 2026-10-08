@@ -2,8 +2,8 @@ class Animal:
     name: str
     legs: int = 4
 
-    // virtual: each class can have its own version, chosen at run time
-    virtual function sound(self: *Animal) -> str:
+    // a subclass can replace a method; calls always run the object's own version
+    function sound(self: *Animal) -> str:
         return "..."
 
     function speak(self: *Animal):
@@ -12,7 +12,7 @@ class Animal:
 class Dog(Animal):
     tricks: int = 0                        // added after Animal's fields
 
-    function sound(self: *Dog) -> str:     // overrides the virtual method
+    function sound(self: *Dog) -> str:     // replaces Animal's sound
         return "woof"
 
     function speak(self: *Dog):

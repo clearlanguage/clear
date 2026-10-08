@@ -356,3 +356,7 @@ Advice  = "‘{}."
 [UseOperatorSyntax]
 Message = "Special methods are written with ‘operator’."
 Advice  = "‘{}’."
+
+[VirtualNotNeeded]
+Message = "‘virtual’ is not needed."
+Advice  = "Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’."

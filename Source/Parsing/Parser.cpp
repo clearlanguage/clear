@@ -1911,8 +1911,12 @@ namespace clear
             bool isProperty = Match("property") && Next().IsType(TokenType::Identifier);
             bool isOperator = Match("operator") && Next().IsType(TokenType::Identifier);
 
+            // methods of classes that inherit (or are inherited from) dispatch automatically
             if (isVirtual)
+            {
+                m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Peak(), DiagnosticCode_VirtualNotNeeded);
                 Consume();
+            }
 
             if(Match("function") || isProperty || isOperator)
             {

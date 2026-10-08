@@ -43,6 +43,9 @@ namespace clear
 		Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits);
 		~Sema() = default;
 
+		// names used as base classes anywhere in the program (collected before analysis starts)
+		static inline std::unordered_set<std::string> BaseClassNames;
+
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBlock> ast, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTypeSpecifier> typeSpec, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
@@ -154,6 +157,7 @@ namespace clear
 													  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values);
 
 		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
+
 
     private:
 		std::vector<SymbolTable> m_ScopeStack;

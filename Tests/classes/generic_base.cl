@@ -1,7 +1,7 @@
 class Base[T]:
     value: T
 
-    virtual function show(self: *Base[T]):
+    function show(self: *Base[T]):
         print("base", self.value)
 
 class Child(Base[int]):

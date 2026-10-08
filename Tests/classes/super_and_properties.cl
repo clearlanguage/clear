@@ -1,7 +1,7 @@
 class Shape:
     name: str
 
-    virtual function area(self: *Shape) -> float64:
+    function area(self: *Shape) -> float64:
         return 0.0
 
     function describe(self: *Shape):
@@ -66,6 +66,7 @@ function main() -> int32:
 // r 6.0
 // 5.0 25.0 20.0
 // 6.0 36.0
+// rectangle:
 // sq 36.0
 // 212.0
 // 0.0

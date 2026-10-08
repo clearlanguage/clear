@@ -93,6 +93,7 @@ namespace clear
 		DiagnosticCode_NotAwaitable,
 		DiagnosticCode_UnknownOperator,
 		DiagnosticCode_UseOperatorSyntax,
+		DiagnosticCode_VirtualNotNeeded,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -186,6 +187,7 @@ namespace clear
 		"Only a Task can be awaited.",
 		"Unknown operator.",
 		"Special methods are written with ‘operator’.",
+		"‘virtual’ is not needed.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -278,5 +280,6 @@ namespace clear
 		"‘{}’ is not the result of calling an async function.",
 		"‘{}.",
 		"‘{}’.",
+		"Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’.",
 	};
 }

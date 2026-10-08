@@ -1991,7 +1991,17 @@ namespace clear
 			}
 		}
 
-		// virtual methods: the table starts as the base's, overriding methods replace their slot, new virtual methods add one
+		// a class that inherits or is inherited from dispatches every method on the object's real type:
+		// the table starts as the base's, overriding methods replace their slot, new methods add one
+		bool inHierarchy = !classExpr->IsTrait && !classExpr->IsUnion &&
+						   (base || BaseClassNames.contains(classExpr->GetName()) || BaseClassNames.contains(classExpr->TemplateName));
+
+		if (inHierarchy)
+		{
+			for (auto node : classExpr->MemberFunctions)
+				node->IsVirtual = node->GetName() != "__init__";
+		}
+
 		if (base)
 		{
 			classTy->VirtualNames = base->VirtualNames;
@@ -2014,7 +2024,7 @@ namespace clear
 			}
 		}
 
-		classTy->HasVTable = !classTy->VirtualNames.empty();
+		classTy->HasVTable = inHierarchy || !classTy->VirtualNames.empty();
 
 		if (classTy->HasVTable)
 		{
@@ -5432,7 +5442,10 @@ namespace clear
 
 		// methods of generic classes are only analysed when used, so List[T] can hold types that lack some operations
 		if (auto classNode = std::dynamic_pointer_cast<ASTClass>(clonned))
+		{
 			classNode->LazyMethods = true;
+			classNode->TemplateName = std::string(name);
+		}
 		bool success = m_ScopeStack[scopeIndex].Insert(instanceName, SymbolEntryType::None, instanceSymbol);
 		CLEAR_VERIFY(success, ""); //TODO Report(...)
 
