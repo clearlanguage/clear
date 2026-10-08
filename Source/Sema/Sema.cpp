@@ -1100,6 +1100,11 @@ namespace clear
 
 		if (forExpr->Iterable)
 		{
+			// kept unanalysed in case the loop is rewritten for a class (analysis changes nodes in place)
+			Cloner cloner;
+			cloner.DestinationModule = m_Module;
+			auto pristineIterable = cloner.Clone(forExpr->Iterable);
+
 			// arrays are iterated in place, so analyse the storage rather than a copy
 			SemaContext storageContext = context;
 			storageContext.ValueReq = ValueRequired::LValue;
@@ -1109,6 +1114,9 @@ namespace clear
 				return nullptr;
 
 			forExpr->IterableType = m_TypeInferEngine.InferTypeFromNode(forExpr->Iterable);
+
+			if (forExpr->IterableType && forExpr->IterableType->IsClass())
+				return Visit(LowerClassIteration(forExpr, pristineIterable), context);
 
 			if (!forExpr->IterableType || !forExpr->IterableType->IsArray())
 			{
@@ -1154,6 +1162,85 @@ namespace clear
 
 		m_ScopeStack.pop_back();
 		return forExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::LowerClassIteration(std::shared_ptr<ASTForExpression> forExpr, std::shared_ptr<ASTNodeBase> iterable)
+	{
+		// for x in items:            ->   let it = &items            (or the value itself if items is a temporary)
+		//     body                         for i in 0..it.__len__():
+		//                                      let x = it.__getitem__(i)
+		//                                      body
+		auto classType = forExpr->IterableType->As<ClassType>();
+
+		if (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__"))
+		{
+			Token location = GetNodeLocation(iterable);
+			location.SetData(classType->GetHash());
+			Report(DiagnosticCode_NotIterable, location);
+			return nullptr;
+		}
+
+		static size_t s_LoopCounter = 0;
+		size_t id = s_LoopCounter++;
+
+		Token location = forExpr->Location;
+		auto token = [&](TokenType type, const std::string& text) { return Token(type, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+		auto name = [&](const std::string& text) { return std::make_shared<ASTVariable>(token(TokenType::Identifier, text)); };
+
+		auto method = [&](const std::string& target, const std::string& methodName, std::vector<std::shared_ptr<ASTNodeBase>> arguments)
+		{
+			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
+			access->Location = location;
+			access->LeftSide = name(target);
+			access->RightSide = name(methodName);
+
+			auto call = std::make_shared<ASTFunctionCall>();
+			call->Location = location;
+			call->Callee = access;
+			call->Arguments.append(arguments.begin(), arguments.end());
+			return call;
+		};
+
+		std::string iterableName = std::format("__for_iterable_{}", id);
+		std::string indexName = std::format("__for_index_{}", id);
+
+		// variables, fields and dereferences are iterated in place, anything else is evaluated once into a local
+		bool isStorage = iterable->GetType() == ASTNodeType::Variable || iterable->GetType() == ASTNodeType::Subscript ||
+						 (iterable->GetType() == ASTNodeType::BinaryExpression && std::dynamic_pointer_cast<ASTBinaryExpression>(iterable)->GetExpression() == OperatorType::Dot) ||
+						 (iterable->GetType() == ASTNodeType::UnaryExpression && std::dynamic_pointer_cast<ASTUnaryExpression>(iterable)->GetOperatorType() == OperatorType::Dereference);
+
+		auto iterableDecl = std::make_shared<ASTVariableDeclaration>(token(TokenType::Identifier, iterableName));
+		iterableDecl->Location = location;
+
+		if (isStorage)
+		{
+			auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+			address->Location = location;
+			address->Operand = iterable;
+			iterableDecl->Initializer = address;
+		}
+		else
+		{
+			iterableDecl->Initializer = iterable;
+		}
+
+		auto loop = std::make_shared<ASTForExpression>();
+		loop->Location = location;
+		loop->VariableName = token(TokenType::Identifier, indexName);
+		loop->Start = std::make_shared<ASTNodeLiteral>(token(TokenType::Number, "0"));
+		loop->End = method(iterableName, "__len__", {});
+
+		auto elementDecl = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
+		elementDecl->Location = forExpr->VariableName;
+		elementDecl->Initializer = method(iterableName, "__getitem__", { name(indexName) });
+
+		loop->CodeBlock = std::make_shared<ASTBlock>();
+		loop->CodeBlock->Children.push_back(elementDecl);
+		loop->CodeBlock->Children.insert(loop->CodeBlock->Children.end(), forExpr->CodeBlock->Children.begin(), forExpr->CodeBlock->Children.end());
+
+		auto block = std::make_shared<ASTBlock>();
+		block->Children = { iterableDecl, loop };
+		return block;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTEnum> enumNode, SemaContext context)
