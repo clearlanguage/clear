@@ -24,7 +24,8 @@ namespace clear
         CompilationManager(const BuildConfig& config);
         ~CompilationManager() = default;
 		
-		void RunPipeline();
+		// returns true when an output was produced without errors
+		bool RunPipeline();
 
         void LoadSources();
         void LoadSourceFile(const std::filesystem::path& path);
@@ -34,7 +35,7 @@ namespace clear
     private:
         void LoadDirectory(const std::filesystem::path& path);
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
-        void CheckErrors();
+        bool CheckErrors();
 		void CollectTopLevelSymbols();
 		void CompileModules();
 		void CompileModule(CompilationUnit& unit);
@@ -57,5 +58,6 @@ namespace clear
         DiagnosticsBuilder m_DiagnosticsBuilder;
 		
 		std::unordered_map<std::filesystem::path, CompilationUnit> m_CompilationUnits;
+		bool m_Failed = false;
     };
 }

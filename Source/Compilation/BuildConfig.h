@@ -78,7 +78,12 @@ namespace clear
 
         CPUFeatures EnabledCPUFeatures;
 
+        bool Verbose = false; // print progress while compiling
+
         static BuildConfig BuildConfigFromToml(const std::filesystem::path& path);
+
+        // configuration used when compiling a single file without a build.toml
+        static BuildConfig ForSingleFile(const std::filesystem::path& file, const std::filesystem::path& outputPath);
 
         void Serialize(const std::filesystem::path& path);
     };

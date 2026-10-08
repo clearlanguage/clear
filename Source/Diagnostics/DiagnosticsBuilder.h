@@ -33,7 +33,7 @@ namespace clear
                size_t expectedLength);
 
 
-        void Dump(std::FILE* output = stdout);
+        void Dump(std::FILE* output = stderr);
         bool IsFatal();
                     
     private:

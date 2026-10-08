@@ -78,6 +78,9 @@ namespace clear
         {
             std::println(output, "{}", error);
         }
+
+        // each diagnostic is only ever printed once, even if several stages dump
+        m_ReportedErrors.clear();
     }
 
     std::string DiagnosticsBuilder::LoadFile(const std::filesystem::path& path)

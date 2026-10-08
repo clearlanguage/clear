@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Clear test runner.
+
+Every ``*.cl`` file under the tests directory is one test. The expected result
+is written in comments inside the test itself:
+
+    // expect:
+    // first line of stdout
+    // second line of stdout
+
+    // expect-exit: 3        (optional, default 0)
+    // expect-error          (compilation must fail)
+
+usage: run_tests.py <path to clearc> <tests directory> [name filter]
+"""
+
+import os
+import subprocess
+import sys
+import tempfile
+
+
+def parse_expectations(path):
+    expected_lines = None
+    expected_exit = 0
+    expect_error = False
+
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    in_block = False
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped == "// expect:":
+            expected_lines = []
+            in_block = True
+            continue
+
+        if stripped.startswith("// expect-exit:"):
+            expected_exit = int(stripped.split(":", 1)[1])
+            in_block = False
+            continue
+
+        if stripped == "// expect-error":
+            expect_error = True
+            in_block = False
+            continue
+
+        if in_block:
+            if stripped.startswith("//"):
+                # keep everything after "// " exactly, so leading spaces in output are testable
+                content = stripped[2:]
+                expected_lines.append(content[1:] if content.startswith(" ") else content)
+            else:
+                in_block = False
+
+    return expected_lines, expected_exit, expect_error
+
+
+def run_test(clearc, path, workdir):
+    expected_lines, expected_exit, expect_error = parse_expectations(path)
+    output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
+
+    compile_result = subprocess.run(
+        [clearc, "build", path, "-o", output],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    if compile_result.returncode < 0:
+        return False, f"compiler crashed (signal {-compile_result.returncode}):\n" + compile_result.stdout + compile_result.stderr
+
+    if expect_error:
+        if compile_result.returncode == 0:
+            return False, "expected a compile error but compilation succeeded"
+        return True, ""
+
+    if compile_result.returncode != 0:
+        return False, "compilation failed:\n" + compile_result.stdout + compile_result.stderr
+
+    run_result = subprocess.run([output], capture_output=True, text=True, timeout=60)
+
+    problems = []
+    if run_result.returncode != expected_exit:
+        problems.append(f"exit code {run_result.returncode}, expected {expected_exit}")
+
+    if expected_lines is not None:
+        actual_lines = run_result.stdout.splitlines()
+        if actual_lines != expected_lines:
+            problems.append(
+                "output mismatch\n--- expected\n" + "\n".join(expected_lines)
+                + "\n--- actual\n" + "\n".join(actual_lines)
+            )
+
+    return not problems, "\n".join(problems)
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(__doc__)
+        return 2
+
+    clearc = os.path.abspath(sys.argv[1])
+    tests_dir = sys.argv[2]
+    name_filter = sys.argv[3] if len(sys.argv) > 3 else ""
+
+    tests = []
+    for root, _, files in os.walk(tests_dir):
+        for name in files:
+            if name.endswith(".cl"):
+                path = os.path.join(root, name)
+                if name_filter in path:
+                    tests.append(path)
+    tests.sort()
+
+    failures = []
+    with tempfile.TemporaryDirectory(prefix="clear-tests-") as workdir:
+        for path in tests:
+            rel = os.path.relpath(path, tests_dir)
+            try:
+                ok, message = run_test(clearc, path, workdir)
+            except subprocess.TimeoutExpired:
+                ok, message = False, "timed out"
+
+            print(("PASS " if ok else "FAIL ") + rel)
+            if not ok:
+                failures.append((rel, message))
+
+    for rel, message in failures:
+        print(f"\n=== {rel}\n{message}")
+
+    print(f"\n{len(tests) - len(failures)}/{len(tests)} tests passed")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

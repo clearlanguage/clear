@@ -126,6 +126,23 @@ namespace clear
     }
 
 
+    BuildConfig BuildConfig::ForSingleFile(const std::filesystem::path& file, const std::filesystem::path& outputPath)
+    {
+        BuildConfig config;
+        config.ApplicationName    = file.stem().string();
+        config.SourceDirectories  = {};
+        config.SourceFiles        = { std::filesystem::absolute(file) };
+        config.LibraryDirectories = {};
+        config.LibraryNames       = {};
+        config.LibraryFilePaths   = {};
+        config.OutputPath         = outputPath.parent_path().empty() ? std::filesystem::path(".") : outputPath.parent_path();
+        config.OutputFilename     = outputPath.filename();
+        config.StandardLibrary    = "";
+        config.EmitIntermiediateIR = false;
+
+        return config;
+    }
+
     void BuildConfig::Serialize(const std::filesystem::path& path)
     {
         auto enumToString = [](auto value) -> std::string {

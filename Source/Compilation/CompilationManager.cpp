@@ -18,14 +18,23 @@ namespace clear
         m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins, "main");
     }
 	
-	void CompilationManager::RunPipeline()
+	bool CompilationManager::RunPipeline()
 	{
 		LoadSources();
+		if (!CheckErrors()) return false;
+
 		CollectTopLevelSymbols();
 		CompileModules();
+		if (!CheckErrors()) return false;
+
 		LinkModules();
+		if (!CheckErrors()) return false;
+
 		GenerateIRAndObjectFiles();
+		if (!CheckErrors()) return false;
+
 		Emit();
+		return CheckErrors();
 	}
 
     void CompilationManager::LoadSources()
@@ -41,12 +50,10 @@ namespace clear
         }
     }
 
-    void CompilationManager::CheckErrors() 
+    bool CompilationManager::CheckErrors() 
     {
-		if (m_DiagnosticsBuilder.IsFatal()) 
-		{ 
-			m_DiagnosticsBuilder.Dump();
-        }
+		m_DiagnosticsBuilder.Dump();
+		return !m_DiagnosticsBuilder.IsFatal() && !m_Failed;
     }
 
 	void CompilationManager::CollectTopLevelSymbols()
@@ -59,6 +66,9 @@ namespace clear
 		for (auto& [path, unit] : m_CompilationUnits)
 		{
 			CompileModule(unit);
+
+			if (m_DiagnosticsBuilder.IsFatal())
+				return;
 		}
 	}
 
@@ -83,10 +93,7 @@ namespace clear
 		analyzer.Visit(unit.Ast);
 
 		if (m_DiagnosticsBuilder.IsFatal())
-		{
-			m_DiagnosticsBuilder.Dump();
 			return;
-		}
 	
 		CodegenContext ctx = unit.CompilationModule->GetCodegenContext();
 		unit.Ast->Codegen(ctx);
@@ -103,6 +110,8 @@ namespace clear
 			if (!unit.CompilationModule->GetModule()) continue;
 			if (llvm::verifyModule(*unit.CompilationModule->GetModule(), &llvm::errs()))
 			{
+				std::println(stderr, "internal compiler error: invalid code generated for {}", path.string());
+				m_Failed = true;
 				continue;
 			}
 
@@ -128,7 +137,8 @@ namespace clear
             return;
         }
         
-        std::println("Loading source file {}" , path.string());
+        if (m_Config.Verbose)
+            std::println("Loading source file {}" , path.string());
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
 		
@@ -161,11 +171,14 @@ namespace clear
 
         if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
-            std::println("failed to build module");
-            m_MainModule->GetModule()->print(llvm::errs(), nullptr);
+            std::println(stderr, "internal compiler error: failed to build module");
+            m_Failed = true;
 
             return;
         }
+
+        // optimize before anything is written out, so both the emitted IR and the object file benefit
+        OptimizeModule();
 
         if(m_Config.EmitIntermiediateIR)
         {
@@ -178,7 +191,6 @@ namespace clear
         }   
 
         BuildModule(m_MainModule->GetModule(), m_Config.OutputPath / m_Config.OutputFilename);
-        OptimizeModule();
     }
 
     void CompilationManager::Emit()
@@ -220,7 +232,8 @@ namespace clear
         CLEAR_VERIFY(std::filesystem::exists(path), "directory does not exist");
         CLEAR_VERIFY(std::filesystem::is_directory(path), "not a valid directory");
 
-        std::println("Loading directory {}", path.string());
+        if (m_Config.Verbose)
+            std::println("Loading directory {}", path.string());
 
         if(m_DiagnosticsBuilder.IsFatal())
         {
@@ -302,6 +315,7 @@ namespace clear
         if (!clangPath) 
         {
             llvm::errs() << "clang not found on PATH!\n";
+            m_Failed = true;
             return;
         }
 
@@ -359,6 +373,7 @@ namespace clear
             llvm::outs() << "\n";
 
             llvm::errs() << "Clang linking failed with exit code: " << result << "\n";
+            m_Failed = true;
         }
 
         std::filesystem::remove(objectPath);

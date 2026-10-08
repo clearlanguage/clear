@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.20.0)
 include(FetchContent)
 
 project(clearc)
@@ -68,3 +68,7 @@ target_link_libraries(clearc PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlpl
 link_directories(${LLVM_LIBRARY_DIRS})
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
+
+enable_testing()
+add_test(NAME clear_language_tests
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)

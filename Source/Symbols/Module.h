@@ -49,8 +49,9 @@ namespace clear
         std::string m_ModuleName;
 		std::filesystem::path m_ModulePath;
 
-        std::unique_ptr<llvm::Module> m_Module;
+        // the context must outlive the llvm module, so it is declared (and therefore destroyed) first
         std::shared_ptr<llvm::LLVMContext> m_Context;
+        std::unique_ptr<llvm::Module> m_Module;
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
 		
 		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_ExposedSymbols;
