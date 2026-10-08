@@ -196,3 +196,27 @@ Advice  = "Converting ‘{}’ needs an explicit cast, for example ‘value as T
 [NotIterable]
 Message = "Value cannot be iterated over."
 Advice  = "A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither."
+
+[ExpectedCase]
+Message = "Expected ‘case’ or ‘default’ inside a switch."
+Advice  = "Each branch of a switch starts with ‘case value:’ or ‘default:’, found ‘{}’."
+
+[ConstNeedsValue]
+Message = "A constant needs a value."
+Advice  = "Give ‘{}’ a value: const name = value."
+
+[AssignToConst]
+Message = "Cannot change a constant."
+Advice  = "‘{}’ was declared with const. Use let if it needs to change."
+
+[InvalidEnumValue]
+Message = "Enum values must be integer constants."
+Advice  = "The value of ‘{}’ must be known at compile time."
+
+[DeferOutsideFunction]
+Message = "‘defer’ can only be used inside a function."
+Advice  = "Move ‘{}’ into a function body."
+
+[SwitchNotIntegral]
+Message = "Switch value must be an integer or an enum."
+Advice  = "‘{}’ cannot be switched on. Use if/elseif for other types."

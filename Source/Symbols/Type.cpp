@@ -51,6 +51,11 @@ namespace clear
         return m_Flags.test((size_t)TypeFlags::Generic);
     }
 
+    bool Type::IsEnum()
+    {
+        return m_Flags.test((size_t)TypeFlags::Enum);
+    }
+
     void Type::Toggle(TypeFlags flag)
     {
         m_Flags.flip((size_t)flag);
@@ -177,6 +182,28 @@ namespace clear
     {
         Toggle(TypeFlags::Constant);
         Toggle(base->GetFlags());
+    }
+
+    EnumType::EnumType(llvm::StringRef name, std::shared_ptr<Type> underlying)
+        : m_Name(name), m_Underlying(underlying)
+    {
+        Toggle(underlying->GetFlags());
+        Toggle(TypeFlags::Enum);
+    }
+
+    bool EnumType::AddValue(const std::string& name, int64_t value)
+    {
+        return m_Values.insert({ name, value }).second;
+    }
+
+    std::optional<int64_t> EnumType::GetValue(llvm::StringRef name) const
+    {
+        auto it = m_Values.find(name.str());
+
+        if (it == m_Values.end())
+            return std::nullopt;
+
+        return it->second;
     }
 
     GenericType::GenericType(llvm::StringRef name)

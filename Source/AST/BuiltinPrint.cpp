@@ -35,7 +35,22 @@ namespace clear
 			auto& builder = m_Ctx.Builder;
 			llvm::Type* llvmType = value->getType();
 
-			if (llvmType->isIntegerTy(1))
+			if (type && type->IsEnum())
+			{
+				// Color.Red rather than 0
+				auto enumType = std::dynamic_pointer_cast<EnumType>(type);
+				llvm::Value* name = String(std::format("{}(?)", enumType->GetHash()));
+
+				for (const auto& [member, constant] : enumType->GetValues())
+				{
+					llvm::Value* matches = builder.CreateICmpEQ(value, llvm::ConstantInt::get(llvmType, constant, true));
+					name = builder.CreateSelect(matches, String(std::format("{}.{}", enumType->GetHash(), member)), name);
+				}
+
+				m_Format += "%s";
+				m_Args.push_back(name);
+			}
+			else if (llvmType->isIntegerTy(1))
 			{
 				m_Format += "%s";
 				m_Args.push_back(builder.CreateSelect(value, String("true"), String("false")));

@@ -50,7 +50,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Generic, Count
+        Generic, Enum, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -93,6 +93,7 @@ namespace clear
         bool IsClass();
         bool IsConst();
         bool IsGeneric();
+        bool IsEnum();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -204,6 +205,28 @@ namespace clear
 
     private:
         std::shared_ptr<Type> m_Base;
+    };
+
+    // a named set of integer constants: `enum Color: Red, Green, Blue`
+    class EnumType : public Type
+    {
+    public:
+        EnumType(llvm::StringRef name, std::shared_ptr<Type> underlying);
+        virtual ~EnumType() = default;
+
+        virtual llvm::Type* Get() const override { return m_Underlying->Get(); }
+        virtual std::string GetHash() const override { return m_Name; }
+
+        std::shared_ptr<Type> GetUnderlyingType() const { return m_Underlying; }
+
+        bool AddValue(const std::string& name, int64_t value);
+        std::optional<int64_t> GetValue(llvm::StringRef name) const;
+        const auto& GetValues() const { return m_Values; }
+
+    private:
+        std::string m_Name;
+        std::shared_ptr<Type> m_Underlying;
+        llvm::MapVector<std::string, int64_t> m_Values;
     };
 
     class GenericType : public Type 

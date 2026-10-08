@@ -53,6 +53,12 @@ namespace clear
 		DiagnosticCode_CannotInferGeneric,
 		DiagnosticCode_ImplicitConversion,
 		DiagnosticCode_NotIterable,
+		DiagnosticCode_ExpectedCase,
+		DiagnosticCode_ConstNeedsValue,
+		DiagnosticCode_AssignToConst,
+		DiagnosticCode_InvalidEnumValue,
+		DiagnosticCode_DeferOutsideFunction,
+		DiagnosticCode_SwitchNotIntegral,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -106,6 +112,12 @@ namespace clear
 		"Cannot infer the type arguments of a generic type.",
 		"Cannot convert implicitly, the conversion may lose information.",
 		"Value cannot be iterated over.",
+		"Expected ‘case’ or ‘default’ inside a switch.",
+		"A constant needs a value.",
+		"Cannot change a constant.",
+		"Enum values must be integer constants.",
+		"‘defer’ can only be used inside a function.",
+		"Switch value must be an integer or an enum.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -158,5 +170,11 @@ namespace clear
 		"Write the type arguments explicitly, for example ‘{}[int]’.",
 		"Converting ‘{}’ needs an explicit cast, for example ‘value as T’.",
 		"A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither.",
+		"Each branch of a switch starts with ‘case value:’ or ‘default:’, found ‘{}’.",
+		"Give ‘{}’ a value: const name = value.",
+		"‘{}’ was declared with const. Use let if it needs to change.",
+		"The value of ‘{}’ must be known at compile time.",
+		"Move ‘{}’ into a function body.",
+		"‘{}’ cannot be switched on. Use if/elseif for other types.",
 	};
 }

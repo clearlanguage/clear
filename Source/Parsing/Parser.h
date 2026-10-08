@@ -70,6 +70,10 @@ namespace clear
 		std::shared_ptr<ASTIfExpression> ParseIf();
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
 		std::shared_ptr<ASTNodeBase> ParseFor();
+		std::shared_ptr<ASTNodeBase> ParseSwitch();
+		std::shared_ptr<ASTNodeBase> ParseEnum();
+		std::shared_ptr<ASTNodeBase> ParseDefer();
+		std::shared_ptr<ASTNodeBase> ParseConst();
 		std::shared_ptr<ASTImport> ParseImport();
 		std::shared_ptr<ASTNodeBase> ParseLoopControl();
 		std::shared_ptr<ASTNodeBase> ParseClass();

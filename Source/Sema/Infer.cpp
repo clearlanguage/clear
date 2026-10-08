@@ -19,6 +19,10 @@ namespace clear
 
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::ConstantValue:
+			{
+				return std::dynamic_pointer_cast<ASTConstantValue>(node)->ValueType;
+			}
 			case ASTNodeType::SizeofExpr:
 			{
 				return m_Module->Lookup("uint64").value()->GetType();

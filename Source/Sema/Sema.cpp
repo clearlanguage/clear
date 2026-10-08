@@ -113,15 +113,26 @@ namespace clear
 		{
 			*symbol.value() = Symbol::CreateValue(nullptr, decl->ResolvedType);
 			decl->Variable = symbol.value();
+
+			if (decl->IsConst)
+			{
+				m_ConstSymbols.insert(decl->Variable.get());
+
+				if (auto value = EvaluateInteger(decl->Initializer); value && decl->ResolvedType->IsIntegral())
+				{
+					m_ConstantValues[decl->Variable.get()] = *value;
+					decl->Initializer = std::make_shared<ASTConstantValue>(*value, decl->ResolvedType);
+				}
+			}
+
+			if (context.GlobalState)
+				m_Module->ExposeSymbol(decl->GetName().GetData(), decl->Variable);
+
 			return decl;
 		}
 			
 		Report(DiagnosticCode_RedefinedIdentifier, decl->GetName());
-
-		if (context.GlobalState)
-			m_Module->ExposeSymbol(decl->GetName().GetData(), symbol.value());
-		
-		return decl;
+		return nullptr;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariable> variable, SemaContext context)
@@ -175,6 +186,17 @@ namespace clear
 		
 		variable->Variable = symbol.value().Symbol;
 
+		// reading a const with a known integer value becomes the value itself
+		if (context.ValueReq == ValueRequired::RValue)
+		{
+			if (auto it = m_ConstantValues.find(variable->Variable.get()); it != m_ConstantValues.end())
+			{
+				auto constant = std::make_shared<ASTConstantValue>(it->second, variable->Variable->GetType());
+				constant->Location = variable->GetName();
+				return constant;
+			}
+		}
+
 		if (context.ValueReq == ValueRequired::RValue && symbol.value().Type == SymbolEntryType::Variable)
 		{
 			auto loadNode = std::make_shared<ASTLoad>();
@@ -208,6 +230,10 @@ namespace clear
 			case ASTNodeType::IfExpression:				return Visit(std::dynamic_pointer_cast<ASTIfExpression>(ast), context);
 			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
 			case ASTNodeType::ForLoop:					return Visit(std::dynamic_pointer_cast<ASTForExpression>(ast), context);
+			case ASTNodeType::Enum:						return Visit(std::dynamic_pointer_cast<ASTEnum>(ast), context);
+			case ASTNodeType::Switch:					return Visit(std::dynamic_pointer_cast<ASTSwitch>(ast), context);
+			case ASTNodeType::Defer:					return Visit(std::dynamic_pointer_cast<ASTDefer>(ast), context);
+			case ASTNodeType::ConstantValue:			return ast;
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
 			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
 			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
@@ -424,6 +450,12 @@ namespace clear
 		if (!assignmentOp->Storage || !assignmentOp->Value)
 			return assignmentOp;
 
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(assignmentOp->Storage); var && m_ConstSymbols.contains(var->Variable.get()))
+		{
+			Report(DiagnosticCode_AssignToConst, var->GetName());
+			return nullptr;
+		}
+
 		// the value must convert to the type being stored into (for `x += v` too, so `count += 0.5` on an int is an error)
 		if (assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
 		{
@@ -482,7 +514,21 @@ namespace clear
 			case OperatorType::Decrement:
 			case OperatorType::Address:
 			{
-				unaryExpr->Operand = Visit(unaryExpr->Operand, { ValueRequired::LValue });
+				SemaContext storageContext = context;
+				storageContext.ValueReq = ValueRequired::LValue;
+				unaryExpr->Operand = Visit(unaryExpr->Operand, storageContext);
+
+				if (!unaryExpr->Operand)
+					return nullptr;
+
+				bool modifies = unaryExpr->GetOperatorType() != OperatorType::Address;
+
+				if (auto var = std::dynamic_pointer_cast<ASTVariable>(unaryExpr->Operand); modifies && var && m_ConstSymbols.contains(var->Variable.get()))
+				{
+					Report(DiagnosticCode_AssignToConst, var->GetName());
+					return nullptr;
+				}
+
 				break;
 			}
 			case OperatorType::Dereference:
@@ -711,6 +757,215 @@ namespace clear
 
 		m_ScopeStack.pop_back();
 		return forExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTEnum> enumNode, SemaContext context)
+	{
+		const std::string& name = enumNode->Name.GetData();
+
+		if (m_Module->GetTypeRegistry()->GetType(name))
+		{
+			Report(DiagnosticCode_RedefinedIdentifier, enumNode->Name);
+			return nullptr;
+		}
+
+		auto underlying = m_Module->Lookup("int32").value()->GetType();
+		auto enumType = m_Module->GetTypeRegistry()->CreateType<EnumType>(name, name, underlying);
+
+		int64_t next = 0;
+
+		for (auto& [memberName, valueNode] : enumNode->Members)
+		{
+			if (valueNode)
+			{
+				valueNode = Visit(valueNode, SemaContext { .ValueReq = ValueRequired::RValue });
+				auto value = EvaluateInteger(valueNode);
+
+				if (!value)
+				{
+					Report(DiagnosticCode_InvalidEnumValue, memberName);
+					continue;
+				}
+
+				next = *value;
+			}
+
+			if (!enumType->AddValue(memberName.GetData(), next))
+				Report(DiagnosticCode_RedefinedIdentifier, memberName);
+
+			next++;
+		}
+
+		enumNode->EnumTy = enumType;
+		m_Module->ExposeSymbol(name, std::make_shared<Symbol>(Symbol::CreateType(enumType)));
+
+		return enumNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSwitch> switchNode, SemaContext context)
+	{
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		switchNode->Value = Visit(switchNode->Value, valueContext);
+
+		if (!switchNode->Value)
+			return nullptr;
+
+		std::shared_ptr<Type> valueType = m_TypeInferEngine.InferTypeFromNode(switchNode->Value);
+
+		if (!valueType || !valueType->IsIntegral())
+		{
+			Report(DiagnosticCode_SwitchNotIntegral, GetNodeLocation(switchNode->Value));
+			return nullptr;
+		}
+
+		std::unordered_set<int64_t> seen;
+
+		for (auto& switchCase : switchNode->Cases)
+		{
+			for (auto& value : switchCase.Values)
+			{
+				value = Visit(value, valueContext);
+
+				if (!value)
+					continue;
+
+				// enums only match their own members, plain integers match any integer constant
+				if (valueType->IsEnum())
+					value = Coerce(value, valueType);
+
+				auto constant = EvaluateInteger(value);
+
+				if (!constant)
+				{
+					Report(DiagnosticCode_NonConstantCase, GetNodeLocation(value));
+					continue;
+				}
+
+				if (!seen.insert(*constant).second)
+					Report(DiagnosticCode_DuplicateCase, GetNodeLocation(value));
+
+				switchCase.Constants.push_back(*constant);
+			}
+
+			Visit(switchCase.CodeBlock, context);
+		}
+
+		if (switchNode->DefaultCaseCodeBlock)
+			Visit(switchNode->DefaultCaseCodeBlock, context);
+
+		return switchNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context)
+	{
+		if (context.GlobalState)
+		{
+			Report(DiagnosticCode_DeferOutsideFunction, deferNode->Location);
+			return nullptr;
+		}
+
+		context.ValueReq = ValueRequired::Any;
+		deferNode->Expr = Visit(deferNode->Expr, context);
+
+		return deferNode->Expr ? deferNode : nullptr;
+	}
+
+	std::optional<int64_t> Sema::EvaluateInteger(std::shared_ptr<ASTNodeBase> node)
+	{
+		if (!node)
+			return std::nullopt;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Literal:
+			{
+				const Token& token = std::dynamic_pointer_cast<ASTNodeLiteral>(node)->GetData();
+
+				if (token.IsType(TokenType::Char))
+					return (int64_t)(uint8_t)token.AsChar();
+
+				if (token.GetData() == "true")  return 1;
+				if (token.GetData() == "false") return 0;
+
+				if (token.IsType(TokenType::Number) && token.GetData().find_first_of(".eE") == std::string::npos)
+				{
+					try { return (int64_t)std::stoull(token.GetData()); }
+					catch (...) { return std::nullopt; }
+				}
+
+				return std::nullopt;
+			}
+			case ASTNodeType::ConstantValue:
+			{
+				return std::dynamic_pointer_cast<ASTConstantValue>(node)->Value;
+			}
+			case ASTNodeType::SizeofExpr:
+			{
+				return (int64_t)std::dynamic_pointer_cast<ASTSizeofExpr>(node)->Size;
+			}
+			case ASTNodeType::Load:
+			{
+				return EvaluateInteger(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+			}
+			case ASTNodeType::Variable:
+			{
+				auto var = std::dynamic_pointer_cast<ASTVariable>(node);
+				auto it = var->Variable ? m_ConstantValues.find(var->Variable.get()) : m_ConstantValues.end();
+
+				if (it == m_ConstantValues.end())
+					return std::nullopt;
+
+				return it->second;
+			}
+			case ASTNodeType::CastExpr:
+			{
+				return EvaluateInteger(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object);
+			}
+			case ASTNodeType::UnaryExpression:
+			{
+				auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node);
+				auto value = EvaluateInteger(unary->Operand);
+
+				if (!value)
+					return std::nullopt;
+
+				switch (unary->GetOperatorType())
+				{
+					case OperatorType::Negation:	return -*value;
+					case OperatorType::BitwiseNot:	return ~*value;
+					case OperatorType::Not:			return (int64_t)(*value == 0);
+					default:						return std::nullopt;
+				}
+			}
+			case ASTNodeType::BinaryExpression:
+			{
+				auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				auto lhs = EvaluateInteger(binary->LeftSide);
+				auto rhs = EvaluateInteger(binary->RightSide);
+
+				if (!lhs || !rhs)
+					return std::nullopt;
+
+				switch (binary->GetExpression())
+				{
+					case OperatorType::Add:			return *lhs + *rhs;
+					case OperatorType::Sub:			return *lhs - *rhs;
+					case OperatorType::Mul:			return *lhs * *rhs;
+					case OperatorType::Div:			return *rhs == 0 ? std::nullopt : std::optional(*lhs / *rhs);
+					case OperatorType::Mod:			return *rhs == 0 ? std::nullopt : std::optional(*lhs % *rhs);
+					case OperatorType::BitwiseAnd:	return *lhs & *rhs;
+					case OperatorType::BitwiseOr:	return *lhs | *rhs;
+					case OperatorType::BitwiseXor:	return *lhs ^ *rhs;
+					case OperatorType::LeftShift:	return *lhs << *rhs;
+					case OperatorType::RightShift:	return *lhs >> *rhs;
+					default:						return std::nullopt;
+				}
+			}
+			default:
+				return std::nullopt;
+		}
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context)
@@ -987,11 +1242,15 @@ namespace clear
 		arrayType->SizeNode = Visit(arrayType->SizeNode, context);
 		arrayType->TypeNode = Visit(arrayType->TypeNode, context);
 
-		m_ConstantEvaluator.Evaluate(arrayType->SizeNode);
 		std::shared_ptr<Type> baseTy = GetTypeFromNode(arrayType->TypeNode);
-		
-		int64_t size = m_ConstantEvaluator.GetValue<int64_t>();
-		m_ConstantEvaluator.CurrentValue = nullptr;
+
+		if (!baseTy)
+		{
+			Report(DiagnosticCode_ExpectedType, GetNodeLocation(arrayType->TypeNode));
+			return nullptr;
+		}
+
+		int64_t size = EvaluateInteger(arrayType->SizeNode).value_or(0);
 			
 		if (size <= 0)
 		{
@@ -1029,6 +1288,10 @@ namespace clear
 		llvm::Type* dst = to->Get();
 
 		if (!src || !dst)
+			return false;
+
+		// enums never mix with plain integers (or other enums) without `as`
+		if (from->IsEnum() || to->IsEnum())
 			return false;
 
 		// pointers: null converts to anything, otherwise the pointee must match (or be opaque)
@@ -1154,10 +1417,35 @@ namespace clear
 			return binaryExpr;
 		}
 		
+		// Color.Red
+		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); 
+			var && var->Variable && var->Variable->Kind == SymbolKind::Type && var->Variable->GetType()->IsEnum())
+		{
+			auto enumType = std::dynamic_pointer_cast<EnumType>(var->Variable->GetType());
+			auto member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+			auto value = member ? enumType->GetValue(member->GetName().GetData()) : std::nullopt;
+
+			if (!value)
+			{
+				Report(DiagnosticCode_UnknownMember, member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide));
+				return nullptr;
+			}
+
+			auto constant = std::make_shared<ASTConstantValue>(*value, enumType);
+			constant->Location = var->GetName();
+			return constant;
+		}
+
 		std::shared_ptr<Type> lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
 
 		if (!lhsType)
 			return binaryExpr;
+
+		if (!lhsType->IsPointer() && !lhsType->IsClass())
+		{
+			Report(DiagnosticCode_InvalidMemberAccess, GetNodeLocation(binaryExpr->RightSide));
+			return nullptr;
+		}
 
 		while (lhsType->IsPointer())
 			lhsType = lhsType->As<PointerType>()->GetBaseType();

@@ -3,6 +3,7 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Sema/Sema.h"
+#include "Symbols/SymbolOperations.h"
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
@@ -97,6 +98,7 @@ namespace clear
 	
 		CodegenContext ctx = unit.CompilationModule->GetCodegenContext();
 		unit.Ast->Codegen(ctx);
+		SymbolOps::FinalizeInitGlobals(*unit.CompilationModule->GetModule());
 		unit.Compiled = true;
 	}
 

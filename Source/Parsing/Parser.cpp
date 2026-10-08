@@ -304,6 +304,10 @@ namespace clear
             {"if",        [this]() { return ParseIf(); }},
 			{"while",	  [this]() { return ParseWhile(); }},
 			{"for",		  [this]() { return ParseFor(); }},
+			{"switch",	  [this]() { return ParseSwitch(); }},
+			{"enum",	  [this]() { return ParseEnum(); }},
+			{"defer",	  [this]() { return ParseDefer(); }},
+			{"const",	  [this]() { return ParseConst(); }},
 			{"class",     [this]() { return ParseClass(); }},
 			{"let",		  [this]() { return ParseLet(); }},
 			{"import",	  [this]() { return ParseImport(); }},
@@ -456,6 +460,173 @@ namespace clear
 
 		forExpr->CodeBlock = ParseCodeBlock();
 		return forExpr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseSwitch()
+	{
+		Token keyword = Consume(); // switch
+
+		auto switchNode = std::make_shared<ASTSwitch>();
+		switchNode->Location = keyword;
+		switchNode->Value = ParseExpr();
+
+		if (!switchNode->Value)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
+			SkipUntil(TokenType::EndLine);
+			return nullptr;
+		}
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		while (true)
+		{
+			while (Match(TokenType::EndLine))
+				Consume();
+
+			if (Match(TokenType::EndOfFile))
+				break;
+
+			if (Match(TokenType::EndScope))
+			{
+				Consume();
+				break;
+			}
+
+			if (Match("case"))
+			{
+				Consume();
+
+				SwitchCase switchCase;
+
+				do 
+				{
+					if (Match(TokenType::Comma))
+						Consume();
+
+					auto value = ParseExpr();
+
+					if (!value)
+					{
+						m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
+						SkipUntil(TokenType::EndLine);
+						return nullptr;
+					}
+
+					switchCase.Values.push_back(value);
+				} while (Match(TokenType::Comma));
+
+				EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+				Consume();
+
+				switchCase.CodeBlock = ParseCodeBlock();
+				switchNode->Cases.push_back(switchCase);
+				continue;
+			}
+
+			if (Match("default"))
+			{
+				Token defaultToken = Consume();
+
+				if (switchNode->DefaultCaseCodeBlock)
+					m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, defaultToken, DiagnosticCode_DuplicateCase);
+
+				EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+				Consume();
+
+				switchNode->DefaultCaseCodeBlock = ParseCodeBlock();
+				continue;
+			}
+
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_ExpectedCase);
+			SkipUntil(TokenType::EndLine);
+		}
+
+		return switchNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseEnum()
+	{
+		Token keyword = Consume(); // enum
+
+		auto enumNode = std::make_shared<ASTEnum>();
+		enumNode->Location = keyword;
+
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+		enumNode->Name = Consume();
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		while (true)
+		{
+			while (Match(TokenType::EndLine) || Match(TokenType::Comma))
+				Consume();
+
+			if (Match(TokenType::EndOfFile))
+				break;
+
+			if (Match(TokenType::EndScope))
+			{
+				Consume();
+				break;
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+			Token name = Consume();
+
+			std::shared_ptr<ASTNodeBase> value;
+
+			if (Match(TokenType::Equals))
+			{
+				Consume();
+				value = ParseExpr();
+			}
+
+			enumNode->Members.push_back({ name, value });
+		}
+
+		return enumNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseDefer()
+	{
+		Token keyword = Consume(); // defer
+
+		auto deferNode = std::make_shared<ASTDefer>();
+		deferNode->Location = keyword;
+		deferNode->Expr = ParseExpr();
+
+		if (!deferNode->Expr)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
+			SkipUntil(TokenType::EndLine);
+			return nullptr;
+		}
+
+		return deferNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseConst()
+	{
+		Token keyword = Consume(); // const
+
+		auto declaration = ParseVariableDecleration();
+
+		if (!declaration.Node)
+			return nullptr;
+
+		declaration.Node->IsConst = true;
+		declaration.Node->Location = keyword;
+
+		if (!declaration.HasBeenInitialized)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, declaration.Node->GetName(), DiagnosticCode_ConstNeedsValue);
+			return nullptr;
+		}
+
+		return declaration.Node;
 	}
 
 	std::shared_ptr<ASTImport> Parser::ParseImport()

@@ -34,7 +34,7 @@ namespace clear
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
-		ForLoop
+		ForLoop, Enum, ConstantValue
 	};
 
 	class ASTNodeBase;
@@ -54,6 +54,11 @@ namespace clear
 		llvm::BasicBlock*  ReturnBlock = nullptr;
 		llvm::BasicBlock* LoopConditionBlock = nullptr;
 		llvm::BasicBlock* LoopEndBlock = nullptr;
+
+		// `defer` statements waiting to run, one list per open block
+		std::shared_ptr<std::vector<std::vector<std::shared_ptr<ASTNodeBase>>>> Defers = std::make_shared<std::vector<std::vector<std::shared_ptr<ASTNodeBase>>>>();
+		size_t FunctionDeferBase = 0; // first block belonging to the current function
+		size_t LoopDeferBase = 0;     // first block inside the innermost loop
 
 		std::shared_ptr<clear::Module> ClearModule;
 		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls where a function is being called from another module
@@ -180,6 +185,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Initializer;
 		std::shared_ptr<Symbol> Variable;
 		std::shared_ptr<Type> ResolvedType;
+		bool IsConst = false;
 
 	private:
 		Token m_Name;
@@ -580,6 +586,7 @@ namespace clear
 	{
 		std::vector<std::shared_ptr<ASTNodeBase>> Values;
 		std::shared_ptr<ASTBlock> CodeBlock;
+		std::vector<int64_t> Constants; // the evaluated values, filled in by semantic analysis
 	};
 
 	class ASTSwitch : public ASTNodeBase 
@@ -596,6 +603,40 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Value;
 	};	
 	
+	// enum Color:
+	//     Red
+	//     Green = 5
+	class ASTEnum : public ASTNodeBase
+	{
+	public:
+		ASTEnum() = default;
+		virtual ~ASTEnum() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Enum; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		Token Name;
+		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> Members; // value is null when automatic
+		std::shared_ptr<EnumType> EnumTy;
+	};
+
+	// an integer known at compile time (enum members, consts)
+	class ASTConstantValue : public ASTNodeBase
+	{
+	public:
+		ASTConstantValue(int64_t value, std::shared_ptr<Type> type) : Value(value), ValueType(type) {}
+		virtual ~ASTConstantValue() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ConstantValue; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		int64_t Value = 0;
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// runs every pending defer from the innermost block down to `downTo`, newest first
+	void EmitDefers(CodegenContext& ctx, size_t downTo);
+
 	class ASTGenericTemplate : public ASTNodeBase
 	{
 	public:

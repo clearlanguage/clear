@@ -59,7 +59,10 @@ namespace clear
         CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
 	    auto ip = ctx.Builder.saveIP(); 
 	    llvm::Function* function = insertBlock->getParent();    
-	    ctx.Builder.SetInsertPoint(&function->getEntryBlock());
+		llvm::BasicBlock& entry = function->getEntryBlock();
+
+		// keep every alloca at the very top of the entry block so LLVM can promote them to registers
+	    ctx.Builder.SetInsertPoint(&entry, entry.getFirstInsertionPt());
 		
 		Symbol symbol = Symbol::CreateValue(ctx.Builder.CreateAlloca(type->Get(), nullptr, "alloca"), ctx.ClearModule->GetTypeRegistry()->GetPointerTo(type)); 
 
@@ -107,6 +110,11 @@ namespace clear
 
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
 	{
+		bool inFunction = ctx.Builder.GetInsertBlock() != nullptr;
+
+		if (inFunction)
+			ctx.Defers->emplace_back();
+
 		for (auto child : Children)
 		{
 			// code after return/break/continue is unreachable, emitting it would produce invalid IR
@@ -114,6 +122,15 @@ namespace clear
 				break;
 
 			child->Codegen(ctx);
+		}
+
+		if (inFunction)
+		{
+			// falling off the end of the block runs its defers (return/break/continue already ran them)
+			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && !block->getTerminator())
+				EmitDefers(ctx, ctx.Defers->size() - 1);
+
+			ctx.Defers->pop_back();
 		}
 
 		return Symbol();
@@ -579,30 +596,50 @@ namespace clear
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
 		Symbol resolvedType = Symbol::CreateType(ResolvedType);
-		Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
-		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 			
 		if (isGlobal)
 		{
-			llvm::Value* allocaInst = new llvm::GlobalVariable(
+			llvm::Type* llvmType = resolvedType.GetType()->Get();
+
+			llvm::GlobalVariable* global = new llvm::GlobalVariable(
 				ctx.Module, 
-				resolvedType.GetType()->Get(),
-				resolvedType.GetType()->IsConst(),
+				llvmType,
+				/* isConstant = */ false,
 				llvm::GlobalValue::InternalLinkage,
-				initializer.Kind != SymbolKind::None ? llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()) : nullptr,
+				llvm::Constant::getNullValue(llvmType),
 				m_Name.GetData()
 			);
 
-			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
+			*Variable = Symbol::CreateValue(global, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
 
-			if (initializer.Kind != SymbolKind::None && !llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()))
+			if (!Initializer)
+				return *Variable;
+
+			// initializers that are not constants run before main, inside the global initializer function
+			llvm::Function* init = SymbolOps::GetInitGlobalsFunction(ctx.Module);
+			auto savedIp = ctx.Builder.saveIP();
+			ctx.Builder.SetInsertPoint(&init->back());
+
+			Symbol initializer = Initializer->Codegen(ctx);
+
+			if (auto constant = llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()); constant && !llvm::isa<llvm::GlobalValue>(constant))
 			{
-				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
+				global->setInitializer(constant);
+				global->setConstant(IsConst);
 			}
+			else
+			{
+				ctx.Builder.CreateStore(initializer.GetLLVMValue(), global);
+			}
+
+			ctx.Builder.restoreIP(savedIp);
+			return *Variable;
 		}
 		else
 		{
+			Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
+
 			*Variable = CreateAlloca(resolvedType.GetType(), ctx);
 
 			if (initializer.Kind != SymbolKind::None)
@@ -755,6 +792,7 @@ namespace clear
 		ValueRestoreGuard guard1(ctx.ReturnType,   returnType);
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
+		ValueRestoreGuard guard4(ctx.FunctionDeferBase, ctx.Defers->size());
 
 		size_t k = 0;
 		for (const auto& arg : Arguments)
@@ -1313,9 +1351,11 @@ namespace clear
 			return Symbol();
 		}
 
-		CLEAR_VERIFY(codegenType->Get() == ctx.ReturnType->Get(), "what the hell");	
+		CLEAR_VERIFY(codegenType->Get() == ctx.ReturnType->Get(), "return value has the wrong type");	
 
+		// the value is computed before any defer runs, so `defer` cannot change what is returned
 		ctx.Builder.CreateStore(codegenValue, ctx.ReturnAlloca);
+		EmitDefers(ctx, ctx.FunctionDeferBase);
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
 
 		return {};
@@ -1332,6 +1372,7 @@ namespace clear
     		ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
 		}
 
+		EmitDefers(ctx, ctx.FunctionDeferBase);
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
 
@@ -1587,6 +1628,7 @@ namespace clear
 
     	ValueRestoreGuard guard1(ctx.LoopConditionBlock, conditionBlock);
     	ValueRestoreGuard guard2(ctx.LoopEndBlock,       end);
+    	ValueRestoreGuard guard3(ctx.LoopDeferBase,      ctx.Defers->size());
 
 		WhileBlock.CodeBlock->Codegen(ctx);
 
@@ -1671,6 +1713,7 @@ namespace clear
 		{
 			ValueRestoreGuard continueGuard(ctx.LoopConditionBlock, stepBlock);
 			ValueRestoreGuard breakGuard(ctx.LoopEndBlock, endBlock);
+			ValueRestoreGuard deferGuard(ctx.LoopDeferBase, ctx.Defers->size());
 
 			CodeBlock->Codegen(ctx);
 		}
@@ -1763,6 +1806,8 @@ namespace clear
 	{
     	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
 		
+		EmitDefers(ctx, ctx.LoopDeferBase);
+
     	if (m_JumpTy == "continue")
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
 
@@ -1888,50 +1933,71 @@ namespace clear
 	{
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
-		// default case must be at back
-		llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(ctx.Context, "switch.continue");
-		llvm::BasicBlock* defaultCase   = llvm::BasicBlock::Create(ctx.Context, "switch.default");
-
-		auto savedIp = ctx.Builder.saveIP();
-
-		ctx.Builder.SetInsertPoint(defaultCase);
-		
-		DefaultCaseCodeBlock->Codegen(ctx);
-
-		if(!ctx.Builder.GetInsertBlock()->getTerminator())
-			ctx.Builder.CreateBr(continueBlock);
-
-		ctx.Builder.restoreIP(savedIp);
-
 		Symbol value = Value->Codegen(ctx);
+		llvm::Type* valueType = value.GetLLVMValue()->getType();
 
-		llvm::SwitchInst* switchStatement = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultCase);
-		function->insert(function->end(), defaultCase);
+		llvm::BasicBlock* endBlock     = llvm::BasicBlock::Create(ctx.Context, "switch.end");
+		llvm::BasicBlock* defaultBlock = DefaultCaseCodeBlock ? llvm::BasicBlock::Create(ctx.Context, "switch.default") : endBlock;
 
-		llvm::SmallVector<llvm::Value*> values;
+		llvm::SwitchInst* switchInst = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultBlock, (unsigned)Cases.size());
 
-		for (const auto& [caseValues, codeBlock] : Cases)
+		for (auto& switchCase : Cases)
 		{
-			llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "switch.case", function);
-			ctx.Builder.SetInsertPoint(block);
-			codeBlock->Codegen(ctx);
-			
-			if(!ctx.Builder.GetInsertBlock()->getTerminator())
-				ctx.Builder.CreateBr(continueBlock);
+			llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(ctx.Context, "switch.case", function);
 
-			for(const auto value : caseValues)
-			{
-				llvm::ConstantInt* casted = llvm::dyn_cast<llvm::ConstantInt>(value->Codegen(ctx).GetLLVMValue());
-				CLEAR_VERIFY(casted, "not a constant int!");
+			for (int64_t constant : switchCase.Constants)
+				switchInst->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(valueType, constant, true)), caseBlock);
 
-				switchStatement->addCase(casted, block);
-			}
+			// no fallthrough: every case jumps to the end when it finishes
+			ctx.Builder.SetInsertPoint(caseBlock);
+			switchCase.CodeBlock->Codegen(ctx);
+
+			if (!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(endBlock);
 		}
 
-		function->insert(function->end(), continueBlock);
-		ctx.Builder.SetInsertPoint(continueBlock);
+		if (DefaultCaseCodeBlock)
+		{
+			function->insert(function->end(), defaultBlock);
+			ctx.Builder.SetInsertPoint(defaultBlock);
+			DefaultCaseCodeBlock->Codegen(ctx);
+
+			if (!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(endBlock);
+		}
+
+		function->insert(function->end(), endBlock);
+		ctx.Builder.SetInsertPoint(endBlock);
 
 		return Symbol();
+	}
+
+	Symbol ASTConstantValue::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(llvm::ConstantInt::get(ValueType->Get(), Value, /* isSigned = */ true), ValueType);
+	}
+
+	Symbol ASTDefer::Codegen(CodegenContext& ctx)
+	{
+		// nothing runs now, the expression is emitted at every exit of the enclosing block
+		CLEAR_VERIFY(!ctx.Defers->empty(), "defer outside of a block");
+		ctx.Defers->back().push_back(Expr);
+
+		return Symbol();
+	}
+
+	void EmitDefers(CodegenContext& ctx, size_t downTo)
+	{
+		auto& defers = *ctx.Defers;
+
+		for (size_t scope = defers.size(); scope-- > downTo; )
+		{
+			// copy, emitting a deferred expression must not be affected by changes to the stack
+			auto pending = defers[scope];
+
+			for (auto it = pending.rbegin(); it != pending.rend(); it++)
+				(*it)->Codegen(ctx);
+		}
 	}
 
 	std::string ASTGenericTemplate::GetName()

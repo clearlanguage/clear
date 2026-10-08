@@ -10,6 +10,7 @@
 #include "Sema/SymbolTable.h"
 
 #include <memory>
+#include <unordered_set>
 
 namespace clear 
 {
@@ -53,6 +54,12 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTClass> classExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTForExpression> forExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSwitch> switchNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context);
+
+		// value of an integer expression known at compile time (literals, consts, enum members, arithmetic on those)
+		std::optional<int64_t> EvaluateInteger(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSubscript> subscript, SemaContext context);
@@ -92,6 +99,8 @@ namespace clear
     private:
 		std::vector<SymbolTable> m_ScopeStack;
 		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
+		std::unordered_map<Symbol*, int64_t> m_ConstantValues; // consts whose value is a known integer
+		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;
