@@ -18,29 +18,29 @@ class List[T]:
             let grown = when self.capacity == 0 use 8 otherwise self.capacity * 2
             self.data = reallocate(self.data, grown)
             self.capacity = grown
-        self.data[self.length] = value
+        *(self.data + self.length) = value
         self.length += 1
 
     function pop(self: *List[T]) -> T:
         assert self.length > 0, "pop from an empty List"
         self.length -= 1
-        return self.data[self.length]
+        return *(self.data + self.length)
 
     // indices are checked like array indices (the checks disappear with --no-checks / -O3)
     function __getitem__(self: *List[T], index: int64) -> T:
         assert index >= 0 and index < self.length, "List index out of range"
-        return self.data[index]
+        return *(self.data + index)
 
     function __setitem__(self: *List[T], index: int64, value: T):
         assert index >= 0 and index < self.length, "List index out of range"
-        self.data[index] = value
+        *(self.data + index) = value
 
     function __len__(self: *List[T]) -> int64:
         return self.length
 
     function last(self: *List[T]) -> T:
         assert self.length > 0, "last of an empty List"
-        return self.data[self.length - 1]
+        return *(self.data + self.length - 1)
 
     function is_empty(self: *List[T]) -> bool:
         return self.length == 0
@@ -50,7 +50,7 @@ class List[T]:
 
     function contains(self: *List[T], value: T) -> bool:
         for i in 0..self.length:
-            if self.data[i] == value:
+            if *(self.data + i) == value:
                 return true
         return false
 

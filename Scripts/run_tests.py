@@ -91,7 +91,7 @@ def run_test(clearc, path, workdir):
     if compile_result.returncode != 0:
         return False, "compilation failed:\n" + compile_result.stdout + compile_result.stderr
 
-    run_result = subprocess.run([output], capture_output=True, text=True, timeout=60)
+    run_result = subprocess.run([output], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
 
     problems = []
     if run_result.returncode != expected_exit:

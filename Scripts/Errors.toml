@@ -332,3 +332,7 @@ Advice  = "Add ‘property {}(self, value: T)’ to the class to allow assigning
 [MacroTooDeep]
 Message = "Macro expansion is nested too deeply."
 Advice  = "‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly."
+
+[NotHashable]
+Message = "This value cannot be hashed."
+Advice  = "‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method."

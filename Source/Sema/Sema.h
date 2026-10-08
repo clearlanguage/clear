@@ -108,8 +108,10 @@ namespace clear
 		bool CheckTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<ClassType> trait, const Token& location);
 		std::shared_ptr<ClassType> FindTrait(const std::string& name, std::shared_ptr<Module> home);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTMacro> macro, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		void EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function);

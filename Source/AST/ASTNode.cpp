@@ -1235,6 +1235,14 @@ namespace clear
 				Symbol current = Target->Codegen(ctx);
 				auto registry = ctx.ClearModule->GetTypeRegistry();
 
+				// a computed value has no address yet: give it one, so it is indexed like a variable
+				if (TargetIsValue)
+				{
+					Symbol slot = CreateAlloca(current.GetType(), ctx);
+					ctx.Builder.CreateStore(current.GetLLVMValue(), slot.GetLLVMValue());
+					current = slot;
+				}
+
 				for (auto index : SubscriptArgs)
 				{
 					Symbol indexSymbol = index->Codegen(ctx);
@@ -2374,6 +2382,66 @@ namespace clear
 			llvm::FunctionCallee strstr = ctx.Module.getOrInsertFunction("strstr", llvm::FunctionType::get(builder.getPtrTy(), { builder.getPtrTy(), builder.getPtrTy() }, false));
 			llvm::Value* position = builder.CreateCall(strstr, { args[1], args[0] });
 			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+		}
+
+		if (Name == "hash_int")
+		{
+			// any scalar: its bits, mixed (splitmix64) so nearby values spread over the whole range
+			llvm::Value* value = args[0];
+
+			if (value->getType()->isPointerTy())
+				value = builder.CreatePtrToInt(value, builder.getInt64Ty());
+			else if (value->getType()->isFloatingPointTy())
+				value = builder.CreateBitCast(value, builder.getIntNTy((unsigned)value->getType()->getPrimitiveSizeInBits()));
+
+			value = builder.CreateZExtOrTrunc(value, builder.getInt64Ty());
+			value = builder.CreateXor(value, builder.CreateLShr(value, 30));
+			value = builder.CreateMul(value, builder.getInt64(0xbf58476d1ce4e5b9ULL));
+			value = builder.CreateXor(value, builder.CreateLShr(value, 27));
+			value = builder.CreateMul(value, builder.getInt64(0x94d049bb133111ebULL));
+			value = builder.CreateXor(value, builder.CreateLShr(value, 31));
+			return Symbol::CreateValue(value, ResultType);
+		}
+
+		if (Name == "hash_str")
+		{
+			// FNV-1a over the bytes, in a small helper shared by the whole module
+			llvm::Function* helper = ctx.Module.getFunction("clear.hash_str");
+
+			if (!helper)
+			{
+				auto type = llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false);
+				helper = llvm::Function::Create(type, llvm::Function::LinkOnceODRLinkage, "clear.hash_str", ctx.Module);
+
+				llvm::IRBuilder<> local(ctx.Context);
+				auto entry = llvm::BasicBlock::Create(ctx.Context, "entry", helper);
+				auto loop = llvm::BasicBlock::Create(ctx.Context, "loop", helper);
+				auto body = llvm::BasicBlock::Create(ctx.Context, "body", helper);
+				auto done = llvm::BasicBlock::Create(ctx.Context, "done", helper);
+
+				local.SetInsertPoint(entry);
+				local.CreateBr(loop);
+
+				local.SetInsertPoint(loop);
+				auto hash = local.CreatePHI(local.getInt64Ty(), 2, "hash");
+				auto position = local.CreatePHI(local.getPtrTy(), 2, "position");
+				hash->addIncoming(local.getInt64(0xcbf29ce484222325ULL), entry);
+				position->addIncoming(helper->getArg(0), entry);
+				auto byte = local.CreateLoad(local.getInt8Ty(), position, "byte");
+				local.CreateCondBr(local.CreateICmpEQ(byte, local.getInt8(0)), done, body);
+
+				local.SetInsertPoint(body);
+				auto mixed = local.CreateMul(local.CreateXor(hash, local.CreateZExt(byte, local.getInt64Ty())), local.getInt64(0x100000001b3ULL));
+				auto next = local.CreateConstInBoundsGEP1_64(local.getInt8Ty(), position, 1);
+				hash->addIncoming(mixed, body);
+				position->addIncoming(next, body);
+				local.CreateBr(loop);
+
+				local.SetInsertPoint(done);
+				local.CreateRet(hash);
+			}
+
+			return Symbol::CreateValue(builder.CreateCall(helper, { args[0] }), ResultType);
 		}
 
 		CLEAR_UNREACHABLE("unknown intrinsic ", Name);

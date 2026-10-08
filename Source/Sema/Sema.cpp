@@ -781,6 +781,13 @@ namespace clear
 				return VisitLen(funcCall, context);
 		}
 
+		// hash(x) is built in unless the program defines its own hash
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "hash")
+		{
+			if (!LookupSymbol("hash").first)
+				return VisitHash(funcCall, context);
+		}
+
 		// print(...) is built in unless the program defines its own print
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "print")
 		{
@@ -794,6 +801,18 @@ namespace clear
 
 					if (!arg)
 						return nullptr;
+
+					// a class with __str__ prints as whatever that returns
+					auto type = m_TypeInferEngine.InferTypeFromNode(arg);
+
+					if (auto classType = ClassOf(type); classType && classType->As<ClassType>()->MemberFunctions.contains("__str__"))
+					{
+						EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__str__")->GetFunctionSymbol().FunctionNode);
+						arg = CallMethod(arg, type, "__str__", {}, GetNodeLocation(arg));
+
+						if (!arg)
+							return nullptr;
+					}
 				}
 
 				return funcCall;
@@ -1473,7 +1492,7 @@ namespace clear
 				return nullptr;
 			}
 
-			if (!clsType->MemberFunctions.contains("__setitem__") || assignmentOp->GetAssignType() != AssignmentOperatorType::Normal)
+			if (!clsType->MemberFunctions.contains("__setitem__"))
 			{
 				Report(DiagnosticCode_MissingIndexOverload, GetNodeLocation(assignmentOp->Storage));
 				return nullptr;
@@ -1482,10 +1501,30 @@ namespace clear
 			auto setFunc = clsType->MemberFunctions.at("__setitem__");
 			EnsureDefined(setFunc->GetFunctionSymbol().FunctionNode);
 
+			// obj[k] += v  is  obj.__setitem__(k, obj.__getitem__(k) + v)
+			std::shared_ptr<ASTNodeBase> current = funcCallNode;
+
+			if (assignmentOp->GetAssignType() != AssignmentOperatorType::Normal)
+			{
+				auto getter = std::make_shared<ASTFunctionCall>();
+				getter->Location = funcCallNode->Location;
+				getter->Callee = funcCallNode->Callee;
+				getter->Arguments = funcCallNode->Arguments;
+				current = CheckCall(getter);
+
+				if (!current)
+					return nullptr;
+			}
+
+			auto value = CompoundValue(assignmentOp->GetAssignType(), current, assignmentOp->Value);
+
+			if (!value)
+				return nullptr;
+
     		auto funcCall = std::make_shared<ASTFunctionCall>();
 			funcCall->Location = funcCallNode->Location;
     		funcCall->Arguments = funcCallNode->Arguments;
-    		funcCall->Arguments.push_back(assignmentOp->Value);
+    		funcCall->Arguments.push_back(value);
 
     		auto var = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__setitem__", funcCall->Location.GetSourceFile(), funcCall->Location.LineNumber, funcCall->Location.ColumnNumber));
     		var->Variable = setFunc;
@@ -1497,6 +1536,35 @@ namespace clear
     	}
 
 		return assignmentOp;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value)
+	{
+		static const std::unordered_map<AssignmentOperatorType, OperatorType> compound = {
+			{ AssignmentOperatorType::Add, OperatorType::Add }, { AssignmentOperatorType::Sub, OperatorType::Sub },
+			{ AssignmentOperatorType::Mul, OperatorType::Mul }, { AssignmentOperatorType::Div, OperatorType::Div },
+			{ AssignmentOperatorType::Mod, OperatorType::Mod }, { AssignmentOperatorType::BitAnd, OperatorType::BitwiseAnd },
+			{ AssignmentOperatorType::BitOr, OperatorType::BitwiseOr }, { AssignmentOperatorType::BitXor, OperatorType::BitwiseXor },
+			{ AssignmentOperatorType::Shl, OperatorType::LeftShift }, { AssignmentOperatorType::Shr, OperatorType::RightShift },
+		};
+
+		auto op = compound.find(assignType);
+
+		if (op == compound.end())
+			return value;
+
+		auto binary = std::make_shared<ASTBinaryExpression>(op->second);
+		binary->LeftSide = current;
+		binary->RightSide = value;
+
+		if (auto overload = TryOperatorOverload(binary))
+			return overload.value();
+
+		if (!CheckOperands(binary))
+			return nullptr;
+
+		binary->ResultantType = m_TypeInferEngine.InferTypeFromNode(binary);
+		return binary;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter)
@@ -1513,36 +1581,11 @@ namespace clear
 			return nullptr;
 		}
 
-		auto value = assignmentOp->Value;
-
 		// obj.name += v  is  obj.name = obj.name + v
-		static const std::unordered_map<AssignmentOperatorType, OperatorType> compound = {
-			{ AssignmentOperatorType::Add, OperatorType::Add }, { AssignmentOperatorType::Sub, OperatorType::Sub },
-			{ AssignmentOperatorType::Mul, OperatorType::Mul }, { AssignmentOperatorType::Div, OperatorType::Div },
-			{ AssignmentOperatorType::Mod, OperatorType::Mod }, { AssignmentOperatorType::BitAnd, OperatorType::BitwiseAnd },
-			{ AssignmentOperatorType::BitOr, OperatorType::BitwiseOr }, { AssignmentOperatorType::BitXor, OperatorType::BitwiseXor },
-			{ AssignmentOperatorType::Shl, OperatorType::LeftShift }, { AssignmentOperatorType::Shr, OperatorType::RightShift },
-		};
+		auto value = CompoundValue(assignmentOp->GetAssignType(), getter, assignmentOp->Value);
 
-		if (auto op = compound.find(assignmentOp->GetAssignType()); op != compound.end())
-		{
-			auto binary = std::make_shared<ASTBinaryExpression>(op->second);
-			binary->LeftSide = getter;
-			binary->RightSide = value;
-
-			if (auto overload = TryOperatorOverload(binary))
-			{
-				value = overload.value();
-			}
-			else
-			{
-				if (!CheckOperands(binary))
-					return nullptr;
-
-				binary->ResultantType = m_TypeInferEngine.InferTypeFromNode(binary);
-				value = binary;
-			}
-		}
+		if (!value)
+			return nullptr;
 
 		EnsureDefined(setter->second->GetFunctionSymbol().FunctionNode);
 
@@ -2181,7 +2224,10 @@ namespace clear
 		bool throughPointer = forExpr->IterableType->IsPointer();
 		auto classType = (throughPointer ? forExpr->IterableType->As<PointerType>()->GetBaseType() : forExpr->IterableType)->As<ClassType>();
 
-		if (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__"))
+		// sparse containers (Map) iterate over slots: __slots__() of them, skipping those where __used__(i) is false, value __at__(i)
+		bool slotted = classType->MemberFunctions.contains("__slots__") && classType->MemberFunctions.contains("__used__") && classType->MemberFunctions.contains("__at__");
+
+		if (!slotted && (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__")))
 		{
 			Token location = GetNodeLocation(iterable);
 			location.SetData(classType->GetHash());
@@ -2242,13 +2288,29 @@ namespace clear
 		loop->Location = location;
 		loop->VariableName = token(TokenType::Identifier, indexName);
 		loop->Start = std::make_shared<ASTNodeLiteral>(token(TokenType::Number, "0"));
-		loop->End = method(iterableName, "__len__", {});
+		loop->End = method(iterableName, slotted ? "__slots__" : "__len__", {});
 
 		auto elementDecl = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
 		elementDecl->Location = forExpr->VariableName;
-		elementDecl->Initializer = method(iterableName, "__getitem__", { name(indexName) });
+		elementDecl->Initializer = method(iterableName, slotted ? "__at__" : "__getitem__", { name(indexName) });
 
 		loop->CodeBlock = std::make_shared<ASTBlock>();
+
+		if (slotted)
+		{
+			// if not it.__used__(i): continue
+			auto unused = std::make_shared<ASTUnaryExpression>(OperatorType::Not);
+			unused->Location = location;
+			unused->Operand = method(iterableName, "__used__", { name(indexName) });
+
+			auto skip = std::make_shared<ASTBlock>();
+			skip->Children.push_back(std::make_shared<ASTLoopControlFlow>("continue", token(TokenType::Identifier, "continue")));
+
+			auto check = std::make_shared<ASTIfExpression>();
+			check->ConditionalBlocks.push_back({ unused, skip });
+			loop->CodeBlock->Children.push_back(check);
+		}
+
 		loop->CodeBlock->Children.push_back(elementDecl);
 		loop->CodeBlock->Children.insert(loop->CodeBlock->Children.end(), forExpr->CodeBlock->Children.begin(), forExpr->CodeBlock->Children.end());
 
@@ -2427,6 +2489,10 @@ namespace clear
 		{
 			classType = objectType->As<ClassType>();
 
+			// a loaded variable or field: pass the address of where it lives
+			if (auto load = std::dynamic_pointer_cast<ASTLoad>(object); load && IsStorageNode(load->Operand))
+				object = load->Operand;
+
 			if (IsStorageNode(object))
 			{
 				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
@@ -2519,6 +2585,52 @@ namespace clear
 		where.SetData(GetDisplayName(type));
 		Report(DiagnosticCode_NoLength, where);
 		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
+	{
+		Token location = GetNodeLocation(funcCall->Callee);
+
+		if (funcCall->Arguments.size() != 1)
+		{
+			location.SetData(std::format("hash’ expects 1 argument, but {} {} given", funcCall->Arguments.size(), funcCall->Arguments.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_WrongArgumentCount, 4);
+			return nullptr;
+		}
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		auto argument = Visit(funcCall->Arguments[0], valueContext);
+
+		if (!argument)
+			return nullptr;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(argument);
+		auto uint64Type = m_Module->Lookup("uint64").value()->GetType();
+
+		// a class decides how it is hashed
+		if (auto classType = ClassOf(type); classType && !type->IsPointer() && classType->As<ClassType>()->MemberFunctions.contains("__hash__"))
+		{
+			EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__hash__")->GetFunctionSymbol().FunctionNode);
+			return CallMethod(argument, type, "__hash__", {}, location);
+		}
+
+		bool isString = type && type->GetHash() == "str";
+		bool isScalar = type && (type->IsIntegral() || type->IsFloatingPoint() || type->IsPointer() || type->IsEnum());
+
+		if (!isString && !isScalar)
+		{
+			Token where = GetNodeLocation(argument);
+			where.SetData(GetDisplayName(type));
+			Report(DiagnosticCode_NotHashable, where);
+			return nullptr;
+		}
+
+		auto intrinsic = std::make_shared<ASTIntrinsic>(isString ? "hash_str" : "hash_int", uint64Type);
+		intrinsic->Location = location;
+		intrinsic->Arguments.push_back(argument);
+		return intrinsic;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context)
@@ -3957,6 +4069,9 @@ namespace clear
 		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue, .TypeHint = context.TypeHint, .AllowGenericInferenceFromArgs = false });
 		subscript->Meaning = SubscriptSemantic::Generic;
 
+		if (!subscript->Target)
+			return nullptr;
+
 		if (IsNodeValue(subscript->Target))
 		{
 			subscript->Meaning = SubscriptSemantic::ArrayIndex;	
@@ -3973,6 +4088,10 @@ namespace clear
 
 			if (!targetType)
 				return nullptr;
+
+			// f()[i]: index the computed pointer (or array) directly
+			if (!IsStorageNode(subscript->Target) && !targetType->IsClass())
+				subscript->TargetIsValue = true;
 
 			// a class, or a pointer to a class, that defines indexing: obj[i] calls obj.__getitem__(i)
 			std::shared_ptr<ClassType> clsType;
@@ -4851,9 +4970,18 @@ namespace clear
 			{
 				return true;
 			}
+			case ASTNodeType::TypeLiteral:
+			case ASTNodeType::ArrayType:
+			case ASTNodeType::FunctionTypeExpr:
+			case ASTNodeType::TypeSpecifier:
+			case ASTNodeType::GenericTemplate:
+				return false;
+			case ASTNodeType::TupleExpr:
+				return !std::dynamic_pointer_cast<ASTTupleExpr>(node)->IsType;
 			default:
 			{
-				break;
+				// calls, casts, constants...: anything else computes a value
+				return true;
 			}
 		}
 	

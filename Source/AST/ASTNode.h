@@ -328,6 +328,8 @@ namespace clear
 		virtual Symbol Codegen(CodegenContext&) override;
 		
 	public:
+		bool TargetIsValue = false; // the target is a computed value (e.g. f()[i]), not storage
+		
 		std::shared_ptr<ASTNodeBase> Target;
 		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> SubscriptArgs;
 		SubscriptSemantic Meaning = SubscriptSemantic::None;

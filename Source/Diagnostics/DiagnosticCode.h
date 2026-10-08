@@ -87,6 +87,7 @@ namespace clear
 		DiagnosticCode_NoSuperclass,
 		DiagnosticCode_PropertyNotSettable,
 		DiagnosticCode_MacroTooDeep,
+		DiagnosticCode_NotHashable,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -174,6 +175,7 @@ namespace clear
 		"‘super’ is only available in methods of a class with a base class.",
 		"This property has no setter.",
 		"Macro expansion is nested too deeply.",
+		"This value cannot be hashed.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -260,5 +262,6 @@ namespace clear
 		"Only a class declared as class Name(Base) has a ‘{}’.",
 		"Add ‘property {}(self, value: T)’ to the class to allow assigning to it.",
 		"‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly.",
+		"‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method.",
 	};
 }
