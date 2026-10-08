@@ -235,7 +235,7 @@ namespace clear
 
 	GenericTemplateSymbol Symbol::GetGenericTemplate()
 	{
-		CLEAR_VERIFY(Kind == SymbolKind::GenericTemplate, "cannot call Symbol::GetGenericTemplate() when kind is not GenericTemplate");
+		CLEAR_VERIFY(Kind == SymbolKind::GenericTemplate || Kind == SymbolKind::Macro, "cannot call Symbol::GetGenericTemplate() when kind is not GenericTemplate");
 		return std::get<GenericTemplateSymbol>(Data);
 	}
 

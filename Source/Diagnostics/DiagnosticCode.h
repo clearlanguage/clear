@@ -86,6 +86,7 @@ namespace clear
 		DiagnosticCode_TraitNotSatisfied,
 		DiagnosticCode_NoSuperclass,
 		DiagnosticCode_PropertyNotSettable,
+		DiagnosticCode_MacroTooDeep,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -172,6 +173,7 @@ namespace clear
 		"Type does not satisfy the trait.",
 		"‘super’ is only available in methods of a class with a base class.",
 		"This property has no setter.",
+		"Macro expansion is nested too deeply.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -257,5 +259,6 @@ namespace clear
 		"{}.",
 		"Only a class declared as class Name(Base) has a ‘{}’.",
 		"Add ‘property {}(self, value: T)’ to the class to allow assigning to it.",
+		"‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly.",
 	};
 }

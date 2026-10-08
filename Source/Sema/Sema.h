@@ -107,6 +107,8 @@ namespace clear
 		bool DeclareClassBodyNow(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		bool CheckTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<ClassType> trait, const Token& location);
 		std::shared_ptr<ClassType> FindTrait(const std::string& name, std::shared_ptr<Module> home);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTMacro> macro, SemaContext context);
+		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
@@ -154,7 +156,9 @@ namespace clear
 		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
 		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances;
 		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first
-		std::unordered_set<ASTClass*> m_ClassesInProgress;                      // catches `class A(B)` / `class B(A)`
+		std::unordered_set<ASTClass*> m_ClassesInProgress;
+		size_t m_MacroCounter = 0;
+		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
 
 		struct LazyBody
 		{

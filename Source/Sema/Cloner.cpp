@@ -26,7 +26,32 @@ namespace clear {
 			case ASTNodeType::Class:					return CloneClass(std::dynamic_pointer_cast<ASTClass>(node));
 			case ASTNodeType::FunctionDefinition:		return CloneFunction(std::dynamic_pointer_cast<ASTFunctionDefinition>(node));
 			case ASTNodeType::VariableDecleration:		return CloneVariableDecl(std::dynamic_pointer_cast<ASTVariableDeclaration>(node));
-			case ASTNodeType::Variable:					return CloneVariable(std::dynamic_pointer_cast<ASTVariable>(node));
+			case ASTNodeType::Variable:
+			{
+				// a macro parameter: paste a copy of what the caller wrote (cloned plainly, so it keeps the caller's names)
+				auto variable = std::dynamic_pointer_cast<ASTVariable>(node);
+				if (auto it = ExpressionMap.find(variable->GetName().GetData()); it != ExpressionMap.end())
+					return Cloner{}.Clone(it->second);
+
+				return CloneVariable(variable);
+			}
+			case ASTNodeType::MacroCall:
+			{
+				auto original = std::dynamic_pointer_cast<ASTMacroCall>(node);
+				auto call = std::make_shared<ASTMacroCall>();
+				call->Name = original->Name;
+				call->Location = original->Location;
+				for (auto& argument : original->Arguments)
+					call->Arguments.push_back(Clone(argument));
+				return call;
+			}
+			case ASTNodeType::Sequence:
+			{
+				auto sequence = std::make_shared<ASTSequence>();
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children)
+					sequence->Children.push_back(Clone(child));
+				return sequence;
+			}
 			case ASTNodeType::TypeSpecifier:			return CloneTypeSpec(std::dynamic_pointer_cast<ASTTypeSpecifier>(node));
 			case ASTNodeType::BinaryExpression:			return CloneBinaryExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
 			case ASTNodeType::UnaryExpression:			return CloneUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
@@ -48,6 +73,14 @@ namespace clear {
 				auto original = std::dynamic_pointer_cast<ASTForExpression>(node);
 				auto forLoop = std::make_shared<ASTForExpression>();
 				forLoop->VariableName = original->VariableName;
+
+				if (!HygieneSuffix.empty())
+				{
+					std::string fresh = original->VariableName.GetData() + HygieneSuffix;
+					RenameMap[original->VariableName.GetData()] = fresh;
+					forLoop->VariableName.SetData(fresh);
+				}
+
 				forLoop->Start = Clone(original->Start);
 				forLoop->End = Clone(original->End);
 				forLoop->Iterable = Clone(original->Iterable);
@@ -227,12 +260,35 @@ namespace clear {
 
 		newNode->IsConst = node->IsConst;
 		newNode->Location = node->Location;
+
+		// a local declared by a macro body never clashes with (or captures) the caller's variables
+		if (!HygieneSuffix.empty() && !node->IsParameter)
+		{
+			Token fresh = node->GetName();
+			fresh.SetData(fresh.GetData() + HygieneSuffix);
+			RenameMap[node->GetName().GetData()] = fresh.GetData();
+
+			auto renamed = std::make_shared<ASTVariableDeclaration>(fresh);
+			renamed->TypeResolver = newNode->TypeResolver;
+			renamed->Initializer = newNode->Initializer;
+			renamed->IsConst = newNode->IsConst;
+			renamed->Location = newNode->Location;
+			return renamed;
+		}
+
 		return newNode;
 	}
 
 	std::shared_ptr<ASTVariable> Cloner::CloneVariable(std::shared_ptr<ASTVariable> node)
 	{
 		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(node->GetName());
+
+		if (auto renamed = RenameMap.find(node->GetName().GetData()); renamed != RenameMap.end())
+		{
+			Token name = node->GetName();
+			name.SetData(renamed->second);
+			newNode = std::make_shared<ASTVariable>(name);
+		}
 
 		auto it = SubstitutionMap.find(node->GetName().GetData());
 		if (it != SubstitutionMap.end())

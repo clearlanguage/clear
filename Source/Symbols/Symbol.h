@@ -34,7 +34,8 @@ namespace clear
         InferType,
 		Callee,
 		GenericTemplate,
-		Generic
+		Generic,
+		Macro // data: GenericTemplateSymbol holding the ASTMacro
     };
 
     struct FunctionSymbol 

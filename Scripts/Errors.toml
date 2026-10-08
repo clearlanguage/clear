@@ -328,3 +328,7 @@ Advice  = "Only a class declared as class Name(Base) has a ‘{}’."
 [PropertyNotSettable]
 Message = "This property has no setter."
 Advice  = "Add ‘property {}(self, value: T)’ to the class to allow assigning to it."
+
+[MacroTooDeep]
+Message = "Macro expansion is nested too deeply."
+Advice  = "‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly."

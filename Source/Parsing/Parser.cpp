@@ -282,7 +282,7 @@ namespace clear
 											   statement->GetType() == ASTNodeType::ForLoop || statement->GetType() == ASTNodeType::FunctionDefinition ||
 											   statement->GetType() == ASTNodeType::Class || statement->GetType() == ASTNodeType::Switch ||
 											   statement->GetType() == ASTNodeType::Enum || statement->GetType() == ASTNodeType::GenericTemplate ||
-											   statement->GetType() == ASTNodeType::Block);
+											   statement->GetType() == ASTNodeType::Block || statement->GetType() == ASTNodeType::Macro);
 
 			if (statement && !endsWithBlock && !Match(TokenType::EndLine) && !Match(TokenType::EndScope) && !Match(TokenType::EndOfFile))
 			{
@@ -330,6 +330,7 @@ namespace clear
 			{"class",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"union",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"trait",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
+			{"macro",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseMacro(); }},
 			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
 			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
 			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
@@ -808,6 +809,42 @@ namespace clear
 		return function;
 	}
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseMacro()
+	{
+		EXPECT_DATA_RETURN("macro", DiagnosticCode_None, nullptr);
+		Consume();
+
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+		auto macro = std::make_shared<ASTMacro>();
+		macro->Name = Consume();
+		macro->Location = macro->Name;
+
+		EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
+		Consume();
+
+		while (!Match(TokenType::RightParen) && !Match(TokenType::EndOfFile))
+		{
+			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+			macro->Parameters.push_back(Consume().GetData());
+
+			if (Match(TokenType::Comma))
+			{
+				Consume();
+				continue;
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_ExpectedEndOfFunction, nullptr);
+		}
+
+		Consume();
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		macro->Body = ParseCodeBlock();
+		return macro;
+	}
+
 	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly, bool isProperty)
 	{
 		if (!isProperty)
@@ -1068,6 +1105,38 @@ namespace clear
 			}
 			case TokenType::Identifier:
 			{
+				// name!(a, b): a macro use
+				if (m_Position + 2 < m_Tokens.size() && m_Tokens[m_Position + 1].IsType(TokenType::Bang) && m_Tokens[m_Position + 2].IsType(TokenType::LeftParen))
+				{
+					auto call = std::make_shared<ASTMacroCall>();
+					call->Name = Consume();
+					call->Location = call->Name;
+					Consume(); // !
+					Consume(); // (
+
+					while (!Match(TokenType::RightParen) && !Match(TokenType::EndOfFile))
+					{
+						auto argument = ParseExpr();
+
+						if (!argument)
+							return nullptr;
+
+						call->Arguments.push_back(argument);
+
+						if (Match(TokenType::Comma))
+						{
+							Consume();
+							continue;
+						}
+
+						EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_ExpectedEndOfFunction, nullptr);
+					}
+
+					Consume();
+					lhs = call;
+					break;
+				}
+
 				lhs = std::make_shared<ASTVariable>(token);
 				Consume();
 					

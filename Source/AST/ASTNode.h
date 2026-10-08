@@ -36,7 +36,7 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall,
 		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
@@ -877,6 +877,35 @@ namespace clear
 	public:
 		std::shared_ptr<Symbol> Function;
 		std::shared_ptr<Type> FunctionTy;
+	};
+
+	// macro name(a, b): a block of code pasted in, with its arguments, wherever name!(x, y) is written
+	class ASTMacro : public ASTNodeBase
+	{
+	public:
+		ASTMacro() = default;
+		virtual ~ASTMacro() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Macro; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		Token Name;
+		std::vector<std::string> Parameters;
+		std::shared_ptr<ASTBlock> Body;
+	};
+
+	// name!(x, y): replaced by the macro's body during semantic analysis
+	class ASTMacroCall : public ASTNodeBase
+	{
+	public:
+		ASTMacroCall() = default;
+		virtual ~ASTMacroCall() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::MacroCall; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		Token Name;
+		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
 	};
 
 	// the address of a class's table of virtual methods (stored in the hidden __vtable field)

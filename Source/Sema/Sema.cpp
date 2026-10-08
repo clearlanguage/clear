@@ -72,7 +72,7 @@ namespace clear
 				continue;
 			}
 
-			if (kind == ASTNodeType::Import || kind == ASTNodeType::Enum || kind == ASTNodeType::GenericTemplate)
+			if (kind == ASTNodeType::Import || kind == ASTNodeType::Enum || kind == ASTNodeType::GenericTemplate || kind == ASTNodeType::Macro)
 				node = Visit(node, context);
 		}
 
@@ -109,6 +109,7 @@ namespace clear
 				case ASTNodeType::Class:
 				case ASTNodeType::FunctionDefinition:
 				case ASTNodeType::FunctionDecleration:
+				case ASTNodeType::Macro:
 				case ASTNodeType::Base:
 					break;
 				default:
@@ -400,10 +401,14 @@ namespace clear
 			case ASTNodeType::Destructure:				return Visit(std::dynamic_pointer_cast<ASTDestructure>(ast), context);
 			case ASTNodeType::Sequence:
 			{
-				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(ast)->Children)
+				auto& children = std::dynamic_pointer_cast<ASTSequence>(ast)->Children;
+				for (auto& child : children)
 					child = Visit(child, context);
+				std::erase(children, nullptr);
 				return ast;
 			}
+			case ASTNodeType::Macro:					return Visit(std::dynamic_pointer_cast<ASTMacro>(ast), context);
+			case ASTNodeType::MacroCall:				return ExpandMacro(std::dynamic_pointer_cast<ASTMacroCall>(ast), context);
 			case ASTNodeType::Slot:						return ast;
 			case ASTNodeType::Construct:				return ast;
 			case ASTNodeType::Load:						return ast; // already analysed (shared default values)
@@ -985,6 +990,100 @@ namespace clear
 		}
 
 		return CheckCall(funcCall);
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTMacro> macro, SemaContext context)
+	{
+		auto symbol = std::make_shared<Symbol>(Symbol { .Kind = SymbolKind::Macro, .Data = GenericTemplateSymbol { .GenericTemplate = macro } });
+
+		if (!m_ScopeStack.back().Insert(macro->Name.GetData(), SymbolEntryType::None, symbol))
+		{
+			Report(DiagnosticCode_RedefinedIdentifier, macro->Name);
+			return nullptr;
+		}
+
+		if (context.GlobalState)
+			m_Module->ExposeSymbol(macro->Name.GetData(), symbol);
+
+		return macro;
+	}
+
+	static bool IsStatementNode(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		switch (node->GetType())
+		{
+			case ASTNodeType::VariableDecleration:
+			case ASTNodeType::AssignmentOperator:
+			case ASTNodeType::IfExpression:
+			case ASTNodeType::WhileLoop:
+			case ASTNodeType::ForLoop:
+			case ASTNodeType::ReturnStatement:
+			case ASTNodeType::Switch:
+			case ASTNodeType::Defer:
+			case ASTNodeType::Assert:
+			case ASTNodeType::LoopControlFlow:
+			case ASTNodeType::Destructure:
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context)
+	{
+		auto [entry, scopeIndex] = LookupSymbol(call->Name.GetData());
+
+		if (!entry || entry->Symbol->Kind != SymbolKind::Macro)
+		{
+			Report(DiagnosticCode_UndeclaredIdentifier, call->Name);
+			return nullptr;
+		}
+
+		auto macro = std::dynamic_pointer_cast<ASTMacro>(entry->Symbol->GetGenericTemplate().GenericTemplate);
+
+		if (call->Arguments.size() != macro->Parameters.size())
+		{
+			Token where = call->Name;
+			where.SetData(std::format("{}!’ expects {} argument{}, but {} {} given", call->Name.GetData(), macro->Parameters.size(), 
+									  macro->Parameters.size() == 1 ? "" : "s", call->Arguments.size(), call->Arguments.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, call->Name.GetData().size());
+			return nullptr;
+		}
+
+		if (m_MacroDepth >= 64)
+		{
+			Report(DiagnosticCode_MacroTooDeep, call->Name);
+			return nullptr;
+		}
+
+		// paste the body: parameters become the caller's syntax, the body's own locals get names nobody else can write
+		Cloner cloner;
+		cloner.DestinationModule = m_Module;
+		cloner.HygieneSuffix = std::format(".m{}", m_MacroCounter++);
+
+		for (size_t i = 0; i < macro->Parameters.size(); i++)
+			cloner.ExpressionMap[macro->Parameters[i]] = call->Arguments[i];
+
+		auto body = std::dynamic_pointer_cast<ASTBlock>(cloner.Clone(macro->Body));
+
+		m_MacroDepth++;
+		std::shared_ptr<ASTNodeBase> result;
+
+		// a body that is one expression is an expression macro: square!(x) has a value
+		if (body->Children.size() == 1 && !IsStatementNode(body->Children[0]))
+		{
+			result = Visit(body->Children[0], context);
+		}
+		else
+		{
+			auto sequence = std::make_shared<ASTSequence>();
+			sequence->Location = call->Location;
+			sequence->Children.assign(body->Children.begin(), body->Children.end());
+			result = Visit(sequence, context);
+		}
+
+		m_MacroDepth--;
+		return result;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
