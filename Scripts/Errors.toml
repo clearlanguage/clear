@@ -113,3 +113,82 @@ Advice  = "Separate items with a comma ',' at {} to continue the list or argumen
 [ExpectedColon]
 Message = "Expected ':' after case label or block starter."
 Advice  = "Add a colon ':' after {} to start the block or specify the case body."
+[NeedsTypeOrValue]
+Message = "A variable needs a type or an initial value."
+Advice  = "Give ‘{}’ a type (let x: int) or a value to infer it from (let x = 0)."
+
+[LoopControlOutsideLoop]
+Message = "‘break’ or ‘continue’ used outside of a loop."
+Advice  = "‘{}’ can only appear inside a while or for loop."
+
+[VariadicNotLast]
+Message = "Variadic parameter must be the last parameter."
+Advice  = "Move ‘...’ to the end of the parameter list."
+
+[ImportNotFound]
+Message = "Imported file could not be found."
+Advice  = "‘{}’ was not found relative to the importing file. Check the path and that it is part of the build."
+
+[InvalidArraySize]
+Message = "Array size must be a positive compile-time constant."
+Advice  = "Use a literal or constant expression greater than zero for the size near ‘{}’."
+
+[InvalidMemberAccess]
+Message = "Invalid member access."
+Advice  = "Only a name can follow ‘.’, near ‘{}’."
+
+[UnknownMember]
+Message = "Type has no member with this name."
+Advice  = "‘{}’ is not a field or method of this type. Check the spelling or the class definition."
+
+[MissingIndexOverload]
+Message = "Type cannot be indexed."
+Advice  = "Define __getitem__ (and __setitem__ for assignment) on the class to support ‘[]’ near ‘{}’."
+
+[ExpectedType]
+Message = "Expected a type."
+Advice  = "‘{}’ is not a type. Use a built-in type like int or float64, a class name, or a pointer such as *int."
+
+[InvalidOperands]
+Message = "Operator cannot be applied to these operand types."
+Advice  = "The operands near ‘{}’ have incompatible types. Use ‘as’ to convert explicitly."
+
+[ReturnTypeMismatch]
+Message = "Returned value does not match the function's return type."
+Advice  = "The value near ‘{}’ cannot be converted to the declared return type."
+
+[MissingReturnValue]
+Message = "Function must return a value."
+Advice  = "Add a value after ‘{}’ that matches the function's return type."
+
+[WrongArgumentCount]
+Message = "Wrong number of arguments in function call."
+Advice  = "Check the call to ‘{}’ against the function's parameter list."
+
+[ArgumentTypeMismatch]
+Message = "Argument type does not match the parameter type."
+Advice  = "The argument near ‘{}’ cannot be converted implicitly. Use ‘as’ to convert explicitly."
+
+[NotCallable]
+Message = "Expression is not callable."
+Advice  = "‘{}’ is not a function or method."
+
+[AssignToRValue]
+Message = "Cannot assign to this expression."
+Advice  = "The left side near ‘{}’ must be a variable, field, dereferenced pointer or index."
+
+[DuplicateCase]
+Message = "Duplicate case value in switch."
+Advice  = "The value ‘{}’ already appears in an earlier case."
+
+[NonConstantCase]
+Message = "Case values must be integer constants."
+Advice  = "‘{}’ is not a compile-time integer constant."
+
+[CannotInferGeneric]
+Message = "Cannot infer the type arguments of a generic type."
+Advice  = "Write the type arguments explicitly, for example ‘{}[int]’."
+
+[ImplicitConversion]
+Message = "Cannot convert implicitly, the conversion may lose information."
+Advice  = "Converting ‘{}’ needs an explicit cast, for example ‘value as T’."

@@ -207,8 +207,8 @@ namespace clear
     {
         return BinaryIntOpSignednessAware(
             lhs, rhs, builder,
-            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateAShr(l, r, name); },
-            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateLShr(l, r, name); },
+            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateLShr(l, r, name); }, // unsigned
+            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateAShr(l, r, name); }, // signed keeps the sign bit
             "shr"
         );
     }

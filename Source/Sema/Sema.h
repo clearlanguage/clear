@@ -25,6 +25,8 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<Type>> CallsiteArgs;
 		bool AllowGenericInferenceFromArgs = true;
 		bool GlobalState = true;
+		bool InLoop = false;
+		std::shared_ptr<Type> ReturnType; // of the function being analysed, null for void
 	};
 	
 	struct CompilationUnit;
@@ -61,9 +63,14 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSizeofExpr> castExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTIsExpr> castExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTLoopControlFlow> controlFlow, SemaContext context);
 
 	private:
 		void Report(DiagnosticCode code, Token token);
+
+		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
+		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
+		bool IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral);
 		
 		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
@@ -75,10 +82,15 @@ namespace clear
 		void ConstructSymbol(std::shared_ptr<Symbol> symbol, std::shared_ptr<ASTNodeBase> clonnedNode);
 		void ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode);
 		
+		std::pair<std::optional<SymbolEntry>, size_t> LookupSymbol(llvm::StringRef name);
+		std::shared_ptr<Symbol> InstantiateFromValues(std::shared_ptr<ASTVariable> target, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, 
+													  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values);
+
 		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
 
     private:
 		std::vector<SymbolTable> m_ScopeStack;
+		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

@@ -138,7 +138,7 @@ namespace clear
         virtual ~PointerType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
-        virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
+        virtual std::string GetHash() const override { return m_BaseType ? m_BaseType->GetHash() + "*" : "null"; }
        
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);

@@ -21,10 +21,15 @@ add_executable(clearc "${MY_SOURCES}"
 find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)
 
-add_custom_command(TARGET clearc PRE_BUILD 
+# Diagnostics are described in Scripts/Errors.toml and turned into a header before anything compiles
+set(CLEAR_DIAGNOSTIC_HEADER "${CMAKE_SOURCE_DIR}/Source/Diagnostics/DiagnosticCode.h")
+add_custom_command(OUTPUT ${CLEAR_DIAGNOSTIC_HEADER}
                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/Build.py
+                   DEPENDS ${CMAKE_SOURCE_DIR}/Scripts/Errors.toml ${CMAKE_SOURCE_DIR}/Scripts/Build.py
                    VERBATIM
 )
+add_custom_target(clear_diagnostics DEPENDS ${CLEAR_DIAGNOSTIC_HEADER})
+add_dependencies(clearc clear_diagnostics)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")

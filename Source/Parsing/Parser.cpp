@@ -19,14 +19,14 @@ namespace clear
 {
     #define EXPECT_TOKEN(type, code) \
     if (!Match(type)) { \
-    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    auto location = ErrorLocation(); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
     m_Tokens.insert(m_Tokens.begin() + m_Position, Token(type, "")); \
     }
 
     #define EXPECT_TOKEN_RETURN(type, code, returnValue) \
     if (!Match(type)) { \
-    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    auto location = ErrorLocation(); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
     SkipUntil(TokenType::EndLine); \
     return returnValue; \
@@ -35,7 +35,7 @@ namespace clear
 
     #define EXPECT_DATA(str, code) \
     if (!Match(str)) { \
-    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    auto location = ErrorLocation(); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine); \
     return; \
@@ -43,7 +43,7 @@ namespace clear
 	
 	#define EXPECT_DATA_RETURN(str, code, returnValue) \
     if (!Match(str)) { \
-    auto location = (m_Position > 0 ? Prev() : Peak()); \
+    auto location = ErrorLocation(); \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine); \
     return returnValue; \
@@ -51,7 +51,7 @@ namespace clear
 
     #define VERIFY(cond, code)                             \
     if (!(cond)) {                                               \
-    auto location = (m_Position > 0 ? Prev() : Peak());        \
+    auto location = ErrorLocation();        \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine);  \
     return;                                                      \
@@ -59,7 +59,7 @@ namespace clear
 
     #define VERIFY_WITH_RETURN(cond, code, returnValue)                             \
     if (!(cond)) {                                               \
-    auto location = (m_Position > 0 ? Prev() : Peak());        \
+    auto location = ErrorLocation();        \
     m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code); \
     SkipUntil(TokenType::EndLine);  \
     return returnValue;                                                      \
@@ -77,58 +77,59 @@ namespace clear
 		ArgFn PostfixParse  = [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParsePostfixExpr(node);};  
 	};
 
+	// Binding powers, loosest to tightest (left-associative operators use rbp = lbp + 1):
+	//   assignment < or < and < not < comparisons < | < ^ < & < shifts < + - < * / % < as < unary < postfix
 	static std::map<OperatorType, OperatorInfo> g_OperatorTable = {
-		{OperatorType::Index,			  {6, 7}},
-		{OperatorType::Dot,				  {6, 7}},
-		{OperatorType::Subscript,	      {6, 7, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseSubscriptExpr(node); }}},
-		{OperatorType::FunctionCall,	  {6, 7, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseFunctionCallExpr(node); }}},
-		{OperatorType::StructInitializer, {6, 7, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseStructInitializerExpr(node); }}},
-		{OperatorType::ListInitializer,   {6, 7, [](Parser* p) { return p->ParseListInitializerExpr(); }}},
-		{OperatorType::ArrayType,		  {6, 7, [](Parser* p) { return p->ParseArrayType(); }}},
+		{OperatorType::Index,			  {30, 31}},
+		{OperatorType::Dot,				  {30, 31}},
+		{OperatorType::Subscript,	      {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseSubscriptExpr(node); }}},
+		{OperatorType::FunctionCall,	  {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseFunctionCallExpr(node); }}},
+		{OperatorType::StructInitializer, {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseStructInitializerExpr(node); }}},
+		{OperatorType::PostIncrement,     {30, 31}},
+		{OperatorType::PostDecrement,     {30, 31}},
+		{OperatorType::ListInitializer,   {30, 31, [](Parser* p) { return p->ParseListInitializerExpr(); }}},
+		{OperatorType::ArrayType,		  {30, 31, [](Parser* p) { return p->ParseArrayType(); }}},
 
-		{OperatorType::Negation,      {5, 6}},
-		{OperatorType::Increment,     {5, 6}},
-		{OperatorType::Decrement,     {5, 6}},
-		{OperatorType::PostIncrement, {5, 6}},
-		{OperatorType::PostDecrement, {5, 6}},
-		{OperatorType::Cast,		  {5, 6, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseCastExpr(node); }}},
-		{OperatorType::Sizeof,		  {5, 6, [](Parser* p) { return p->ParseSizeofExpr(); }}},
+		{OperatorType::Negation,      {0, 26}},
+		{OperatorType::Increment,     {0, 26}},
+		{OperatorType::Decrement,     {0, 26}},
+		{OperatorType::Sizeof,		  {0, 26, [](Parser* p) { return p->ParseSizeofExpr(); }}},
+		{OperatorType::BitwiseNot,    {0, 26}},
+		{OperatorType::Address,       {0, 26}},
+		{OperatorType::Dereference,   {0, 26}},
 
-		{OperatorType::BitwiseNot,   {5, 6}},
-		{OperatorType::Address,      {5, 6}},
-		{OperatorType::Dereference,  {5, 6}},
-		{OperatorType::Not,          {5, 6}},
+		{OperatorType::Cast,		  {24, 25, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseCastExpr(node); }}},
+		{OperatorType::Power,         {23, 22}},
 
-		{OperatorType::Power,        {5, 4}},
+		{OperatorType::Mul, {20, 21}},
+		{OperatorType::Div, {20, 21}},
+		{OperatorType::Mod, {20, 21}},
 
-		{OperatorType::Mul, {3, 4}},
-		{OperatorType::Div, {3, 4}},
-		{OperatorType::Mod, {3, 4}},
+		{OperatorType::Add, {18, 19}},
+		{OperatorType::Sub, {18, 19}},
 
-		{OperatorType::Add, {2, 3}},
-		{OperatorType::Sub, {2, 3}},
+		{OperatorType::LeftShift,  {16, 17}},
+		{OperatorType::RightShift, {16, 17}},
 
-		{OperatorType::LeftShift,  {1, 2}},
-		{OperatorType::RightShift, {1, 2}},
-
-		{OperatorType::BitwiseAnd, {1, 2}},
-		{OperatorType::BitwiseXor, {1, 2}},
-		{OperatorType::BitwiseOr,  {1, 2}},
+		{OperatorType::BitwiseAnd, {14, 15}},
+		{OperatorType::BitwiseXor, {12, 13}},
+		{OperatorType::BitwiseOr,  {10, 11}},
 		
-		{OperatorType::Is,				{1, 2,	nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseIsExpr(node); }}},
-		{OperatorType::LessThan,        {1, 2}},
-		{OperatorType::GreaterThan,     {1, 2}},
-		{OperatorType::LessThanEqual,   {1, 2}},
-		{OperatorType::GreaterThanEqual,{1, 2}},
-		{OperatorType::IsEqual,         {1, 2}},
-		{OperatorType::NotEqual,        {1, 2}},
-		{OperatorType::Ellipsis,        {1, 2}},
+		{OperatorType::Is,				{8, 9,	nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseIsExpr(node); }}},
+		{OperatorType::LessThan,        {8, 9}},
+		{OperatorType::GreaterThan,     {8, 9}},
+		{OperatorType::LessThanEqual,   {8, 9}},
+		{OperatorType::GreaterThanEqual,{8, 9}},
+		{OperatorType::IsEqual,         {8, 9}},
+		{OperatorType::NotEqual,        {8, 9}},
+		{OperatorType::Ellipsis,        {8, 9}},
 
-		{OperatorType::And,     {1, 2}},
-		{OperatorType::Or,      {1, 2}},
-		{OperatorType::Ternary, {1, 2, [](Parser* p) { return p->ParseTernary();}}},
+		{OperatorType::Not,     {0, 7}},
+		{OperatorType::And,     {4, 5}},
+		{OperatorType::Or,      {2, 3}},
+		{OperatorType::Ternary, {0, 1, [](Parser* p) { return p->ParseTernary();}}},
 		
-		{OperatorType::Assignment, {0, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
+		{OperatorType::Assignment, {1, 1, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseAssignment(node); }}}
 	};
 
     Parser::Parser(const std::vector<Token>& tokens, std::shared_ptr<Module> rootModule, DiagnosticsBuilder& builder)
@@ -149,7 +150,12 @@ namespace clear
             TokenType::SlashEquals, 
             TokenType::PlusEquals,
             TokenType::MinusEquals,
-            TokenType::PercentEquals
+            TokenType::PercentEquals,
+            TokenType::AmpersandEquals,
+            TokenType::PipeEquals,
+            TokenType::HatEquals,
+            TokenType::LeftShiftEquals,
+            TokenType::RightShiftEquals
         });
 
 
@@ -161,6 +167,20 @@ namespace clear
         });
 
         rootModule->GetRoot()->Children.push_back(ParseCodeBlock());
+    }
+
+    Token Parser::ErrorLocation()
+    {
+        Token current = Peak();
+        bool atLineEnd = current.IsType(TokenType::EndLine) || current.IsType(TokenType::EndScope) || current.IsType(TokenType::EndOfFile);
+
+        if (!atLineEnd || m_Position == 0)
+            return current;
+
+        // something is missing at the end of a line, point just past the last real token
+        Token previous = Prev();
+        Token location(TokenType::None, " ", previous.GetSourceFile(), previous.LineNumber, previous.ColumnNumber + previous.GetData().size());
+        return location;
     }
 
     Token Parser::Consume()
@@ -246,12 +266,15 @@ namespace clear
 		
 		while(!Match(TokenType::EndOfFile) && !Match(TokenType::EndScope))
         {
+			size_t start = m_Position;
 			auto statement = ParseStatement();
 
 			if (statement)
 				block->Children.push_back(statement);
-			else 
-				break;
+
+			// error recovery (or `pass`) produced nothing, make sure we never get stuck on the same token
+			if (m_Position == start)
+				Consume();
         }
 
 		Consume();
@@ -283,6 +306,8 @@ namespace clear
 			{"class",     [this]() { return ParseClass(); }},
 			{"let",		  [this]() { return ParseLet(); }},
 			{"import",	  [this]() { return ParseImport(); }},
+			{"break",	  [this]() { return ParseLoopControl(); }},
+			{"continue",  [this]() { return ParseLoopControl(); }},
         };
         
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
@@ -306,9 +331,10 @@ namespace clear
   	std::shared_ptr<ASTReturn> Parser::ParseReturn()
     {
         EXPECT_DATA_RETURN("return",DiagnosticCode_None, nullptr);
-        Consume();
+        Token keyword = Consume();
 
         std::shared_ptr<ASTReturn> returnStatement = std::make_shared<ASTReturn>();
+        returnStatement->Location = keyword;
         returnStatement->ReturnValue = ParseExpr();
 
 		return returnStatement;
@@ -378,6 +404,12 @@ namespace clear
 		return whileExp;
     }
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseLoopControl()
+	{
+		Token keyword = Consume();
+		return std::make_shared<ASTLoopControlFlow>(keyword.GetData(), keyword);
+	}
+
 	std::shared_ptr<ASTImport> Parser::ParseImport()
 	{
 		EXPECT_DATA_RETURN("import", DiagnosticCode_None, nullptr);
@@ -402,22 +434,36 @@ namespace clear
 		Consume();
 
 		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
-		std::string name = Consume().GetData();
+		Token nameToken = Consume();
 
-		auto funcNode = std::make_shared<ASTFunctionDefinition>(name);
+		auto funcNode = std::make_shared<ASTFunctionDefinition>(nameToken.GetData());
+		funcNode->SetNameToken(nameToken);
 
 		EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
 		Consume();
 
 		while (!Match(TokenType::RightParen))
 		{
-			if (Match(TokenType::Star) || Match("const") || Match("self"))
-				funcNode->Arguments.push_back(ParseSelf());
+			std::shared_ptr<ASTVariableDeclaration> param;
+
+			// `*self` / `self` shorthand for the receiver, `self: *Vec` is an ordinary parameter
+			if (Match(TokenType::Star) || Match("const") || (Match("self") && !Next().IsType(TokenType::Colon)))
+				param = ParseSelf();
 			else
-				funcNode->Arguments.push_back(ParseVariableDecleration().Node);
+				param = ParseVariableDecleration().Node;
+
+			if (!param)
+				return nullptr; // already reported
+			
+			funcNode->Arguments.push_back(param);
 				
 			if (Match(TokenType::Comma))
-				Consume();  
+			{
+				Consume();
+				continue;
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_ExpectedEndOfFunction, nullptr);
 		}
 	   
 		Consume();
@@ -630,13 +676,29 @@ namespace clear
 			{
 				Consume(); // (
 				lhs = ParseExpr();
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
 				Consume(); // )
+
+				break;
+			}
+			case TokenType::Char:
+			{
+				lhs = std::make_shared<ASTNodeLiteral>(token);
+				Consume();
 
 				break;
 			}
 			case TokenType::Keyword:
 			default:
 			{
+				if (token.GetData() == "true" || token.GetData() == "false" || token.GetData() == "null")
+				{
+					lhs = std::make_shared<ASTNodeLiteral>(token);
+					Consume();
+
+					break;
+				}
+
 				OperatorType op = GetPrefixOperator(token);
 
 				if (op == OperatorType::None)
@@ -657,6 +719,9 @@ namespace clear
 			}
 		}
 		
+		if (lhs && lhs->Location.GetSourceFile().empty())
+			lhs->Location = token;
+
 		do {
 			if (MatchAny(m_Terminators))
 				break;
@@ -710,6 +775,7 @@ namespace clear
 		OperatorInfo info = g_OperatorTable.at(op);
 
 		std::shared_ptr<ASTBinaryExpression> binaryExpr = std::make_shared<ASTBinaryExpression>(op);
+		binaryExpr->Location = token;
 		binaryExpr->LeftSide = lhs;
 		binaryExpr->RightSide = ParseExpr(info.RightBindingPower);
 
@@ -722,6 +788,7 @@ namespace clear
 		OperatorType op = GetPostfixOperator(token);
 
 		std::shared_ptr<ASTUnaryExpression> unaryExpr = std::make_shared<ASTUnaryExpression>(op);
+		unaryExpr->Location = token;
 		unaryExpr->Operand = lhs;
 
 		return unaryExpr;
@@ -733,11 +800,20 @@ namespace clear
 		Consume();
 
 		std::shared_ptr<ASTFunctionCall> funcCall = std::make_shared<ASTFunctionCall>();
+		funcCall->Location = Prev();
 		funcCall->Callee = lhs;
 		
 		while (!Match(TokenType::RightParen))
 		{
-			funcCall->Arguments.push_back(ParseExpr());
+			auto argument = ParseExpr();
+
+			if (!argument)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_UnmatchedBracket, nullptr);
+				break;
+			}
+
+			funcCall->Arguments.push_back(argument);
 
 			if (Match(TokenType::RightParen))
 				break;
@@ -760,7 +836,15 @@ namespace clear
 		
 		while (!Match(TokenType::RightBracket))
 		{
-			subscript->SubscriptArgs.push_back(ParseExpr());
+			auto argument = ParseExpr();
+
+			if (!argument)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_UnmatchedBracket, nullptr);
+				break;
+			}
+
+			subscript->SubscriptArgs.push_back(argument);
 
 			if (Match(TokenType::RightBracket))
 				break;
@@ -781,7 +865,7 @@ namespace clear
 		std::shared_ptr<ASTStructExpr> expr = std::make_shared<ASTStructExpr>();
 		expr->TargetType = lhs;
 
-		while(!Match(TokenType::RightBrace))
+		while(!Match(TokenType::RightBrace) && !Match(TokenType::EndOfFile))
 		{
 			while(Match(TokenType::EndLine) || Match(TokenType::EndScope))
 				Consume();
@@ -789,12 +873,21 @@ namespace clear
 			if(Match(TokenType::RightBrace))
 				break;
 
-			expr->Values.push_back(ParseExpr());
+			auto value = ParseExpr();
+
+			if (!value)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightBrace, DiagnosticCode_UnexpectedToken, nullptr);
+				break;
+			}
+
+			expr->Values.push_back(value);
 
 			if(Match(TokenType::Comma))
 				Consume();
 		}
 
+		EXPECT_TOKEN_RETURN(TokenType::RightBrace, DiagnosticCode_UnmatchedBracket, nullptr);
 		Consume();
 		return expr;
 	}
@@ -836,6 +929,11 @@ namespace clear
 				opType = AssignmentOperatorType::Normal;
 				break;
 			}
+			case TokenType::AmpersandEquals:  opType = AssignmentOperatorType::BitAnd; break;
+			case TokenType::PipeEquals:       opType = AssignmentOperatorType::BitOr;  break;
+			case TokenType::HatEquals:        opType = AssignmentOperatorType::BitXor; break;
+			case TokenType::LeftShiftEquals:  opType = AssignmentOperatorType::Shl;    break;
+			case TokenType::RightShiftEquals: opType = AssignmentOperatorType::Shr;    break;
 			default:
 			{
 				break;
@@ -854,6 +952,7 @@ namespace clear
 		VERIFY_WITH_RETURN(opType != AssignmentOperatorType::None, DiagnosticCode_UnexpectedToken, nullptr);
 
 		std::shared_ptr<ASTAssignmentOperator> node = std::make_shared<ASTAssignmentOperator>(opType); 
+		node->Location = assignmentType;
 		node->Storage = lhs;
 		node->Value = ParseExpr();
 		
@@ -915,7 +1014,7 @@ namespace clear
 
 		std::shared_ptr<ASTListExpr> expr = std::make_shared<ASTListExpr>();
 
-		while(!Match(TokenType::RightBrace))
+		while(!Match(TokenType::RightBrace) && !Match(TokenType::EndOfFile))
 		{
 			while(Match(TokenType::EndLine) || Match(TokenType::EndScope))
 				Consume();
@@ -923,12 +1022,21 @@ namespace clear
 			if(Match(TokenType::RightBrace))
 				break;
 
-			expr->Values.push_back(ParseExpr());
+			auto value = ParseExpr();
+
+			if (!value)
+			{
+				EXPECT_TOKEN_RETURN(TokenType::RightBrace, DiagnosticCode_UnexpectedToken, nullptr);
+				break;
+			}
+
+			expr->Values.push_back(value);
 
 			if(Match(TokenType::Comma))
 				Consume();
 		}
 
+		EXPECT_TOKEN_RETURN(TokenType::RightBrace, DiagnosticCode_UnmatchedBracket, nullptr);
 		Consume();
 		return expr;
 	}
@@ -983,7 +1091,7 @@ namespace clear
         EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
         Consume();
 
-        while(!Match(TokenType::EndScope))
+        while(!Match(TokenType::EndScope) && !Match(TokenType::EndOfFile))
         {
             while(Match(TokenType::EndLine))
                 Consume();
@@ -1037,7 +1145,7 @@ namespace clear
 		EXPECT_TOKEN_RETURN(TokenType::LeftBracket, DiagnosticCode_None, nullptr);
 		Consume();
 
-		while (!Match(TokenType::RightBracket))
+		while (!Match(TokenType::RightBracket) && !Match(TokenType::EndOfFile))
 		{
 			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 			genericTemplate->GenericTypeNames.push_back(Consume().GetData());
@@ -1072,6 +1180,11 @@ namespace clear
             case TokenType::StarEquals:      return AssignmentOperatorType::Mul;
             case TokenType::SlashEquals:     return AssignmentOperatorType::Div;    
             case TokenType::PercentEquals:   return AssignmentOperatorType::Mod;    
+            case TokenType::AmpersandEquals:  return AssignmentOperatorType::BitAnd;
+            case TokenType::PipeEquals:       return AssignmentOperatorType::BitOr;
+            case TokenType::HatEquals:        return AssignmentOperatorType::BitXor;
+            case TokenType::LeftShiftEquals:  return AssignmentOperatorType::Shl;
+            case TokenType::RightShiftEquals: return AssignmentOperatorType::Shr;
             default:
                 break;
         }
@@ -1125,10 +1238,12 @@ namespace clear
 			case TokenType::LeftBrace:			return OperatorType::ListInitializer;
 			case TokenType::LeftBracket:		return OperatorType::ArrayType;
 			case TokenType::Ampersand:			return OperatorType::Address;
+			case TokenType::Telda:				return OperatorType::BitwiseNot;
 			default:
 				break;
 		}
 
+		if (current.GetData() == "not")    return OperatorType::Not;
 		if (current.GetData() == "when")   return OperatorType::Ternary;
 		if (current.GetData() == "sizeof") return OperatorType::Sizeof;
 
@@ -1145,15 +1260,14 @@ namespace clear
 			case TokenType::Star:				return OperatorType::Mul;
 			case TokenType::Percent:            return OperatorType::Mod;
 							
+			case TokenType::Ampersand:          return OperatorType::BitwiseAnd;
 			case TokenType::Pipe:               return OperatorType::BitwiseOr;
 			case TokenType::Hat:                return OperatorType::BitwiseXor;
 			case TokenType::LeftShift:          return OperatorType::LeftShift;
 			case TokenType::RightShift:         return OperatorType::RightShift;
-			case TokenType::Telda:              return OperatorType::BitwiseNot;
 			
 			case TokenType::LogicalAnd:         return OperatorType::And;
 			case TokenType::LogicalOr:          return OperatorType::Or;
-			case TokenType::Bang:               return OperatorType::Not;
 			
 			case TokenType::EqualsEquals:       return OperatorType::IsEqual;
 			case TokenType::BangEquals:         return OperatorType::NotEqual;
@@ -1170,6 +1284,11 @@ namespace clear
 			case TokenType::MinusEquals:
 			case TokenType::PlusEquals:
 			case TokenType::PercentEquals:
+			case TokenType::AmpersandEquals:
+			case TokenType::PipeEquals:
+			case TokenType::HatEquals:
+			case TokenType::LeftShiftEquals:
+			case TokenType::RightShiftEquals:
 			case TokenType::Equals:				return OperatorType::Assignment;
 		
 			default:
@@ -1178,7 +1297,6 @@ namespace clear
 
 		if (current.GetData() == "and")     return OperatorType::And;
 		if (current.GetData() == "or")      return OperatorType::Or;
-		if (current.GetData() == "not")     return OperatorType::Not;
 		if (current.GetData() == "as")		return OperatorType::Cast;
 		if (current.GetData() == "is")		return OperatorType::Is;
 

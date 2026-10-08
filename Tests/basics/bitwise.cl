@@ -8,8 +8,10 @@ function main() -> int32:
     b |= 1
     b <<= 1
     printf("%d\n", b)
+    printf("%d %d\n", -8 >> 1, ~5)
     return 0
 
 // expect:
 // 2 7 3 24 3
 // 18
+// -4 -6

@@ -14,6 +14,8 @@ namespace clear
 
 		std::string hash = type->GetHash();
 
+		if(data.IsType(TokenType::Char)) return {llvm::ConstantInt::get(type->Get(), (uint64_t)(uint8_t)data.AsChar()), nullptr};
+
 		if(hash == "int8")  return {llvm::ConstantInt::get(llvm::Type::getInt8Ty(context),  (int8_t)data.AsInt(), true), nullptr};
 		if(hash == "int16") return {llvm::ConstantInt::get(llvm::Type::getInt16Ty(context), (int16_t)data.AsInt(), true), nullptr};
 		if(hash == "int32") return {llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), (int32_t)data.AsInt(), true), nullptr};

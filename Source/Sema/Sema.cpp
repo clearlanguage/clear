@@ -47,7 +47,7 @@ namespace clear
 		if (!type->TypeResolver)
 		{
 			if (!type->IsVariadic)
-				Report(DiagnosticCode_None, Token());
+				Report(DiagnosticCode_ExpectedType, Token(TokenType::Identifier, type->GetName()));
 			
 			return type;
 		}
@@ -65,28 +65,48 @@ namespace clear
 			Visit(decl->TypeResolver, context);
 			decl->ResolvedType = GetTypeFromNode(decl->TypeResolver);
 			
+			if (!decl->ResolvedType)
+			{
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(decl->TypeResolver));
+				return nullptr;
+			}
+
 			context.ValueReq = ValueRequired::RValue;
 			if (decl->Initializer)
+			{
 				decl->Initializer = Visit(decl->Initializer, context);
+
+				if (!decl->Initializer)
+					return nullptr; // already reported
+			}
 		}
 		else 
 		{
 			if (!decl->Initializer)
 			{
-				//DiagnosticCode_NeedsValueWithoutTypeAnnotation
-				Report(DiagnosticCode_None, Token());
+				Report(DiagnosticCode_NeedsTypeOrValue, decl->GetName());
 				return nullptr;
 			}
 			
 			context.ValueReq = ValueRequired::RValue;
 			decl->Initializer = Visit(decl->Initializer, context);
+
+			if (!decl->Initializer)
+				return nullptr; // already reported
+
 			decl->ResolvedType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
+
+			if (!decl->ResolvedType || decl->ResolvedType->Get()->isVoidTy())
+			{
+				Report(DiagnosticCode_NeedsTypeOrValue, decl->GetName());
+				return nullptr;
+			}
 		}
 
 
-		std::shared_ptr<Type> inferredType = decl->Initializer ? m_TypeInferEngine.InferTypeFromNode(decl->Initializer) : nullptr;
-		
-		// TODO if inferred type and constructed type are not the same then insert a cast
+		if (decl->TypeResolver && decl->Initializer)
+			decl->Initializer = Coerce(decl->Initializer, decl->ResolvedType);
+
 		auto symbol = m_ScopeStack.back().InsertEmpty(decl->GetName().GetData(), SymbolEntryType::Variable);
 	
 		if (symbol.has_value())
@@ -96,8 +116,7 @@ namespace clear
 			return decl;
 		}
 			
-		// DiagnosticCode_AlreadyDefinedVariable
-		Report(DiagnosticCode_None, decl->GetName());
+		Report(DiagnosticCode_RedefinedIdentifier, decl->GetName());
 
 		if (context.GlobalState)
 			m_Module->ExposeSymbol(decl->GetName().GetData(), symbol.value());
@@ -143,8 +162,7 @@ namespace clear
 
 		if (!symbol.has_value())
 		{
-			// DiagnosticCode_UndefinedVariable
-			Report(DiagnosticCode_None, variable->GetName());
+			Report(DiagnosticCode_UndeclaredIdentifier, variable->GetName());
 			return nullptr;
 		}
 
@@ -199,6 +217,7 @@ namespace clear
 			case ASTNodeType::CastExpr:					return Visit(std::dynamic_pointer_cast<ASTCastExpr>(ast), context);
 			case ASTNodeType::SizeofExpr:				return Visit(std::dynamic_pointer_cast<ASTSizeofExpr>(ast), context);
 			case ASTNodeType::IsExpr:					return Visit(std::dynamic_pointer_cast<ASTIsExpr>(ast), context);
+			case ASTNodeType::LoopControlFlow:			return Visit(std::dynamic_pointer_cast<ASTLoopControlFlow>(ast), context);
 			case ASTNodeType::DefaultInitializer:		return ast;
     		default:	
     			break;
@@ -225,8 +244,17 @@ namespace clear
 		{
 			Visit(func->ReturnType, context);
 			func->ReturnTypeVal = GetTypeFromNode(func->ReturnType);
-			CLEAR_VERIFY(func->ReturnTypeVal, "");
+
+			if (!func->ReturnTypeVal)
+			{
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(func->ReturnType));
+				m_ScopeStack.pop_back();
+				return func;
+			}
 		}
+
+		context.ReturnType = func->ReturnTypeVal;
+		context.InLoop = false;
 			
 		if (context.TypeHint)
 			func->SetName(std::format("{}.{}", context.TypeHint->GetHash(), func->GetName()));
@@ -249,8 +277,7 @@ namespace clear
 
 		if (!symbol.has_value())
 		{
-			// DiagnosticCode_AlreadyDefinedFunction
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_RedefinedIdentifier, func->GetNameToken());
 			m_ScopeStack.pop_back();
 			return func;
 		}
@@ -299,6 +326,16 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::RValue;
 		returnStatement->ReturnValue = Visit(returnStatement->ReturnValue, context);
+
+		bool returnsValue = context.ReturnType && context.ReturnType->Get() && !context.ReturnType->Get()->isVoidTy();
+
+		if (returnsValue && !returnStatement->ReturnValue)
+			Report(DiagnosticCode_MissingReturnValue, returnStatement->Location);
+		else if (!returnsValue && returnStatement->ReturnValue)
+			Report(DiagnosticCode_ReturnTypeMismatch, GetNodeLocation(returnStatement->ReturnValue));
+		else if (returnsValue)
+			returnStatement->ReturnValue = Coerce(returnStatement->ReturnValue, context.ReturnType);
+
 		return returnStatement;
 	}
 	
@@ -311,10 +348,17 @@ namespace clear
 			case OperatorType::Div:
 			case OperatorType::Mul:
 			case OperatorType::Mod:
+			case OperatorType::BitwiseAnd:
+			case OperatorType::BitwiseOr:
+			case OperatorType::BitwiseXor:
+			case OperatorType::LeftShift:
+			case OperatorType::RightShift:
 			{
 				VisitBinaryExprArithmetic(binaryExpression, context);
 				break;
 			}
+			case OperatorType::And:
+			case OperatorType::Or:
 			case OperatorType::GreaterThan:
 			case OperatorType::GreaterThanEqual:
 			case OperatorType::LessThan:
@@ -330,8 +374,8 @@ namespace clear
 			}
 			default:
 			{
-				CLEAR_UNREACHABLE("unimplemented");
-				break;
+				Report(DiagnosticCode_InvalidOperator, Token());
+				return nullptr;
 			}
 		}
 
@@ -357,11 +401,35 @@ namespace clear
 		context.ValueReq = ValueRequired::RValue;
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
-    	if (assignmentOp->Storage->GetType() == ASTNodeType::FunctionCall) {
+		if (!assignmentOp->Storage || !assignmentOp->Value)
+			return assignmentOp;
+
+		// plain `=` converts the value to the type being stored into
+		if (assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
+		{
+			std::shared_ptr<Type> storageType = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
+			assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
+		}
+
+    	if (assignmentOp->Storage->GetType() == ASTNodeType::FunctionCall) 
+		{
     		auto funcCallNode = std::dynamic_pointer_cast<ASTFunctionCall>(assignmentOp->Storage);
     		auto clsType = funcCallNode->ClassType;
-    		CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_set"),"Class does not have array index overload ",clsType->GetHash())
-			auto setFunc = clsType->MemberFunctions.at("operator_set");
+
+			// only `obj[i] = v` on a class is rewritten, assigning to any other call result is an error
+			if (!clsType)
+			{
+				Report(DiagnosticCode_AssignToRValue, GetNodeLocation(assignmentOp->Storage));
+				return nullptr;
+			}
+
+			if (!clsType->MemberFunctions.contains("__setitem__") || assignmentOp->GetAssignType() != AssignmentOperatorType::Normal)
+			{
+				Report(DiagnosticCode_MissingIndexOverload, GetNodeLocation(assignmentOp->Storage));
+				return nullptr;
+			}
+
+			auto setFunc = clsType->MemberFunctions.at("__setitem__");
 
     		auto funcCall = std::make_shared<ASTFunctionCall>( );
     		funcCall->Callee = setFunc->GetFunctionSymbol().FunctionNode;
@@ -396,11 +464,17 @@ namespace clear
 			}
 			case OperatorType::Dereference:
 			{
-				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
-				
+				// `*p` as a storage location is simply the pointer value held in p
 				if (context.ValueReq == ValueRequired::LValue)
-					return unaryExpr->Operand;
-					
+				{
+					SemaContext valueContext = context;
+					valueContext.ValueReq = ValueRequired::RValue;
+					unaryExpr->Operand = Visit(unaryExpr->Operand, valueContext);
+					unaryExpr->IsStorage = true;
+					return unaryExpr;
+				}
+
+				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
 				break;
 			}
 			default:
@@ -422,7 +496,7 @@ namespace clear
 			if (arg->IsVariadic)
 			{
 				if (k + 1 != decl->Arguments.size())
-					Report(DiagnosticCode_None, Token()); // DiagnosticCode_VariadicArgsMustAtTheEnd
+					Report(DiagnosticCode_VariadicNotLast, Token());
 			}
 			
 			Visit(arg);
@@ -446,8 +520,7 @@ namespace clear
 
 		if (!success)
 		{
-			// DiagnosticCode_AlreadyDefinedSymbol
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_RedefinedIdentifier, Token(TokenType::Identifier, decl->GetName()));
 			return decl;
 		}
 
@@ -481,6 +554,10 @@ namespace clear
 		
 		classTy->SetBody(members);
 		classExpr->ClassTy = classTy;
+
+		// a generic instance being created: make the type visible now so its own methods can name it (e.g. `self: *Box[T]`)
+		if (auto it = m_PendingInstances.find(classExpr.get()); it != m_PendingInstances.end())
+			*it->second->GetGeneric().GeneratedSymbol = Symbol::CreateType(classTy);
 		context.TypeHint = classTy;
 		
 		for (auto node : classExpr->MemberFunctions)
@@ -496,14 +573,17 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTIfExpression> ifExpr, SemaContext context)
 	{
-		for (auto conditionalBlock : ifExpr->ConditionalBlocks)
+		SemaContext conditionContext = context;
+		conditionContext.ValueReq = ValueRequired::RValue;
+
+		for (auto& conditionalBlock : ifExpr->ConditionalBlocks)
 		{
-			Visit(conditionalBlock.Condition, SemaContext { .ValueReq = ValueRequired::RValue });
+			conditionalBlock.Condition = Visit(conditionalBlock.Condition, conditionContext);
 			Visit(conditionalBlock.CodeBlock, context);
 		}
 		
 		if (ifExpr->ElseBlock)
-			Visit(ifExpr->ElseBlock);
+			Visit(ifExpr->ElseBlock, context);
 
 		return ifExpr;
 	}
@@ -516,7 +596,7 @@ namespace clear
 		auto it = m_CompilationUnits.find(absolute);
 		if (it == m_CompilationUnits.end())
 		{
-			Report(DiagnosticCode_None, Token()); // not found file path
+			Report(DiagnosticCode_ImportNotFound, Token(TokenType::String, importExpr->Filepath.string()));
 			return nullptr;
 		}
 		
@@ -536,7 +616,11 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context)
 	{
+		context.ValueReq = ValueRequired::RValue;
 		whileExpr->WhileBlock.Condition = Visit(whileExpr->WhileBlock.Condition, context);
+
+		context.ValueReq = ValueRequired::Any;
+		context.InLoop = true;
 		Visit(whileExpr->WhileBlock.CodeBlock, context);
 		
 		return whileExpr;
@@ -580,17 +664,123 @@ namespace clear
 		return isExpr;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTLoopControlFlow> controlFlow, SemaContext context)
+	{
+		if (!context.InLoop)
+			Report(DiagnosticCode_LoopControlOutsideLoop, controlFlow->GetToken());
+
+		return controlFlow;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context)
 	{	
-		Visit(structExpr->TargetType, context);
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		valueContext.CallsiteArgs.clear();
 
 		for (auto& value : structExpr->Values)
+			value = Visit(value, valueContext);
+
+		// `Box { 7 }` where Box is generic: work out the type arguments from the field values
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType); var && !var->Variable)
 		{
-			context.ValueReq = ValueRequired::RValue;
-			value = Visit(value, context);
+			auto [entry, scopeIndex] = LookupSymbol(var->GetName().GetData());
+
+			if (entry && entry->Symbol->Kind == SymbolKind::GenericTemplate)
+			{
+				auto generated = InstantiateFromValues(var, entry->Symbol, scopeIndex, structExpr->Values);
+
+				if (!generated)
+					return nullptr;
+
+				var->Variable = generated;
+				return structExpr;
+			}
 		}
+
+		SemaContext typeContext = context;
+		typeContext.AllowGenericInferenceFromArgs = false;
+		typeContext.CallsiteArgs.clear();
+		structExpr->TargetType = Visit(structExpr->TargetType, typeContext);
 		
 		return structExpr;
+	}
+
+	std::pair<std::optional<SymbolEntry>, size_t> Sema::LookupSymbol(llvm::StringRef name)
+	{
+		for (int64_t i = (int64_t)m_ScopeStack.size() - 1; i >= 0; i--)
+		{
+			if (auto entry = m_ScopeStack[i].Get(name))
+				return { entry, (size_t)i };
+		}
+
+		if (auto symbol = m_Module->Lookup(name))
+			return { SymbolEntry { SymbolEntryType::None, symbol.value() }, 0 };
+
+		return { std::nullopt, 0 };
+	}
+
+	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
+								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings)
+	{
+		if (!pattern || !actual)
+			return false;
+
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(pattern))
+		{
+			const std::string& name = var->GetName().GetData();
+
+			if (std::find(names.begin(), names.end(), name) == names.end())
+				return false;
+
+			bindings.try_emplace(name, actual);
+			return true;
+		}
+
+		// *T matched against a pointer binds T to the pointee
+		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(pattern); unary && unary->GetOperatorType() == OperatorType::Dereference && actual->IsPointer())
+			return BindGenericType(unary->Operand, actual->As<PointerType>()->GetBaseType(), names, bindings);
+
+		return false;
+	}
+
+	std::shared_ptr<Symbol> Sema::InstantiateFromValues(std::shared_ptr<ASTVariable> target, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, 
+														  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values)
+	{
+		auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(genericSymbol->GetGenericTemplate().GenericTemplate);
+		auto classNode = std::dynamic_pointer_cast<ASTClass>(generic->TemplateNode);
+
+		if (!classNode)
+		{
+			Report(DiagnosticCode_ExpectedType, target->GetName());
+			return nullptr;
+		}
+
+		std::unordered_map<std::string, std::shared_ptr<Type>> bindings;
+
+		for (size_t i = 0; i < values.size() && i < classNode->Members.size(); i++)
+		{
+			if (values[i])
+				BindGenericType(classNode->Members[i]->TypeResolver, m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+		}
+
+		llvm::SmallVector<Symbol> arguments;
+
+		for (const auto& name : generic->GenericTypeNames)
+		{
+			auto it = bindings.find(name);
+
+			if (it == bindings.end())
+			{
+				// a type parameter that no field value determines, e.g. Box { } with no values
+				Report(DiagnosticCode_CannotInferGeneric, target->GetName());
+				return nullptr;
+			}
+
+			arguments.push_back(Symbol::CreateType(it->second));
+		}
+
+		return SolveConstraints(target->GetName().GetData(), genericSymbol, scopeIndex, arguments);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context)
@@ -598,7 +788,7 @@ namespace clear
 		bool success = m_ScopeStack.back().Insert(generic->GetName(), SymbolEntryType::GenericTemplate, std::make_shared<Symbol>(Symbol::CreateGenericTemplate(generic)));
 			
 		if (!success)
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_RedefinedIdentifier, Token(TokenType::Identifier, generic->GetName()));
 		
 		m_Module->ExposeSymbol(generic->GetName(), m_ScopeStack.back().Get(generic->GetName()).value().Symbol);
 		return generic;	
@@ -626,8 +816,14 @@ namespace clear
 			if (targetType->IsClass())
 			{
 				auto clsType = std::dynamic_pointer_cast<ClassType>(targetType);
-				CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_get"),"Class does not have array index overload ",clsType->GetHash())
-				auto memberFunc = clsType->MemberFunctions.at("operator_get");
+
+				if (!clsType->MemberFunctions.contains("__getitem__"))
+				{
+					Report(DiagnosticCode_MissingIndexOverload, GetNodeLocation(subscript->Target));
+					return nullptr;
+				}
+
+				auto memberFunc = clsType->MemberFunctions.at("__getitem__");
 				auto funcCall = std::make_shared<ASTFunctionCall>( );
 				funcCall->Callee = memberFunc->GetFunctionSymbol().FunctionNode;
 				funcCall->ClassType = clsType;
@@ -674,8 +870,7 @@ namespace clear
 
 			if (!genericSym)
 			{
-				//DiagnosticCode_UndeclaredIdentifier
-				Report(DiagnosticCode_None, var->GetName());
+				Report(DiagnosticCode_UndeclaredIdentifier, var->GetName());
 				return nullptr;
 			}
 			
@@ -714,7 +909,7 @@ namespace clear
 			
 		if (size <= 0)
 		{
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_InvalidArraySize, Token());
 			return nullptr;
 		}
 
@@ -737,6 +932,106 @@ namespace clear
 
 		listExpr->ListType = m_Module->GetTypeRegistry()->GetArrayFrom(targetBaseType, listExpr->Values.size());
 		return listExpr;
+	}
+
+	bool Sema::IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral)
+	{
+		if (from == to || from->GetHash() == to->GetHash())
+			return true;
+
+		llvm::Type* src = from->Get();
+		llvm::Type* dst = to->Get();
+
+		if (!src || !dst)
+			return false;
+
+		// pointers: null converts to anything, otherwise the pointee must match (or be opaque)
+		if (src->isPointerTy() && dst->isPointerTy())
+		{
+			if (!from->IsPointer() || !to->IsPointer())
+				return true;
+
+			auto fromBase = from->As<PointerType>()->GetBaseType();
+			auto toBase = to->As<PointerType>()->GetBaseType();
+
+			return !fromBase || !toBase || fromBase->Get()->isVoidTy() || toBase->Get()->isVoidTy();
+		}
+
+		bool srcInt = src->isIntegerTy(), dstInt = dst->isIntegerTy();
+		bool srcFloat = src->isFloatingPointTy(), dstFloat = dst->isFloatingPointTy();
+
+		// a numeric literal can become any numeric type (`let x: uint8 = 5`, `let f: float32 = 2.5`)
+		if (fromLiteral && (srcInt || srcFloat) && (dstInt || dstFloat) && !dst->isIntegerTy(1))
+			return !(srcFloat && dstInt);
+
+		if (srcInt && dstInt)
+		{
+			unsigned srcBits = src->getIntegerBitWidth(), dstBits = dst->getIntegerBitWidth();
+
+			if (dstBits == 1)
+				return srcBits == 1;
+
+			if (srcBits == 1 || srcBits == dstBits)
+				return true; // bool -> int, or the same width with different signedness
+
+			if (dstBits > srcBits)
+				return from->IsSigned() == to->IsSigned() || !from->IsSigned(); // uint8 -> int16 is fine, int8 -> uint16 is not
+
+			return false;
+		}
+
+		if (srcInt && dstFloat)
+		{
+			unsigned bits = src->getIntegerBitWidth();
+			return dst->isDoubleTy() ? bits <= 32 : bits <= 16;
+		}
+
+		if (srcFloat && dstFloat)
+			return dst->getPrimitiveSizeInBits() > src->getPrimitiveSizeInBits();
+
+		return false;
+	}
+
+	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node))
+			return literal->GetData().IsType(TokenType::Number) || literal->GetData().IsType(TokenType::Char);
+
+		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node); unary && unary->GetOperatorType() == OperatorType::Negation)
+			return IsNumericLiteral(unary->Operand);
+
+		return false;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target)
+	{
+		if (!node || !target)
+			return node;
+
+		std::shared_ptr<Type> source = m_TypeInferEngine.InferTypeFromNode(node);
+
+		if (!source || source == target)
+			return node;
+
+		if (!IsImplicitlyConvertible(source, target, IsNumericLiteral(node)))
+		{
+			Token location = GetNodeLocation(node);
+			size_t width = std::max<size_t>(location.GetData().size(), 1);
+
+			location.SetData(std::format("{}’ to ‘{}", source->GetHash(), target->GetHash()));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ImplicitConversion, width);
+			return node;
+		}
+
+		if (source->Get() == target->Get())
+			return node; // nothing to do at the machine level
+
+		std::shared_ptr<ASTCastExpr> cast = std::make_shared<ASTCastExpr>();
+		cast->Object = node;
+		cast->TargetType = target;
+		cast->Location = GetNodeLocation(node);
+
+		return cast;
 	}
 
 	void Sema::Report(DiagnosticCode code, Token token)
@@ -783,8 +1078,7 @@ namespace clear
 
 		if (binaryExpr->RightSide->GetType() != ASTNodeType::Variable)
 		{
-			// DiagnosticCode_InvalidAccess
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_InvalidMemberAccess, Token());
 			return nullptr;
 		}
 		
@@ -795,8 +1089,7 @@ namespace clear
 
 		if (!memberSymbol)
 		{
-			// DiagnosticCode_MissingMember
-			Report(DiagnosticCode_None, Token());
+			Report(DiagnosticCode_UnknownMember, member->GetName());
 			return nullptr;
 		}
 
@@ -810,7 +1103,6 @@ namespace clear
 			return loadOp;
 		}
 
-		binaryExpr->ResultantType = m_Module->GetTypeRegistry()->GetPointerTo(binaryExpr->ResultantType);
 		return binaryExpr;
 	}
 
@@ -999,7 +1291,10 @@ namespace clear
 		bool success = m_ScopeStack[scopeIndex].Insert(instanceName, SymbolEntryType::None, instanceSymbol);
 		CLEAR_VERIFY(success, ""); //TODO Report(...)
 
+		m_PendingInstances[clonned.get()] = instanceSymbol;
 		clonned = Visit(clonned);
+		m_PendingInstances.erase(clonned.get());
+
 		ConstructSymbol(instanceSymbol, clonned);
 
 		return instanceSymbol->GetGeneric().GeneratedSymbol;

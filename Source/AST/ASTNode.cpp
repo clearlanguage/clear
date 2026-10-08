@@ -71,6 +71,31 @@ namespace clear
     {
     }
 
+	Token GetNodeLocation(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (!node)
+			return Token();
+
+		if (!node->Location.GetSourceFile().empty())
+			return node->Location;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Load:				return GetNodeLocation(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+			case ASTNodeType::UnaryExpression:	return GetNodeLocation(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand);
+			case ASTNodeType::BinaryExpression:	return GetNodeLocation(std::dynamic_pointer_cast<ASTBinaryExpression>(node)->LeftSide);
+			case ASTNodeType::FunctionCall:		return GetNodeLocation(std::dynamic_pointer_cast<ASTFunctionCall>(node)->Callee);
+			case ASTNodeType::CastExpr:			return GetNodeLocation(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object);
+			case ASTNodeType::Subscript:		return GetNodeLocation(std::dynamic_pointer_cast<ASTSubscript>(node)->Target);
+			case ASTNodeType::StructExpr:		return GetNodeLocation(std::dynamic_pointer_cast<ASTStructExpr>(node)->TargetType);
+			case ASTNodeType::Variable:			return std::dynamic_pointer_cast<ASTVariable>(node)->GetName();
+			case ASTNodeType::Literal:			return std::dynamic_pointer_cast<ASTNodeLiteral>(node)->GetData();
+			default:							break;
+		}
+
+		return Token();
+	}
+
 	Symbol ASTNodeBase::Codegen(CodegenContext& ctx)
 	{
 		return Symbol();
@@ -83,7 +108,13 @@ namespace clear
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
 	{
 		for (auto child : Children)
+		{
+			// code after return/break/continue is unreachable, emitting it would produce invalid IR
+			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
+				break;
+
 			child->Codegen(ctx);
+		}
 
 		return Symbol();
 	}
@@ -320,8 +351,8 @@ namespace clear
 
 		auto [lhsValue, lhsType] = lhs.GetValue();
 
-		lhsValue = TypeCasting::Cast(lhsValue, lhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
-		lhsType  = ctx.TypeReg->GetType("bool");
+		lhsValue = TypeCasting::Cast(lhsValue, lhsType, Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx.Builder);
+		lhsType  = Symbol::GetBooleanType(ctx.ClearModule).GetType();
 
 
 		llvm::BasicBlock* checkSecond  = llvm::BasicBlock::Create(ctx.Context, "check_second");
@@ -341,8 +372,8 @@ namespace clear
 		
 		auto [rhsValue, rhsType] = rhs.GetValue();
 
-		rhsValue = TypeCasting::Cast(rhsValue, rhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
-		rhsType  = ctx.TypeReg->GetType("bool");
+		rhsValue = TypeCasting::Cast(rhsValue, rhsType, Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx.Builder);
+		rhsType  = Symbol::GetBooleanType(ctx.ClearModule).GetType();
 		
 		ctx.Builder.CreateCondBr(rhsValue, trueResult, falseResult);
 		
@@ -650,6 +681,11 @@ namespace clear
 		{
 			tmp = SymbolOps::Mod(loadedValue, data, ctx.Builder); 
 		}
+		else if (m_Type == AssignmentOperatorType::BitAnd) tmp = SymbolOps::BitAnd(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::BitOr)  tmp = SymbolOps::BitOr(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::BitXor) tmp = SymbolOps::BitXor(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shl)    tmp = SymbolOps::Shl(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shr)    tmp = SymbolOps::Shr(loadedValue, data, ctx.Builder);
 		else 
 		{
 			CLEAR_UNREACHABLE("invalid assignment type");
@@ -785,6 +821,8 @@ namespace clear
 		llvm::Function* functionPtr = functionSymbol.FunctionPtr;
 		llvm::FunctionType* functionType = functionSymbol.FunctionType;
 
+		ConvertArguments(ctx, functionType, args, types);
+
 		if (functionSymbol.FunctionNode->SourceModule != ctx.ClearModule)
 		{
 			functionPtr = ctx.Module.getFunction(functionSymbol.FunctionNode->GetName());
@@ -826,6 +864,57 @@ namespace clear
 		}
     }
 
+	void ASTFunctionCall::ConvertArguments(CodegenContext& ctx, llvm::FunctionType* functionType, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
+	{
+		auto registry = ctx.ClearModule;
+
+		for (size_t i = 0; i < args.size() && i < types.size(); i++)
+		{
+			llvm::Type* argType = args[i]->getType();
+
+			if (i < functionType->getNumParams())
+			{
+				llvm::Type* paramType = functionType->getParamType(i);
+
+				if (argType == paramType || !types[i])
+					continue;
+
+				// find the clear type matching the parameter so signedness is respected
+				std::shared_ptr<Type> target;
+
+				if (paramType->isIntegerTy())
+				{
+					std::string name = paramType->isIntegerTy(1) ? "bool" : std::format("{}int{}", types[i]->IsSigned() || !types[i]->IsIntegral() ? "" : "u", paramType->getIntegerBitWidth());
+					target = registry->Lookup(name).value()->GetType();
+				}
+				else if (paramType->isDoubleTy()) target = registry->Lookup("float64").value()->GetType();
+				else if (paramType->isFloatTy())  target = registry->Lookup("float32").value()->GetType();
+
+				if (target)
+				{
+					args[i] = TypeCasting::Cast(args[i], types[i], target, ctx.Builder);
+					types[i] = target;
+				}
+
+				continue;
+			}
+
+			// C default argument promotions for variadic arguments: float -> double, small ints -> int
+			if (argType->isFloatTy())
+			{
+				args[i] = ctx.Builder.CreateFPExt(args[i], ctx.Builder.getDoubleTy(), "vararg.promote");
+				types[i] = registry->Lookup("float64").value()->GetType();
+			}
+			else if (argType->isIntegerTy() && argType->getIntegerBitWidth() < 32)
+			{
+				bool isSigned = types[i] && types[i]->IsSigned() && !argType->isIntegerTy(1);
+				args[i] = isSigned ? ctx.Builder.CreateSExt(args[i], ctx.Builder.getInt32Ty(), "vararg.promote")
+				                   : ctx.Builder.CreateZExt(args[i], ctx.Builder.getInt32Ty(), "vararg.promote");
+				types[i] = registry->Lookup("int32").value()->GetType();
+			}
+		}
+	}
+
 	std::shared_ptr<ASTBinaryExpression> ASTFunctionCall::IsMemberFunction()
 	{
 		if (auto memberAccess = std::dynamic_pointer_cast<ASTBinaryExpression>(Callee); memberAccess && memberAccess->GetExpression() == OperatorType::Dot)
@@ -840,23 +929,41 @@ namespace clear
 		{
 			case SubscriptSemantic::ArrayIndex:
 			{
-				Symbol operand = Target->Codegen(ctx);
-				
-				llvm::SmallVector<llvm::Value*> indices;
-				indices.push_back(ctx.Builder.getInt64(0));
-					
-				std::shared_ptr<Type> resPtrType = operand.GetType()->As<PointerType>()->GetBaseType();
+				// `current` always holds the address of the value being indexed
+				Symbol current = Target->Codegen(ctx);
+				auto registry = ctx.ClearModule->GetTypeRegistry();
 
 				for (auto index : SubscriptArgs)
 				{
-					indices.push_back(index->Codegen(ctx).GetLLVMValue());
-					resPtrType = resPtrType->IsArray() ? resPtrType->As<ArrayType>()->GetBaseType() : resPtrType->As<PointerType>()->GetBaseType();
+					Symbol indexSymbol = index->Codegen(ctx);
+					llvm::Value* indexValue = indexSymbol.GetLLVMValue();
+
+					// widen to 64 bits so negative/large indices behave the same on every target
+					if (indexValue->getType()->getIntegerBitWidth() < 64)
+					{
+						indexValue = indexSymbol.GetType()->IsSigned() ? ctx.Builder.CreateSExt(indexValue, ctx.Builder.getInt64Ty())
+						                                               : ctx.Builder.CreateZExt(indexValue, ctx.Builder.getInt64Ty());
+					}
+
+					std::shared_ptr<Type> base = current.GetType()->As<PointerType>()->GetBaseType();
+
+					if (base->IsArray())
+					{
+						std::shared_ptr<Type> element = base->As<ArrayType>()->GetBaseType();
+						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(base->Get(), current.GetLLVMValue(), { ctx.Builder.getInt64(0), indexValue }, "index");
+						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
+					}
+					else
+					{
+						// indexing through a pointer: load it, then offset by the index
+						Symbol pointer = SymbolOps::Load(current, ctx.Builder);
+						std::shared_ptr<Type> element = base->As<PointerType>()->GetBaseType();
+						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(element->Get(), pointer.GetLLVMValue(), { indexValue }, "index");
+						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
+					}
 				}
 
-				resPtrType = ctx.ClearModule->GetTypeRegistry()->GetPointerTo(resPtrType);
-			
-				Symbol resPtrTypeSymbol = Symbol::CreateType(resPtrType);
-				return SymbolOps::GEP(operand, resPtrTypeSymbol, indices, ctx.Builder);
+				return current;
 			}
 			case SubscriptSemantic::Generic:
 			{
@@ -1230,6 +1337,9 @@ namespace clear
 			if (result.Kind == SymbolKind::Type)
 				return Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(result.GetType()));
 
+			if (IsStorage)
+				return result; // the pointer value is the storage location
+
 			auto [resultValue, resultType] = result.GetValue();
 
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
@@ -1256,6 +1366,15 @@ namespace clear
 		}
 
 		if(m_Type == OperatorType::Not)
+		{
+			// logical not: compare against zero first so `not 5` is false rather than ~5
+			Symbol result = Operand->Codegen(ctx);
+			Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
+			Symbol asBool = SymbolOps::Cast(result, boolType, ctx.Builder);
+			return SymbolOps::Not(asBool, ctx.Builder);
+		}
+
+		if(m_Type == OperatorType::BitwiseNot)
 		{
 			Symbol result = Operand->Codegen(ctx);
 			return SymbolOps::Not(result, ctx.Builder);
@@ -1520,8 +1639,8 @@ namespace clear
 		std::print("?: ");
 	}
 
-	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy)
-		: m_JumpTy(jumpTy)
+	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy, const Token& token)
+		: m_JumpTy(jumpTy), m_Token(token)
 	{
 	}
 

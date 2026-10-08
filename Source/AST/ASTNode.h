@@ -75,7 +75,13 @@ namespace clear
 		virtual inline const ASTNodeType GetType() const { return ASTNodeType::Base; }
 		virtual Symbol Codegen(CodegenContext&);
 		virtual void Print() {}
+
+	public:
+		Token Location; // where the node starts in the source, used for diagnostics (may be empty)
 	};
+
+	// best source location for a node, looking through nodes created by the compiler itself
+	Token GetNodeLocation(const std::shared_ptr<ASTNodeBase>& node);
 	
 	class ASTBlock : public ASTNodeBase
 	{
@@ -197,7 +203,8 @@ namespace clear
 
 	enum class AssignmentOperatorType 
 	{
-		None, Initialize, Normal, Mul, Div, Add, Sub, Mod
+		None, Initialize, Normal, Mul, Div, Add, Sub, Mod,
+		BitAnd, BitOr, BitXor, Shl, Shr
 	};
 
 	class ASTAssignmentOperator : public ASTNodeBase
@@ -238,6 +245,9 @@ namespace clear
 		const std::string& GetName() const { return m_Name; }
 		void SetName(const std::string& name) { m_Name = name;}
 
+		const Token& GetNameToken() const { return m_NameToken; }
+		void SetNameToken(const Token& token) { m_NameToken = token; }
+
 	public:
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Arguments;
 		std::shared_ptr<ASTNodeBase> ReturnType;
@@ -250,6 +260,7 @@ namespace clear
 
 	private:
 		std::string m_Name;
+		Token m_NameToken;
 	};
 
 	class ASTFunctionCall : public ASTNodeBase
@@ -270,6 +281,7 @@ namespace clear
 
 	private:
 		void BuildArgs(CodegenContext& ctx, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
+		void ConvertArguments(CodegenContext& ctx, llvm::FunctionType* functionType, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types);
 		std::shared_ptr<ASTBinaryExpression> IsMemberFunction();
 	};
 	
@@ -371,6 +383,7 @@ namespace clear
 
 	public:
 		std::shared_ptr<ASTNodeBase> Operand;
+		bool IsStorage = false; // `*p` on the left of an assignment: produce the address instead of loading
 
 	private: 
 		OperatorType m_Type;
@@ -480,13 +493,16 @@ namespace clear
 	class ASTLoopControlFlow : public ASTNodeBase
 	{
 	public:
-		ASTLoopControlFlow(std::string jumpTy);
+		ASTLoopControlFlow(std::string jumpTy, const Token& token = Token());
 		virtual ~ASTLoopControlFlow() = default;
 		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::LoopControlFlow; }
 		virtual Symbol Codegen(CodegenContext&) override;
 
+		const auto& GetToken() const { return m_Token; }
+
 	private:
 		std::string m_JumpTy;
+		Token m_Token;
 	};
 
 	class ASTDefaultArgument : public ASTNodeBase

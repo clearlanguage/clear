@@ -61,6 +61,9 @@ namespace clear
         if(m_Position >= m_Contents.size())
             return;
 
+        m_StartLine   = m_LineNumber;
+        m_StartColumn = m_ColumnNumber;
+
         std::string top(1, m_Contents[m_Position]);
 
         if (std::isdigit(m_Contents[m_Position]))
@@ -202,6 +205,7 @@ namespace clear
             }
             
             EmplaceBack(g_OperatorMappings.at(operator_), operator_);
+            m_StartColumn += operator_.size();
             i += operator_.size();
         }
     }
@@ -600,12 +604,16 @@ namespace clear
 
     void Lexer::EmplaceBack(TokenType type, const std::string& data)
     {
-        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
+        // line structure tokens are positioned where they are produced, everything else at its start
+        if (type == TokenType::EndLine || type == TokenType::EndScope || type == TokenType::EndOfFile)
+            m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
+        else
+            m_Tokens.emplace_back(type, data, m_File, m_StartLine, m_StartColumn);
     }
 
 
     void Lexer::EmplaceBack(TokenType type, const std::string& data,const std::string& metadata)
     {
-        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber,metadata);
+        m_Tokens.emplace_back(type, data, m_File, m_StartLine, m_StartColumn, metadata);
     }
 }

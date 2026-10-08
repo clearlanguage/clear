@@ -31,39 +31,42 @@ Clear is **"read like Python, run like C"**. Concretely:
 Without these, every later change is guesswork.
 
 - [x] Fix the shutdown crash (LLVM context freed before its modules).
-- [ ] **Test suite**: `Tests/<area>/<name>.cl` plus a `# expect:` block holding
+- [x] **Test suite**: `Tests/<area>/<name>.cl` plus a `# expect:` block holding
       the expected stdout. A runner script compiles and runs each test, and
       `ctest` drives it.
-- [ ] **CI that actually builds**: install LLVM 18 + Clang on Ubuntu, build,
+- [x] **CI that actually builds**: install LLVM 18 + Clang on Ubuntu, build,
       run the tests. Drop the gcc/MSVC jobs (the README already requires
       Clang).
-- [ ] Exit with a non-zero status when compilation fails; print each
+- [x] Exit with a non-zero status when compilation fails; print each
       diagnostic once.
-- [ ] Run the optimizer **before** emitting the object file. Today the
+- [x] Run the optimizer **before** emitting the object file. Today the
       optimizer runs after the `.o` is written, so release builds are never
       optimized.
-- [ ] `clearc run file.cl` / `clearc build file.cl` for single files, so a
+- [x] `clearc run file.cl` / `clearc build file.cl` for single files, so a
       `build.toml` is only needed for real projects.
 
 ## Phase 1: Core correctness (make what exists actually work)
 
 Everything here is already "in the language" on paper but fails today.
 
-- [ ] Operator precedence that matches Python/C intuition:
+- [x] Operator precedence that matches Python/C intuition:
       `or` < `and` < `not` < comparisons < `|` < `^` < `&` < shifts <
       `+ -` < `* / %` < unary < postfix. Today `a < b and c < d` mis-parses.
-- [ ] `and`, `or`, `not` and the bitwise operators `& | ^ ~ << >>` in the
+- [x] `and`, `or`, `not` and the bitwise operators `& | ^ ~ << >>` in the
       semantic pass; `&= |= ^= <<= >>=`.
-- [ ] Unary minus.
-- [ ] `break` and `continue`.
-- [ ] Method calls on values (`v.sum()` currently hangs the compiler).
-- [ ] Generic class instantiation from a struct literal (`Box { 7 }`).
-- [ ] C variadic calls promote `float32` to `float64` (so `printf("%f")` works).
-- [ ] Float literals default to `float64`, like Python.
-- [ ] Implicit, *lossless* conversions are inserted by the semantic pass
+- [x] Unary minus.
+- [x] `break` and `continue`.
+- [x] Method calls on values (`v.sum()` currently hangs the compiler).
+- [x] Generic class instantiation from a struct literal (`Box { 7 }`).
+- [x] C variadic calls promote `float32` to `float64` (so `printf("%f")` works).
+- [x] Float literals default to `float64`, like Python.
+- [x] Implicit, *lossless* conversions are inserted by the semantic pass
       (int widening, int → float). Lossy conversions need `as`.
-- [ ] Indexing a class without `__getitem__` is a normal diagnostic, not a
-      compiler crash.
+- [x] Indexing a class without `__getitem__` is a normal diagnostic, not a
+      compiler crash (`operator_get`/`operator_set` are now `__getitem__` /
+      `__setitem__`).
+- [x] Readable diagnostics with file:line:column and the offending source
+      line; no crashes when reporting errors without a location.
 
 ## Phase 2: Control flow and everyday ergonomics
 

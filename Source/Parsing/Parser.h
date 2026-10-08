@@ -42,6 +42,7 @@ namespace clear
         std::shared_ptr<Module> RootModule();
 
         Token Consume();
+        Token ErrorLocation();
         Token Peak();
         Token Next();
         Token Prev();
@@ -69,6 +70,7 @@ namespace clear
 		std::shared_ptr<ASTIfExpression> ParseIf();
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
 		std::shared_ptr<ASTImport> ParseImport();
+		std::shared_ptr<ASTNodeBase> ParseLoopControl();
 		std::shared_ptr<ASTNodeBase> ParseClass();
 		std::shared_ptr<ASTGenericTemplate> ParseGenericArgs(std::shared_ptr<ASTNodeBase> templateNode);
 		std::shared_ptr<ASTNodeBase> ParseLet();

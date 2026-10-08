@@ -81,6 +81,10 @@ namespace clear
         size_t m_LineNumber   = 0;
         size_t m_ColumnNumber = 0;
 
+        // where the token currently being lexed begins, used for diagnostics
+        size_t m_StartLine   = 0;
+        size_t m_StartColumn = 0;
+
         DiagnosticsBuilder& m_DiagBuilder;
     };
 }

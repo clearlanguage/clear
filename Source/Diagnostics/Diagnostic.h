@@ -33,20 +33,19 @@ namespace clear
         Severity DiagSeverity = Severity::None;
         Stage DiagStage = Stage::None;
 
-        std::filesystem::path File;
-
-        llvm::SmallVector<llvm::StringRef, g_SnippetHeight> CodeSnippet;
+        std::filesystem::path File; // empty when the problem has no source location
+        std::string SourceLine;     // the offending line, without its newline
         std::string Message;
         std::string Advice;
 
-        size_t Line = 0;
-        size_t Column = 0;
+        size_t Line = 0;   // zero based
+        size_t Column = 0; // zero based
 
         size_t ArrowsWidth = 1;
     };
 
     inline std::string_view g_SeverityStrings[(size_t)Severity::Count] = {
-        "None", "Low", "Medium", "High"
+        "note", "warning", "warning", "error"
     };
 
     inline std::string_view g_StageStrings[(size_t)Stage::Count] = {
@@ -62,62 +61,30 @@ namespace std
     {
         auto format(const clear::Diagnostic& error, format_context& ctx) const 
         { 
-            llvm::SmallString<256> codeSnippet;
+            std::string out;
+            std::string_view severity = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
 
-            int64_t snippetStartLineCalc = (int64_t)error.Line - clear::g_SnippetHeight / 2;
-            size_t snippetStartLine = std::max(snippetStartLineCalc, (int64_t)0);
-            size_t snippetLineNumber = snippetStartLine;
-            size_t snippetIndex = 0;
+            out += std::format("{}[E{:03}]: {}\n", severity, (int)error.Code, error.Message);
 
-            auto appendLine = [&](const std::string& prefix, size_t lineNum, llvm::StringRef code) 
+            if (!error.File.empty())
             {
-                codeSnippet.append(prefix);
-                codeSnippet.append(std::to_string(lineNum));
-                codeSnippet.append("\t");
-                codeSnippet.append(code);
-                codeSnippet.push_back('\n');
-            };
+                std::string lineNumber = std::to_string(error.Line + 1);
+                std::string gutter(lineNumber.size(), ' ');
 
-            for (; snippetLineNumber < error.Line; ++snippetLineNumber) 
-            {
-                appendLine("|  ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex++]);
+                // tabs would misalign the carets, render them as single spaces
+                std::string line = error.SourceLine;
+                std::replace(line.begin(), line.end(), '\t', ' ');
+
+                out += std::format("{} --> {}:{}:{}\n", gutter, error.File.string(), error.Line + 1, error.Column + 1);
+                out += std::format("{} |\n", gutter);
+                out += std::format("{} | {}\n", lineNumber, line);
+                out += std::format("{} | {}{}\n", gutter, std::string(error.Column, ' '), std::string(std::max<size_t>(error.ArrowsWidth, 1), '^'));
             }
 
-            appendLine("|> ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex++]);
-            codeSnippet.append("|");
-            codeSnippet.append(std::string(error.Column+7 , ' '));
-            codeSnippet.append(std::string(error.ArrowsWidth,'^'));
-            codeSnippet.append("\n");
-            ++snippetLineNumber;
+            if (!error.Advice.empty())
+                out += std::format("  = help: {}\n", error.Advice);
 
-            for (; snippetIndex < error.CodeSnippet.size(); ++snippetIndex, ++snippetLineNumber) 
-            {
-                appendLine("|  ", snippetLineNumber + 1, error.CodeSnippet[snippetIndex]);
-            }
-
-            std::string_view codeSnippetView(codeSnippet.data(), codeSnippet.size());
-            std::string_view severityStr = clear::g_SeverityStrings[(size_t)error.DiagSeverity];
-            std::string_view stageStr    = clear::g_StageStrings[(size_t)error.DiagStage];
-            int codeInt             = (int)error.Code; 
-            std::string filePath    = error.File.string();
-
-            size_t lineNum = error.Line + 1;
-
-            std::string formatString = std::vformat(
-                "File: {}; Line: {}; Column: {}; Stage: {}; Error Code: {};\n"
-                "{}\n"
-                "{}\n"
-                "{}\n",
-                std::make_format_args(filePath, lineNum, error.Column,
-                    stageStr,
-                    codeInt,
-                    codeSnippetView, 
-                    error.Message,
-                    error.Advice
-                )
-            );
-        
-            return formatter<std::string>::format(formatString, ctx);
+            return formatter<std::string>::format(out, ctx);
         }
     };
 }

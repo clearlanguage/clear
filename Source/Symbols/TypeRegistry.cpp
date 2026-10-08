@@ -176,16 +176,9 @@ namespace clear
             return "";
         } 
 
+        // like Python, a float literal is double precision unless it is cast
         if(info.IsFloatingPoint)
-        {
-            switch (info.BitsNeeded)
-			{
-				case 32: return "float32"; break;
-				case 64: return "float64"; break;
-				default:
-					break;
-			}
-        }
+            return "float64";
         else if (info.IsSigned)
 		{
 			switch (info.BitsNeeded)
