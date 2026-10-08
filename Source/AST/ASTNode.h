@@ -36,7 +36,7 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef,
 		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
@@ -279,6 +279,8 @@ namespace clear
 		bool IsGenericInstance = false; // made from a generic template, reached through the template not by name
 		bool InferReturnType = false;   // lambdas: the return type is the type of the body
 		bool BodyResolved = false;
+		bool IsVirtual = false;         // `virtual function`: called through the class's vtable
+		bool IsProperty = false;        // `property name(self)`: read as obj.name, set as obj.name = v
 
 	private:
 		std::string m_Name;
@@ -301,6 +303,8 @@ namespace clear
 		bool IsBuiltinPrint = false; // print(...) is lowered to printf by the compiler
 		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> KeywordArguments; // f(name = value)
 		std::shared_ptr<Type> IndirectType; // calling a function value (a FunctionPointerType)
+		int64_t VirtualSlot = -1;           // a virtual method: the function comes from this vtable slot of the receiver
+		std::string PropertyName;           // a property getter call (`obj.name`), so `obj.name = v` can become the setter
 
 
 
@@ -536,6 +540,8 @@ namespace clear
 		bool BodyDeclared = false;
 		bool LazyMethods = false; // generic instance: methods are analysed on first use
 		bool IsUnion = false;
+		bool IsTrait = false;                             // `trait Name:` method signatures a class promises to have
+		std::vector<std::shared_ptr<ASTNodeBase>> Bases;  // class Dog(Animal, Named): one base class, any number of traits
 	
 	private:
 		std::string m_Name;
@@ -873,6 +879,20 @@ namespace clear
 		std::shared_ptr<Type> FunctionTy;
 	};
 
+	// the address of a class's table of virtual methods (stored in the hidden __vtable field)
+	class ASTVTableRef : public ASTNodeBase
+	{
+	public:
+		ASTVTableRef() = default;
+		virtual ~ASTVTableRef() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::VTableRef; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ClassType> ClassTy;
+		std::shared_ptr<Type> PointerTy; // *int8
+	};
+
 	// a type the compiler already knows, standing where a type expression would be
 	class ASTTypeLiteral : public ASTNodeBase
 	{
@@ -999,6 +1019,7 @@ namespace clear
 
 	public:
 		llvm::SmallVector<std::string> GenericTypeNames;
+		std::vector<Token> Constraints; // per type parameter, the trait it must satisfy (empty when none)
 		std::shared_ptr<ASTNodeBase> TemplateNode;
 		std::shared_ptr<Module> HomeModule; // the file the template is written in
 	};

@@ -80,6 +80,12 @@ namespace clear
 		DiagnosticCode_UnknownCase,
 		DiagnosticCode_NeedsCaseValues,
 		DiagnosticCode_UnionNeedsField,
+		DiagnosticCode_InvalidBase,
+		DiagnosticCode_InheritanceCycle,
+		DiagnosticCode_VirtualNeedsTable,
+		DiagnosticCode_TraitNotSatisfied,
+		DiagnosticCode_NoSuperclass,
+		DiagnosticCode_PropertyNotSettable,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -160,6 +166,12 @@ namespace clear
 		"Not a case of this enum.",
 		"This enum case carries data.",
 		"A union is built from at most one field.",
+		"A class can inherit from one class and any number of traits.",
+		"A class cannot inherit from itself.",
+		"Virtual methods must start in a class whose base has none.",
+		"Type does not satisfy the trait.",
+		"‘super’ is only available in methods of a class with a base class.",
+		"This property has no setter.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -239,5 +251,11 @@ namespace clear
 		"‘{}’.",
 		"Give its values: {}(...).",
 		"Name the field to set, e.g. {}(f = 1.5), or leave it empty for all zeros.",
+		"‘{}’ cannot be used here.",
+		"‘{}’ is part of a cycle of base classes.",
+		"‘{}’ adds the first virtual method below a base class without one. Mark a method of the base virtual, or of the root class.",
+		"{}.",
+		"Only a class declared as class Name(Base) has a ‘{}’.",
+		"Add ‘property {}(self, value: T)’ to the class to allow assigning to it.",
 	};
 }

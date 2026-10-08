@@ -22,6 +22,7 @@ namespace clear
 			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
 			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
 			case ASTNodeType::FunctionRef:	return std::dynamic_pointer_cast<ASTFunctionRef>(node)->FunctionTy;
+			case ASTNodeType::VTableRef:	return std::dynamic_pointer_cast<ASTVTableRef>(node)->PointerTy;
 			case ASTNodeType::VariantConstruct: return std::dynamic_pointer_cast<ASTVariantConstruct>(node)->VariantTy;
 			case ASTNodeType::VariantTag:	return std::dynamic_pointer_cast<ASTVariantTag>(node)->TagType;
 			case ASTNodeType::UnionConstruct: return std::dynamic_pointer_cast<ASTUnionConstruct>(node)->UnionTy;

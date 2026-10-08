@@ -329,6 +329,7 @@ namespace clear
 			{"const",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseConst(); }},
 			{"class",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"union",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
+			{"trait",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
 			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
 			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
 			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
@@ -807,9 +808,13 @@ namespace clear
 		return function;
 	}
 
-	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly)
+	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly, bool isProperty)
 	{
-		EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
+		if (!isProperty)
+		{
+			EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
+		}
+
 		Consume();
 
 		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
@@ -877,6 +882,9 @@ namespace clear
 		Consume();
 		
 		funcNode->ReturnType = ParseExpr();
+
+		if (descriptionOnly && Match(TokenType::EndLine))
+			Consume();
 
 		if (!descriptionOnly)
 		{
@@ -1632,10 +1640,11 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
     {
-        // `union Name:` is parsed like a class whose fields share storage
+        // `union Name:` is parsed like a class whose fields share storage, `trait Name:` holds only method signatures
         bool isUnion = Match("union");
+        bool isTrait = Match("trait");
 
-        if (!isUnion)
+        if (!isUnion && !isTrait)
         {
             EXPECT_DATA_RETURN("class", DiagnosticCode_None, nullptr);
         }
@@ -1643,15 +1652,44 @@ namespace clear
         Consume();
 
         EXPECT_TOKEN_RETURN(TokenType::Identifier,  DiagnosticCode_ExpectedIdentifier, nullptr);
-        std::string className = Consume().GetData();
+        Token nameToken = Consume();
+        std::string className = nameToken.GetData();
 
         std::shared_ptr<ASTClass> classNode = std::make_shared<ASTClass>(className);
         classNode->IsUnion = isUnion;
+        classNode->IsTrait = isTrait;
+        classNode->Location = nameToken;
 		std::shared_ptr<ASTGenericTemplate> genericTemplate;
 
         if(Match(TokenType::LeftBracket))
         {
 			genericTemplate = ParseGenericArgs(classNode);
+        }
+
+        // class Dog(Animal, Named): a base class and/or traits
+        if (Match(TokenType::LeftParen))
+        {
+            Consume();
+
+            while (!Match(TokenType::RightParen) && !Match(TokenType::EndOfFile))
+            {
+                auto base = ParseExpr(); // the parser stops at `,` and `)`
+
+                if (!base)
+                    return nullptr;
+
+                classNode->Bases.push_back(base);
+
+                if (Match(TokenType::Comma))
+                {
+                    Consume();
+                    continue;
+                }
+
+                EXPECT_TOKEN_RETURN(TokenType::RightParen, DiagnosticCode_ExpectedEndOfFunction, nullptr);
+            }
+
+            Consume();
         }
 
         EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
@@ -1665,10 +1703,28 @@ namespace clear
 			if (Match(TokenType::EndScope))
 				break;
 
-            if(Match("function"))
+            // virtual function speak(self): dispatched through the vtable
+            // property area(self) -> float: read as obj.area;  property area(self, value: float): obj.area = value
+            bool isVirtual = Match("virtual") && Next().GetData() == "function";
+            bool isProperty = Match("property") && Next().IsType(TokenType::Identifier);
+
+            if (isVirtual)
+                Consume();
+
+            if(Match("function") || isProperty)
             {
 				Token methodToken = Next();
-				auto method = ParseFunctionDefinition();
+				auto method = ParseFunctionDefinition(isTrait, isProperty);
+
+				if (method)
+				{
+					method->IsVirtual = isVirtual;
+					method->IsProperty = isProperty;
+
+					// the setter lives next to the getter under its own name
+					if (isProperty && method->Arguments.size() == 2)
+						method->SetName("__set_" + method->GetName());
+				}
 
 				if (m_PendingGeneric)
 				{
@@ -1727,6 +1783,15 @@ namespace clear
 		{
 			EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 			genericTemplate->GenericTypeNames.push_back(Consume().GetData());
+			genericTemplate->Constraints.emplace_back();
+
+			// [T: Shape]: T must be a class that satisfies the trait Shape
+			if (Match(TokenType::Colon))
+			{
+				Consume();
+				EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+				genericTemplate->Constraints.back() = Consume();
+			}
 			
 			if (Match(TokenType::RightBracket))
 				break;

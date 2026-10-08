@@ -661,9 +661,22 @@ namespace clear
 		{
 			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->ResolvedType;
 
-			while(lhs.GetType() != targetType)
+			// the receiver is passed as a pointer to the object (a *Dog also serves a method taking *Animal),
+			// or by value when the method takes `self` by value
+			auto isObjectPointer = [](const std::shared_ptr<Type>& type)
 			{
-				lhs = SymbolOps::Load(lhs, ctx.Builder);
+				return type->IsPointer() && type->As<PointerType>()->GetBaseType() && type->As<PointerType>()->GetBaseType()->IsClass();
+			};
+
+			if (targetType && isObjectPointer(targetType))
+			{
+				while (!isObjectPointer(lhs.GetType()))
+					lhs = SymbolOps::Load(lhs, ctx.Builder);
+			}
+			else
+			{
+				while (lhs.GetType() != targetType && lhs.GetType()->IsPointer())
+					lhs = SymbolOps::Load(lhs, ctx.Builder);
 			}
 			
 			return Symbol::CreateCallee(memberSymbol, std::make_shared<Symbol>(lhs));
@@ -1017,6 +1030,26 @@ namespace clear
 		return Symbol::CreateValue(GetFunctionHere(Function, ctx), FunctionTy);
 	}
 
+	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	{
+		// one constant table per class and module: [n x ptr] holding the class's version of each virtual method
+		std::string name = std::format("{}.vtable", ClassTy->GetHash());
+		llvm::GlobalVariable* table = ctx.Module.getNamedGlobal(name);
+
+		if (!table)
+		{
+			llvm::SmallVector<llvm::Constant*> slots;
+
+			for (auto& function : ClassTy->VTable)
+				slots.push_back(GetFunctionHere(function, ctx));
+
+			auto arrayType = llvm::ArrayType::get(ctx.Builder.getPtrTy(), slots.size());
+			table = new llvm::GlobalVariable(ctx.Module, arrayType, true, llvm::GlobalValue::LinkOnceODRLinkage, llvm::ConstantArray::get(arrayType, slots), name);
+		}
+
+		return Symbol::CreateValue(table, PointerTy);
+	}
+
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
 		if (IndirectType)
@@ -1076,6 +1109,21 @@ namespace clear
 		llvm::FunctionType* functionType = functionSymbol.FunctionType;
 
 		ConvertArguments(ctx, functionType, args, types);
+
+		// virtual: receiver->__vtable[slot](receiver, ...)
+		if (VirtualSlot >= 0 && calleeSymbol.Receiver)
+		{
+			llvm::Value* receiver = calleeSymbol.Receiver->GetLLVMValue();
+			llvm::Value* table = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), receiver, "vtable");
+			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot, "vslot");
+			llvm::Value* target = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), slot, "vfunc");
+			llvm::Value* result = ctx.Builder.CreateCall(functionType, target, args);
+
+			if (!functionSymbol.FunctionNode->ReturnTypeVal)
+				return Symbol();
+
+			return Symbol::CreateValue(result, functionSymbol.FunctionNode->ReturnTypeVal);
+		}
 
 		if (functionSymbol.FunctionNode->SourceModule != ctx.ClearModule)
 		{
@@ -2052,6 +2100,9 @@ namespace clear
 
     Symbol ASTClass::Codegen(CodegenContext& ctx)
     {
+		if (IsTrait)
+			return Symbol::CreateType(ClassTy);
+
 		for (auto func : MemberFunctions)
 		{
 			func->Codegen(ctx);

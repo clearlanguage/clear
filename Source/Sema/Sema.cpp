@@ -310,6 +310,9 @@ namespace clear
 			llvm::SmallVector<Symbol> transformed(context.CallsiteArgs.size());
 			std::transform(context.CallsiteArgs.begin(), context.CallsiteArgs.end(), transformed.begin(), [](auto type) { return Symbol::CreateType(type); });
 			symbol.value().Symbol = SolveConstraints(variable->GetName().GetData(), symbol.value().Symbol, scopeIndex, transformed);
+
+			if (!symbol.value().Symbol)
+				return nullptr;
 		}
 		
 		variable->Variable = symbol.value().Symbol;
@@ -383,6 +386,7 @@ namespace clear
 			case ASTNodeType::Intrinsic:				return ast;
 			case ASTNodeType::TupleGet:					return ast;
 			case ASTNodeType::FunctionRef:				return ast;
+			case ASTNodeType::VTableRef:				return ast;
 			case ASTNodeType::VariantConstruct:			return ast;
 			case ASTNodeType::VariantField:				return ast;
 			case ASTNodeType::VariantTag:				return ast;
@@ -898,6 +902,14 @@ namespace clear
 		// the callee is a name or a member, not a value that should be loaded
 		SemaContext calleeContext = context;
 		calleeContext.ValueReq = ValueRequired::Any;
+
+		// super.method(...) calls the base class's version with the same self
+		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			if (auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide); left && left->GetName().GetData() == "super")
+				return VisitSuperCall(funcCall, context);
+		}
+
 		funcCall->Callee = Visit(funcCall->Callee, calleeContext);
 
 		if (!funcCall->Callee)
@@ -975,9 +987,59 @@ namespace clear
 		return CheckCall(funcCall);
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
+	{
+		auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee);
+		auto superToken = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide)->GetName();
+		auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+		auto self = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "self", superToken.GetSourceFile(), superToken.LineNumber, superToken.ColumnNumber));
+		auto [entry, scopeIndex] = LookupSymbol("self");
+		auto selfType = entry && entry->Symbol->Kind == SymbolKind::Value ? entry->Symbol->GetType() : nullptr;
+		auto classType = ClassOf(selfType);
+		auto base = classType ? classType->As<ClassType>()->Base : nullptr;
+
+		if (!base || !name)
+		{
+			Report(DiagnosticCode_NoSuperclass, superToken);
+			return nullptr;
+		}
+
+		auto method = base->MemberFunctions.find(name->GetName().GetData());
+
+		if (method == base->MemberFunctions.end())
+		{
+			Report(DiagnosticCode_UnknownMember, name->GetName());
+			return nullptr;
+		}
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		auto selfValue = Visit(self, valueContext);
+
+		if (!selfValue)
+			return nullptr;
+
+		auto callee = std::make_shared<ASTVariable>(name->GetName());
+		callee->Variable = method->second;
+
+		// a plain (non-virtual) call: super.sound() must not dispatch back to the override
+		auto call = std::make_shared<ASTFunctionCall>();
+		call->Location = funcCall->Location;
+		call->Callee = callee;
+		call->Arguments.push_back(selfValue);
+		call->Arguments.append(funcCall->Arguments.begin(), funcCall->Arguments.end());
+		call->KeywordArguments = funcCall->KeywordArguments;
+
+		EnsureDefined(method->second->GetFunctionSymbol().FunctionNode);
+		return CheckCall(call);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::CheckCall(std::shared_ptr<ASTFunctionCall> funcCall)
 	{
 		std::shared_ptr<ASTFunctionDefinition> function;
+		std::shared_ptr<ClassType> methodClass; // the receiver's static class, for virtual dispatch
 		bool isMethod = false;
 		Token location = GetNodeLocation(funcCall->Callee);
 
@@ -1028,6 +1090,7 @@ namespace clear
 					if (symbol && symbol.value()->Kind == SymbolKind::Function)
 					{
 						function = symbol.value()->GetFunctionSymbol().FunctionNode;
+						methodClass = objectType->As<ClassType>();
 						isMethod = true;
 					}
 					else if (symbol)
@@ -1128,6 +1191,15 @@ namespace clear
 			}
 
 			funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], parameterType);
+		}
+
+		// a virtual method runs the receiver's own version, looked up in its vtable at run time
+		if (methodClass && function->IsVirtual)
+		{
+			auto slot = std::find(methodClass->VirtualNames.begin(), methodClass->VirtualNames.end(), function->GetNameToken().GetData());
+
+			if (slot != methodClass->VirtualNames.end())
+				funcCall->VirtualSlot = std::distance(methodClass->VirtualNames.begin(), slot);
 		}
 
 		return funcCall;
@@ -1286,6 +1358,10 @@ namespace clear
 				assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
 		}
 
+		// obj.name = v on a property calls its setter
+		if (auto getter = std::dynamic_pointer_cast<ASTFunctionCall>(assignmentOp->Storage); getter && !getter->PropertyName.empty())
+			return VisitPropertyAssign(assignmentOp, getter);
+
     	if (assignmentOp->Storage->GetType() == ASTNodeType::FunctionCall) 
 		{
     		auto funcCallNode = std::dynamic_pointer_cast<ASTFunctionCall>(assignmentOp->Storage);
@@ -1322,6 +1398,63 @@ namespace clear
     	}
 
 		return assignmentOp;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter)
+	{
+		auto self = getter->Arguments[0];
+		auto classType = ClassOf(m_TypeInferEngine.InferTypeFromNode(self));
+		auto setter = classType ? classType->As<ClassType>()->MemberFunctions.find("__set_" + getter->PropertyName) : decltype(classType->As<ClassType>()->MemberFunctions.end()){};
+
+		if (!classType || setter == classType->As<ClassType>()->MemberFunctions.end())
+		{
+			Token location = GetNodeLocation(getter->Callee);
+			location.SetData(getter->PropertyName);
+			Report(DiagnosticCode_PropertyNotSettable, location);
+			return nullptr;
+		}
+
+		auto value = assignmentOp->Value;
+
+		// obj.name += v  is  obj.name = obj.name + v
+		static const std::unordered_map<AssignmentOperatorType, OperatorType> compound = {
+			{ AssignmentOperatorType::Add, OperatorType::Add }, { AssignmentOperatorType::Sub, OperatorType::Sub },
+			{ AssignmentOperatorType::Mul, OperatorType::Mul }, { AssignmentOperatorType::Div, OperatorType::Div },
+			{ AssignmentOperatorType::Mod, OperatorType::Mod }, { AssignmentOperatorType::BitAnd, OperatorType::BitwiseAnd },
+			{ AssignmentOperatorType::BitOr, OperatorType::BitwiseOr }, { AssignmentOperatorType::BitXor, OperatorType::BitwiseXor },
+			{ AssignmentOperatorType::Shl, OperatorType::LeftShift }, { AssignmentOperatorType::Shr, OperatorType::RightShift },
+		};
+
+		if (auto op = compound.find(assignmentOp->GetAssignType()); op != compound.end())
+		{
+			auto binary = std::make_shared<ASTBinaryExpression>(op->second);
+			binary->LeftSide = getter;
+			binary->RightSide = value;
+
+			if (auto overload = TryOperatorOverload(binary))
+			{
+				value = overload.value();
+			}
+			else
+			{
+				if (!CheckOperands(binary))
+					return nullptr;
+
+				binary->ResultantType = m_TypeInferEngine.InferTypeFromNode(binary);
+				value = binary;
+			}
+		}
+
+		EnsureDefined(setter->second->GetFunctionSymbol().FunctionNode);
+
+		auto callee = std::make_shared<ASTVariable>(GetNodeLocation(getter->Callee));
+		callee->Variable = setter->second;
+
+		auto call = std::make_shared<ASTFunctionCall>();
+		call->Location = getter->Location;
+		call->Callee = callee;
+		call->Arguments = { self, value };
+		return CheckCall(call);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTUnaryExpression> unaryExpr, SemaContext context)
@@ -1449,6 +1582,13 @@ namespace clear
 			for (auto& method : classExpr->MemberFunctions)
 				m_LazyBodies[method.get()] = LazyBody { m_ScopeStack, m_LookupModule, classExpr->ClassTy };
 
+			// the vtable refers to every virtual method, so those are always needed
+			for (auto& method : classExpr->MemberFunctions)
+			{
+				if (method->IsVirtual)
+					EnsureDefined(method);
+			}
+
 			return classExpr;
 		}
 
@@ -1496,6 +1636,8 @@ namespace clear
 		// the (still empty) type exists from here on, so classes can refer to each other in any order
 		auto classTy = m_Module->GetTypeRegistry()->CreateType<ClassType>(classExpr->GetName(), classExpr->GetName(), *m_Module->GetContext());
 		classExpr->ClassTy = classTy;
+		classTy->IsTrait = classExpr->IsTrait;
+		m_ClassNodes[classTy.get()] = classExpr;
 
 		// a generic instance being created: make the type visible now so it can name itself (e.g. `self: *Box[T]`)
 		if (auto it = m_PendingInstances.find(classExpr.get()); it != m_PendingInstances.end())
@@ -1507,13 +1649,80 @@ namespace clear
 
 	bool Sema::DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context)
 	{
+		if (m_ClassesInProgress.contains(classExpr.get()))
+		{
+			Report(DiagnosticCode_InheritanceCycle, classExpr->Location.GetData().empty() ? Token(TokenType::Identifier, classExpr->GetName()) : classExpr->Location);
+			return false;
+		}
+
 		if (classExpr->BodyDeclared)
 			return true;
 
 		classExpr->BodyDeclared = true;
+		m_ClassesInProgress.insert(classExpr.get());
+		bool success = DeclareClassBodyNow(classExpr, context);
+		m_ClassesInProgress.erase(classExpr.get());
 
+		return success;
+	}
+
+	bool Sema::DeclareClassBodyNow(std::shared_ptr<ASTClass> classExpr, SemaContext context)
+	{
 		auto classTy = classExpr->ClassTy->As<ClassType>();
 		std::vector<std::pair<std::string, std::shared_ptr<Symbol>>> members;
+		std::vector<std::shared_ptr<ASTNodeBase>> defaults;
+		std::shared_ptr<ClassType> base;
+		Token location = classExpr->Location.GetData().empty() ? Token(TokenType::Identifier, classExpr->GetName()) : classExpr->Location;
+
+		// class Dog(Animal, Named): at most one base class, any number of traits
+		for (auto& baseNode : classExpr->Bases)
+		{
+			SemaContext typeContext = context;
+			typeContext.ValueReq = ValueRequired::Any;
+			baseNode = Visit(baseNode, typeContext);
+
+			auto type = baseNode ? GetTypeFromNode(baseNode) : nullptr;
+			auto baseClass = type && type->IsClass() ? type->As<ClassType>() : nullptr;
+
+			if (!baseClass || baseClass->IsVariant || baseClass->IsUnion || baseClass == classTy)
+			{
+				Token where = baseNode ? GetNodeLocation(baseNode) : location;
+				Report(baseClass == classTy ? DiagnosticCode_InheritanceCycle : DiagnosticCode_InvalidBase, where);
+				return false;
+			}
+
+			// the base's own body (fields, methods, vtable) must be known before it is copied in
+			if (auto it = m_ClassNodes.find(baseClass.get()); it != m_ClassNodes.end() && !DeclareClassBody(it->second, context))
+				return false;
+
+			if (baseClass->IsTrait)
+			{
+				classTy->Traits.push_back(baseClass);
+				continue;
+			}
+
+			if (base || classExpr->IsTrait || classExpr->IsUnion)
+			{
+				Report(DiagnosticCode_InvalidBase, GetNodeLocation(baseNode));
+				return false;
+			}
+
+			base = baseClass;
+		}
+
+		// the base's fields come first, in the same order, so a *Dog can be used wherever a *Animal is expected
+		if (base)
+		{
+			classTy->Base = base;
+			size_t index = 0;
+
+			for (const auto& [name, type] : base->GetMemberValues())
+			{
+				members.emplace_back(name, std::make_shared<Symbol>(Symbol::CreateType(type)));
+				defaults.push_back(index < base->MemberDefaults.size() ? base->MemberDefaults[index] : nullptr);
+				index++;
+			}
+		}
 
 		for (auto node : classExpr->Members) 
 		{
@@ -1522,10 +1731,14 @@ namespace clear
 			if (!node->ResolvedType)
 				return false;
 
+			if (std::any_of(members.begin(), members.end(), [&](auto& member) { return member.first == node->GetName(); }))
+			{
+				Report(DiagnosticCode_RedefinedIdentifier, Token(TokenType::Identifier, node->GetName()));
+				return false;
+			}
+
 			members.emplace_back(node->GetName(), std::make_shared<Symbol>(Symbol::CreateType(node->ResolvedType)));
 		}
-		
-		classTy->MemberDefaults.clear();
 
 		for (size_t i = 0; i < classExpr->DefaultValues.size(); i++)
 		{
@@ -1539,16 +1752,78 @@ namespace clear
 				node = Coerce(node, classExpr->Members[i]->ResolvedType);
 			}
 
-			classTy->MemberDefaults.push_back(node);
+			defaults.push_back(node);
 		}
+
+		std::unordered_set<std::string> ownMethods;
 
 		for (auto node : classExpr->MemberFunctions)
 		{
 			auto functionSymbol = std::make_shared<Symbol>(Symbol::CreateFunction(node));
 			members.emplace_back(node->GetName(), functionSymbol);
 			node->FunctionSymbol = functionSymbol;
+			ownMethods.insert(node->GetName());
 		}
-		
+
+		// methods the class does not define itself are the base's (they take a *Base, which a *Derived converts to)
+		if (base)
+		{
+			for (auto& [name, symbol] : base->MemberFunctions)
+			{
+				if (!ownMethods.contains(name))
+					members.emplace_back(name, symbol);
+			}
+		}
+
+		// virtual methods: the table starts as the base's, overriding methods replace their slot, new virtual methods add one
+		if (base)
+		{
+			classTy->VirtualNames = base->VirtualNames;
+			classTy->VTable = base->VTable;
+		}
+
+		for (auto node : classExpr->MemberFunctions)
+		{
+			auto slot = std::find(classTy->VirtualNames.begin(), classTy->VirtualNames.end(), node->GetName());
+
+			if (slot != classTy->VirtualNames.end())
+			{
+				node->IsVirtual = true;
+				classTy->VTable[std::distance(classTy->VirtualNames.begin(), slot)] = node->FunctionSymbol;
+			}
+			else if (node->IsVirtual && !classExpr->IsTrait)
+			{
+				classTy->VirtualNames.push_back(node->GetName());
+				classTy->VTable.push_back(node->FunctionSymbol);
+			}
+		}
+
+		classTy->HasVTable = !classTy->VirtualNames.empty();
+
+		if (classTy->HasVTable)
+		{
+			// the hidden first field points at the class's table, every way of building a value fills it in
+			if (!base || !base->HasVTable)
+			{
+				if (base)
+				{
+					Report(DiagnosticCode_VirtualNeedsTable, location);
+					return false;
+				}
+
+				auto bytePointer = m_Module->GetTypeRegistry()->GetPointerTo(m_Module->Lookup("int8").value()->GetType());
+				members.insert(members.begin(), { "__vtable", std::make_shared<Symbol>(Symbol::CreateType(bytePointer)) });
+				defaults.insert(defaults.begin(), nullptr);
+			}
+
+			auto table = std::make_shared<ASTVTableRef>();
+			table->ClassTy = classTy;
+			table->PointerTy = members[0].second->GetType();
+			defaults[0] = table;
+		}
+
+		classTy->MemberDefaults = defaults;
+
 		if (classExpr->IsUnion)
 			classTy->SetUnionBody(members);
 		else
@@ -1559,11 +1834,104 @@ namespace clear
 		for (auto node : classExpr->MemberFunctions)
 			DeclareFunction(node, context);
 
+		for (auto& trait : classTy->Traits)
+		{
+			if (!CheckTrait(classTy, trait, location))
+				return false;
+		}
+
+		return true;
+	}
+
+	std::shared_ptr<ClassType> Sema::FindTrait(const std::string& name, std::shared_ptr<Module> home)
+	{
+		std::shared_ptr<Symbol> symbol;
+
+		if (home && home != m_Module)
+		{
+			auto& exposed = home->GetExposedSymbols();
+			if (auto it = exposed.find(name); it != exposed.end())
+				symbol = it->second;
+		}
+
+		if (!symbol)
+		{
+			auto [entry, scopeIndex] = LookupSymbol(name);
+			if (entry)
+				symbol = entry->Symbol;
+		}
+
+		if (!symbol || symbol->Kind != SymbolKind::Type || !symbol->GetType()->IsClass() || !symbol->GetType()->As<ClassType>()->IsTrait)
+			return nullptr;
+
+		return symbol->GetType()->As<ClassType>();
+	}
+
+	bool Sema::CheckTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<ClassType> trait, const Token& location)
+	{
+		// a parameter typed with the trait (or *Trait) stands for the class (or *Class)
+		auto translate = [&](std::shared_ptr<Type> type) -> std::shared_ptr<Type>
+		{
+			if (!type)
+				return type;
+
+			if (type == trait)
+				return classTy;
+
+			if (type->IsPointer() && type->As<PointerType>()->GetBaseType() == trait)
+				return m_Module->GetTypeRegistry()->GetPointerTo(classTy);
+
+			return type;
+		};
+
+		auto describe = [&](std::shared_ptr<ASTFunctionDefinition> function, const std::string& name)
+		{
+			std::string text = name + "(self";
+
+			for (size_t i = 1; i < function->Arguments.size(); i++)
+				text += std::format(", {}", GetDisplayName(translate(function->Arguments[i]->ResolvedType)));
+
+			text += ")";
+
+			if (function->ReturnTypeVal)
+				text += " -> " + GetDisplayName(translate(function->ReturnTypeVal));
+
+			return text;
+		};
+
+		for (auto& [name, symbol] : trait->MemberFunctions)
+		{
+			auto required = symbol->GetFunctionSymbol().FunctionNode;
+			auto found = classTy->MemberFunctions.find(name);
+			bool matches = found != classTy->MemberFunctions.end();
+
+			if (matches)
+			{
+				auto actual = found->second->GetFunctionSymbol().FunctionNode;
+				matches = actual && actual->Arguments.size() == required->Arguments.size() && translate(required->ReturnTypeVal) == actual->ReturnTypeVal;
+
+				for (size_t i = 1; matches && i < required->Arguments.size(); i++)
+					matches = translate(required->Arguments[i]->ResolvedType) == actual->Arguments[i]->ResolvedType;
+			}
+
+			if (!matches)
+			{
+				Token where = location;
+				where.SetData(std::format("‘{}’ needs ‘{}’ to satisfy ‘{}’", classTy->GetHash(), describe(required, std::string(name)), trait->GetHash()));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_TraitNotSatisfied, std::max<size_t>(location.GetData().size(), 1));
+				return false;
+			}
+		}
+
 		return true;
 	}
 
 	void Sema::DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context)
 	{
+		// a trait only has signatures, there is nothing to analyse or generate
+		if (classExpr->IsTrait)
+			return;
+
 		context.TypeHint = classExpr->ClassTy;
 
 		for (auto node : classExpr->MemberFunctions)
@@ -3204,11 +3572,16 @@ namespace clear
 			return std::make_shared<ASTZero>(type);
 		}
 
+		// the hidden vtable field is never written by hand: values start at the first real field
+		if (classType->HasVTable && (structExpr->Values.empty() || structExpr->Values[0]->GetType() != ASTNodeType::VTableRef))
+			structExpr->Values.insert(structExpr->Values.begin(), classType->MemberDefaults[0]);
+
 		if (structExpr->Values.size() > members.size())
 		{
 			Token location = GetNodeLocation(structExpr->TargetType);
-			location.SetData(std::format("{}’ has {} field{}, but {} value{} given", classType->GetHash(), members.size(), members.size() == 1 ? "" : "s", 
-										 structExpr->Values.size(), structExpr->Values.size() == 1 ? " was" : "s were"));
+			size_t hidden = classType->HasVTable ? 1 : 0, fields = members.size() - hidden, given = structExpr->Values.size() - hidden;
+			location.SetData(std::format("{}’ has {} field{}, but {} value{} given", classType->GetHash(), fields, fields == 1 ? "" : "s", 
+										 given, given == 1 ? " was" : "s were"));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_TooManyValues, classType->GetHash().size());
 			return nullptr;
 		}
@@ -3665,6 +4038,9 @@ namespace clear
 			}
 
 			subscript->GeneratedType = SolveConstraints(var->GetName().GetData(), genericSym, scopeIndex, substitutedArgs);
+
+			if (!subscript->GeneratedType)
+				return nullptr;
 		}
 
 		return subscript;
@@ -3748,6 +4124,10 @@ namespace clear
 
 			auto fromBase = from->As<PointerType>()->GetBaseType();
 			auto toBase = to->As<PointerType>()->GetBaseType();
+
+			// a *Dog is a *Animal: the base's fields are at the start of the derived class
+			if (fromBase && toBase && fromBase->IsClass() && toBase->IsClass() && fromBase->As<ClassType>()->DerivesFrom(toBase->As<ClassType>()))
+				return true;
 
 			// str and *int8 point at the same thing
 			return fromBase == toBase || !fromBase || !toBase || fromBase->Get()->isVoidTy() || toBase->Get()->isVoidTy();
@@ -4293,6 +4673,20 @@ namespace clear
 			return nullptr;
 		}
 
+		// obj.area where area is a property: call its getter
+		if (memberSymbol.value()->Kind == SymbolKind::Function && memberSymbol.value()->GetFunctionSymbol().FunctionNode->IsProperty)
+		{
+			auto getterFunction = memberSymbol.value()->GetFunctionSymbol().FunctionNode;
+			EnsureDefined(getterFunction);
+
+			auto result = CallMethod(binaryExpr->LeftSide, m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide), member->GetName().GetData(), {}, member->GetName());
+
+			if (auto call = std::dynamic_pointer_cast<ASTFunctionCall>(result))
+				call->PropertyName = member->GetName().GetData();
+
+			return result;
+		}
+
 		binaryExpr->ResultantType = memberSymbol.value()->GetType(); 
 		// TODO: check if has function, public and private members etc...
 		
@@ -4501,6 +4895,35 @@ namespace clear
 
 		GenericTemplateSymbol genericTemplate = genericSymbol->GetGenericTemplate();
 		std::shared_ptr<ASTGenericTemplate> node = std::dynamic_pointer_cast<ASTGenericTemplate>(genericTemplate.GenericTemplate);
+
+		// [T: Shape]: checked once, when the instance is first asked for
+		for (size_t i = 0; i < substitutedArgs.size() && i < node->Constraints.size(); i++)
+		{
+			const Token& constraint = node->Constraints[i];
+
+			if (constraint.GetData().empty())
+				continue;
+
+			auto trait = FindTrait(constraint.GetData(), node->HomeModule);
+
+			if (!trait)
+			{
+				Report(DiagnosticCode_ExpectedType, constraint);
+				return nullptr;
+			}
+
+			auto argument = substitutedArgs[i].Kind == SymbolKind::Type ? substitutedArgs[i].GetType() : nullptr;
+			auto argumentClass = ClassOf(argument);
+
+			if (!argumentClass || !argumentClass->As<ClassType>()->Satisfies(trait))
+			{
+				Token where = constraint;
+				where.SetData(std::format("‘{}’ does not satisfy ‘{}’ (needed by ‘{}’). Declare it as class {}({})", 
+										  argument ? GetDisplayName(argument) : "?", trait->GetHash(), std::string(name), argument ? GetDisplayName(argument) : "?", trait->GetHash()));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_TraitNotSatisfied, constraint.GetData().size());
+				return nullptr;
+			}
+		}
 		
 		Cloner cloner;
 		cloner.DestinationModule = m_Module;

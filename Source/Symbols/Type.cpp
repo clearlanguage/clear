@@ -207,6 +207,28 @@ namespace clear
 		return type->isSized() ? layout.getTypeAllocSize(type).getFixedValue() : 0;
 	}
 
+	bool ClassType::DerivesFrom(const std::shared_ptr<ClassType>& other) const
+	{
+		for (auto base = Base; base; base = base->Base)
+		{
+			if (base == other)
+				return true;
+		}
+
+		return false;
+	}
+
+	bool ClassType::Satisfies(const std::shared_ptr<ClassType>& trait) const
+	{
+		for (auto& own : Traits)
+		{
+			if (own == trait)
+				return true;
+		}
+
+		return Base && Base->Satisfies(trait);
+	}
+
 	std::optional<size_t> ClassType::FindCase(llvm::StringRef name) const
 	{
 		for (size_t i = 0; i < Cases.size(); i++)

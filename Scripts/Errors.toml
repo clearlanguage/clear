@@ -304,3 +304,27 @@ Advice  = "Give its values: {}(...)."
 [UnionNeedsField]
 Message = "A union is built from at most one field."
 Advice  = "Name the field to set, e.g. {}(f = 1.5), or leave it empty for all zeros."
+
+[InvalidBase]
+Message = "A class can inherit from one class and any number of traits."
+Advice  = "‘{}’ cannot be used here."
+
+[InheritanceCycle]
+Message = "A class cannot inherit from itself."
+Advice  = "‘{}’ is part of a cycle of base classes."
+
+[VirtualNeedsTable]
+Message = "Virtual methods must start in a class whose base has none."
+Advice  = "‘{}’ adds the first virtual method below a base class without one. Mark a method of the base virtual, or of the root class."
+
+[TraitNotSatisfied]
+Message = "Type does not satisfy the trait."
+Advice  = "{}."
+
+[NoSuperclass]
+Message = "‘super’ is only available in methods of a class with a base class."
+Advice  = "Only a class declared as class Name(Base) has a ‘{}’."
+
+[PropertyNotSettable]
+Message = "This property has no setter."
+Advice  = "Add ‘property {}(self, value: T)’ to the class to allow assigning to it."

@@ -216,6 +216,19 @@ namespace clear
 		bool IsUnion = false;    // every field starts at offset 0
 		std::vector<VariantCase> Cases;
 
+		// inheritance: fields of Base come first, so a *Derived is also a valid *Base
+		std::shared_ptr<ClassType> Base;
+		std::vector<std::shared_ptr<ClassType>> Traits; // traits this class declares it satisfies
+		bool IsTrait = false;
+
+		// virtual methods: slot i of the vtable calls VTable[i] (field 0, __vtable, points at the table)
+		bool HasVTable = false;
+		std::vector<std::string> VirtualNames;
+		std::vector<std::shared_ptr<Symbol>> VTable;
+
+		bool DerivesFrom(const std::shared_ptr<ClassType>& other) const;
+		bool Satisfies(const std::shared_ptr<ClassType>& trait) const;
+
 		std::optional<size_t> FindCase(llvm::StringRef name) const;
 
 		// lays the type out as { int32 tag, [n x i64] payload } for the given cases

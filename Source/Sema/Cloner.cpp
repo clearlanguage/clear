@@ -185,6 +185,11 @@ namespace clear {
 		for (auto value : node->DefaultValues)
 			newClass->DefaultValues.push_back(Clone(value));
 
+		for (auto base : node->Bases)
+			newClass->Bases.push_back(Clone(base));
+
+		newClass->IsUnion = node->IsUnion;
+		newClass->IsTrait = node->IsTrait;
 		return newClass;
 	}
 	
@@ -204,6 +209,8 @@ namespace clear {
 
 		newNode->SourceModule = DestinationModule;
 		newNode->Linkage = node->Linkage;
+		newNode->IsVirtual = node->IsVirtual;
+		newNode->IsProperty = node->IsProperty;
 
 		return newNode;
 	}

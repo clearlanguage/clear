@@ -114,7 +114,14 @@ namespace clear
 				unsigned index = 0;
 				for (const auto& [name, memberType] : classType->GetMemberValues())
 				{
-					if (index > 0) Text(", ");
+					// the hidden vtable pointer is not part of the value
+					if (index == 0 && classType->HasVTable)
+					{
+						index++;
+						continue;
+					}
+
+					if (index > (classType->HasVTable ? 1u : 0u)) Text(", ");
 					Text(name);
 					Text("=");
 					Value(builder.CreateExtractValue(value, { index }), memberType);
