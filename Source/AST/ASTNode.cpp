@@ -2000,6 +2000,15 @@ namespace clear
 		return Symbol();
 	}
 
+	Symbol ASTTemporary::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Operand->Codegen(ctx);
+		Symbol storage = CreateAlloca(ValueType, ctx);
+		SymbolOps::Store(storage, value, ctx.Builder, ctx.Module, true);
+
+		return storage;
+	}
+
 	Symbol ASTConstantValue::Codegen(CodegenContext& ctx)
 	{
 		return Symbol::CreateValue(llvm::ConstantInt::get(ValueType->Get(), Value, /* isSigned = */ true), ValueType);

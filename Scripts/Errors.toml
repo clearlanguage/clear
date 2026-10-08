@@ -151,7 +151,7 @@ Advice  = "‘{}’ is not a type. Use a built-in type like int or float64, a cl
 
 [InvalidOperands]
 Message = "Operator cannot be applied to these operand types."
-Advice  = "The operands near ‘{}’ have incompatible types. Use ‘as’ to convert explicitly."
+Advice  = "‘{}’ is not supported. Convert one side with ‘as’ if a conversion is intended."
 
 [ReturnTypeMismatch]
 Message = "Returned value does not match the function's return type."
@@ -220,3 +220,11 @@ Advice  = "Move ‘{}’ into a function body."
 [SwitchNotIntegral]
 Message = "Switch value must be an integer or an enum."
 Advice  = "‘{}’ cannot be switched on. Use if/elseif for other types."
+
+[MissingOperatorOverload]
+Message = "Operator is not defined for this class."
+Advice  = "‘{}’. Define the dunder method on the class to support the operator."
+
+[BadOperatorSignature]
+Message = "Operator method has the wrong number of parameters."
+Advice  = "‘{}’ must take exactly two parameters: self and the other operand."

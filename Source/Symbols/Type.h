@@ -229,6 +229,9 @@ namespace clear
         llvm::MapVector<std::string, int64_t> m_Values;
     };
 
+    // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics
+    std::string GetDisplayName(const std::shared_ptr<Type>& type);
+
     class GenericType : public Type 
     {
     public:

@@ -8,6 +8,7 @@
 #include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/IR/LLVMContext.h>
 #include <memory>
+#include <format>
 
 namespace clear
 {
@@ -204,6 +205,20 @@ namespace clear
             return std::nullopt;
 
         return it->second;
+    }
+
+    std::string GetDisplayName(const std::shared_ptr<Type>& type)
+    {
+        if (!type)
+            return "void";
+
+        if (auto pointer = std::dynamic_pointer_cast<PointerType>(type))
+            return pointer->GetBaseType() ? "*" + GetDisplayName(pointer->GetBaseType()) : "null";
+
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+            return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        return type->GetHash();
     }
 
     GenericType::GenericType(llvm::StringRef name)

@@ -59,6 +59,8 @@ namespace clear
 		DiagnosticCode_InvalidEnumValue,
 		DiagnosticCode_DeferOutsideFunction,
 		DiagnosticCode_SwitchNotIntegral,
+		DiagnosticCode_MissingOperatorOverload,
+		DiagnosticCode_BadOperatorSignature,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -118,6 +120,8 @@ namespace clear
 		"Enum values must be integer constants.",
 		"‘defer’ can only be used inside a function.",
 		"Switch value must be an integer or an enum.",
+		"Operator is not defined for this class.",
+		"Operator method has the wrong number of parameters.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -158,7 +162,7 @@ namespace clear
 		"‘{}’ is not a field or method of this type. Check the spelling or the class definition.",
 		"Define __getitem__ (and __setitem__ for assignment) on the class to support ‘[]’ near ‘{}’.",
 		"‘{}’ is not a type. Use a built-in type like int or float64, a class name, or a pointer such as *int.",
-		"The operands near ‘{}’ have incompatible types. Use ‘as’ to convert explicitly.",
+		"‘{}’ is not supported. Convert one side with ‘as’ if a conversion is intended.",
 		"The value near ‘{}’ cannot be converted to the declared return type.",
 		"Add a value after ‘{}’ that matches the function's return type.",
 		"‘{}.",
@@ -176,5 +180,7 @@ namespace clear
 		"The value of ‘{}’ must be known at compile time.",
 		"Move ‘{}’ into a function body.",
 		"‘{}’ cannot be switched on. Use if/elseif for other types.",
+		"‘{}’. Define the dunder method on the class to support the operator.",
+		"‘{}’ must take exactly two parameters: self and the other operand.",
 	};
 }

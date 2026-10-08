@@ -615,8 +615,7 @@ namespace clear
 			case OperatorType::LeftShift:
 			case OperatorType::RightShift:
 			{
-				VisitBinaryExprArithmetic(binaryExpression, context);
-				break;
+				return VisitBinaryExprArithmetic(binaryExpression, context);
 			}
 			case OperatorType::And:
 			case OperatorType::Or:
@@ -1677,7 +1676,7 @@ namespace clear
 			Token location = GetNodeLocation(node);
 			size_t width = std::max<size_t>(location.GetData().size(), 1);
 
-			location.SetData(std::format("{}’ to ‘{}", source->GetHash(), target->GetHash()));
+			location.SetData(std::format("{}’ to ‘{}", GetDisplayName(source), GetDisplayName(target)));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ImplicitConversion, width);
 			return node;
 		}
@@ -1699,16 +1698,211 @@ namespace clear
 		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, token, code);
 	}
 
-	void Sema::VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
+	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
 
 		binaryExpression->LeftSide = Visit(binaryExpression->LeftSide, context);
 		binaryExpression->RightSide = Visit(binaryExpression->RightSide, context);
+
+		if (!binaryExpression->LeftSide || !binaryExpression->RightSide)
+			return nullptr;
+
+		if (auto overload = TryOperatorOverload(binaryExpression))
+			return overload.value();
+
+		if (!CheckOperands(binaryExpression))
+			return nullptr;
 		
 		binaryExpression->ResultantType = m_TypeInferEngine.InferTypeFromNode(binaryExpression);
+		return binaryExpression;
+	}
 
-		// TODO: check if types are compatible and perform casting if needed
+	static const char* GetDunderName(OperatorType op)
+	{
+		switch (op)
+		{
+			case OperatorType::Add:					return "__add__";
+			case OperatorType::Sub:					return "__sub__";
+			case OperatorType::Mul:					return "__mul__";
+			case OperatorType::Div:					return "__div__";
+			case OperatorType::Mod:					return "__mod__";
+			case OperatorType::IsEqual:				return "__eq__";
+			case OperatorType::NotEqual:			return "__ne__";
+			case OperatorType::LessThan:			return "__lt__";
+			case OperatorType::LessThanEqual:		return "__le__";
+			case OperatorType::GreaterThan:			return "__gt__";
+			case OperatorType::GreaterThanEqual:	return "__ge__";
+			default:								return nullptr;
+		}
+	}
+
+	static const char* GetOperatorSpelling(OperatorType op)
+	{
+		switch (op)
+		{
+			case OperatorType::Add: return "+";   case OperatorType::Sub: return "-";
+			case OperatorType::Mul: return "*";   case OperatorType::Div: return "/";
+			case OperatorType::Mod: return "%";   case OperatorType::IsEqual: return "==";
+			case OperatorType::NotEqual: return "!=";   case OperatorType::LessThan: return "<";
+			case OperatorType::LessThanEqual: return "<=";   case OperatorType::GreaterThan: return ">";
+			case OperatorType::GreaterThanEqual: return ">=";   case OperatorType::BitwiseAnd: return "&";
+			case OperatorType::BitwiseOr: return "|";   case OperatorType::BitwiseXor: return "^";
+			case OperatorType::LeftShift: return "<<";   case OperatorType::RightShift: return ">>";
+			case OperatorType::And: return "and";   case OperatorType::Or: return "or";
+			default: return "?";
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::AddressOf(std::shared_ptr<ASTNodeBase> node)
+	{
+		// a loaded variable/field already has an address, anything else gets a temporary
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node))
+			return load->Operand;
+
+		auto temporary = std::make_shared<ASTTemporary>();
+		temporary->Operand = node;
+		temporary->ValueType = m_TypeInferEngine.InferTypeFromNode(node);
+		temporary->Location = GetNodeLocation(node);
+		return temporary;
+	}
+
+	std::optional<std::shared_ptr<ASTNodeBase>> Sema::TryOperatorOverload(std::shared_ptr<ASTBinaryExpression> expr)
+	{
+		auto lhsType = m_TypeInferEngine.InferTypeFromNode(expr->LeftSide);
+
+		if (!lhsType || !lhsType->IsClass())
+			return std::nullopt;
+
+		auto classType = lhsType->As<ClassType>();
+		const char* name = GetDunderName(expr->GetExpression());
+		bool negate = false;
+
+		auto findMethod = [&](const char* methodName) -> std::shared_ptr<Symbol>
+		{
+			if (!methodName) return nullptr;
+			auto it = classType->MemberFunctions.find(methodName);
+			return it == classType->MemberFunctions.end() ? nullptr : it->second;
+		};
+
+		std::shared_ptr<Symbol> method = findMethod(name);
+
+		// a != b falls back to not (a == b)
+		if (!method && expr->GetExpression() == OperatorType::NotEqual)
+		{
+			method = findMethod("__eq__");
+			negate = true;
+		}
+
+		Token location = expr->Location;
+
+		if (!method)
+		{
+			location.SetData(std::format("{}’ has no {} method for ‘{}", classType->GetHash(), name ? name : "operator", GetOperatorSpelling(expr->GetExpression())));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
+			return std::shared_ptr<ASTNodeBase>(nullptr);
+		}
+
+		auto function = method->GetFunctionSymbol().FunctionNode;
+
+		if (function->Arguments.size() != 2)
+		{
+			location.SetData(std::format("{}.{}", classType->GetHash(), negate ? "__eq__" : name));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_BadOperatorSignature, 1);
+			return std::shared_ptr<ASTNodeBase>(nullptr);
+		}
+
+		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, negate ? "__eq__" : name, location.GetSourceFile(), location.LineNumber, location.ColumnNumber));
+		callee->Variable = method;
+
+		auto call = std::make_shared<ASTFunctionCall>();
+		call->Location = location;
+		call->Callee = callee;
+		call->Arguments.push_back(AddressOf(expr->LeftSide));
+
+		// the other operand is passed the way the method declares it: by value or by pointer
+		auto otherType = function->Arguments[1]->ResolvedType;
+		auto rhsType = m_TypeInferEngine.InferTypeFromNode(expr->RightSide);
+
+		if (otherType && otherType->IsPointer() && rhsType && rhsType->IsClass())
+			call->Arguments.push_back(AddressOf(expr->RightSide));
+		else
+			call->Arguments.push_back(Coerce(expr->RightSide, otherType));
+
+		if (!negate)
+			return std::shared_ptr<ASTNodeBase>(call);
+
+		auto notNode = std::make_shared<ASTUnaryExpression>(OperatorType::Not);
+		notNode->Operand = call;
+		notNode->Location = location;
+		return std::shared_ptr<ASTNodeBase>(notNode);
+	}
+
+	bool Sema::CheckOperands(std::shared_ptr<ASTBinaryExpression> expr)
+	{
+		auto lhs = m_TypeInferEngine.InferTypeFromNode(expr->LeftSide);
+		auto rhs = m_TypeInferEngine.InferTypeFromNode(expr->RightSide);
+
+		if (!lhs || !rhs)
+			return false;
+
+		auto isBool    = [](std::shared_ptr<Type> t) { return t->Get()->isIntegerTy(1); };
+		auto isNumber  = [&](std::shared_ptr<Type> t) { return (t->IsIntegral() || t->IsFloatingPoint()) && !t->IsEnum() && !isBool(t); };
+		auto isInteger = [&](std::shared_ptr<Type> t) { return t->IsIntegral() && !t->IsEnum() && !isBool(t); };
+		auto isPointer = [](std::shared_ptr<Type> t) { return t->Get()->isPointerTy(); };
+		auto truthy    = [&](std::shared_ptr<Type> t) { return t->IsIntegral() || t->IsFloatingPoint() || isPointer(t); };
+
+		bool valid = false;
+
+		switch (expr->GetExpression())
+		{
+			case OperatorType::Add:
+			case OperatorType::Sub:
+				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isInteger(rhs));
+				break;
+			case OperatorType::Mul:
+			case OperatorType::Div:
+			case OperatorType::Mod:
+				valid = isNumber(lhs) && isNumber(rhs);
+				break;
+			case OperatorType::BitwiseAnd:
+			case OperatorType::BitwiseOr:
+			case OperatorType::BitwiseXor:
+				valid = (isInteger(lhs) && isInteger(rhs)) || (isBool(lhs) && isBool(rhs));
+				break;
+			case OperatorType::LeftShift:
+			case OperatorType::RightShift:
+				valid = isInteger(lhs) && isInteger(rhs);
+				break;
+			case OperatorType::IsEqual:
+			case OperatorType::NotEqual:
+				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) ||
+						(isBool(lhs) && isBool(rhs)) || (lhs->IsEnum() && lhs->GetHash() == rhs->GetHash());
+				break;
+			case OperatorType::LessThan:
+			case OperatorType::LessThanEqual:
+			case OperatorType::GreaterThan:
+			case OperatorType::GreaterThanEqual:
+				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) ||
+						(lhs->IsEnum() && lhs->GetHash() == rhs->GetHash());
+				break;
+			case OperatorType::And:
+			case OperatorType::Or:
+				valid = truthy(lhs) && truthy(rhs);
+				break;
+			default:
+				valid = true;
+				break;
+		}
+
+		if (!valid)
+		{
+			Token location = expr->Location;
+			location.SetData(std::format("{} {} {}", GetDisplayName(lhs), GetOperatorSpelling(expr->GetExpression()), GetDisplayName(rhs)));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_InvalidOperands, 1);
+		}
+
+		return valid;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
@@ -1796,6 +1990,15 @@ namespace clear
 
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
 		binaryExpr->RightSide = Visit(binaryExpr->RightSide, context);
+
+		if (!binaryExpr->LeftSide || !binaryExpr->RightSide)
+			return nullptr;
+
+		if (auto overload = TryOperatorOverload(binaryExpr))
+			return overload.value();
+
+		if (!CheckOperands(binaryExpr))
+			return nullptr;
 
 		binaryExpr->ResultantType = Symbol::GetBooleanType(m_Module).GetType();
 		return binaryExpr;

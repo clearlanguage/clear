@@ -34,7 +34,7 @@ namespace clear
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
-		ForLoop, Enum, ConstantValue
+		ForLoop, Enum, ConstantValue, Temporary
 	};
 
 	class ASTNodeBase;
@@ -634,6 +634,20 @@ namespace clear
 
 	public:
 		int64_t Value = 0;
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// stores a value in a stack slot and produces its address (used to pass `self` for temporaries)
+	class ASTTemporary : public ASTNodeBase
+	{
+	public:
+		ASTTemporary() = default;
+		virtual ~ASTTemporary() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Temporary; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
 		std::shared_ptr<Type> ValueType;
 	};
 

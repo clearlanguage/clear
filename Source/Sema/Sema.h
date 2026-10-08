@@ -91,7 +91,12 @@ namespace clear
 		bool IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
 		std::shared_ptr<ASTNodeBase> CheckCall(std::shared_ptr<ASTFunctionCall> funcCall);
 		
-		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		std::shared_ptr<ASTNodeBase> VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+
+		// operators on classes call their dunder methods (a + b -> a.__add__(b)); nullopt when no overload applies
+		std::optional<std::shared_ptr<ASTNodeBase>> TryOperatorOverload(std::shared_ptr<ASTBinaryExpression> expr);
+		bool CheckOperands(std::shared_ptr<ASTBinaryExpression> expr);
+		std::shared_ptr<ASTNodeBase> AddressOf(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprBoolean(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);
 		

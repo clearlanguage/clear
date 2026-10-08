@@ -19,6 +19,11 @@ namespace clear
 
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::Temporary:
+			{
+				auto temporary = std::dynamic_pointer_cast<ASTTemporary>(node);
+				return m_Module->GetTypeRegistry()->GetPointerTo(temporary->ValueType);
+			}
 			case ASTNodeType::ConstantValue:
 			{
 				return std::dynamic_pointer_cast<ASTConstantValue>(node)->ValueType;
