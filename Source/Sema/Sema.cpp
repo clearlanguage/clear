@@ -60,6 +60,16 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context)
 	{
+		auto result = VisitDeclaration(decl, context);
+
+		if (!result)
+			m_FailedDeclarations.insert(decl->GetName().GetData());
+
+		return result;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitDeclaration(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context)
+	{
 		if (decl->TypeResolver)
 		{
 			Visit(decl->TypeResolver, context);
@@ -173,7 +183,10 @@ namespace clear
 
 		if (!symbol.has_value())
 		{
-			Report(DiagnosticCode_UndeclaredIdentifier, variable->GetName());
+			// a declaration that already failed should not cause a second error at every use
+			if (!m_FailedDeclarations.contains(variable->GetName().GetData()))
+				Report(DiagnosticCode_UndeclaredIdentifier, variable->GetName());
+
 			return nullptr;
 		}
 
@@ -371,7 +384,12 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTReturn> returnStatement, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
+
+		bool hadValue = returnStatement->ReturnValue != nullptr;
 		returnStatement->ReturnValue = Visit(returnStatement->ReturnValue, context);
+
+		if (hadValue && !returnStatement->ReturnValue)
+			return nullptr; // the value itself was already reported
 
 		bool returnsValue = context.ReturnType && context.ReturnType->Get() && !context.ReturnType->Get()->isVoidTy();
 
@@ -1077,6 +1095,10 @@ namespace clear
 			bindings.try_emplace(name, actual);
 			return true;
 		}
+
+		// [N; T] matched against an array binds T to the element type
+		if (auto array = std::dynamic_pointer_cast<ASTArrayType>(pattern); array && actual->IsArray())
+			return BindGenericType(array->TypeNode, actual->As<ArrayType>()->GetBaseType(), names, bindings);
 
 		// *T matched against a pointer binds T to the pointee
 		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(pattern); unary && unary->GetOperatorType() == OperatorType::Dereference && actual->IsPointer())

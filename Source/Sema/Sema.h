@@ -75,6 +75,7 @@ namespace clear
 
 	private:
 		void Report(DiagnosticCode code, Token token);
+		std::shared_ptr<ASTNodeBase> VisitDeclaration(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
 
 		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
 		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
@@ -101,6 +102,7 @@ namespace clear
 		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
 		std::unordered_map<Symbol*, int64_t> m_ConstantValues; // consts whose value is a known integer
 		std::unordered_set<Symbol*> m_ConstSymbols;
+		std::unordered_set<std::string> m_FailedDeclarations;
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

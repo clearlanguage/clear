@@ -10,6 +10,7 @@ namespace clear {
 		~Cloner() = default;
 			
 		std::shared_ptr<ASTNodeBase> Clone(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<ASTNodeBase> CloneNode(std::shared_ptr<ASTNodeBase> node);
 
 		std::shared_ptr<ASTClass> CloneClass(std::shared_ptr<ASTClass> node);
 		std::shared_ptr<ASTFunctionDefinition> CloneFunction(std::shared_ptr<ASTFunctionDefinition> node);

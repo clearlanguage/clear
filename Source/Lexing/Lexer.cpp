@@ -511,22 +511,32 @@ namespace clear
 
     bool Lexer::IsLineOnlyWhitespace()
     {
+        // look ahead without moving: restore the column and line counters too, not just the position
         size_t position = m_Position;
+        size_t line = m_LineNumber;
+        size_t column = m_ColumnNumber;
 
-        while(Peak() != "\n")
+        auto restore = [&]()
+        {
+            m_Position = position;
+            m_LineNumber = line;
+            m_ColumnNumber = column;
+        };
+
+        while(m_Position < m_Contents.size() && Peak() != "\n")
         {
             std::string top = Peak();
 
             if (!std::isspace(top.back())) 
             {
-                m_Position = position;
+                restore();
                 return false;   
             }
 
             Increment();
         }
 
-        m_Position = position;
+        restore();
         return true;
     }
 
