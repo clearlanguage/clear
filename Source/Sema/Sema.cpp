@@ -1432,6 +1432,21 @@ namespace clear
 
 		bool returnsValue = context.ReturnType && context.ReturnType->Get() && !context.ReturnType->Get()->isVoidTy();
 
+		// lambda (i: int): print(i)  returns nothing: run the body, then return
+		if (context.InferReturnFor && !returnsValue && returnStatement->ReturnValue)
+		{
+			auto valueType = m_TypeInferEngine.InferTypeFromNode(returnStatement->ReturnValue);
+
+			if (!valueType || (valueType->Get() && valueType->Get()->isVoidTy()))
+			{
+				auto block = std::make_shared<ASTBlock>();
+				block->Children.push_back(returnStatement->ReturnValue);
+				returnStatement->ReturnValue = nullptr;
+				block->Children.push_back(returnStatement);
+				return block;
+			}
+		}
+
 		if (returnsValue && !returnStatement->ReturnValue)
 			Report(DiagnosticCode_MissingReturnValue, returnStatement->Location);
 		else if (!returnsValue && returnStatement->ReturnValue)
@@ -4316,11 +4331,19 @@ namespace clear
 			{
 				clsType = targetType->As<ClassType>();
 
-				// the target is the object's storage, pass its address as self
-				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
-				address->Operand = subscript->Target;
-				address->Location = GetNodeLocation(subscript->Target);
-				self = address;
+				if (IsStorageNode(subscript->Target))
+				{
+					// the target is the object's storage, pass its address as self
+					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+					address->Operand = subscript->Target;
+					address->Location = GetNodeLocation(subscript->Target);
+					self = address;
+				}
+				else
+				{
+					// a computed object (grid[i][j], make_list()[0]): index a temporary copy of it
+					self = AddressOf(subscript->Target);
+				}
 			}
 			else if (targetType->IsPointer())
 			{
