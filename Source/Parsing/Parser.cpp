@@ -1110,6 +1110,18 @@ namespace clear
 
 	std::shared_ptr<ASTVariableDeclaration> Parser::ParseSelf()
 	{
+		// a bare `self` is a pointer to the object (*Self), like `*self`; `self: T` takes a copy
+		if (Match("self") && !Next().IsType(TokenType::Colon))
+		{
+			Token selfToken = Consume();
+			auto pointer = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			pointer->Operand = std::make_shared<ASTVariable>(selfToken);
+
+			std::shared_ptr<ASTVariableDeclaration> decl = std::make_shared<ASTVariableDeclaration>(selfToken);
+			decl->TypeResolver = pointer;
+			return decl;
+		}
+
 		auto ty = ParseExpr();
 
 		std::shared_ptr<ASTVariableDeclaration> decl = std::make_shared<ASTVariableDeclaration>(Prev());
