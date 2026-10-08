@@ -91,6 +91,7 @@ namespace clear
 		bool DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		void EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function);
+		bool AlwaysReturns(const std::shared_ptr<ASTNodeBase>& node);
 
 		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
 		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);

@@ -484,6 +484,99 @@ namespace clear
 
 		Visit(func->CodeBlock, context);	
 		m_ScopeStack.pop_back();
+
+		// every path through a function with a return type must return a value (main may end and return 0, like C)
+		bool returnsValue = func->ReturnTypeVal && func->ReturnTypeVal->Get() && !func->ReturnTypeVal->Get()->isVoidTy();
+		bool isMain = func->GetNameToken().GetData() == "main" && !context.TypeHint;
+
+		if (returnsValue && !isMain && !AlwaysReturns(func->CodeBlock))
+			Report(DiagnosticCode_MissingReturn, func->GetNameToken());
+	}
+
+	static bool ContainsBreak(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		// a break that leaves *this* loop (breaks inside nested loops belong to those)
+		if (!node)
+			return false;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::LoopControlFlow:
+				return std::dynamic_pointer_cast<ASTLoopControlFlow>(node)->GetToken().GetData() == "break";
+			case ASTNodeType::Block:
+			{
+				for (auto& child : std::dynamic_pointer_cast<ASTBlock>(node)->Children)
+					if (ContainsBreak(child)) return true;
+				return false;
+			}
+			case ASTNodeType::IfExpression:
+			{
+				auto ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(node);
+				for (auto& block : ifExpr->ConditionalBlocks)
+					if (ContainsBreak(block.CodeBlock)) return true;
+				return ContainsBreak(ifExpr->ElseBlock);
+			}
+			case ASTNodeType::Switch:
+			{
+				auto switchNode = std::dynamic_pointer_cast<ASTSwitch>(node);
+				for (auto& switchCase : switchNode->Cases)
+					if (ContainsBreak(switchCase.CodeBlock)) return true;
+				return ContainsBreak(switchNode->DefaultCaseCodeBlock);
+			}
+			default:
+				return false;
+		}
+	}
+
+	bool Sema::AlwaysReturns(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (!node)
+			return false;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::ReturnStatement:
+				return true;
+			case ASTNodeType::Block:
+			{
+				for (auto& child : std::dynamic_pointer_cast<ASTBlock>(node)->Children)
+					if (AlwaysReturns(child)) return true;
+				return false;
+			}
+			case ASTNodeType::IfExpression:
+			{
+				auto ifExpr = std::dynamic_pointer_cast<ASTIfExpression>(node);
+
+				if (!ifExpr->ElseBlock)
+					return false;
+
+				for (auto& block : ifExpr->ConditionalBlocks)
+					if (!AlwaysReturns(block.CodeBlock)) return false;
+
+				return AlwaysReturns(ifExpr->ElseBlock);
+			}
+			case ASTNodeType::Switch:
+			{
+				auto switchNode = std::dynamic_pointer_cast<ASTSwitch>(node);
+
+				if (!switchNode->DefaultCaseCodeBlock)
+					return false;
+
+				for (auto& switchCase : switchNode->Cases)
+					if (!AlwaysReturns(switchCase.CodeBlock)) return false;
+
+				return AlwaysReturns(switchNode->DefaultCaseCodeBlock);
+			}
+			case ASTNodeType::WhileLoop:
+			{
+				// `while true:` without a break never falls through
+				auto whileLoop = std::dynamic_pointer_cast<ASTWhileExpression>(node);
+				auto value = EvaluateInteger(whileLoop->WhileBlock.Condition);
+				return value && *value != 0 && !ContainsBreak(whileLoop->WhileBlock.CodeBlock);
+			}
+			default:
+				return false;
+		}
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
@@ -862,6 +955,12 @@ namespace clear
 			}
 			case OperatorType::Dereference:
 			{
+				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(unaryExpr->Operand); literal && literal->GetData().GetData() == "null")
+				{
+					Report(DiagnosticCode_NullDereference, literal->GetData());
+					return nullptr;
+				}
+
 				// `*p` as a storage location is simply the pointer value held in p
 				if (context.ValueReq == ValueRequired::LValue)
 				{
@@ -2128,6 +2227,21 @@ namespace clear
 				return CheckCall(funcCall);
 			}
 
+			// a constant index into a fixed array is checked right here
+			if (targetType->IsArray() && subscript->SubscriptArgs.size() >= 1)
+			{
+				auto value = EvaluateInteger(subscript->SubscriptArgs[0]);
+				size_t size = targetType->As<ArrayType>()->GetArraySize();
+
+				if (value && (*value < 0 || (uint64_t)*value >= size))
+				{
+					Token location = GetNodeLocation(subscript->SubscriptArgs[0]);
+					location.SetData(std::format("{}’ is outside an array of {} (valid: 0 to {}", *value, size, size - 1));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_IndexOutOfRange, std::to_string(*value).size());
+					return nullptr;
+				}
+			}
+
 			for (auto& index : subscript->SubscriptArgs)
 			{
 				auto indexType = m_TypeInferEngine.InferTypeFromNode(index);
@@ -2387,7 +2501,20 @@ namespace clear
 		if (!source || source == target)
 			return node;
 
-		if (!IsImplicitlyConvertible(source, target, IsNumericLiteral(node) || IsConstantThatFits(node, target)))
+		// a literal adapts to the target type only if its value fits (`let x: uint8 = 300` is an error)
+		bool isLiteral = IsNumericLiteral(node);
+		bool literalIsInteger = isLiteral && source->IsIntegral() && target->IsIntegral() && !target->IsEnum();
+
+		if (literalIsInteger && !IsConstantThatFits(node, target))
+		{
+			Token location = GetNodeLocation(node);
+			auto value = EvaluateInteger(node);
+			location.SetData(std::format("{}’ does not fit in ‘{}", value ? std::to_string(*value) : location.GetData(), GetDisplayName(target)));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_LiteralOutOfRange, 1);
+			return node;
+		}
+
+		if (!IsImplicitlyConvertible(source, target, isLiteral || IsConstantThatFits(node, target)))
 		{
 			Token location = GetNodeLocation(node);
 			size_t width = std::max<size_t>(location.GetData().size(), 1);
@@ -2584,6 +2711,15 @@ namespace clear
 			case OperatorType::Mod:
 			case OperatorType::Power:
 				valid = isNumber(lhs) && isNumber(rhs);
+
+				if (valid && (expr->GetExpression() == OperatorType::Div || expr->GetExpression() == OperatorType::Mod) && isInteger(lhs) && isInteger(rhs))
+				{
+					if (auto divisor = EvaluateInteger(expr->RightSide); divisor && *divisor == 0)
+					{
+						Report(DiagnosticCode_DivisionByZero, GetNodeLocation(expr->RightSide));
+						return false;
+					}
+				}
 				break;
 			case OperatorType::BitwiseAnd:
 			case OperatorType::BitwiseOr:
@@ -2593,6 +2729,20 @@ namespace clear
 			case OperatorType::LeftShift:
 			case OperatorType::RightShift:
 				valid = isInteger(lhs) && isInteger(rhs);
+
+				if (valid)
+				{
+					auto amount = EvaluateInteger(expr->RightSide);
+					unsigned bits = lhs->Get()->getIntegerBitWidth();
+
+					if (amount && (*amount < 0 || *amount >= (int64_t)bits))
+					{
+						Token location = GetNodeLocation(expr->RightSide);
+						location.SetData(std::format("{}’ for a {} bit value (valid: 0 to {}", *amount, bits, bits - 1));
+						m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ShiftOutOfRange, 1);
+						return false;
+					}
+				}
 				break;
 			case OperatorType::IsEqual:
 			case OperatorType::NotEqual:

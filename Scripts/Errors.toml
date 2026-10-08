@@ -244,3 +244,23 @@ Advice  = "‘{}’). Use ‘as’ to convert the index to an integer type."
 [NoLength]
 Message = "Value has no length."
 Advice  = "len() works on arrays, str and classes with __len__, not ‘{}’."
+
+[IndexOutOfRange]
+Message = "Array index is out of range."
+Advice  = "‘{})."
+
+[NullDereference]
+Message = "Dereferencing null."
+Advice  = "‘{}’ never points at a value, so it cannot be dereferenced."
+
+[ShiftOutOfRange]
+Message = "Shift amount is out of range."
+Advice  = "Shifting by ‘{})."
+
+[LiteralOutOfRange]
+Message = "Literal does not fit in the target type."
+Advice  = "‘{}’. Use a wider type or an explicit ‘as’ if wrapping is intended."
+
+[MissingReturn]
+Message = "Function might end without returning a value."
+Advice  = "Every path through ‘{}’ must end with a return statement."

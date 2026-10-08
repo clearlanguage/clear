@@ -1,8 +1,8 @@
 function main() -> int32:
+    let arr: [3; int] = {1, 2, 3}
+    let i = 5
     print("before")
-    let x = 3
-    assert x > 10, "x too small"
-    print("after")
+    print(arr[i])
     return 0
 
 // flags: --checks

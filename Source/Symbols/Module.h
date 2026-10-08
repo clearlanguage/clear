@@ -65,6 +65,9 @@ namespace clear
         std::shared_ptr<TypeRegistry> m_TypeRegistry;
 
         bool m_CodeGenerated = false;
+
+    public:
+        bool RuntimeChecks = false; // emit bounds/null/overflow/division checks (from the build configuration)
         bool m_IsBuiltin = false;
     };
 }

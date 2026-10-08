@@ -61,6 +61,8 @@ namespace clear
 		size_t FunctionDeferBase = 0; // first block belonging to the current function
 		size_t LoopDeferBase = 0;     // first block inside the innermost loop
 
+		bool RuntimeChecks = false;
+
 		std::shared_ptr<clear::Module> ClearModule;
 		std::shared_ptr<clear::Module> ClearModuleSecondary; // used for function calls where a function is being called from another module
 		std::shared_ptr<TypeRegistry> TypeReg;

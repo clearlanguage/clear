@@ -105,6 +105,14 @@ namespace clear {
 
 				return list;
 			}
+			case ASTNodeType::Assert:
+			{
+				auto original = std::dynamic_pointer_cast<ASTAssert>(node);
+				auto assertNode = std::make_shared<ASTAssert>();
+				assertNode->Condition = Clone(original->Condition);
+				assertNode->Message = Clone(original->Message);
+				return assertNode;
+			}
 			case ASTNodeType::ConstantValue:
 			{
 				auto original = std::dynamic_pointer_cast<ASTConstantValue>(node);

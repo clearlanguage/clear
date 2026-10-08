@@ -315,19 +315,56 @@ namespace clear
 		return Symbol();
     }
 
+	// + - * / % with the run-time checks the build asks for: signed overflow, division by zero
+	static Symbol Arithmetic(Symbol lhs, Symbol rhs, OperatorType op, CodegenContext& ctx, const Token& location)
+	{
+		if (lhs.GetType()->IsPointer())
+			return ASTBinaryExpression::HandlePointerArithmetic(lhs, rhs, op, ctx);
+
+		SymbolOps::Promote(lhs, rhs, ctx.Builder);
+
+		auto type = lhs.GetType();
+		llvm::Value* left = lhs.GetLLVMValue();
+		llvm::Value* right = rhs.GetLLVMValue();
+		bool isInteger = left->getType()->isIntegerTy() && !left->getType()->isIntegerTy(1);
+
+		if (ctx.RuntimeChecks && isInteger)
+		{
+			if (op == OperatorType::Div || op == OperatorType::Mod)
+			{
+				EmitCheck(ctx, ctx.Builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0)), "division by zero", location);
+
+				// INT_MIN / -1 does not fit either
+				if (type->IsSigned())
+				{
+					unsigned bits = left->getType()->getIntegerBitWidth();
+					llvm::Value* isMin = ctx.Builder.CreateICmpEQ(left, llvm::ConstantInt::get(left->getType(), llvm::APInt::getSignedMinValue(bits)));
+					llvm::Value* isMinusOne = ctx.Builder.CreateICmpEQ(right, llvm::ConstantInt::get(right->getType(), -1, true));
+					EmitCheck(ctx, ctx.Builder.CreateNot(ctx.Builder.CreateAnd(isMin, isMinusOne)), "integer overflow in division", location);
+				}
+			}
+			else if (type->IsSigned() && (op == OperatorType::Add || op == OperatorType::Sub || op == OperatorType::Mul))
+			{
+				llvm::Intrinsic::ID id = op == OperatorType::Add ? llvm::Intrinsic::sadd_with_overflow 
+									   : op == OperatorType::Sub ? llvm::Intrinsic::ssub_with_overflow : llvm::Intrinsic::smul_with_overflow;
+
+				llvm::Value* pair = ctx.Builder.CreateBinaryIntrinsic(id, left, right);
+				llvm::Value* overflowed = ctx.Builder.CreateExtractValue(pair, 1);
+				EmitCheck(ctx, ctx.Builder.CreateNot(overflowed), "integer overflow", location);
+
+				return Symbol::CreateValue(ctx.Builder.CreateExtractValue(pair, 0), type);
+			}
+		}
+
+		return ASTBinaryExpression::HandleMathExpression(lhs, rhs, op, ctx);
+	}
+
     Symbol ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		Symbol lhs = left->Codegen(ctx);
+		Symbol rhs = right->Codegen(ctx);
 
-		Symbol rhs;
-		rhs = right->Codegen(ctx);
-
-		auto [_, lhsType] = lhs.GetValue();
-
-		if(lhsType->IsPointer()) 
-			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx); //internally will verify correct expression type
-
-        return HandleMathExpression(lhs, rhs, m_Expression, ctx);
+        return Arithmetic(lhs, rhs, m_Expression, ctx, Location);
     }
 
     Symbol ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
@@ -636,13 +673,20 @@ namespace clear
 
 		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();
 
+		bool throughPointer = false;
+
 		while (lhs.GetType()->IsPointer())
 		{
 			if (lhs.GetType()->As<PointerType>()->GetBaseType()->IsClass())
 				break;
 			
 			lhs = SymbolOps::Load(lhs, ctx.Builder);
+			throughPointer = true;
 		}
+
+		// p.x where p is a pointer: p must not be null
+		if (throughPointer && ctx.RuntimeChecks)
+			EmitCheck(ctx, ctx.Builder.CreateIsNotNull(lhs.GetLLVMValue()), "accessing a field through a null pointer", member->GetName());
 		
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
@@ -805,26 +849,11 @@ namespace clear
 
 		Symbol tmp;
 
-		if(m_Type == AssignmentOperatorType::Add)
-		{
-			tmp = SymbolOps::Add(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Sub)
-		{
-			tmp = SymbolOps::Sub(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Mul)
-		{
-			tmp = SymbolOps::Mul(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Div)
-		{
-			tmp = SymbolOps::Div(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Mod)
-		{
-			tmp = SymbolOps::Mod(loadedValue, data, ctx.Builder); 
-		}
+		if(m_Type == AssignmentOperatorType::Add)      tmp = Arithmetic(loadedValue, data, OperatorType::Add, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Sub) tmp = Arithmetic(loadedValue, data, OperatorType::Sub, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Mul) tmp = Arithmetic(loadedValue, data, OperatorType::Mul, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Div) tmp = Arithmetic(loadedValue, data, OperatorType::Div, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Mod) tmp = Arithmetic(loadedValue, data, OperatorType::Mod, ctx, Location);
 		else if (m_Type == AssignmentOperatorType::BitAnd) tmp = SymbolOps::BitAnd(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitOr)  tmp = SymbolOps::BitOr(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitXor) tmp = SymbolOps::BitXor(loadedValue, data, ctx.Builder);
@@ -925,8 +954,14 @@ namespace clear
 
 		builder.restoreIP(currip);
 
+		// falling off the end (only main may do that with a return type) returns zero
 		if(!builder.GetInsertBlock()->getTerminator())
+		{
+			if (returnAlloca)
+				builder.CreateStore(llvm::Constant::getNullValue(returnAlloca->getAllocatedType()), returnAlloca);
+
 			builder.CreateBr(returnBlock);
+		}
 
 		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
 		builder.SetInsertPoint(returnBlock);
@@ -1114,6 +1149,15 @@ namespace clear
 					if (base->IsArray())
 					{
 						std::shared_ptr<Type> element = base->As<ArrayType>()->GetBaseType();
+
+						if (ctx.RuntimeChecks)
+						{
+							// unsigned comparison also catches negative indices
+							uint64_t size = base->As<ArrayType>()->GetArraySize();
+							llvm::Value* inRange = ctx.Builder.CreateICmpULT(indexValue, ctx.Builder.getInt64(size));
+							EmitCheck(ctx, inRange, std::format("index out of range for an array of {}", size), GetNodeLocation(index));
+						}
+
 						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(base->Get(), current.GetLLVMValue(), { ctx.Builder.getInt64(0), indexValue }, "index");
 						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
 					}
@@ -1122,6 +1166,9 @@ namespace clear
 						// indexing through a pointer: load it, then offset by the index
 						Symbol pointer = SymbolOps::Load(current, ctx.Builder);
 						std::shared_ptr<Type> element = base->As<PointerType>()->GetBaseType();
+
+						if (ctx.RuntimeChecks)
+							EmitCheck(ctx, ctx.Builder.CreateIsNotNull(pointer.GetLLVMValue()), "indexing a null pointer", GetNodeLocation(Target));
 						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(element->Get(), pointer.GetLLVMValue(), { indexValue }, "index");
 						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
 					}
@@ -1483,8 +1530,9 @@ namespace clear
     {
 		if(ctx.ReturnAlloca)
 		{
+			// reaching the end of main means success, like C
 			llvm::Type* retType = ctx.ReturnType->Get();
-    		llvm::Value* defaultVal = llvm::UndefValue::get(retType);
+    		llvm::Value* defaultVal = llvm::Constant::getNullValue(retType);
     		ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
 		}
 
@@ -1508,6 +1556,9 @@ namespace clear
 
 			if (result.Kind == SymbolKind::Type)
 				return Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(result.GetType()));
+
+			if (ctx.RuntimeChecks && result.GetLLVMValue()->getType()->isPointerTy())
+				EmitCheck(ctx, ctx.Builder.CreateIsNotNull(result.GetLLVMValue()), "dereferencing a null pointer", Location.GetSourceFile().empty() ? GetNodeLocation(Operand) : Location);
 
 			if (IsStorage)
 				return result; // the pointer value is the storage location
@@ -1569,7 +1620,7 @@ namespace clear
 			if(ty->GetBaseType()->IsPointer())
 				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
 			else 
-				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
+				valueToStore = Arithmetic(returnValue, one, type, ctx, Location);
 		};
 
 		if(m_Type == OperatorType::PostIncrement)
@@ -2149,6 +2200,10 @@ namespace clear
 
 	Symbol ASTAssert::Codegen(CodegenContext& ctx)
 	{
+		// like Python's -O, asserts disappear (unevaluated) when run-time checks are off
+		if (!ctx.RuntimeChecks)
+			return Symbol();
+
 		Symbol condition = Condition->Codegen(ctx);
 		Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
 		condition = SymbolOps::Cast(condition, boolType, ctx.Builder);

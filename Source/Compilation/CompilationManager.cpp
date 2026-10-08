@@ -159,6 +159,7 @@ namespace clear
             std::println("Loading source file {}" , path.string());
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
+		newModule->RuntimeChecks = m_Config.RuntimeChecksEnabled();
 		
         Lexer lexer(path, m_DiagnosticsBuilder);
 

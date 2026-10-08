@@ -91,6 +91,9 @@ namespace clear
 
         config.DebugInfo = tbl["DebugInfo"].value_or(false);
         config.TargetCPU = tbl["TargetCPU"].value_or(std::string("generic"));
+
+        if (auto checks = tbl["RuntimeChecks"].value<bool>())
+            config.RuntimeChecks = *checks ? 1 : 0;
         config.FavourSize = tbl["FavourSize"].value_or(false);
         config.EmitIntermiediateIR = tbl["EmitIntermiediateIR"].value_or(false);
         config.ParallelBuild = tbl["ParallelBuild"].value_or(false);

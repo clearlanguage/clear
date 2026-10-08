@@ -105,6 +105,7 @@ namespace clear
         ctx.ClearModule = shared_from_this();
         ctx.ClearModuleSecondary = shared_from_this();
         ctx.TypeReg = m_TypeRegistry;
+        ctx.RuntimeChecks = RuntimeChecks;
 
         return ctx;
     }

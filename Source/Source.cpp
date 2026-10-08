@@ -27,6 +27,9 @@ static void ApplyOptions(BuildConfig& config, const CommandLine::ParsingResult& 
 
     if (options.TargetCPU)
         config.TargetCPU = *options.TargetCPU;
+
+    if (options.RuntimeChecks)
+        config.RuntimeChecks = *options.RuntimeChecks ? 1 : 0;
     config.Verbose = config.Verbose || options.Verbose;
 }
 

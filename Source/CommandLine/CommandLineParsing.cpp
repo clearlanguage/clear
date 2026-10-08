@@ -54,6 +54,8 @@ namespace clear
                 if (arg == "--emit-ir")        { result.EmitIR = true;                              continue; }
                 if (arg == "-v" || arg == "--verbose") { result.Verbose = true;                     continue; }
                 if (arg == "--native" || arg == "-march=native") { result.TargetCPU = "native";      continue; }
+                if (arg == "--checks")         { result.RuntimeChecks = true;                       continue; }
+                if (arg == "--no-checks")      { result.RuntimeChecks = false;                      continue; }
                 if (arg.starts_with("--cpu=")) { result.TargetCPU = std::string(arg.substr(6));      continue; }
 
                 if (arg == "build" && result.Options == ProgramMode::None) { result.Options = ProgramMode::Build; continue; }
@@ -130,6 +132,7 @@ namespace clear
             std::println("  --emit-ir                   also write the LLVM IR next to the output (.ll)");
             std::println("  --native                    optimize for this machine's CPU (default for run)");
             std::println("  --cpu=<name>                optimize for a specific CPU, e.g. --cpu=x86-64-v3");
+            std::println("  --checks, --no-checks       run-time safety checks (default: on, off with -O2/-O3)");
             std::println("  -v, --verbose               print progress while compiling");
         }
     }

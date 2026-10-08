@@ -10,6 +10,7 @@ is written in comments inside the test itself:
 
     // expect-exit: 3        (optional, default 0)
     // expect-error          (compilation must fail)
+    // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
 
 Files inside a folder named `lib` are helpers that tests import, not tests.
 
@@ -28,6 +29,7 @@ def parse_expectations(path):
     expected_lines = None
     expected_exit = 0
     expect_error = False
+    flags = []
 
     with open(path, encoding="utf-8") as f:
         lines = f.read().splitlines()
@@ -46,6 +48,11 @@ def parse_expectations(path):
             in_block = False
             continue
 
+        if stripped.startswith("// flags:"):
+            flags = stripped.split(":", 1)[1].split()
+            in_block = False
+            continue
+
         if stripped == "// expect-error":
             expect_error = True
             in_block = False
@@ -59,17 +66,17 @@ def parse_expectations(path):
             else:
                 in_block = False
 
-    return expected_lines, expected_exit, expect_error
+    return expected_lines, expected_exit, expect_error, flags
 
 
 def run_test(clearc, path, workdir):
-    expected_lines, expected_exit, expect_error = parse_expectations(path)
+    expected_lines, expected_exit, expect_error, test_flags = parse_expectations(path)
     output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
 
     extra_flags = os.environ.get("CLEAR_TEST_FLAGS", "").split()
 
     compile_result = subprocess.run(
-        [clearc, "build", path, "-o", output, *extra_flags],
+        [clearc, "build", path, "-o", output, *extra_flags, *test_flags],
         capture_output=True, text=True, timeout=30,
     )
 

@@ -28,6 +28,7 @@ namespace clear
             std::vector<std::string> ProgramArguments;    // forwarded to the program by `run`
             bool EmitIR = false;   // --emit-ir
             std::optional<std::string> TargetCPU; // --native, --cpu=<name>
+            std::optional<bool> RuntimeChecks;     // --checks, --no-checks
             bool Verbose = false;  // -v
             bool Successful = false;
             std::string Error;

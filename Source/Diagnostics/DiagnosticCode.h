@@ -65,6 +65,11 @@ namespace clear
 		DiagnosticCode_GenericMethodUnsupported,
 		DiagnosticCode_IndexNotInteger,
 		DiagnosticCode_NoLength,
+		DiagnosticCode_IndexOutOfRange,
+		DiagnosticCode_NullDereference,
+		DiagnosticCode_ShiftOutOfRange,
+		DiagnosticCode_LiteralOutOfRange,
+		DiagnosticCode_MissingReturn,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -130,6 +135,11 @@ namespace clear
 		"Methods cannot have their own type parameters yet.",
 		"Array index must be an integer.",
 		"Value has no length.",
+		"Array index is out of range.",
+		"Dereferencing null.",
+		"Shift amount is out of range.",
+		"Literal does not fit in the target type.",
+		"Function might end without returning a value.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -146,7 +156,7 @@ namespace clear
 		"Cannot assign or operate on incompatible types like ‘{}’. Check for implicit casts or incorrect types.",
 		"‘{}’ is not a recognized escape sequence. Use sequences like \\n, \\t, \".",
 		"There is an unmatched ‘{}’.",
-		"The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed.",
+		"‘{}’ was not expected here. Check for a missing operator, bracket or line break.",
 		"Add a colon ':' after {} to begin an indented code block",
 		"Add a line break after ':' and indent the next line to start the block",
 		"Add a valid name or identifier after {}",
@@ -194,5 +204,10 @@ namespace clear
 		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
 		"‘{}’). Use ‘as’ to convert the index to an integer type.",
 		"len() works on arrays, str and classes with __len__, not ‘{}’.",
+		"‘{}).",
+		"‘{}’ never points at a value, so it cannot be dereferenced.",
+		"Shifting by ‘{}).",
+		"‘{}’. Use a wider type or an explicit ‘as’ if wrapping is intended.",
+		"Every path through ‘{}’ must end with a return statement.",
 	};
 }

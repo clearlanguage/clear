@@ -84,6 +84,12 @@ namespace clear
         // building machine supports (fastest, but the binary may not run elsewhere)
         std::string TargetCPU = "generic";
 
+        // run-time checks (array bounds, division by zero, null, signed overflow): -1 means automatic,
+        // on for debug/development builds and off for optimized (Distribution) builds
+        int RuntimeChecks = -1;
+
+        bool RuntimeChecksEnabled() const { return RuntimeChecks == -1 ? OptimizationLevel != OptimizationLevelType::Distribution : RuntimeChecks == 1; }
+
         static BuildConfig BuildConfigFromToml(const std::filesystem::path& path);
 
         // configuration used when compiling a single file without a build.toml
