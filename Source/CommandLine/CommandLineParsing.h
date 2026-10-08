@@ -16,7 +16,11 @@ namespace clear
             BuildTemplateConfig,  // --build_template directory
             Compile,              // --compile directory (with build.toml)
             Build,                // build file.cl | directory
-            Run                   // run file.cl [-- program args]
+            Run,                  // run file.cl [-- program args]
+            New,                  // new <directory>
+            Add,                  // add <name> --git <url> [--tag t | --branch b | --rev r] | --path <dir>
+            Fetch,                // fetch [project]
+            Update                // update [project]
         };
 
         struct ParsingResult
@@ -30,6 +34,10 @@ namespace clear
             std::optional<std::string> TargetCPU; // --native, --cpu=<name>
             std::optional<bool> RuntimeChecks;     // --checks, --no-checks
             bool Verbose = false;  // -v
+
+            // add: the dependency
+            std::string PackageName;
+            std::string Git, Tag, Branch, Rev, PackagePath;
             bool Successful = false;
             std::string Error;
         };

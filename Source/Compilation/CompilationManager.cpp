@@ -184,10 +184,35 @@ namespace clear
 
 	std::optional<std::filesystem::path> CompilationManager::ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name)
 	{
+		std::filesystem::path written = name;
+
 		if (!name.has_extension())
 			name += m_Config.TargetExtension;
 
 		std::vector<std::filesystem::path> candidates = { importingFile.parent_path() / name };
+
+		// a package: "colors" is its lib file, "colors/extra" a file inside it
+		for (const auto& package : m_Config.Packages)
+		{
+			if (written.begin() == written.end() || written.begin()->string() != package.Name)
+				continue;
+
+			if (std::next(written.begin()) == written.end())
+			{
+				candidates.push_back(package.Entry);
+			}
+			else
+			{
+				std::filesystem::path inside;
+				for (auto part = std::next(written.begin()); part != written.end(); part++)
+					inside /= *part;
+
+				if (!inside.has_extension())
+					inside += m_Config.TargetExtension;
+
+				candidates.push_back(package.Directory / inside);
+			}
+		}
 
 		if (!m_Config.StandardLibrary.empty())
 			candidates.push_back(m_Config.StandardLibrary / name);

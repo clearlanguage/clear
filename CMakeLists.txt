@@ -83,3 +83,5 @@ add_test(NAME clear_language_tests
 add_test(NAME clear_language_tests_optimized
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
 set_tests_properties(clear_language_tests_optimized PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O3")
+add_test(NAME clear_package_manager
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/test_packages.py $<TARGET_FILE:clearc>)

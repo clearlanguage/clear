@@ -80,6 +80,15 @@ namespace clear
 
         bool Verbose = false; // print progress while compiling
 
+        // packages from clear.toml: `import "name"` reads Entry, `import "name/file"` a file in Directory
+        struct PackageRoot
+        {
+            std::string Name;
+            std::filesystem::path Directory;
+            std::filesystem::path Entry;
+        };
+        std::vector<PackageRoot> Packages;
+
         // "generic" runs on any CPU of the target architecture, "native" uses everything the
         // building machine supports (fastest, but the binary may not run elsewhere)
         std::string TargetCPU = "generic";
