@@ -34,7 +34,8 @@ namespace clear
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
-		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot
+		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
+		Assert, Contains, Intrinsic
 	};
 
 	class ASTNodeBase;
@@ -132,6 +133,7 @@ namespace clear
 		inline const OperatorType GetExpression() const { return m_Expression; }
 
 		Symbol HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
+		Symbol HandlePower(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx);
 		static Symbol HandleMathExpression(Symbol& lhs, Symbol& rhs,   OperatorType type, CodegenContext& ctx);
 		static Symbol HandleMathExpressionF(Symbol& lhs, Symbol& rhs,  OperatorType type, CodegenContext& ctx);
 		static Symbol HandleMathExpressionSI(Symbol& lhs, Symbol& rhs, OperatorType type, CodegenContext& ctx);
@@ -186,6 +188,7 @@ namespace clear
 		std::shared_ptr<Symbol> Variable;
 		std::shared_ptr<Type> ResolvedType;
 		bool IsConst = false;
+		bool IsParameter = false;
 
 	private:
 		Token m_Name;
@@ -695,6 +698,57 @@ namespace clear
 		std::shared_ptr<ASTSlot> Self;           // receives the address of the object
 		std::shared_ptr<ASTFunctionCall> InitCall;
 	};
+
+	// assert condition, "message": stops the program with the location when the condition is false
+	class ASTAssert : public ASTNodeBase
+	{
+	public:
+		ASTAssert() = default;
+		virtual ~ASTAssert() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Assert; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Condition;
+		std::shared_ptr<ASTNodeBase> Message; // optional str
+	};
+
+	// `needle in haystack` for fixed arrays: compares every element
+	class ASTContains : public ASTNodeBase
+	{
+	public:
+		ASTContains() = default;
+		virtual ~ASTContains() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Contains; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Needle;
+		std::shared_ptr<ASTNodeBase> Haystack; // the array's storage
+		std::shared_ptr<Type> ArrayTy;
+		bool Negate = false;
+	};
+
+	// a call to a C library routine the compiler uses itself (strlen, strstr, ...), declared on demand
+	class ASTIntrinsic : public ASTNodeBase
+	{
+	public:
+		ASTIntrinsic(const std::string& name, std::shared_ptr<Type> resultType) : Name(name), ResultType(resultType) {}
+		virtual ~ASTIntrinsic() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Intrinsic; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::string Name;
+		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
+		std::shared_ptr<Type> ResultType;
+	};
+
+	// branches to a panic when `ok` is false, code generation continues on the success path
+	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
+
+	// stops the program: prints "panic: <message>" with the source location to stderr and aborts
+	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
 
 	// runs every pending defer from the innermost block down to `downTo`, newest first
 	void EmitDefers(CodegenContext& ctx, size_t downTo);

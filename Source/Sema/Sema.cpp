@@ -168,6 +168,24 @@ namespace clear
 				if (!decl->Initializer)
 					return nullptr; // already reported
 			}
+			else if (!decl->IsParameter)
+			{
+				// `let x: int` starts at zero (a class starts with its field defaults), never with garbage
+				if (decl->ResolvedType->IsClass())
+				{
+					auto target = std::make_shared<ASTVariable>(decl->GetName());
+					target->Variable = std::make_shared<Symbol>(Symbol::CreateType(decl->ResolvedType));
+
+					auto initial = std::make_shared<ASTStructExpr>();
+					initial->Location = decl->GetName();
+					initial->TargetType = target;
+					decl->Initializer = CompleteStructValues(initial);
+				}
+				else
+				{
+					decl->Initializer = std::make_shared<ASTZero>(decl->ResolvedType);
+				}
+			}
 		}
 		else 
 		{
@@ -327,6 +345,9 @@ namespace clear
 			case ASTNodeType::Defer:					return Visit(std::dynamic_pointer_cast<ASTDefer>(ast), context);
 			case ASTNodeType::ConstantValue:			return ast;
 			case ASTNodeType::Zero:						return ast;
+			case ASTNodeType::Assert:					return Visit(std::dynamic_pointer_cast<ASTAssert>(ast), context);
+			case ASTNodeType::Contains:					return ast;
+			case ASTNodeType::Intrinsic:				return ast;
 			case ASTNodeType::Slot:						return ast;
 			case ASTNodeType::Construct:				return ast;
 			case ASTNodeType::Load:						return ast; // already analysed (shared default values)
@@ -370,7 +391,10 @@ namespace clear
 		for (auto arg : func->Arguments)
 		{
 			if (arg)	
+			{
+				arg->IsParameter = true;
 				Visit(arg, context);
+			}
 		}
 		
 		if (func->ReturnType)
@@ -465,6 +489,13 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
+
+		// len(x) is built in unless the program defines its own len
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "len")
+		{
+			if (!LookupSymbol("len").first)
+				return VisitLen(funcCall, context);
+		}
 
 		// print(...) is built in unless the program defines its own print
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "print")
@@ -686,6 +717,7 @@ namespace clear
 			case OperatorType::Div:
 			case OperatorType::Mul:
 			case OperatorType::Mod:
+			case OperatorType::Power:
 			case OperatorType::BitwiseAnd:
 			case OperatorType::BitwiseOr:
 			case OperatorType::BitwiseXor:
@@ -693,6 +725,11 @@ namespace clear
 			case OperatorType::RightShift:
 			{
 				return VisitBinaryExprArithmetic(binaryExpression, context);
+			}
+			case OperatorType::In:
+			case OperatorType::NotIn:
+			{
+				return VisitMembership(binaryExpression, context);
 			}
 			case OperatorType::And:
 			case OperatorType::Or:
@@ -1349,6 +1386,219 @@ namespace clear
 			Visit(switchNode->DefaultCaseCodeBlock, context);
 
 		return switchNode;
+	}
+
+	static bool IsStorageNode(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		switch (node->GetType())
+		{
+			case ASTNodeType::Variable:
+			case ASTNodeType::Subscript:
+				return true;
+			case ASTNodeType::BinaryExpression:
+				return std::dynamic_pointer_cast<ASTBinaryExpression>(node)->GetExpression() == OperatorType::Dot;
+			case ASTNodeType::UnaryExpression:
+				return std::dynamic_pointer_cast<ASTUnaryExpression>(node)->IsStorage;
+			default:
+				return false;
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::AsValue(std::shared_ptr<ASTNodeBase> node)
+	{
+		// a node analysed as storage (an address) read as a value
+		if (!IsStorageNode(node))
+			return node;
+
+		auto load = std::make_shared<ASTLoad>();
+		load->Operand = node;
+		return load;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name, 
+												   std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location)
+	{
+		// object is storage (analysed as an lvalue): pass its address, or the pointer it holds
+		std::shared_ptr<ClassType> classType;
+		std::shared_ptr<ASTNodeBase> self;
+
+		if (objectType->IsClass())
+		{
+			classType = objectType->As<ClassType>();
+
+			if (IsStorageNode(object))
+			{
+				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+				address->Operand = object;
+				address->Location = location;
+				self = address;
+			}
+			else
+			{
+				self = AddressOf(object);
+			}
+		}
+		else
+		{
+			classType = objectType->As<PointerType>()->GetBaseType()->As<ClassType>();
+			self = AsValue(object);
+		}
+
+		auto method = classType->MemberFunctions.find(name);
+
+		if (method == classType->MemberFunctions.end())
+			return nullptr;
+
+		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, name, location.GetSourceFile(), location.LineNumber, location.ColumnNumber));
+		callee->Variable = method->second;
+
+		auto call = std::make_shared<ASTFunctionCall>();
+		call->Location = location;
+		call->Callee = callee;
+		call->Arguments.push_back(self);
+		call->Arguments.append(arguments.begin(), arguments.end());
+
+		return CheckCall(call);
+	}
+
+	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type)
+	{
+		if (!type)
+			return nullptr;
+
+		if (type->IsClass())
+			return type;
+
+		if (type->IsPointer() && type->As<PointerType>()->GetBaseType() && type->As<PointerType>()->GetBaseType()->IsClass())
+			return type->As<PointerType>()->GetBaseType();
+
+		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
+	{
+		Token location = GetNodeLocation(funcCall->Callee);
+
+		if (funcCall->Arguments.size() != 1)
+		{
+			location.SetData(std::format("len’ expects 1 argument, but {} {} given", funcCall->Arguments.size(), funcCall->Arguments.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_WrongArgumentCount, 3);
+			return nullptr;
+		}
+
+		SemaContext storageContext = context;
+		storageContext.ValueReq = ValueRequired::LValue;
+
+		auto argument = Visit(funcCall->Arguments[0], storageContext);
+
+		if (!argument)
+			return nullptr;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(argument);
+		auto int64Type = m_Module->Lookup("int64").value()->GetType();
+
+		if (type && type->IsArray())
+			return std::make_shared<ASTConstantValue>((int64_t)type->As<ArrayType>()->GetArraySize(), int64Type);
+
+		if (type && type->GetHash() == "str")
+		{
+			auto intrinsic = std::make_shared<ASTIntrinsic>("strlen", int64Type);
+			intrinsic->Location = location;
+			intrinsic->Arguments.push_back(AsValue(argument));
+			return intrinsic;
+		}
+
+		if (auto classType = ClassOf(type); classType && classType->As<ClassType>()->MemberFunctions.contains("__len__"))
+		{
+			EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__len__")->GetFunctionSymbol().FunctionNode);
+			return CallMethod(argument, type, "__len__", {}, location);
+		}
+
+		Token where = GetNodeLocation(argument);
+		where.SetData(GetDisplayName(type));
+		Report(DiagnosticCode_NoLength, where);
+		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context)
+	{
+		bool negate = expr->GetExpression() == OperatorType::NotIn;
+
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		SemaContext storageContext = context;
+		storageContext.ValueReq = ValueRequired::LValue;
+
+		auto needle = Visit(expr->LeftSide, valueContext);
+		auto haystack = Visit(expr->RightSide, storageContext);
+
+		if (!needle || !haystack)
+			return nullptr;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(haystack);
+		auto boolType = Symbol::GetBooleanType(m_Module).GetType();
+		std::shared_ptr<ASTNodeBase> result;
+
+		if (type && type->IsArray())
+		{
+			auto contains = std::make_shared<ASTContains>();
+			contains->Location = expr->Location;
+			contains->Needle = Coerce(needle, type->As<ArrayType>()->GetBaseType());
+			contains->Haystack = haystack;
+			contains->ArrayTy = type;
+			contains->Negate = negate;
+			return contains;
+		}
+
+		if (type && type->GetHash() == "str")
+		{
+			// "lo" in "hello" looks for a substring
+			auto intrinsic = std::make_shared<ASTIntrinsic>("str_contains", boolType);
+			intrinsic->Location = expr->Location;
+			intrinsic->Arguments = { Coerce(needle, type), AsValue(haystack) };
+			result = intrinsic;
+		}
+		else if (auto classType = ClassOf(type); classType && classType->As<ClassType>()->MemberFunctions.contains("__contains__"))
+		{
+			EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__contains__")->GetFunctionSymbol().FunctionNode);
+			result = CallMethod(haystack, type, "__contains__", { needle }, expr->Location);
+
+			if (!result)
+				return nullptr;
+		}
+		else
+		{
+			Token location = expr->Location;
+			location.SetData(std::format("{} in {}", GetDisplayName(m_TypeInferEngine.InferTypeFromNode(needle)), GetDisplayName(type)));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_InvalidOperands, 2);
+			return nullptr;
+		}
+
+		if (!negate)
+			return result;
+
+		auto notNode = std::make_shared<ASTUnaryExpression>(OperatorType::Not);
+		notNode->Operand = result;
+		notNode->Location = expr->Location;
+		return notNode;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context)
+	{
+		context.ValueReq = ValueRequired::RValue;
+		assertNode->Condition = Visit(assertNode->Condition, context);
+
+		if (!assertNode->Condition)
+			return nullptr;
+
+		if (assertNode->Message)
+		{
+			assertNode->Message = Visit(assertNode->Message, context);
+			auto strType = m_Module->Lookup("str").value()->GetType();
+			assertNode->Message = Coerce(assertNode->Message, strType);
+		}
+
+		return assertNode;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context)
@@ -2020,7 +2270,8 @@ namespace clear
 			auto fromBase = from->As<PointerType>()->GetBaseType();
 			auto toBase = to->As<PointerType>()->GetBaseType();
 
-			return !fromBase || !toBase || fromBase->Get()->isVoidTy() || toBase->Get()->isVoidTy();
+			// str and *int8 point at the same thing
+			return fromBase == toBase || !fromBase || !toBase || fromBase->Get()->isVoidTy() || toBase->Get()->isVoidTy();
 		}
 
 		bool srcInt = src->isIntegerTy(), dstInt = dst->isIntegerTy();
@@ -2192,6 +2443,7 @@ namespace clear
 			case OperatorType::Mul:					return "__mul__";
 			case OperatorType::Div:					return "__div__";
 			case OperatorType::Mod:					return "__mod__";
+			case OperatorType::Power:				return "__pow__";
 			case OperatorType::IsEqual:				return "__eq__";
 			case OperatorType::NotEqual:			return "__ne__";
 			case OperatorType::LessThan:			return "__lt__";
@@ -2209,6 +2461,7 @@ namespace clear
 			case OperatorType::Add: return "+";   case OperatorType::Sub: return "-";
 			case OperatorType::Mul: return "*";   case OperatorType::Div: return "/";
 			case OperatorType::Mod: return "%";   case OperatorType::IsEqual: return "==";
+			case OperatorType::Power: return "**";   case OperatorType::In: return "in";   case OperatorType::NotIn: return "not in";
 			case OperatorType::NotEqual: return "!=";   case OperatorType::LessThan: return "<";
 			case OperatorType::LessThanEqual: return "<=";   case OperatorType::GreaterThan: return ">";
 			case OperatorType::GreaterThanEqual: return ">=";   case OperatorType::BitwiseAnd: return "&";
@@ -2329,6 +2582,7 @@ namespace clear
 			case OperatorType::Mul:
 			case OperatorType::Div:
 			case OperatorType::Mod:
+			case OperatorType::Power:
 				valid = isNumber(lhs) && isNumber(rhs);
 				break;
 			case OperatorType::BitwiseAnd:

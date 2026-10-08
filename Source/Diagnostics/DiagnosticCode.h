@@ -64,6 +64,7 @@ namespace clear
 		DiagnosticCode_TooManyValues,
 		DiagnosticCode_GenericMethodUnsupported,
 		DiagnosticCode_IndexNotInteger,
+		DiagnosticCode_NoLength,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -128,6 +129,7 @@ namespace clear
 		"Too many values for this class.",
 		"Methods cannot have their own type parameters yet.",
 		"Array index must be an integer.",
+		"Value has no length.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -191,5 +193,6 @@ namespace clear
 		"‘{}.",
 		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
 		"‘{}’). Use ‘as’ to convert the index to an integer type.",
+		"len() works on arrays, str and classes with __len__, not ‘{}’.",
 	};
 }

@@ -18,6 +18,8 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
+#include <llvm/IR/MDBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/MC/MCInstrDesc.h>
 #include <llvm/Support/Casting.h>
 
@@ -184,6 +186,9 @@ namespace clear
 		auto& leftChild  = LeftSide;
 		auto& rightChild = RightSide;
 
+		if (m_Expression == OperatorType::Power)
+			return HandlePower(leftChild, rightChild, ctx);
+
 		if(IsMathExpression())
 			return HandleMathExpression(leftChild, rightChild, ctx);
 
@@ -333,9 +338,89 @@ namespace clear
         return HandleCmpExpression(lhs, rhs, ctx);
     }
 
+    Symbol ASTBinaryExpression::HandlePower(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
+    {
+		Symbol lhs = left->Codegen(ctx);
+		Symbol rhs = right->Codegen(ctx);
+		SymbolOps::Promote(lhs, rhs, ctx.Builder);
+
+		auto [base, type] = lhs.GetValue();
+		llvm::Value* exponent = rhs.GetLLVMValue();
+
+		if (type->IsFloatingPoint())
+			return Symbol::CreateValue(ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::pow, base, exponent), type);
+
+		// integers: exponentiation by squaring in a small loop (a negative exponent gives 0, like integer division)
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		llvm::Type* intType = base->getType();
+
+		llvm::BasicBlock* before = ctx.Builder.GetInsertBlock();
+		llvm::BasicBlock* loop   = llvm::BasicBlock::Create(ctx.Context, "pow.loop", function);
+		llvm::BasicBlock* done   = llvm::BasicBlock::Create(ctx.Context, "pow.done", function);
+
+		llvm::Value* negative = type->IsSigned() ? ctx.Builder.CreateICmpSLT(exponent, llvm::ConstantInt::get(intType, 0)) : ctx.Builder.getFalse();
+		llvm::Value* start = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), exponent);
+		ctx.Builder.CreateBr(loop);
+
+		ctx.Builder.SetInsertPoint(loop);
+		llvm::PHINode* result = ctx.Builder.CreatePHI(intType, 2, "pow.result");
+		llvm::PHINode* factor = ctx.Builder.CreatePHI(intType, 2, "pow.factor");
+		llvm::PHINode* remaining = ctx.Builder.CreatePHI(intType, 2, "pow.remaining");
+
+		result->addIncoming(llvm::ConstantInt::get(intType, 1), before);
+		factor->addIncoming(base, before);
+		remaining->addIncoming(start, before);
+
+		llvm::Value* isOdd = ctx.Builder.CreateTrunc(remaining, ctx.Builder.getInt1Ty());
+		llvm::Value* nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
+		llvm::Value* nextFactor = ctx.Builder.CreateMul(factor, factor);
+		llvm::Value* nextRemaining = ctx.Builder.CreateLShr(remaining, 1);
+
+		llvm::BasicBlock* loopEnd = ctx.Builder.GetInsertBlock();
+		result->addIncoming(nextResult, loopEnd);
+		factor->addIncoming(nextFactor, loopEnd);
+		remaining->addIncoming(nextRemaining, loopEnd);
+
+		llvm::Value* finished = ctx.Builder.CreateICmpEQ(nextRemaining, llvm::ConstantInt::get(intType, 0));
+		ctx.Builder.CreateCondBr(finished, done, loop);
+
+		ctx.Builder.SetInsertPoint(done);
+		llvm::PHINode* value = ctx.Builder.CreatePHI(intType, 1);
+		value->addIncoming(nextResult, loopEnd);
+
+		// a negative exponent skips straight to 0
+		llvm::Value* finalValue = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), value);
+		return Symbol::CreateValue(finalValue, type);
+    }
+
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
 		auto booleanType = ctx.ClearModule->Lookup("bool").value()->GetType();
+
+		// str values compare their contents, unless one side is null
+		bool isStr = lhs.GetType()->GetHash() == "str" || rhs.GetType()->GetHash() == "str";
+		bool isNull = llvm::isa<llvm::ConstantPointerNull>(lhs.GetLLVMValue()) || llvm::isa<llvm::ConstantPointerNull>(rhs.GetLLVMValue());
+
+		if (isStr && !isNull && lhs.GetLLVMValue()->getType()->isPointerTy() && rhs.GetLLVMValue()->getType()->isPointerTy())
+		{
+			llvm::FunctionCallee strcmp = ctx.Module.getOrInsertFunction("strcmp", llvm::FunctionType::get(ctx.Builder.getInt32Ty(), { ctx.Builder.getPtrTy(), ctx.Builder.getPtrTy() }, false));
+			llvm::Value* order = ctx.Builder.CreateCall(strcmp, { lhs.GetLLVMValue(), rhs.GetLLVMValue() }, "strcmp");
+			llvm::Value* zero = ctx.Builder.getInt32(0);
+			llvm::Value* result = nullptr;
+
+			switch (m_Expression)
+			{
+				case OperatorType::IsEqual:          result = ctx.Builder.CreateICmpEQ(order, zero); break;
+				case OperatorType::NotEqual:         result = ctx.Builder.CreateICmpNE(order, zero); break;
+				case OperatorType::LessThan:         result = ctx.Builder.CreateICmpSLT(order, zero); break;
+				case OperatorType::LessThanEqual:    result = ctx.Builder.CreateICmpSLE(order, zero); break;
+				case OperatorType::GreaterThan:      result = ctx.Builder.CreateICmpSGT(order, zero); break;
+				case OperatorType::GreaterThanEqual: result = ctx.Builder.CreateICmpSGE(order, zero); break;
+				default: break;
+			}
+
+			return Symbol::CreateValue(result, booleanType);
+		}
 
     	switch (m_Expression)
 		{
@@ -2018,6 +2103,112 @@ namespace clear
 		InitCall->Codegen(ctx);
 
 		return SymbolOps::Load(storage, ctx.Builder);
+	}
+
+	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail)
+	{
+		auto& builder = ctx.Builder;
+		llvm::FunctionCallee dprintf = ctx.Module.getOrInsertFunction("dprintf", llvm::FunctionType::get(builder.getInt32Ty(), { builder.getInt32Ty(), builder.getPtrTy() }, true));
+		llvm::FunctionCallee abort = ctx.Module.getOrInsertFunction("abort", llvm::FunctionType::get(builder.getVoidTy(), false));
+
+		std::string where = location.GetSourceFile().empty() ? std::string("unknown location") 
+			: std::format("{}:{}:{}", location.GetSourceFile().filename().string(), location.LineNumber + 1, location.ColumnNumber + 1);
+
+		std::string format = detail ? "panic: %s (%s): %s\n" : "panic: %s (%s)\n";
+		llvm::SmallVector<llvm::Value*> args = { builder.getInt32(2), builder.CreateGlobalStringPtr(format), 
+												 builder.CreateGlobalStringPtr(message), builder.CreateGlobalStringPtr(where) };
+
+		if (detail)
+			args.push_back(detail);
+
+		// output printed before the panic must not be lost in stdout's buffer
+		llvm::FunctionCallee fflush = ctx.Module.getOrInsertFunction("fflush", llvm::FunctionType::get(builder.getInt32Ty(), { builder.getPtrTy() }, false));
+		builder.CreateCall(fflush, { llvm::ConstantPointerNull::get(builder.getPtrTy()) });
+
+		builder.CreateCall(dprintf, args);
+		llvm::CallInst* call = builder.CreateCall(abort);
+		call->setDoesNotReturn();
+		builder.CreateUnreachable();
+	}
+
+	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		llvm::BasicBlock* failBlock = llvm::BasicBlock::Create(ctx.Context, "check.fail", function);
+		llvm::BasicBlock* okBlock = llvm::BasicBlock::Create(ctx.Context, "check.ok", function);
+
+		// tell the optimizer the failure is rare so the happy path stays straight-line code
+		llvm::MDBuilder weights(ctx.Context);
+		ctx.Builder.CreateCondBr(ok, okBlock, failBlock, weights.createBranchWeights(1 << 20, 1));
+
+		ctx.Builder.SetInsertPoint(failBlock);
+		EmitPanic(ctx, message, location, detail);
+
+		ctx.Builder.SetInsertPoint(okBlock);
+	}
+
+	Symbol ASTAssert::Codegen(CodegenContext& ctx)
+	{
+		Symbol condition = Condition->Codegen(ctx);
+		Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
+		condition = SymbolOps::Cast(condition, boolType, ctx.Builder);
+
+		llvm::Value* detail = Message ? Message->Codegen(ctx).GetLLVMValue() : nullptr;
+		EmitCheck(ctx, condition.GetLLVMValue(), "assertion failed", Location, detail);
+
+		return Symbol();
+	}
+
+	Symbol ASTContains::Codegen(CodegenContext& ctx)
+	{
+		Symbol needle = Needle->Codegen(ctx);
+		Symbol haystack = Haystack->Codegen(ctx);
+
+		auto arrayType = ArrayTy->As<ArrayType>();
+		auto elementType = arrayType->GetBaseType();
+		auto boolType = ctx.ClearModule->Lookup("bool").value()->GetType();
+
+		// a short unrolled chain of comparisons; LLVM turns small arrays into straight-line code
+		llvm::Value* found = ctx.Builder.getFalse();
+
+		for (size_t i = 0; i < arrayType->GetArraySize(); i++)
+		{
+			llvm::Value* address = ctx.Builder.CreateInBoundsGEP(arrayType->Get(), haystack.GetLLVMValue(), { ctx.Builder.getInt64(0), ctx.Builder.getInt64(i) });
+			llvm::Value* element = ctx.Builder.CreateLoad(elementType->Get(), address);
+			llvm::Value* equal = element->getType()->isFloatingPointTy() ? ctx.Builder.CreateFCmpOEQ(element, needle.GetLLVMValue()) 
+																		: ctx.Builder.CreateICmpEQ(element, needle.GetLLVMValue());
+			found = ctx.Builder.CreateOr(found, equal);
+		}
+
+		if (Negate)
+			found = ctx.Builder.CreateNot(found);
+
+		return Symbol::CreateValue(found, boolType);
+	}
+
+	Symbol ASTIntrinsic::Codegen(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		llvm::SmallVector<llvm::Value*> args;
+
+		for (auto& argument : Arguments)
+			args.push_back(argument->Codegen(ctx).GetLLVMValue());
+
+		if (Name == "strlen")
+		{
+			llvm::FunctionCallee strlen = ctx.Module.getOrInsertFunction("strlen", llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false));
+			return Symbol::CreateValue(builder.CreateCall(strlen, args), ResultType);
+		}
+
+		if (Name == "str_contains")
+		{
+			llvm::FunctionCallee strstr = ctx.Module.getOrInsertFunction("strstr", llvm::FunctionType::get(builder.getPtrTy(), { builder.getPtrTy(), builder.getPtrTy() }, false));
+			llvm::Value* position = builder.CreateCall(strstr, { args[1], args[0] });
+			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+		}
+
+		CLEAR_UNREACHABLE("unknown intrinsic ", Name);
+		return Symbol();
 	}
 
 	Symbol ASTTemporary::Codegen(CodegenContext& ctx)

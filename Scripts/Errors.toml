@@ -56,7 +56,7 @@ Advice  = "There is an unmatched ‘{}’."
 
 [UnexpectedToken]
 Message = "Unexpected token encountered."
-Advice  = "The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed."
+Advice  = "‘{}’ was not expected here. Check for a missing operator, bracket or line break."
 
 [ExpectedIndentation]
 Message = "Expected ':' for block indentation"
@@ -240,3 +240,7 @@ Advice  = "Make ‘{}’ a generic function outside the class, or make the class
 [IndexNotInteger]
 Message = "Array index must be an integer."
 Advice  = "‘{}’). Use ‘as’ to convert the index to an integer type."
+
+[NoLength]
+Message = "Value has no length."
+Advice  = "len() works on arrays, str and classes with __len__, not ‘{}’."

@@ -149,6 +149,15 @@ namespace clear
         llvm::PointerType* m_LLVMType;
     };
 
+    // the type of string literals: a pointer to zero-terminated bytes whose ==, < and friends compare
+    // contents rather than addresses; it converts freely to and from *int8 for C functions
+    class StrType : public PointerType
+    {
+    public:
+        using PointerType::PointerType;
+        virtual std::string GetHash() const override { return "str"; }
+    };
+
     class ArrayType : public Type 
     {
     public:

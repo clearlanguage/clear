@@ -47,6 +47,7 @@ namespace clear
         PlusEquals,          // +=
         MinusEquals,         // -=
         StarEquals,          // *=
+        StarStar,            // **
         SlashEquals,         // /=
         PercentEquals,       // %=
         EqualsEquals,        // ==
@@ -114,7 +115,7 @@ namespace clear
          "function", "class", "when", "use", "otherwise", "for",
          "property", "declare", "enum", "sizeof", "is",
 
-        "not","and","or",
+        "not","and","or", "assert",
 
         "let", "const",
     };
@@ -157,6 +158,7 @@ namespace clear
             {"+=",   TokenType::PlusEquals},
             {"-=",   TokenType::MinusEquals},
             {"*=",   TokenType::StarEquals},
+            {"**",   TokenType::StarStar},
             {"/=",   TokenType::SlashEquals},
             {"%=",   TokenType::PercentEquals},
             {"==",   TokenType::EqualsEquals},
@@ -213,6 +215,7 @@ namespace clear
         {TokenType::PlusEquals,        2},
         {TokenType::MinusEquals,       2},
         {TokenType::StarEquals,        2},
+        {TokenType::StarStar,          2},
         {TokenType::SlashEquals,       2},
         {TokenType::PercentEquals,     2},
         {TokenType::EqualsEquals,      2},

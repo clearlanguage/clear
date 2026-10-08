@@ -40,7 +40,8 @@ namespace clear
 
         m_Types["int"]  = m_Types["int32"];
         m_Types["uint"] = m_Types["uint32"];
-        m_Types["string"] = GetPointerTo(m_Types["int8"]); //TODO: gonna be a class soon
+        m_Types["str"] = std::make_shared<StrType>(m_Types["int8"], *m_Context);
+        m_Types["string"] = m_Types["str"];
 
         TypeFlagSet floatingFlags;
         floatingFlags.set((size_t)TypeFlags::Floating);
@@ -145,7 +146,7 @@ namespace clear
 
         if(token.IsType(TokenType::String))
         {
-            return GetPointerTo(GetType("int8"));
+            return GetType("str");
         }
 
         if(token.IsType(TokenType::Char))

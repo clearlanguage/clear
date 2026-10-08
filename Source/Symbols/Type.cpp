@@ -212,6 +212,9 @@ namespace clear
         if (!type)
             return "void";
 
+        if (type->GetHash() == "str")
+            return "str";
+
         if (auto pointer = std::dynamic_pointer_cast<PointerType>(type))
             return pointer->GetBaseType() ? "*" + GetDisplayName(pointer->GetBaseType()) : "null";
 

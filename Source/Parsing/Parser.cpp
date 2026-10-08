@@ -123,6 +123,8 @@ namespace clear
 		{OperatorType::IsEqual,         {8, 9}},
 		{OperatorType::NotEqual,        {8, 9}},
 		{OperatorType::Ellipsis,        {8, 9}},
+		{OperatorType::In,              {8, 9}},
+		{OperatorType::NotIn,           {8, 9}},
 
 		{OperatorType::Not,     {0, 7}},
 		{OperatorType::And,     {4, 5}},
@@ -272,6 +274,19 @@ namespace clear
 			if (statement)
 				block->Children.push_back(statement);
 
+			// a simple statement must end with its line; leftovers (like `a, b = b, a`) are an error, never ignored
+			bool endsWithBlock = statement && (statement->GetType() == ASTNodeType::IfExpression || statement->GetType() == ASTNodeType::WhileLoop ||
+											   statement->GetType() == ASTNodeType::ForLoop || statement->GetType() == ASTNodeType::FunctionDefinition ||
+											   statement->GetType() == ASTNodeType::Class || statement->GetType() == ASTNodeType::Switch ||
+											   statement->GetType() == ASTNodeType::Enum || statement->GetType() == ASTNodeType::GenericTemplate ||
+											   statement->GetType() == ASTNodeType::Block);
+
+			if (statement && !endsWithBlock && !Match(TokenType::EndLine) && !Match(TokenType::EndScope) && !Match(TokenType::EndOfFile))
+			{
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, Peak(), DiagnosticCode_UnexpectedToken);
+				SkipUntil(TokenType::EndLine);
+			}
+
 			// error recovery (or `pass`) produced nothing, make sure we never get stuck on the same token
 			if (m_Position == start)
 				Consume();
@@ -313,6 +328,7 @@ namespace clear
 			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
 			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
 			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
+			{"assert",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseAssert(); }},
 			{"continue",  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
         };
         
@@ -363,9 +379,11 @@ namespace clear
 			.CodeBlock = ParseCodeBlock() 
 		});
 		
-		while (Match("elseif"))		
+		// `elseif` and `else if` mean the same
+		while (Match("elseif") || (Match("else") && Next().GetData() == "if"))		
 		{
-			Consume();
+			if (Consume().GetData() == "else")
+				Consume(); // if
 
 			auto expr = ParseExpr();
 
@@ -409,6 +427,31 @@ namespace clear
 
 		return whileExp;
     }
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseAssert()
+	{
+		Token keyword = Consume(); // assert
+
+		auto assertNode = std::make_shared<ASTAssert>();
+		assertNode->Location = keyword;
+		assertNode->Condition = ParseExpr();
+
+		if (!assertNode->Condition)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
+			SkipUntil(TokenType::EndLine);
+			return nullptr;
+		}
+
+		// assert condition, "message"
+		if (Match(TokenType::Comma))
+		{
+			Consume();
+			assertNode->Message = ParseExpr();
+		}
+
+		return assertNode;
+	}
 
 	std::shared_ptr<ASTNodeBase> Parser::ParseLoopControl()
 	{
@@ -994,6 +1037,24 @@ namespace clear
 				lhs = info.InfixParse(this, lhs);
 				continue;
 			}
+
+			// `x not in items`
+			if (Match("not") && Next().GetData() == "in")
+			{
+				OperatorInfo info = g_OperatorTable.at(OperatorType::NotIn);
+				if (info.LeftBindingPower < minBindingPower)
+					break;
+
+				Token notToken = Consume(); // not
+				Consume();                  // in
+
+				auto binaryExpr = std::make_shared<ASTBinaryExpression>(OperatorType::NotIn);
+				binaryExpr->Location = notToken;
+				binaryExpr->LeftSide = lhs;
+				binaryExpr->RightSide = ParseExpr(info.RightBindingPower);
+				lhs = binaryExpr;
+				continue;
+			}
 			
 			break;
 		} while (true);
@@ -1519,6 +1580,7 @@ namespace clear
 			case TokenType::Minus:				return OperatorType::Sub;
 			case TokenType::ForwardSlash:       return OperatorType::Div;
 			case TokenType::Star:				return OperatorType::Mul;
+			case TokenType::StarStar:			return OperatorType::Power;
 			case TokenType::Percent:            return OperatorType::Mod;
 							
 			case TokenType::Ampersand:          return OperatorType::BitwiseAnd;
@@ -1559,6 +1621,7 @@ namespace clear
 		if (current.GetData() == "and")     return OperatorType::And;
 		if (current.GetData() == "or")      return OperatorType::Or;
 		if (current.GetData() == "as")		return OperatorType::Cast;
+		if (current.GetData() == "in")		return OperatorType::In;
 		if (current.GetData() == "is")		return OperatorType::Is;
 
 		return OperatorType::None;

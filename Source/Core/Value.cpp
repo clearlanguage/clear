@@ -31,7 +31,7 @@ namespace clear
 
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data.AsBool()), nullptr};
 		
-		if(hash == "int8*") return GetConstantString(data.GetData(), context, module);
+		if(hash == "int8*" || hash == "str") return GetConstantString(data.GetData(), context, module);
 		if(hash == "void*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
 
 

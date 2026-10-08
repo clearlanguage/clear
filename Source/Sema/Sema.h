@@ -57,6 +57,12 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSwitch> switchNode, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> AsValue(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<ASTNodeBase> CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name,
+												std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 
 		// value of an integer expression known at compile time (literals, consts, enum members, arithmetic on those)
 		std::optional<int64_t> EvaluateInteger(std::shared_ptr<ASTNodeBase> node);
