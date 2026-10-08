@@ -3,10 +3,10 @@ declare printf(fmt: *int8, args: ...) -> int32
 class Grid:
     cells: [9; int]
 
-    function __getitem__(self: *Grid, i: int) -> int:
+    operator get(self: *Grid, i: int) -> int:
         return self.cells[i]
 
-    function __setitem__(self: *Grid, i: int, value: int):
+    operator set(self: *Grid, i: int, value: int):
         self.cells[i] = value
 
 function main() -> int32:

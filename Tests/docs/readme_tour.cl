@@ -10,7 +10,7 @@ class Vec2:
     x: float64
     y: float64
 
-    function __add__(self: *Vec2, other: Vec2) -> Vec2:
+    operator add(self: *Vec2, other: Vec2) -> Vec2:
         return Vec2(self.x + other.x, self.y + other.y)
 
     function length(self: *Vec2) -> float64:
@@ -20,7 +20,7 @@ class Account:
     owner: *int8
     balance: float64 = 0.0
 
-    function __init__(self: *Account, owner: *int8):
+    function init(self: *Account, owner: *int8):
         self.owner = owner
 
     function deposit(self: *Account, amount: float64):

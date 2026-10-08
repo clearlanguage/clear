@@ -1777,6 +1777,68 @@ namespace clear
 		return sizeofExpr;
 	}
 
+	// operator names, and the hook the compiler looks for under each
+	static const std::vector<std::pair<std::string, std::string>> s_OperatorNames = {
+		{ "add", "__add__" }, { "subtract", "__sub__" }, { "multiply", "__mul__" }, { "divide", "__div__" },
+		{ "modulo", "__mod__" }, { "power", "__pow__" },
+		{ "equals", "__eq__" }, { "not_equals", "__ne__" }, { "less", "__lt__" }, { "less_equal", "__le__" },
+		{ "greater", "__gt__" }, { "greater_equal", "__ge__" },
+		{ "get", "__getitem__" }, { "set", "__setitem__" }, { "len", "__len__" }, { "contains", "__contains__" },
+		{ "iterate", "__iter__" }, { "call", "__call__" }, { "str", "__str__" }, { "hash", "__hash__" },
+		{ "destruct", "__destruct__" },
+	};
+
+	bool Parser::NameSpecialMethod(std::shared_ptr<ASTFunctionDefinition> method, const Token& nameToken, bool isOperator)
+	{
+		const std::string name = method->GetName();
+
+		if (isOperator)
+		{
+			auto it = std::find_if(s_OperatorNames.begin(), s_OperatorNames.end(), [&](auto& entry) { return entry.first == name; });
+
+			if (it == s_OperatorNames.end())
+			{
+				std::string known;
+				for (auto& [operatorName, hook] : s_OperatorNames)
+					known += (known.empty() ? "" : ", ") + operatorName;
+
+				Token where = nameToken;
+				where.SetData(std::format("{}’. The operators are: {}", name, known));
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, where, DiagnosticCode_UnknownOperator, name.size());
+				return false;
+			}
+
+			method->SetName(it->second);
+			return true;
+		}
+
+		// the constructor is `function init`
+		if (name == "init")
+		{
+			method->SetName("__init__");
+			return true;
+		}
+
+		// Python-style __add__: point at the Clear spelling
+		if (name.size() > 4 && name.starts_with("__") && name.ends_with("__"))
+		{
+			std::string suggestion = name == "__init__" ? "function init(self, ...)" : "operator <name>(self, ...)";
+
+			for (auto& [operatorName, hook] : s_OperatorNames)
+			{
+				if (hook == name)
+					suggestion = std::format("operator {}(self, ...)", operatorName);
+			}
+
+			Token where = nameToken;
+			where.SetData(std::format("{}’ is written ‘{}", name, suggestion));
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, where, DiagnosticCode_UseOperatorSyntax, name.size());
+			return false;
+		}
+
+		return true;
+	}
+
 	std::shared_ptr<ASTNodeBase> Parser::ParseClass()
     {
         // `union Name:` is parsed like a class whose fields share storage, `trait Name:` holds only method signatures
@@ -1844,16 +1906,18 @@ namespace clear
 
             // virtual function speak(self): dispatched through the vtable
             // property area(self) -> float: read as obj.area;  property area(self, value: float): obj.area = value
+            // operator add(self, other: Vec2) -> Vec2: what `a + b` calls
             bool isVirtual = Match("virtual") && Next().GetData() == "function";
             bool isProperty = Match("property") && Next().IsType(TokenType::Identifier);
+            bool isOperator = Match("operator") && Next().IsType(TokenType::Identifier);
 
             if (isVirtual)
                 Consume();
 
-            if(Match("function") || isProperty)
+            if(Match("function") || isProperty || isOperator)
             {
 				Token methodToken = Next();
-				auto method = ParseFunctionDefinition(isTrait, isProperty);
+				auto method = ParseFunctionDefinition(isTrait, isProperty || isOperator);
 
 				if (method)
 				{
@@ -1863,6 +1927,9 @@ namespace clear
 					// the setter lives next to the getter under its own name
 					if (isProperty && method->Arguments.size() == 2)
 						method->SetName("__set_" + method->GetName());
+
+					if (!NameSpecialMethod(method, methodToken, isOperator))
+						method = nullptr;
 				}
 
 				if (m_PendingGeneric)

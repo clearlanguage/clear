@@ -7,7 +7,7 @@ class Account:
     balance: float64 = 100.0
     history: int
 
-    function __init__(self: *Account, owner: *int8, deposit: float64):
+    function init(self: *Account, owner: *int8, deposit: float64):
         self.owner = owner
         self.balance += deposit
         self.history = 1

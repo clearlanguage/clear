@@ -79,6 +79,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseDefer();
 		std::shared_ptr<ASTNodeBase> ParseConst();
 		std::shared_ptr<ASTNodeBase> ParseMacro();
+		bool NameSpecialMethod(std::shared_ptr<ASTFunctionDefinition> method, const Token& nameToken, bool isOperator);
 		std::shared_ptr<ASTNodeBase> ParseAsync();
 		std::shared_ptr<ASTNodeBase> ParseYield();
 		std::shared_ptr<ASTImport> ParseImport();

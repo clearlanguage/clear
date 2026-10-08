@@ -45,7 +45,7 @@ class String:
     length: int64
     capacity: int64
 
-    function __init__(self: *String, text: str):
+    function init(self: *String, text: str):
         self.append(text)
 
     // room for at least `needed` bytes (plus the terminating zero)
@@ -88,63 +88,66 @@ class String:
         self.append_bytes(&buffer[0], count as int64)
 
     // the text as a str (valid until the String changes or is freed)
-    function __str__(self: *String) -> str:
+    function text(self: *String) -> str:
         if self.data == null:
             return ""
         return self.data
 
     function c_str(self: *String) -> str:
-        return self.__str__()
+        return self.text()
 
-    function __len__(self: *String) -> int64:
+    operator str(self: *String) -> str:
+        return self.text()
+
+    operator len(self: *String) -> int64:
         return self.length
 
-    function __getitem__(self: *String, index: int64) -> int8:
+    operator get(self: *String, index: int64) -> int8:
         assert index >= 0 and index < self.length, "String index out of range"
         return self.data[index]
 
-    function __setitem__(self: *String, index: int64, character: int8):
+    operator set(self: *String, index: int64, character: int8):
         assert index >= 0 and index < self.length, "String index out of range"
         self.data[index] = character
 
-    function __eq__(self: *String, other: String) -> bool:
-        return self.length == other.length and strcmp(self.__str__(), other.__str__()) == 0
+    operator equals(self: *String, other: String) -> bool:
+        return self.length == other.length and strcmp(self.text(), other.text()) == 0
 
-    function __ne__(self: *String, other: String) -> bool:
-        return not self.__eq__(other)
+    operator not_equals(self: *String, other: String) -> bool:
+        return self.length != other.length or strcmp(self.text(), other.text()) != 0
 
-    function __lt__(self: *String, other: String) -> bool:
-        return strcmp(self.__str__(), other.__str__()) < 0
+    operator less(self: *String, other: String) -> bool:
+        return strcmp(self.text(), other.text()) < 0
 
-    function __hash__(self: *String) -> uint64:
-        return hash(self.__str__())
+    operator hash(self: *String) -> uint64:
+        return hash(self.text())
 
     // a new String holding both (allocates)
-    function __add__(self: *String, other: String) -> String:
+    operator add(self: *String, other: String) -> String:
         let result = self.copy()
         result.append_string(other)
         return result
 
-    function __contains__(self: *String, part: str) -> bool:
-        return strstr(self.__str__(), part) != null
+    operator contains(self: *String, part: str) -> bool:
+        return strstr(self.text(), part) != null
 
     function equals(self: *String, text: str) -> bool:
-        return strcmp(self.__str__(), text) == 0
+        return strcmp(self.text(), text) == 0
 
     function copy(self: *String) -> String:
         let result = String { }
-        result.append_bytes(self.__str__(), self.length)
+        result.append_bytes(self.text(), self.length)
         return result
 
     // the index of the first `part`, or -1
     function find(self: *String, part: str) -> int64:
-        let found = strstr(self.__str__(), part)
+        let found = strstr(self.text(), part)
         if found == null:
             return -1
         return (found as int64) - (self.data as int64)
 
     function starts_with(self: *String, prefix: str) -> bool:
-        return strncmp(self.__str__(), prefix, strlen(prefix)) == 0
+        return strncmp(self.text(), prefix, strlen(prefix)) == 0
 
     function ends_with(self: *String, suffix: str) -> bool:
         let count = strlen(suffix) as int64
@@ -182,10 +185,10 @@ class String:
         return self.slice(start, end)
 
     function to_int(self: *String) -> int32:
-        return atoi(self.__str__())
+        return atoi(self.text())
 
     function to_float(self: *String) -> float64:
-        return atof(self.__str__())
+        return atof(self.text())
 
     function clear(self: *String):
         self.length = 0

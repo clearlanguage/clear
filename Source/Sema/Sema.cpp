@@ -2337,10 +2337,29 @@ namespace clear
 		bool throughPointer = forExpr->IterableType->IsPointer();
 		auto classType = (throughPointer ? forExpr->IterableType->As<PointerType>()->GetBaseType() : forExpr->IterableType)->As<ClassType>();
 
-		// sparse containers (Map) iterate over slots: __slots__() of them, skipping those where __used__(i) is false, value __at__(i)
-		bool slotted = classType->MemberFunctions.contains("__slots__") && classType->MemberFunctions.contains("__used__") && classType->MemberFunctions.contains("__at__");
+		// operator iterate: for x in obj  ->  for x in obj.iterate()  (a generator)
+		if (classType->MemberFunctions.contains("__iter__"))
+		{
+			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
+			access->Location = forExpr->Location;
+			access->LeftSide = iterable;
+			access->RightSide = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__iter__", forExpr->Location.GetSourceFile(), forExpr->Location.LineNumber, forExpr->Location.ColumnNumber));
 
-		if (!slotted && (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__")))
+			auto call = std::make_shared<ASTFunctionCall>();
+			call->Location = forExpr->Location;
+			call->Callee = access;
+
+			auto loop = std::make_shared<ASTForExpression>();
+			loop->Location = forExpr->Location;
+			loop->VariableName = forExpr->VariableName;
+			loop->Iterable = call;
+			loop->CodeBlock = forExpr->CodeBlock;
+			return loop;
+		}
+
+		bool slotted = false;
+
+		if (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__"))
 		{
 			Token location = GetNodeLocation(iterable);
 			location.SetData(classType->GetHash());

@@ -9,7 +9,7 @@
 //     for name in ages:              // keys, in no particular order
 //         print(name, ages[name])
 //
-// Keys are hashed with the built-in hash() (numbers, enums, pointers, str, or a class with __hash__)
+// Keys are hashed with the built-in hash() (numbers, enums, pointers, str, or a class with operator hash)
 // and compared with ==. Open addressing with linear probing; the table doubles when it is 3/4 full.
 
 import "memory"
@@ -49,14 +49,18 @@ class Map[K, V]:
 
         for i in 0..old_capacity:
             if old_states[i] == 1:
-                self.__setitem__(*(old_keys + i), *(old_values + i))
+                self.insert(*(old_keys + i), *(old_values + i))
 
         if old_capacity > 0:
             release(old_keys)
             release(old_values)
             release(old_states)
 
-    function __setitem__(self: *Map[K, V], key: K, value: V):
+    // map[key] = value
+    operator set(self: *Map[K, V], key: K, value: V):
+        self.insert(key, value)
+
+    function insert(self: *Map[K, V], key: K, value: V):
         if (self.length + self.removed + 1) * 4 > self.capacity * 3:
             self.grow()
 
@@ -82,7 +86,7 @@ class Map[K, V]:
         self.length += 1
 
     // map[key] for a key that must be present (checked like a list index)
-    function __getitem__(self: *Map[K, V], key: K) -> V:
+    operator get(self: *Map[K, V], key: K) -> V:
         let slot = self.find(key)
         assert slot >= 0, "key not in Map"
         return *(self.values + slot)
@@ -97,7 +101,7 @@ class Map[K, V]:
         let slot = self.find(key)
         return when slot < 0 use fallback otherwise *(self.values + slot)
 
-    function __contains__(self: *Map[K, V], key: K) -> bool:
+    operator contains(self: *Map[K, V], key: K) -> bool:
         return self.find(key) >= 0
 
     // true when the key was there
@@ -110,7 +114,7 @@ class Map[K, V]:
         self.removed += 1
         return true
 
-    function __len__(self: *Map[K, V]) -> int64:
+    operator len(self: *Map[K, V]) -> int64:
         return self.length
 
     function is_empty(self: *Map[K, V]) -> bool:
@@ -122,15 +126,11 @@ class Map[K, V]:
         self.length = 0
         self.removed = 0
 
-    // `for key in map` walks the slots in use
-    function __slots__(self: *Map[K, V]) -> int64:
-        return self.capacity
-
-    function __used__(self: *Map[K, V], slot: int64) -> bool:
-        return self.states[slot] == 1
-
-    function __at__(self: *Map[K, V], slot: int64) -> K:
-        return *(self.keys + slot)
+    // `for key in map`: the keys, in no particular order
+    operator iterate(self: *Map[K, V]) -> Generator[K]:
+        for slot in 0..self.capacity:
+            if self.states[slot] == 1:
+                yield *(self.keys + slot)
 
     function free(self: *Map[K, V]):
         if self.capacity > 0:

@@ -7,7 +7,7 @@ class Point:
 class Bag:
     items: [4; int]
 
-    function __contains__(self: *Bag, value: int) -> bool:
+    operator contains(self: *Bag, value: int) -> bool:
         return value in self.items
 
 function main() -> int32:

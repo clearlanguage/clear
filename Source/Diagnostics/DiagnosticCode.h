@@ -91,6 +91,8 @@ namespace clear
 		DiagnosticCode_YieldOutsideGenerator,
 		DiagnosticCode_AwaitOutsideAsync,
 		DiagnosticCode_NotAwaitable,
+		DiagnosticCode_UnknownOperator,
+		DiagnosticCode_UseOperatorSyntax,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -182,6 +184,8 @@ namespace clear
 		"‘yield’ is only allowed in a generator.",
 		"‘await’ is only allowed in an async function.",
 		"Only a Task can be awaited.",
+		"Unknown operator.",
+		"Special methods are written with ‘operator’.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -220,7 +224,7 @@ namespace clear
 		"Use a literal or constant expression greater than zero for the size near ‘{}’.",
 		"Only a name can follow ‘.’, near ‘{}’.",
 		"‘{}’ is not a field or method of this type. Check the spelling or the class definition.",
-		"Define __getitem__ (and __setitem__ for assignment) on the class to support ‘[]’ near ‘{}’.",
+		"Give the class ‘operator get’ (and ‘operator set’ for assignment) to support ‘[]’ near ‘{}’.",
 		"‘{}’ is not a type. Use a built-in type like int or float64, a class name, or a pointer such as *int.",
 		"‘{}’ is not supported. Convert one side with ‘as’ if a conversion is intended.",
 		"The value near ‘{}’ cannot be converted to the declared return type.",
@@ -233,7 +237,7 @@ namespace clear
 		"‘{}’ is not a compile-time integer constant.",
 		"Write the type arguments explicitly, for example ‘{}[int]’.",
 		"Converting ‘{}’ needs an explicit cast, for example ‘value as T’.",
-		"A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither.",
+		"A for loop needs a range (0..n), an array, a generator, or a class with ‘operator iterate’ (or ‘operator len’ and ‘operator get’); ‘{}’ is none of these.",
 		"Each branch of a switch starts with ‘case value:’ or ‘default:’, found ‘{}’.",
 		"Give ‘{}’ a value: const name = value.",
 		"‘{}’ was declared with const. Use let if it needs to change.",
@@ -245,7 +249,7 @@ namespace clear
 		"‘{}.",
 		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
 		"‘{}’). Use ‘as’ to convert the index to an integer type.",
-		"len() works on arrays, str and classes with __len__, not ‘{}’.",
+		"len() works on arrays, str and classes with ‘operator len’, not ‘{}’.",
 		"‘{}).",
 		"‘{}’ never points at a value, so it cannot be dereferenced.",
 		"Shifting by ‘{}).",
@@ -268,9 +272,11 @@ namespace clear
 		"Only a class declared as class Name(Base) has a ‘{}’.",
 		"Add ‘property {}(self, value: T)’ to the class to allow assigning to it.",
 		"‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly.",
-		"‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method.",
+		"‘{}’ is not a number, pointer, enum or str. Give the class ‘operator hash(self) -> uint64’.",
 		"Declare the function as returning Generator[T], e.g. function {}s() -> Generator[int]:",
 		"Mark the function ‘async function’, or run the task from ordinary code with task.run() ({}).",
 		"‘{}’ is not the result of calling an async function.",
+		"‘{}.",
+		"‘{}’.",
 	};
 }

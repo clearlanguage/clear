@@ -3,10 +3,10 @@ import "list"
 class Countdown:
     start: int
 
-    function __len__(self: *Countdown) -> int:
+    operator len(self: *Countdown) -> int:
         return self.start
 
-    function __getitem__(self: *Countdown, i: int) -> int:
+    operator get(self: *Countdown, i: int) -> int:
         return self.start - i
 
 function make() -> List[float64]:

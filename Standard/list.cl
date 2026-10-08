@@ -27,15 +27,15 @@ class List[T]:
         return *(self.data + self.length)
 
     // indices are checked like array indices (the checks disappear with --no-checks / -O3)
-    function __getitem__(self: *List[T], index: int64) -> T:
+    operator get(self: *List[T], index: int64) -> T:
         assert index >= 0 and index < self.length, "List index out of range"
         return *(self.data + index)
 
-    function __setitem__(self: *List[T], index: int64, value: T):
+    operator set(self: *List[T], index: int64, value: T):
         assert index >= 0 and index < self.length, "List index out of range"
         *(self.data + index) = value
 
-    function __len__(self: *List[T]) -> int64:
+    operator len(self: *List[T]) -> int64:
         return self.length
 
     function last(self: *List[T]) -> T:

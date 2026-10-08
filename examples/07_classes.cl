@@ -9,7 +9,7 @@ class Account:
     owner: str
     balance: float64 = 0.0                 // a default
 
-    function __init__(self: *Account, owner: str):
+    function init(self: *Account, owner: str):
         self.owner = owner
 
     function deposit(self: *Account, amount: float64):
