@@ -188,6 +188,10 @@ namespace clear
 		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> MemberFunctions;
 		std::vector<std::shared_ptr<ASTNodeBase>> MemberDefaults; // per field, null when the field has no default
 
+		// for instances of generic classes: List[int32] remembers "List" and [int32]
+		std::string GenericOrigin;
+		std::vector<std::shared_ptr<Type>> GenericArguments;
+
     private:
 		llvm::StructType* m_LLVMType = nullptr;
 		llvm::MapVector<std::string, std::shared_ptr<Type>> m_MemberValues;

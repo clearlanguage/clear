@@ -778,16 +778,16 @@ namespace clear
 			auto setFunc = clsType->MemberFunctions.at("__setitem__");
 			EnsureDefined(setFunc->GetFunctionSymbol().FunctionNode);
 
-    		auto funcCall = std::make_shared<ASTFunctionCall>( );
-    		funcCall->Callee = setFunc->GetFunctionSymbol().FunctionNode;
+    		auto funcCall = std::make_shared<ASTFunctionCall>();
+			funcCall->Location = funcCallNode->Location;
     		funcCall->Arguments = funcCallNode->Arguments;
     		funcCall->Arguments.push_back(assignmentOp->Value);
 
-    		auto var = std::make_shared<ASTVariable>(Token{});
+    		auto var = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__setitem__", funcCall->Location.GetSourceFile(), funcCall->Location.LineNumber, funcCall->Location.ColumnNumber));
     		var->Variable = setFunc;
 
     		funcCall->Callee = var;
-    		return funcCall;
+    		return CheckCall(funcCall);
 
 
     	}
@@ -1115,7 +1115,10 @@ namespace clear
 
 			forExpr->IterableType = m_TypeInferEngine.InferTypeFromNode(forExpr->Iterable);
 
-			if (forExpr->IterableType && forExpr->IterableType->IsClass())
+			bool isClassPointer = forExpr->IterableType && forExpr->IterableType->IsPointer() && forExpr->IterableType->As<PointerType>()->GetBaseType() &&
+								  forExpr->IterableType->As<PointerType>()->GetBaseType()->IsClass();
+
+			if (forExpr->IterableType && (forExpr->IterableType->IsClass() || isClassPointer))
 				return Visit(LowerClassIteration(forExpr, pristineIterable), context);
 
 			if (!forExpr->IterableType || !forExpr->IterableType->IsArray())
@@ -1170,7 +1173,8 @@ namespace clear
 		//     body                         for i in 0..it.__len__():
 		//                                      let x = it.__getitem__(i)
 		//                                      body
-		auto classType = forExpr->IterableType->As<ClassType>();
+		bool throughPointer = forExpr->IterableType->IsPointer();
+		auto classType = (throughPointer ? forExpr->IterableType->As<PointerType>()->GetBaseType() : forExpr->IterableType)->As<ClassType>();
 
 		if (!classType->MemberFunctions.contains("__len__") || !classType->MemberFunctions.contains("__getitem__"))
 		{
@@ -1212,7 +1216,12 @@ namespace clear
 		auto iterableDecl = std::make_shared<ASTVariableDeclaration>(token(TokenType::Identifier, iterableName));
 		iterableDecl->Location = location;
 
-		if (isStorage)
+		if (throughPointer)
+		{
+			// already a pointer to the object, iterate through it
+			iterableDecl->Initializer = iterable;
+		}
+		else if (isStorage)
 		{
 			auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
 			address->Location = location;
@@ -1698,6 +1707,23 @@ namespace clear
 			return true;
 		}
 
+		// List[T] matched against an instance of List binds T to its type arguments
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(pattern); subscript && actual->IsClass())
+		{
+			auto target = std::dynamic_pointer_cast<ASTVariable>(subscript->Target);
+			auto classType = actual->As<ClassType>();
+
+			if (!target || target->GetName().GetData() != classType->GenericOrigin || subscript->SubscriptArgs.size() != classType->GenericArguments.size())
+				return false;
+
+			bool bound = false;
+
+			for (size_t i = 0; i < subscript->SubscriptArgs.size(); i++)
+				bound |= BindGenericType(subscript->SubscriptArgs[i], classType->GenericArguments[i], names, bindings);
+
+			return bound;
+		}
+
 		// [N; T] matched against an array binds T to the element type
 		if (auto array = std::dynamic_pointer_cast<ASTArrayType>(pattern); array && actual->IsArray())
 			return BindGenericType(array->TypeNode, actual->As<ArrayType>()->GetBaseType(), names, bindings);
@@ -1785,36 +1811,84 @@ namespace clear
 
 		if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
 		{
-			//TODO: check all values are ints and cast if needed
 			auto targetType = m_TypeInferEngine.InferTypeFromNode(subscript->Target);
+
+			if (!targetType)
+				return nullptr;
+
+			// a class, or a pointer to a class, that defines indexing: obj[i] calls obj.__getitem__(i)
+			std::shared_ptr<ClassType> clsType;
+			std::shared_ptr<ASTNodeBase> self = subscript->Target;
+
 			if (targetType->IsClass())
 			{
-				auto clsType = std::dynamic_pointer_cast<ClassType>(targetType);
+				clsType = targetType->As<ClassType>();
 
-				if (!clsType->MemberFunctions.contains("__getitem__"))
+				// the target is the object's storage, pass its address as self
+				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+				address->Operand = subscript->Target;
+				address->Location = GetNodeLocation(subscript->Target);
+				self = address;
+			}
+			else if (targetType->IsPointer())
+			{
+				auto pointee = targetType->As<PointerType>()->GetBaseType();
+
+				if (pointee && pointee->IsClass() && (pointee->As<ClassType>()->MemberFunctions.contains("__getitem__") || 
+													  pointee->As<ClassType>()->MemberFunctions.contains("__setitem__")))
+				{
+					clsType = pointee->As<ClassType>();
+
+					// the pointer value is the object's address
+					auto load = std::make_shared<ASTLoad>();
+					load->Operand = subscript->Target;
+					self = load;
+				}
+			}
+
+			if (clsType)
+			{
+				bool hasGet = clsType->MemberFunctions.contains("__getitem__");
+				bool hasSet = clsType->MemberFunctions.contains("__setitem__");
+
+				if (!hasGet && !(hasSet && context.ValueReq == ValueRequired::LValue))
 				{
 					Report(DiagnosticCode_MissingIndexOverload, GetNodeLocation(subscript->Target));
 					return nullptr;
 				}
 
-				auto memberFunc = clsType->MemberFunctions.at("__getitem__");
-				EnsureDefined(memberFunc->GetFunctionSymbol().FunctionNode);
-				auto funcCall = std::make_shared<ASTFunctionCall>( );
-				funcCall->Callee = memberFunc->GetFunctionSymbol().FunctionNode;
+				auto funcCall = std::make_shared<ASTFunctionCall>();
+				funcCall->Location = GetNodeLocation(subscript->Target);
 				funcCall->ClassType = clsType;
-				funcCall->Arguments.push_back(subscript->Target );
-				funcCall->Arguments.insert(
-					funcCall->Arguments.end(),
-					subscript->SubscriptArgs.begin(),
-					subscript->SubscriptArgs.end()
-				);
+				funcCall->Arguments.push_back(self);
+				funcCall->Arguments.append(subscript->SubscriptArgs.begin(), subscript->SubscriptArgs.end());
 
-				auto var = std::make_shared<ASTVariable>(Token{});
-				var->Variable = memberFunc;
-
+				auto var = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__getitem__", funcCall->Location.GetSourceFile(), funcCall->Location.LineNumber, funcCall->Location.ColumnNumber));
 				funcCall->Callee = var;
-				return funcCall;
 
+				if (!hasGet)
+					return funcCall; // only used as the target of an assignment, which calls __setitem__
+
+				var->Variable = clsType->MemberFunctions.at("__getitem__");
+
+				// an assignment rewrites this call into __setitem__, its arguments are checked there
+				if (context.ValueReq == ValueRequired::LValue && hasSet)
+					return funcCall;
+
+				return CheckCall(funcCall);
+			}
+
+			for (auto& index : subscript->SubscriptArgs)
+			{
+				auto indexType = m_TypeInferEngine.InferTypeFromNode(index);
+
+				if (!indexType || !indexType->IsIntegral() || indexType->IsEnum() || indexType->Get()->isIntegerTy(1))
+				{
+					Token location = GetNodeLocation(index);
+					location.SetData(std::format("{}’ is not an integer (‘{}", GetDisplayName(indexType), location.GetData()));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_IndexNotInteger, 1);
+					return nullptr;
+				}
 			}
 			if (context.ValueReq == ValueRequired::RValue)
 			{
@@ -2591,6 +2665,15 @@ namespace clear
 
 		if (!clonned)
 			return nullptr;
+
+		if (auto classNode = std::dynamic_pointer_cast<ASTClass>(clonned); classNode && classNode->ClassTy)
+		{
+			auto classType = classNode->ClassTy->As<ClassType>();
+			classType->GenericOrigin = node->GetName();
+
+			for (const auto& argument : substitutedArgs)
+				classType->GenericArguments.push_back(argument.Kind == SymbolKind::Type ? argument.GetType() : nullptr);
+		}
 
 		ConstructSymbol(instanceSymbol, clonned);
 

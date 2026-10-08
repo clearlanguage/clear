@@ -63,6 +63,7 @@ namespace clear
 		DiagnosticCode_BadOperatorSignature,
 		DiagnosticCode_TooManyValues,
 		DiagnosticCode_GenericMethodUnsupported,
+		DiagnosticCode_IndexNotInteger,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -126,6 +127,7 @@ namespace clear
 		"Operator method has the wrong number of parameters.",
 		"Too many values for this class.",
 		"Methods cannot have their own type parameters yet.",
+		"Array index must be an integer.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -188,5 +190,6 @@ namespace clear
 		"‘{}’ must take exactly two parameters: self and the other operand.",
 		"‘{}.",
 		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
+		"‘{}’). Use ‘as’ to convert the index to an integer type.",
 	};
 }
