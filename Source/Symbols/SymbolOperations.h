@@ -48,6 +48,9 @@ namespace clear
                             llvm::IRBuilderBase::InsertPoint* insert2 = nullptr);
 
 
+        // the function that runs global initializers before main; it stays open (no terminator)
+        // until FinalizeInitGlobals is called once the whole module has been generated
         static llvm::Function* GetInitGlobalsFunction(llvm::Module& module);
+        static void FinalizeInitGlobals(llvm::Module& module);
     };
 }

@@ -18,6 +18,8 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Metadata.h>
+#include <llvm/IR/MDBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/MC/MCInstrDesc.h>
 #include <llvm/Support/Casting.h>
 
@@ -59,7 +61,10 @@ namespace clear
         CLEAR_VERIFY(insertBlock, "cannot create an alloca without function");  
 	    auto ip = ctx.Builder.saveIP(); 
 	    llvm::Function* function = insertBlock->getParent();    
-	    ctx.Builder.SetInsertPoint(&function->getEntryBlock());
+		llvm::BasicBlock& entry = function->getEntryBlock();
+
+		// keep every alloca at the very top of the entry block so LLVM can promote them to registers
+	    ctx.Builder.SetInsertPoint(&entry, entry.getFirstInsertionPt());
 		
 		Symbol symbol = Symbol::CreateValue(ctx.Builder.CreateAlloca(type->Get(), nullptr, "alloca"), ctx.ClearModule->GetTypeRegistry()->GetPointerTo(type)); 
 
@@ -67,9 +72,36 @@ namespace clear
 		return symbol;
 	}
 
+	static Symbol UseGlobalHere(const Symbol& symbol, CodegenContext& ctx);
+
     ASTNodeBase::ASTNodeBase()
     {
     }
+
+	Token GetNodeLocation(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (!node)
+			return Token();
+
+		if (!node->Location.GetSourceFile().empty())
+			return node->Location;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Load:				return GetNodeLocation(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+			case ASTNodeType::UnaryExpression:	return GetNodeLocation(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand);
+			case ASTNodeType::BinaryExpression:	return GetNodeLocation(std::dynamic_pointer_cast<ASTBinaryExpression>(node)->LeftSide);
+			case ASTNodeType::FunctionCall:		return GetNodeLocation(std::dynamic_pointer_cast<ASTFunctionCall>(node)->Callee);
+			case ASTNodeType::CastExpr:			return GetNodeLocation(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object);
+			case ASTNodeType::Subscript:		return GetNodeLocation(std::dynamic_pointer_cast<ASTSubscript>(node)->Target);
+			case ASTNodeType::StructExpr:		return GetNodeLocation(std::dynamic_pointer_cast<ASTStructExpr>(node)->TargetType);
+			case ASTNodeType::Variable:			return std::dynamic_pointer_cast<ASTVariable>(node)->GetName();
+			case ASTNodeType::Literal:			return std::dynamic_pointer_cast<ASTNodeLiteral>(node)->GetData();
+			default:							break;
+		}
+
+		return Token();
+	}
 
 	Symbol ASTNodeBase::Codegen(CodegenContext& ctx)
 	{
@@ -82,8 +114,46 @@ namespace clear
 
 	Symbol ASTBlock::Codegen(CodegenContext& ctx)
 	{
+		bool inFunction = ctx.Builder.GetInsertBlock() != nullptr;
+
+		if (!inFunction)
+		{
+			// top level: external declarations, then globals (their initializers may call anything), then the rest
+			auto emitWhere = [&](auto predicate)
+			{
+				for (auto& child : Children)
+				{
+					if (child && predicate(child->GetType()))
+						child->Codegen(ctx);
+				}
+			};
+
+			emitWhere([](ASTNodeType type) { return type == ASTNodeType::FunctionDecleration; });
+			emitWhere([](ASTNodeType type) { return type == ASTNodeType::VariableDecleration; });
+			emitWhere([](ASTNodeType type) { return type != ASTNodeType::FunctionDecleration && type != ASTNodeType::VariableDecleration; });
+
+			return Symbol();
+		}
+
+		ctx.Defers->emplace_back();
+
 		for (auto child : Children)
+		{
+			// code after return/break/continue is unreachable, emitting it would produce invalid IR
+			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
+				break;
+
 			child->Codegen(ctx);
+		}
+
+		if (inFunction)
+		{
+			// falling off the end of the block runs its defers (return/break/continue already ran them)
+			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && !block->getTerminator())
+				EmitDefers(ctx, ctx.Defers->size() - 1);
+
+			ctx.Defers->pop_back();
+		}
 
 		return Symbol();
 	}
@@ -115,6 +185,9 @@ namespace clear
 
 		auto& leftChild  = LeftSide;
 		auto& rightChild = RightSide;
+
+		if (m_Expression == OperatorType::Power)
+			return HandlePower(leftChild, rightChild, ctx);
 
 		if(IsMathExpression())
 			return HandleMathExpression(leftChild, rightChild, ctx);
@@ -242,19 +315,56 @@ namespace clear
 		return Symbol();
     }
 
+	// + - * / % with the run-time checks the build asks for: signed overflow, division by zero
+	static Symbol Arithmetic(Symbol lhs, Symbol rhs, OperatorType op, CodegenContext& ctx, const Token& location)
+	{
+		if (lhs.GetType()->IsPointer())
+			return ASTBinaryExpression::HandlePointerArithmetic(lhs, rhs, op, ctx);
+
+		SymbolOps::Promote(lhs, rhs, ctx.Builder);
+
+		auto type = lhs.GetType();
+		llvm::Value* left = lhs.GetLLVMValue();
+		llvm::Value* right = rhs.GetLLVMValue();
+		bool isInteger = left->getType()->isIntegerTy() && !left->getType()->isIntegerTy(1);
+
+		if (ctx.RuntimeChecks && isInteger)
+		{
+			if (op == OperatorType::Div || op == OperatorType::Mod)
+			{
+				EmitCheck(ctx, ctx.Builder.CreateICmpNE(right, llvm::ConstantInt::get(right->getType(), 0)), "division by zero", location);
+
+				// INT_MIN / -1 does not fit either
+				if (type->IsSigned())
+				{
+					unsigned bits = left->getType()->getIntegerBitWidth();
+					llvm::Value* isMin = ctx.Builder.CreateICmpEQ(left, llvm::ConstantInt::get(left->getType(), llvm::APInt::getSignedMinValue(bits)));
+					llvm::Value* isMinusOne = ctx.Builder.CreateICmpEQ(right, llvm::ConstantInt::get(right->getType(), -1, true));
+					EmitCheck(ctx, ctx.Builder.CreateNot(ctx.Builder.CreateAnd(isMin, isMinusOne)), "integer overflow in division", location);
+				}
+			}
+			else if (type->IsSigned() && (op == OperatorType::Add || op == OperatorType::Sub || op == OperatorType::Mul))
+			{
+				llvm::Intrinsic::ID id = op == OperatorType::Add ? llvm::Intrinsic::sadd_with_overflow 
+									   : op == OperatorType::Sub ? llvm::Intrinsic::ssub_with_overflow : llvm::Intrinsic::smul_with_overflow;
+
+				llvm::Value* pair = ctx.Builder.CreateBinaryIntrinsic(id, left, right);
+				llvm::Value* overflowed = ctx.Builder.CreateExtractValue(pair, 1);
+				EmitCheck(ctx, ctx.Builder.CreateNot(overflowed), "integer overflow", location);
+
+				return Symbol::CreateValue(ctx.Builder.CreateExtractValue(pair, 0), type);
+			}
+		}
+
+		return ASTBinaryExpression::HandleMathExpression(lhs, rhs, op, ctx);
+	}
+
     Symbol ASTBinaryExpression::HandleMathExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 		Symbol lhs = left->Codegen(ctx);
+		Symbol rhs = right->Codegen(ctx);
 
-		Symbol rhs;
-		rhs = right->Codegen(ctx);
-
-		auto [_, lhsType] = lhs.GetValue();
-
-		if(lhsType->IsPointer()) 
-			return HandlePointerArithmetic(lhs, rhs, m_Expression, ctx); //internally will verify correct expression type
-
-        return HandleMathExpression(lhs, rhs, m_Expression, ctx);
+        return Arithmetic(lhs, rhs, m_Expression, ctx, Location);
     }
 
     Symbol ASTBinaryExpression::HandleCmpExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext &ctx)
@@ -265,9 +375,89 @@ namespace clear
         return HandleCmpExpression(lhs, rhs, ctx);
     }
 
+    Symbol ASTBinaryExpression::HandlePower(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
+    {
+		Symbol lhs = left->Codegen(ctx);
+		Symbol rhs = right->Codegen(ctx);
+		SymbolOps::Promote(lhs, rhs, ctx.Builder);
+
+		auto [base, type] = lhs.GetValue();
+		llvm::Value* exponent = rhs.GetLLVMValue();
+
+		if (type->IsFloatingPoint())
+			return Symbol::CreateValue(ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::pow, base, exponent), type);
+
+		// integers: exponentiation by squaring in a small loop (a negative exponent gives 0, like integer division)
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		llvm::Type* intType = base->getType();
+
+		llvm::BasicBlock* before = ctx.Builder.GetInsertBlock();
+		llvm::BasicBlock* loop   = llvm::BasicBlock::Create(ctx.Context, "pow.loop", function);
+		llvm::BasicBlock* done   = llvm::BasicBlock::Create(ctx.Context, "pow.done", function);
+
+		llvm::Value* negative = type->IsSigned() ? ctx.Builder.CreateICmpSLT(exponent, llvm::ConstantInt::get(intType, 0)) : ctx.Builder.getFalse();
+		llvm::Value* start = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), exponent);
+		ctx.Builder.CreateBr(loop);
+
+		ctx.Builder.SetInsertPoint(loop);
+		llvm::PHINode* result = ctx.Builder.CreatePHI(intType, 2, "pow.result");
+		llvm::PHINode* factor = ctx.Builder.CreatePHI(intType, 2, "pow.factor");
+		llvm::PHINode* remaining = ctx.Builder.CreatePHI(intType, 2, "pow.remaining");
+
+		result->addIncoming(llvm::ConstantInt::get(intType, 1), before);
+		factor->addIncoming(base, before);
+		remaining->addIncoming(start, before);
+
+		llvm::Value* isOdd = ctx.Builder.CreateTrunc(remaining, ctx.Builder.getInt1Ty());
+		llvm::Value* nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
+		llvm::Value* nextFactor = ctx.Builder.CreateMul(factor, factor);
+		llvm::Value* nextRemaining = ctx.Builder.CreateLShr(remaining, 1);
+
+		llvm::BasicBlock* loopEnd = ctx.Builder.GetInsertBlock();
+		result->addIncoming(nextResult, loopEnd);
+		factor->addIncoming(nextFactor, loopEnd);
+		remaining->addIncoming(nextRemaining, loopEnd);
+
+		llvm::Value* finished = ctx.Builder.CreateICmpEQ(nextRemaining, llvm::ConstantInt::get(intType, 0));
+		ctx.Builder.CreateCondBr(finished, done, loop);
+
+		ctx.Builder.SetInsertPoint(done);
+		llvm::PHINode* value = ctx.Builder.CreatePHI(intType, 1);
+		value->addIncoming(nextResult, loopEnd);
+
+		// a negative exponent skips straight to 0
+		llvm::Value* finalValue = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), value);
+		return Symbol::CreateValue(finalValue, type);
+    }
+
     Symbol ASTBinaryExpression::HandleCmpExpression(Symbol& lhs, Symbol& rhs, CodegenContext& ctx)
     {
 		auto booleanType = ctx.ClearModule->Lookup("bool").value()->GetType();
+
+		// str values compare their contents, unless one side is null
+		bool isStr = lhs.GetType()->GetHash() == "str" || rhs.GetType()->GetHash() == "str";
+		bool isNull = llvm::isa<llvm::ConstantPointerNull>(lhs.GetLLVMValue()) || llvm::isa<llvm::ConstantPointerNull>(rhs.GetLLVMValue());
+
+		if (isStr && !isNull && lhs.GetLLVMValue()->getType()->isPointerTy() && rhs.GetLLVMValue()->getType()->isPointerTy())
+		{
+			llvm::FunctionCallee strcmp = ctx.Module.getOrInsertFunction("strcmp", llvm::FunctionType::get(ctx.Builder.getInt32Ty(), { ctx.Builder.getPtrTy(), ctx.Builder.getPtrTy() }, false));
+			llvm::Value* order = ctx.Builder.CreateCall(strcmp, { lhs.GetLLVMValue(), rhs.GetLLVMValue() }, "strcmp");
+			llvm::Value* zero = ctx.Builder.getInt32(0);
+			llvm::Value* result = nullptr;
+
+			switch (m_Expression)
+			{
+				case OperatorType::IsEqual:          result = ctx.Builder.CreateICmpEQ(order, zero); break;
+				case OperatorType::NotEqual:         result = ctx.Builder.CreateICmpNE(order, zero); break;
+				case OperatorType::LessThan:         result = ctx.Builder.CreateICmpSLT(order, zero); break;
+				case OperatorType::LessThanEqual:    result = ctx.Builder.CreateICmpSLE(order, zero); break;
+				case OperatorType::GreaterThan:      result = ctx.Builder.CreateICmpSGT(order, zero); break;
+				case OperatorType::GreaterThanEqual: result = ctx.Builder.CreateICmpSGE(order, zero); break;
+				default: break;
+			}
+
+			return Symbol::CreateValue(result, booleanType);
+		}
 
     	switch (m_Expression)
 		{
@@ -320,8 +510,8 @@ namespace clear
 
 		auto [lhsValue, lhsType] = lhs.GetValue();
 
-		lhsValue = TypeCasting::Cast(lhsValue, lhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
-		lhsType  = ctx.TypeReg->GetType("bool");
+		lhsValue = TypeCasting::Cast(lhsValue, lhsType, Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx.Builder);
+		lhsType  = Symbol::GetBooleanType(ctx.ClearModule).GetType();
 
 
 		llvm::BasicBlock* checkSecond  = llvm::BasicBlock::Create(ctx.Context, "check_second");
@@ -341,8 +531,8 @@ namespace clear
 		
 		auto [rhsValue, rhsType] = rhs.GetValue();
 
-		rhsValue = TypeCasting::Cast(rhsValue, rhsType, ctx.TypeReg->GetType("bool"), ctx.Builder);
-		rhsType  = ctx.TypeReg->GetType("bool");
+		rhsValue = TypeCasting::Cast(rhsValue, rhsType, Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx.Builder);
+		rhsType  = Symbol::GetBooleanType(ctx.ClearModule).GetType();
 		
 		ctx.Builder.CreateCondBr(rhsValue, trueResult, falseResult);
 		
@@ -459,13 +649,34 @@ namespace clear
 
 		auto memberSymbol = lhsType->As<ClassType>()->GetMember(member->GetName().GetData()).value();
 
+		// a temporary (e.g. `Pair { 1, 2 }.sum()`) needs a home in memory before it can be addressed
+		if (lhs.GetType()->IsClass())
+		{
+			Symbol storage = CreateAlloca(lhsType, ctx);
+			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
+			lhs = storage;
+		}
+
 		if (memberSymbol->Kind == SymbolKind::Function)
 		{
 			std::shared_ptr<Type> targetType = memberSymbol->GetFunctionSymbol().FunctionNode->Arguments[0]->ResolvedType;
 
-			while(lhs.GetType() != targetType)
+			// the receiver is passed as a pointer to the object (a *Dog also serves a method taking *Animal),
+			// or by value when the method takes `self` by value
+			auto isObjectPointer = [](const std::shared_ptr<Type>& type)
 			{
-				lhs = SymbolOps::Load(lhs, ctx.Builder);
+				return type->IsPointer() && type->As<PointerType>()->GetBaseType() && type->As<PointerType>()->GetBaseType()->IsClass();
+			};
+
+			if (targetType && isObjectPointer(targetType))
+			{
+				while (!isObjectPointer(lhs.GetType()))
+					lhs = SymbolOps::Load(lhs, ctx.Builder);
+			}
+			else
+			{
+				while (lhs.GetType() != targetType && lhs.GetType()->IsPointer())
+					lhs = SymbolOps::Load(lhs, ctx.Builder);
 			}
 			
 			return Symbol::CreateCallee(memberSymbol, std::make_shared<Symbol>(lhs));
@@ -473,22 +684,27 @@ namespace clear
 		
 		auto memberPtrType = Symbol::CreateType(ctx.TypeReg->GetPointerTo(memberSymbol->GetType()));
 
-		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();	
-		
-		if (lhs.GetType()->IsClass())
-		{
-			Symbol storage = CreateAlloca(lhsType, ctx);
-			SymbolOps::Store(storage, lhs, ctx.Builder, ctx.Module, true);
-			lhs = storage;
-		}
-		
+		size_t index = lhsType->As<ClassType>()->GetMemberValueIndex(member->GetName().GetData()).value();
+		bool isUnion = lhsType->As<ClassType>()->IsUnion;
+
+		bool throughPointer = false;
+
 		while (lhs.GetType()->IsPointer())
 		{
 			if (lhs.GetType()->As<PointerType>()->GetBaseType()->IsClass())
 				break;
 			
 			lhs = SymbolOps::Load(lhs, ctx.Builder);
+			throughPointer = true;
 		}
+
+		// p.x where p is a pointer: p must not be null
+		if (throughPointer && ctx.RuntimeChecks)
+			EmitCheck(ctx, ctx.Builder.CreateIsNotNull(lhs.GetLLVMValue()), "accessing a field through a null pointer", member->GetName());
+
+		// every field of a union lives at the start of its storage
+		if (isUnion)
+			return Symbol::CreateValue(lhs.GetLLVMValue(), memberPtrType.GetType());
 		
 		return SymbolOps::GEPStruct(lhs, memberPtrType, index, ctx.Builder);
 	}
@@ -507,30 +723,7 @@ namespace clear
 		}
 		else if (symbol->Kind == SymbolKind::Value) //variable
 		{
-			llvm::GlobalVariable* existingGV = ctx.Module.getNamedGlobal(member->GetName().GetData());
-			Symbol value;
-
-			if(existingGV)
-			{
-				value = Symbol::CreateValue(existingGV, symbol->GetType());
-			}
-			else 
-			{
-				llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(symbol->GetLLVMValue());
-
-				llvm::GlobalVariable* decl = new llvm::GlobalVariable(
-					ctx.Module,
-					gv->getValueType(),
-					gv->isConstant(),
-					llvm::GlobalValue::ExternalLinkage,
-					nullptr,
-					gv->getName()
-				);
-
-				value = Symbol::CreateValue(decl, symbol->GetType());
-			}
-
-			return value;
+			return UseGlobalHere(*symbol, ctx);
 		}
 		else if (symbol->Kind == SymbolKind::Function)
 		{
@@ -548,30 +741,52 @@ namespace clear
 	Symbol ASTVariableDeclaration::Codegen(CodegenContext& ctx)
     {
 		Symbol resolvedType = Symbol::CreateType(ResolvedType);
-		Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
-		
         bool isGlobal = !(bool)ctx.Builder.GetInsertBlock();
 			
 		if (isGlobal)
 		{
-			llvm::Value* allocaInst = new llvm::GlobalVariable(
+			llvm::Type* llvmType = resolvedType.GetType()->Get();
+
+			// qualified by the module so files can each have their own `count`; external so other files can use it
+			// (executables internalize everything after linking, so this costs nothing)
+			llvm::GlobalVariable* global = new llvm::GlobalVariable(
 				ctx.Module, 
-				resolvedType.GetType()->Get(),
-				resolvedType.GetType()->IsConst(),
-				llvm::GlobalValue::InternalLinkage,
-				initializer.Kind != SymbolKind::None ? llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()) : nullptr,
-				m_Name.GetData()
+				llvmType,
+				/* isConstant = */ false,
+				llvm::GlobalValue::ExternalLinkage,
+				llvm::Constant::getNullValue(llvmType),
+				std::format("{}.{}", ctx.ClearModule->GetName(), m_Name.GetData())
 			);
 
-			*Variable = Symbol::CreateValue(allocaInst, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
+			*Variable = Symbol::CreateValue(global, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
 
-			if (initializer.Kind != SymbolKind::None && !llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()))
+			if (!Initializer)
+				return *Variable;
+
+			// initializers that are not constants run before main, inside the global initializer function
+			llvm::Function* init = SymbolOps::GetInitGlobalsFunction(ctx.Module);
+			auto savedIp = ctx.Builder.saveIP();
+			ctx.Builder.SetInsertPoint(&init->back());
+
+			Symbol initializer = Initializer->Codegen(ctx);
+
+			if (auto constant = llvm::dyn_cast<llvm::Constant>(initializer.GetLLVMValue()); constant && !llvm::isa<llvm::GlobalValue>(constant))
 			{
-				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
+				global->setInitializer(constant);
+				global->setConstant(IsConst);
 			}
+			else
+			{
+				ctx.Builder.CreateStore(initializer.GetLLVMValue(), global);
+			}
+
+			ctx.Builder.restoreIP(savedIp);
+			return *Variable;
 		}
 		else
 		{
+			Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
+
 			*Variable = CreateAlloca(resolvedType.GetType(), ctx);
 
 			if (initializer.Kind != SymbolKind::None)
@@ -587,12 +802,34 @@ namespace clear
     {
     }
 
+	// a global defined in another module is used through a declaration in this one
+	static Symbol UseGlobalHere(const Symbol& symbol, CodegenContext& ctx)
+	{
+		if (symbol.Kind != SymbolKind::Value)
+			return symbol;
+
+		auto global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(symbol.GetLLVMValue());
+
+		if (!global || global->getParent() == &ctx.Module)
+			return symbol;
+
+		llvm::GlobalVariable* local = ctx.Module.getNamedGlobal(global->getName());
+
+		if (!local)
+		{
+			local = new llvm::GlobalVariable(ctx.Module, global->getValueType(), global->isConstant(), 
+											 llvm::GlobalValue::ExternalLinkage, nullptr, global->getName());
+		}
+
+		return Symbol::CreateValue(local, symbol.GetType());
+	}
+
 	Symbol ASTVariable::Codegen(CodegenContext& ctx)
     {
 		if (Variable->Kind == SymbolKind::Function)
 			return Symbol::CreateCallee(Variable, nullptr);
 
-		return *Variable;
+		return UseGlobalHere(*Variable, ctx);
 	}
 	
 	void ASTVariable::Print()
@@ -630,30 +867,24 @@ namespace clear
 
 		Symbol tmp;
 
-		if(m_Type == AssignmentOperatorType::Add)
-		{
-			tmp = SymbolOps::Add(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Sub)
-		{
-			tmp = SymbolOps::Sub(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Mul)
-		{
-			tmp = SymbolOps::Mul(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Div)
-		{
-			tmp = SymbolOps::Div(loadedValue, data, ctx.Builder); 
-		}
-		else if (m_Type == AssignmentOperatorType::Mod)
-		{
-			tmp = SymbolOps::Mod(loadedValue, data, ctx.Builder); 
-		}
+		if(m_Type == AssignmentOperatorType::Add)      tmp = Arithmetic(loadedValue, data, OperatorType::Add, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Sub) tmp = Arithmetic(loadedValue, data, OperatorType::Sub, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Mul) tmp = Arithmetic(loadedValue, data, OperatorType::Mul, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Div) tmp = Arithmetic(loadedValue, data, OperatorType::Div, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::Mod) tmp = Arithmetic(loadedValue, data, OperatorType::Mod, ctx, Location);
+		else if (m_Type == AssignmentOperatorType::BitAnd) tmp = SymbolOps::BitAnd(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::BitOr)  tmp = SymbolOps::BitOr(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::BitXor) tmp = SymbolOps::BitXor(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shl)    tmp = SymbolOps::Shl(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shr)    tmp = SymbolOps::Shr(loadedValue, data, ctx.Builder);
 		else 
 		{
 			CLEAR_UNREACHABLE("invalid assignment type");
 		}
+
+		// the arithmetic may have been done in a wider type, store it back in the variable's own type
+		Symbol baseType = Symbol::CreateType(storage.GetType()->As<PointerType>()->GetBaseType());
+		tmp = SymbolOps::Cast(tmp, baseType, ctx.Builder);
 
 		SymbolOps::Store(storage, tmp, ctx.Builder, ctx.Module);
 		return Symbol();
@@ -683,6 +914,155 @@ namespace clear
 	{
 	}
 
+	// generators and async functions are LLVM coroutines (switch-resumed). The call allocates the frame
+	// (LLVM removes the allocation when the coroutine does not outlive its caller), runs up to the first
+	// suspension and returns the handle; resuming continues from the last suspension.
+	static llvm::Value* CoroutineSuspend(CodegenContext& ctx, bool final, llvm::BasicBlock* resume)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(final) });
+		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
+		branch->addCase(builder.getInt8(0), resume);
+		branch->addCase(builder.getInt8(1), ctx.Coroutine->Cleanup);
+		return state;
+	}
+
+	void ASTFunctionDefinition::BeginCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine, llvm::BasicBlock* entry, llvm::BasicBlock* returnBlock)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+		function->addFnAttr(llvm::Attribute::PresplitCoroutine);
+
+		// the promise holds what was yielded, or the task's result; the caller reads it through the handle
+		if (CoroutineValue)
+		{
+			llvm::IRBuilder<> entryBuilder(entry, entry->getFirstInsertionPt());
+			coroutine.Promise = entryBuilder.CreateAlloca(CoroutineValue->Get(), nullptr, "promise");
+			coroutine.Promise->setAlignment(llvm::Align(16));
+		}
+
+		llvm::Value* nullPointer = llvm::ConstantPointerNull::get(builder.getPtrTy());
+		llvm::Value* id = builder.CreateIntrinsic(llvm::Intrinsic::coro_id, {}, 
+			{ builder.getInt32(16), coroutine.Promise ? (llvm::Value*)coroutine.Promise : nullPointer, nullPointer, nullPointer });
+
+		llvm::BasicBlock* start = builder.GetInsertBlock();
+		llvm::BasicBlock* allocate = llvm::BasicBlock::Create(ctx.Context, "coro.alloc", function);
+		llvm::BasicBlock* begin = llvm::BasicBlock::Create(ctx.Context, "coro.begin", function);
+		builder.CreateCondBr(builder.CreateIntrinsic(llvm::Intrinsic::coro_alloc, {}, { id }), allocate, begin);
+
+		builder.SetInsertPoint(allocate);
+		llvm::FunctionCallee malloc = ctx.Module.getOrInsertFunction("malloc", llvm::FunctionType::get(builder.getPtrTy(), { builder.getInt64Ty() }, false));
+		llvm::Value* memory = builder.CreateCall(malloc, { builder.CreateIntrinsic(llvm::Intrinsic::coro_size, { builder.getInt64Ty() }, {}) });
+		builder.CreateBr(begin);
+
+		builder.SetInsertPoint(begin);
+		llvm::PHINode* frame = builder.CreatePHI(builder.getPtrTy(), 2);
+		frame->addIncoming(nullPointer, start);
+		frame->addIncoming(memory, allocate);
+		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
+
+		// destroying the coroutine frees its frame; suspending returns the handle to the caller
+		coroutine.Cleanup = llvm::BasicBlock::Create(ctx.Context, "coro.cleanup", function);
+		coroutine.Suspend = llvm::BasicBlock::Create(ctx.Context, "coro.suspend", function);
+		llvm::BasicBlock* release = llvm::BasicBlock::Create(ctx.Context, "coro.free", function);
+
+		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
+		llvm::Value* toFree = cleanup.CreateIntrinsic(llvm::Intrinsic::coro_free, {}, { id, coroutine.Handle });
+		cleanup.CreateCondBr(cleanup.CreateIsNotNull(toFree), release, coroutine.Suspend);
+
+		llvm::IRBuilder<> freeing(release);
+		llvm::FunctionCallee free = ctx.Module.getOrInsertFunction("free", llvm::FunctionType::get(freeing.getVoidTy(), { freeing.getPtrTy() }, false));
+		freeing.CreateCall(free, { toFree });
+		freeing.CreateBr(coroutine.Suspend);
+
+		llvm::IRBuilder<> suspend(coroutine.Suspend);
+		suspend.CreateIntrinsic(llvm::Intrinsic::coro_end, {}, { coroutine.Handle, suspend.getInt1(false), llvm::ConstantTokenNone::get(ctx.Context) });
+		suspend.CreateRet(coroutine.Handle);
+
+		// nothing runs until the first resume (so a generator does no work before it is iterated)
+		llvm::BasicBlock* run = llvm::BasicBlock::Create(ctx.Context, "coro.start", function);
+		CoroutineSuspend(ctx, false, run);
+		builder.SetInsertPoint(run);
+
+		// `return value` in a task stores the result in the promise, then reaches the final suspension
+		ctx.ReturnAlloca = CoroutineKind == 2 ? coroutine.Promise : nullptr;
+		ctx.ReturnType = CoroutineKind == 2 ? CoroutineValue : nullptr;
+		ctx.ReturnBlock = returnBlock;
+	}
+
+	void ASTFunctionDefinition::EndCoroutine(CodegenContext& ctx, CodegenContext::CoroutineState& coroutine)
+	{
+		// the final suspension: done() is true from here on, resuming again is not allowed
+		auto& builder = ctx.Builder;
+		llvm::BasicBlock* invalid = llvm::BasicBlock::Create(ctx.Context, "coro.resumed_after_end", builder.GetInsertBlock()->getParent());
+		CoroutineSuspend(ctx, true, invalid);
+
+		builder.SetInsertPoint(invalid);
+		builder.CreateUnreachable();
+	}
+
+	Symbol ASTYield::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Value->Codegen(ctx);
+		ctx.Builder.CreateStore(value.GetLLVMValue(), ctx.Coroutine->Promise);
+
+		llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "yield.resume", ctx.Builder.GetInsertBlock()->getParent());
+		CoroutineSuspend(ctx, false, resume);
+		ctx.Builder.SetInsertPoint(resume);
+		return Symbol();
+	}
+
+	Symbol ASTAwait::Codegen(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		if (IsPause)
+		{
+			llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "pause.resume", function);
+			CoroutineSuspend(ctx, false, resume);
+			builder.SetInsertPoint(resume);
+			return Symbol();
+		}
+
+		// run the task; each time it suspends, suspend this one too (whoever runs us decides when to continue)
+		llvm::Value* task = Operand->Codegen(ctx).GetLLVMValue();
+
+		llvm::BasicBlock* step = llvm::BasicBlock::Create(ctx.Context, "await.step", function);
+		llvm::BasicBlock* wait = llvm::BasicBlock::Create(ctx.Context, "await.wait", function);
+		llvm::BasicBlock* finished = llvm::BasicBlock::Create(ctx.Context, "await.done", function);
+		llvm::BasicBlock* abandon = llvm::BasicBlock::Create(ctx.Context, "await.abandon", function);
+		builder.CreateBr(step);
+
+		builder.SetInsertPoint(step);
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { task });
+		builder.CreateCondBr(builder.CreateIntrinsic(llvm::Intrinsic::coro_done, {}, { task }), finished, wait);
+
+		// destroyed while waiting: the awaited task goes too
+		builder.SetInsertPoint(abandon);
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
+		builder.CreateBr(ctx.Coroutine->Cleanup);
+
+		builder.SetInsertPoint(wait);
+		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(false) });
+		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
+		branch->addCase(builder.getInt8(0), step);
+		branch->addCase(builder.getInt8(1), abandon);
+
+		builder.SetInsertPoint(finished);
+		llvm::Value* result = nullptr;
+
+		if (ValueType)
+		{
+			llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { task, builder.getInt32(16), builder.getInt1(false) });
+			result = builder.CreateLoad(ValueType->Get(), promise, "await.result");
+		}
+
+		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
+
+		return ValueType ? Symbol::CreateValue(result, ValueType) : Symbol();
+	}
+
 	Symbol ASTFunctionDefinition::Codegen(CodegenContext& ctx)
 	{		
 		auto& module  = ctx.Module;
@@ -690,6 +1070,10 @@ namespace clear
 		auto& builder = ctx.Builder;
 		
 		auto& functionSymbol = FunctionSymbol->GetFunctionSymbol();
+
+		// a function used before its definition was generated at the first call already
+		if (functionSymbol.FunctionPtr && !functionSymbol.FunctionPtr->isDeclaration())
+			return *FunctionSymbol;
 		
 		llvm::SmallVector<llvm::Type*> argTypes;
 		std::transform(Arguments.begin(), Arguments.end(), std::back_inserter(argTypes), [](std::shared_ptr<ASTVariableDeclaration> decl)
@@ -697,7 +1081,8 @@ namespace clear
 					return decl->ResolvedType->Get();
 				 });
 		
-		std::shared_ptr<Type> returnType = ReturnType ? ReturnType->Codegen(ctx).GetType() : nullptr;
+		// the analysed return type (lambdas have no return type written out)
+		std::shared_ptr<Type> returnType = ReturnTypeVal && !ReturnTypeVal->Get()->isVoidTy() ? ReturnTypeVal : nullptr;
 
 		functionSymbol.FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::FunctionType::getVoidTy(context), argTypes, false);
 		functionSymbol.FunctionPtr = llvm::Function::Create(functionSymbol.FunctionType, Linkage, m_Name, ctx.Module);
@@ -715,6 +1100,7 @@ namespace clear
 		ValueRestoreGuard guard1(ctx.ReturnType,   returnType);
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
+		ValueRestoreGuard guard4(ctx.FunctionDeferBase, ctx.Defers->size());
 
 		size_t k = 0;
 		for (const auto& arg : Arguments)
@@ -727,6 +1113,12 @@ namespace clear
 		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), body);
 		builder.SetInsertPoint(body);
 
+		CodegenContext::CoroutineState coroutine;
+		ValueRestoreGuard guard5(ctx.Coroutine, CoroutineKind ? &coroutine : nullptr);
+
+		if (CoroutineKind)
+			BeginCoroutine(ctx, coroutine, entry, returnBlock);
+
 		CodeBlock->Codegen(ctx);
 
 		auto currip = builder.saveIP();
@@ -736,8 +1128,29 @@ namespace clear
 
 		builder.restoreIP(currip);
 
+		if (CoroutineKind)
+		{
+			if (!builder.GetInsertBlock()->getTerminator())
+				builder.CreateBr(returnBlock);
+
+			functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
+			builder.SetInsertPoint(returnBlock);
+			EndCoroutine(ctx, coroutine);
+
+			auto& ip = s_InsertPoints.top();
+			builder.restoreIP(ip);
+			s_InsertPoints.pop();
+			return *FunctionSymbol;
+		}
+
+		// falling off the end (only main may do that with a return type) returns zero
 		if(!builder.GetInsertBlock()->getTerminator())
+		{
+			if (returnAlloca)
+				builder.CreateStore(llvm::Constant::getNullValue(returnAlloca->getAllocatedType()), returnAlloca);
+
 			builder.CreateBr(returnBlock);
+		}
 
 		functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
 		builder.SetInsertPoint(returnBlock);
@@ -760,8 +1173,88 @@ namespace clear
 		return *FunctionSymbol;
 	}
 
+	// the function behind a symbol, generated on first use and declared in this module if it lives in another
+	static llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
+	{
+		FunctionSymbol& functionSymbol = symbol->GetFunctionSymbol();
+
+		if (!functionSymbol.FunctionPtr)
+		{
+			CodegenContext contextFromOther = functionSymbol.FunctionNode->SourceModule->GetCodegenContext();
+			functionSymbol.FunctionNode->Codegen(contextFromOther);
+		}
+
+		if (functionSymbol.FunctionNode->SourceModule == ctx.ClearModule)
+			return functionSymbol.FunctionPtr;
+
+		llvm::Function* local = ctx.Module.getFunction(functionSymbol.FunctionNode->GetName());
+
+		if (!local)
+			local = llvm::Function::Create(functionSymbol.FunctionType, llvm::Function::ExternalLinkage, functionSymbol.FunctionNode->GetName(), ctx.Module);
+
+		return local;
+	}
+
+	Symbol ASTFunctionRef::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(GetFunctionHere(Function, ctx), FunctionTy);
+	}
+
+	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	{
+		// one constant table per class and module: [n x ptr] holding the class's version of each virtual method
+		std::string name = std::format("{}.vtable", ClassTy->GetHash());
+		llvm::GlobalVariable* table = ctx.Module.getNamedGlobal(name);
+
+		if (!table)
+		{
+			llvm::SmallVector<llvm::Constant*> slots;
+
+			for (auto& function : ClassTy->VTable)
+				slots.push_back(GetFunctionHere(function, ctx));
+
+			auto arrayType = llvm::ArrayType::get(ctx.Builder.getPtrTy(), slots.size());
+			table = new llvm::GlobalVariable(ctx.Module, arrayType, true, llvm::GlobalValue::LinkOnceODRLinkage, llvm::ConstantArray::get(arrayType, slots), name);
+		}
+
+		return Symbol::CreateValue(table, PointerTy);
+	}
+
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
+		if (IndirectType)
+		{
+			// calling a function value
+			auto functionType = IndirectType->As<FunctionPointerType>();
+			llvm::Value* target = Callee->Codegen(ctx).GetLLVMValue();
+
+			std::vector<llvm::Value*> args;
+			std::vector<std::shared_ptr<Type>> types;
+			BuildArgs(ctx, args, types);
+			ConvertArguments(ctx, functionType->GetFunctionType(), args, types);
+
+			if (ctx.RuntimeChecks)
+				EmitCheck(ctx, ctx.Builder.CreateIsNotNull(target), "calling a null function", GetNodeLocation(Callee));
+
+			llvm::Value* result = ctx.Builder.CreateCall(functionType->GetFunctionType(), target, args);
+
+			if (!functionType->GetReturnType())
+				return Symbol();
+
+			return Symbol::CreateValue(result, functionType->GetReturnType());
+		}
+
+		if (IsBuiltinPrint)
+		{
+			llvm::SmallVector<Symbol> values;
+
+			for (auto& argument : Arguments)
+				values.push_back(argument->Codegen(ctx));
+
+			EmitBuiltinPrint(ctx, values);
+			return Symbol();
+		}
+
 		std::vector<llvm::Value*> args;
 		std::vector<std::shared_ptr<Type>> types;
 		
@@ -784,6 +1277,23 @@ namespace clear
 	
 		llvm::Function* functionPtr = functionSymbol.FunctionPtr;
 		llvm::FunctionType* functionType = functionSymbol.FunctionType;
+
+		ConvertArguments(ctx, functionType, args, types);
+
+		// virtual: receiver->__vtable[slot](receiver, ...)
+		if (VirtualSlot >= 0 && calleeSymbol.Receiver)
+		{
+			llvm::Value* receiver = calleeSymbol.Receiver->GetLLVMValue();
+			llvm::Value* table = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), receiver, "vtable");
+			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot, "vslot");
+			llvm::Value* target = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), slot, "vfunc");
+			llvm::Value* result = ctx.Builder.CreateCall(functionType, target, args);
+
+			if (!functionSymbol.FunctionNode->ReturnTypeVal)
+				return Symbol();
+
+			return Symbol::CreateValue(result, functionSymbol.FunctionNode->ReturnTypeVal);
+		}
 
 		if (functionSymbol.FunctionNode->SourceModule != ctx.ClearModule)
 		{
@@ -826,6 +1336,57 @@ namespace clear
 		}
     }
 
+	void ASTFunctionCall::ConvertArguments(CodegenContext& ctx, llvm::FunctionType* functionType, std::vector<llvm::Value*>& args, std::vector<std::shared_ptr<Type>>& types)
+	{
+		auto registry = ctx.ClearModule;
+
+		for (size_t i = 0; i < args.size() && i < types.size(); i++)
+		{
+			llvm::Type* argType = args[i]->getType();
+
+			if (i < functionType->getNumParams())
+			{
+				llvm::Type* paramType = functionType->getParamType(i);
+
+				if (argType == paramType || !types[i])
+					continue;
+
+				// find the clear type matching the parameter so signedness is respected
+				std::shared_ptr<Type> target;
+
+				if (paramType->isIntegerTy())
+				{
+					std::string name = paramType->isIntegerTy(1) ? "bool" : std::format("{}int{}", types[i]->IsSigned() || !types[i]->IsIntegral() ? "" : "u", paramType->getIntegerBitWidth());
+					target = registry->Lookup(name).value()->GetType();
+				}
+				else if (paramType->isDoubleTy()) target = registry->Lookup("float64").value()->GetType();
+				else if (paramType->isFloatTy())  target = registry->Lookup("float32").value()->GetType();
+
+				if (target)
+				{
+					args[i] = TypeCasting::Cast(args[i], types[i], target, ctx.Builder);
+					types[i] = target;
+				}
+
+				continue;
+			}
+
+			// C default argument promotions for variadic arguments: float -> double, small ints -> int
+			if (argType->isFloatTy())
+			{
+				args[i] = ctx.Builder.CreateFPExt(args[i], ctx.Builder.getDoubleTy(), "vararg.promote");
+				types[i] = registry->Lookup("float64").value()->GetType();
+			}
+			else if (argType->isIntegerTy() && argType->getIntegerBitWidth() < 32)
+			{
+				bool isSigned = types[i] && types[i]->IsSigned() && !argType->isIntegerTy(1);
+				args[i] = isSigned ? ctx.Builder.CreateSExt(args[i], ctx.Builder.getInt32Ty(), "vararg.promote")
+				                   : ctx.Builder.CreateZExt(args[i], ctx.Builder.getInt32Ty(), "vararg.promote");
+				types[i] = registry->Lookup("int32").value()->GetType();
+			}
+		}
+	}
+
 	std::shared_ptr<ASTBinaryExpression> ASTFunctionCall::IsMemberFunction()
 	{
 		if (auto memberAccess = std::dynamic_pointer_cast<ASTBinaryExpression>(Callee); memberAccess && memberAccess->GetExpression() == OperatorType::Dot)
@@ -840,23 +1401,61 @@ namespace clear
 		{
 			case SubscriptSemantic::ArrayIndex:
 			{
-				Symbol operand = Target->Codegen(ctx);
-				
-				llvm::SmallVector<llvm::Value*> indices;
-				indices.push_back(ctx.Builder.getInt64(0));
-					
-				std::shared_ptr<Type> resPtrType = operand.GetType()->As<PointerType>()->GetBaseType();
+				// `current` always holds the address of the value being indexed
+				Symbol current = Target->Codegen(ctx);
+				auto registry = ctx.ClearModule->GetTypeRegistry();
+
+				// a computed value has no address yet: give it one, so it is indexed like a variable
+				if (TargetIsValue)
+				{
+					Symbol slot = CreateAlloca(current.GetType(), ctx);
+					ctx.Builder.CreateStore(current.GetLLVMValue(), slot.GetLLVMValue());
+					current = slot;
+				}
 
 				for (auto index : SubscriptArgs)
 				{
-					indices.push_back(index->Codegen(ctx).GetLLVMValue());
-					resPtrType = resPtrType->IsArray() ? resPtrType->As<ArrayType>()->GetBaseType() : resPtrType->As<PointerType>()->GetBaseType();
+					Symbol indexSymbol = index->Codegen(ctx);
+					llvm::Value* indexValue = indexSymbol.GetLLVMValue();
+
+					// widen to 64 bits so negative/large indices behave the same on every target
+					if (indexValue->getType()->getIntegerBitWidth() < 64)
+					{
+						indexValue = indexSymbol.GetType()->IsSigned() ? ctx.Builder.CreateSExt(indexValue, ctx.Builder.getInt64Ty())
+						                                               : ctx.Builder.CreateZExt(indexValue, ctx.Builder.getInt64Ty());
+					}
+
+					std::shared_ptr<Type> base = current.GetType()->As<PointerType>()->GetBaseType();
+
+					if (base->IsArray())
+					{
+						std::shared_ptr<Type> element = base->As<ArrayType>()->GetBaseType();
+
+						if (ctx.RuntimeChecks)
+						{
+							// unsigned comparison also catches negative indices
+							uint64_t size = base->As<ArrayType>()->GetArraySize();
+							llvm::Value* inRange = ctx.Builder.CreateICmpULT(indexValue, ctx.Builder.getInt64(size));
+							EmitCheck(ctx, inRange, std::format("index out of range for an array of {}", size), GetNodeLocation(index));
+						}
+
+						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(base->Get(), current.GetLLVMValue(), { ctx.Builder.getInt64(0), indexValue }, "index");
+						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
+					}
+					else
+					{
+						// indexing through a pointer: load it, then offset by the index
+						Symbol pointer = SymbolOps::Load(current, ctx.Builder);
+						std::shared_ptr<Type> element = base->As<PointerType>()->GetBaseType();
+
+						if (ctx.RuntimeChecks)
+							EmitCheck(ctx, ctx.Builder.CreateIsNotNull(pointer.GetLLVMValue()), "indexing a null pointer", GetNodeLocation(Target));
+						llvm::Value* address = ctx.Builder.CreateInBoundsGEP(element->Get(), pointer.GetLLVMValue(), { indexValue }, "index");
+						current = Symbol::CreateValue(address, registry->GetPointerTo(element));
+					}
 				}
 
-				resPtrType = ctx.ClearModule->GetTypeRegistry()->GetPointerTo(resPtrType);
-			
-				Symbol resPtrTypeSymbol = Symbol::CreateType(resPtrType);
-				return SymbolOps::GEP(operand, resPtrTypeSymbol, indices, ctx.Builder);
+				return current;
 			}
 			case SubscriptSemantic::Generic:
 			{
@@ -914,14 +1513,18 @@ namespace clear
 			llvm::FunctionType* functionType = llvm::FunctionType::get(ReturnType->Get(), types, isVariadic);
 			llvm::FunctionCallee callee = module.getOrInsertFunction(m_Name, functionType);
 			
-			*DeclSymbol = Symbol::CreateFunction(nullptr);
 			auto& funcSymbol = DeclSymbol->GetFunctionSymbol();
 			
 			funcSymbol.FunctionPtr = llvm::dyn_cast<llvm::Function>(callee.getCallee());
 			funcSymbol.FunctionType = functionType;
-			funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
+
+			// keep the node semantic analysis made (it knows the parameters), just complete it
+			if (!funcSymbol.FunctionNode)
+				funcSymbol.FunctionNode = std::make_shared<ASTFunctionDefinition>(m_Name);
+
+			funcSymbol.FunctionNode->SetName(m_Name);
 			funcSymbol.FunctionNode->SourceModule = ctx.ClearModule;
-			funcSymbol.FunctionNode->ReturnTypeVal = ReturnType;	
+			funcSymbol.FunctionNode->ReturnTypeVal = ReturnType->Get()->isVoidTy() ? nullptr : ReturnType;
 			
 			return *DeclSymbol;
 		}
@@ -992,7 +1595,8 @@ namespace clear
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
 
-		llvm::Value* arrayAlloc = ctx.Builder.CreateAlloca(llvmArrayType, nullptr, "array.alloc");
+		// in the entry block, an alloca inside a loop would grow the stack on every iteration
+		llvm::Value* arrayAlloc = CreateAlloca(arrayType, ctx).GetLLVMValue();
 
 		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType);
 		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);
@@ -1191,9 +1795,11 @@ namespace clear
 			return Symbol();
 		}
 
-		CLEAR_VERIFY(codegenType->Get() == ctx.ReturnType->Get(), "what the hell");	
+		CLEAR_VERIFY(codegenType->Get() == ctx.ReturnType->Get(), "return value has the wrong type");	
 
+		// the value is computed before any defer runs, so `defer` cannot change what is returned
 		ctx.Builder.CreateStore(codegenValue, ctx.ReturnAlloca);
+		EmitDefers(ctx, ctx.FunctionDeferBase);
 		ctx.Builder.CreateBr(ctx.ReturnBlock);
 
 		return {};
@@ -1205,11 +1811,13 @@ namespace clear
     {
 		if(ctx.ReturnAlloca)
 		{
+			// reaching the end of main means success, like C
 			llvm::Type* retType = ctx.ReturnType->Get();
-    		llvm::Value* defaultVal = llvm::UndefValue::get(retType);
+    		llvm::Value* defaultVal = llvm::Constant::getNullValue(retType);
     		ctx.Builder.CreateStore(defaultVal, ctx.ReturnAlloca);
 		}
 
+		EmitDefers(ctx, ctx.FunctionDeferBase);
     	ctx.Builder.CreateBr(ctx.ReturnBlock);
     }
 
@@ -1229,6 +1837,12 @@ namespace clear
 
 			if (result.Kind == SymbolKind::Type)
 				return Symbol::CreateType(ctx.ClearModule->GetTypeRegistry()->GetPointerTo(result.GetType()));
+
+			if (ctx.RuntimeChecks && result.GetLLVMValue()->getType()->isPointerTy())
+				EmitCheck(ctx, ctx.Builder.CreateIsNotNull(result.GetLLVMValue()), "dereferencing a null pointer", Location.GetSourceFile().empty() ? GetNodeLocation(Operand) : Location);
+
+			if (IsStorage)
+				return result; // the pointer value is the storage location
 
 			auto [resultValue, resultType] = result.GetValue();
 
@@ -1257,6 +1871,15 @@ namespace clear
 
 		if(m_Type == OperatorType::Not)
 		{
+			// logical not: compare against zero first so `not 5` is false rather than ~5
+			Symbol result = Operand->Codegen(ctx);
+			Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
+			Symbol asBool = SymbolOps::Cast(result, boolType, ctx.Builder);
+			return SymbolOps::Not(asBool, ctx.Builder);
+		}
+
+		if(m_Type == OperatorType::BitwiseNot)
+		{
 			Symbol result = Operand->Codegen(ctx);
 			return SymbolOps::Not(result, ctx.Builder);
 		}
@@ -1278,7 +1901,7 @@ namespace clear
 			if(ty->GetBaseType()->IsPointer())
 				valueToStore = ASTBinaryExpression::HandlePointerArithmetic(returnValue, one, type, ctx);
 			else 
-				valueToStore = ASTBinaryExpression::HandleMathExpression(returnValue, one, type, ctx);
+				valueToStore = Arithmetic(returnValue, one, type, ctx, Location);
 		};
 
 		if(m_Type == OperatorType::PostIncrement)
@@ -1453,6 +2076,7 @@ namespace clear
 
     	ValueRestoreGuard guard1(ctx.LoopConditionBlock, conditionBlock);
     	ValueRestoreGuard guard2(ctx.LoopEndBlock,       end);
+    	ValueRestoreGuard guard3(ctx.LoopDeferBase,      ctx.Defers->size());
 
 		WhileBlock.CodeBlock->Codegen(ctx);
 
@@ -1467,6 +2091,107 @@ namespace clear
 		return {};
 	}
 
+
+	Symbol ASTForExpression::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		auto registry = ctx.ClearModule->GetTypeRegistry();
+
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "for.condition");
+		llvm::BasicBlock* bodyBlock      = llvm::BasicBlock::Create(ctx.Context, "for.body");
+		llvm::BasicBlock* stepBlock      = llvm::BasicBlock::Create(ctx.Context, "for.step");
+		llvm::BasicBlock* endBlock       = llvm::BasicBlock::Create(ctx.Context, "for.end");
+
+		Symbol variable = CreateAlloca(VariableType, ctx);
+		*Variable = variable;
+
+		// ranges count the variable itself, arrays count a hidden index
+		Symbol counter;
+		llvm::Value* limit = nullptr;
+		bool isSigned = true;
+		Symbol iterable;
+
+		if (Iterable)
+		{
+			iterable = Iterable->Codegen(ctx);
+			counter = CreateAlloca(ctx.ClearModule->Lookup("uint64").value()->GetType(), ctx);
+			ctx.Builder.CreateStore(ctx.Builder.getInt64(0), counter.GetLLVMValue());
+			limit = ctx.Builder.getInt64(IterableType->As<ArrayType>()->GetArraySize());
+			isSigned = false;
+		}
+		else
+		{
+			Symbol start = Start->Codegen(ctx);
+			ctx.Builder.CreateStore(start.GetLLVMValue(), variable.GetLLVMValue());
+
+			// the end is evaluated once, before the first iteration
+			limit = End->Codegen(ctx).GetLLVMValue();
+			counter = variable;
+			isSigned = VariableType->IsSigned();
+		}
+
+		ctx.Builder.CreateBr(conditionBlock);
+
+		function->insert(function->end(), conditionBlock);
+		ctx.Builder.SetInsertPoint(conditionBlock);
+
+		llvm::Type* counterType = Iterable ? ctx.Builder.getInt64Ty() : VariableType->Get();
+		llvm::Value* current = ctx.Builder.CreateLoad(counterType, counter.GetLLVMValue(), "for.counter");
+		llvm::Value* keepGoing = nullptr;
+
+		if (Inclusive)
+			keepGoing = isSigned ? ctx.Builder.CreateICmpSLE(current, limit) : ctx.Builder.CreateICmpULE(current, limit);
+		else
+			keepGoing = isSigned ? ctx.Builder.CreateICmpSLT(current, limit) : ctx.Builder.CreateICmpULT(current, limit);
+
+		ctx.Builder.CreateCondBr(keepGoing, bodyBlock, endBlock);
+
+		function->insert(function->end(), bodyBlock);
+		ctx.Builder.SetInsertPoint(bodyBlock);
+
+		if (Iterable)
+		{
+			// copy the current element into the loop variable
+			llvm::Value* index = ctx.Builder.CreateLoad(ctx.Builder.getInt64Ty(), counter.GetLLVMValue());
+			llvm::Value* address = ctx.Builder.CreateInBoundsGEP(IterableType->Get(), iterable.GetLLVMValue(), { ctx.Builder.getInt64(0), index }, "for.element");
+			llvm::Value* element = ctx.Builder.CreateLoad(VariableType->Get(), address);
+			ctx.Builder.CreateStore(element, variable.GetLLVMValue());
+		}
+
+		{
+			ValueRestoreGuard continueGuard(ctx.LoopConditionBlock, stepBlock);
+			ValueRestoreGuard breakGuard(ctx.LoopEndBlock, endBlock);
+			ValueRestoreGuard deferGuard(ctx.LoopDeferBase, ctx.Defers->size());
+
+			CodeBlock->Codegen(ctx);
+		}
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(stepBlock);
+
+		function->insert(function->end(), stepBlock);
+		ctx.Builder.SetInsertPoint(stepBlock);
+
+		llvm::Value* value = ctx.Builder.CreateLoad(counterType, counter.GetLLVMValue());
+		llvm::Value* next = ctx.Builder.CreateAdd(value, llvm::ConstantInt::get(counterType, 1), "for.next", /* NUW = */ false, /* NSW = */ isSigned);
+		ctx.Builder.CreateStore(next, counter.GetLLVMValue());
+
+		// an inclusive range ending at the type's maximum would wrap around, stop after the last value instead
+		if (Inclusive)
+		{
+			llvm::Value* wasLast = ctx.Builder.CreateICmpEQ(value, limit);
+			ctx.Builder.CreateCondBr(wasLast, endBlock, conditionBlock);
+		}
+		else
+		{
+			ctx.Builder.CreateBr(conditionBlock);
+		}
+
+		function->insert(function->end(), endBlock);
+		ctx.Builder.SetInsertPoint(endBlock);
+
+		return {};
+	}
 
 	ASTTernaryExpression::ASTTernaryExpression() 
 	{
@@ -1520,8 +2245,8 @@ namespace clear
 		std::print("?: ");
 	}
 
-	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy)
-		: m_JumpTy(jumpTy)
+	ASTLoopControlFlow::ASTLoopControlFlow(std::string jumpTy, const Token& token)
+		: m_JumpTy(jumpTy), m_Token(token)
 	{
 	}
 
@@ -1529,6 +2254,8 @@ namespace clear
 	{
     	CLEAR_VERIFY(ctx.LoopConditionBlock, "BREAK/CONTINUE not in loop")
 		
+		EmitDefers(ctx, ctx.LoopDeferBase);
+
     	if (m_JumpTy == "continue")
 			ctx.Builder.CreateBr(ctx.LoopConditionBlock);
 
@@ -1551,6 +2278,9 @@ namespace clear
 
     Symbol ASTClass::Codegen(CodegenContext& ctx)
     {
+		if (IsTrait)
+			return Symbol::CreateType(ClassTy);
+
 		for (auto func : MemberFunctions)
 		{
 			func->Codegen(ctx);
@@ -1654,50 +2384,496 @@ namespace clear
 	{
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
-		// default case must be at back
-		llvm::BasicBlock* continueBlock = llvm::BasicBlock::Create(ctx.Context, "switch.continue");
-		llvm::BasicBlock* defaultCase   = llvm::BasicBlock::Create(ctx.Context, "switch.default");
-
-		auto savedIp = ctx.Builder.saveIP();
-
-		ctx.Builder.SetInsertPoint(defaultCase);
-		
-		DefaultCaseCodeBlock->Codegen(ctx);
-
-		if(!ctx.Builder.GetInsertBlock()->getTerminator())
-			ctx.Builder.CreateBr(continueBlock);
-
-		ctx.Builder.restoreIP(savedIp);
-
 		Symbol value = Value->Codegen(ctx);
+		llvm::Type* valueType = value.GetLLVMValue()->getType();
 
-		llvm::SwitchInst* switchStatement = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultCase);
-		function->insert(function->end(), defaultCase);
+		llvm::BasicBlock* endBlock     = llvm::BasicBlock::Create(ctx.Context, "switch.end");
+		llvm::BasicBlock* defaultBlock = DefaultCaseCodeBlock ? llvm::BasicBlock::Create(ctx.Context, "switch.default") : endBlock;
 
-		llvm::SmallVector<llvm::Value*> values;
-
-		for (const auto& [caseValues, codeBlock] : Cases)
+		// every case is handled: tell LLVM no other value can occur
+		if (IsExhaustive && !DefaultCaseCodeBlock)
 		{
-			llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "switch.case", function);
-			ctx.Builder.SetInsertPoint(block);
-			codeBlock->Codegen(ctx);
-			
-			if(!ctx.Builder.GetInsertBlock()->getTerminator())
-				ctx.Builder.CreateBr(continueBlock);
+			defaultBlock = llvm::BasicBlock::Create(ctx.Context, "switch.impossible", function);
+			llvm::IRBuilder<> impossible(defaultBlock);
+			impossible.CreateUnreachable();
+		}
 
-			for(const auto value : caseValues)
+		llvm::SwitchInst* switchInst = ctx.Builder.CreateSwitch(value.GetLLVMValue(), defaultBlock, (unsigned)Cases.size());
+
+		for (auto& switchCase : Cases)
+		{
+			llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(ctx.Context, "switch.case", function);
+
+			for (int64_t constant : switchCase.Constants)
+				switchInst->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(valueType, constant, true)), caseBlock);
+
+			// no fallthrough: every case jumps to the end when it finishes
+			ctx.Builder.SetInsertPoint(caseBlock);
+			switchCase.CodeBlock->Codegen(ctx);
+
+			if (!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(endBlock);
+		}
+
+		if (DefaultCaseCodeBlock)
+		{
+			function->insert(function->end(), defaultBlock);
+			ctx.Builder.SetInsertPoint(defaultBlock);
+			DefaultCaseCodeBlock->Codegen(ctx);
+
+			if (!ctx.Builder.GetInsertBlock()->getTerminator())
+				ctx.Builder.CreateBr(endBlock);
+		}
+
+		function->insert(function->end(), endBlock);
+		ctx.Builder.SetInsertPoint(endBlock);
+
+		return Symbol();
+	}
+
+	Symbol ASTZero::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(llvm::Constant::getNullValue(ValueType->Get()), ValueType);
+	}
+
+	Symbol ASTConstruct::Codegen(CodegenContext& ctx)
+	{
+		Symbol storage = CreateAlloca(ClassTy, ctx);
+		Symbol initial = Initial->Codegen(ctx);
+		SymbolOps::Store(storage, initial, ctx.Builder, ctx.Module, true);
+
+		Self->Value = storage;
+		InitCall->Codegen(ctx);
+
+		return SymbolOps::Load(storage, ctx.Builder);
+	}
+
+	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail)
+	{
+		auto& builder = ctx.Builder;
+		llvm::FunctionCallee dprintf = ctx.Module.getOrInsertFunction("dprintf", llvm::FunctionType::get(builder.getInt32Ty(), { builder.getInt32Ty(), builder.getPtrTy() }, true));
+		llvm::FunctionCallee abort = ctx.Module.getOrInsertFunction("abort", llvm::FunctionType::get(builder.getVoidTy(), false));
+
+		std::string where = location.GetSourceFile().empty() ? std::string("unknown location") 
+			: std::format("{}:{}:{}", location.GetSourceFile().filename().string(), location.LineNumber + 1, location.ColumnNumber + 1);
+
+		std::string format = detail ? "panic: %s (%s): %s\n" : "panic: %s (%s)\n";
+		llvm::SmallVector<llvm::Value*> args = { builder.getInt32(2), builder.CreateGlobalStringPtr(format), 
+												 builder.CreateGlobalStringPtr(message), builder.CreateGlobalStringPtr(where) };
+
+		if (detail)
+			args.push_back(detail);
+
+		// output printed before the panic must not be lost in stdout's buffer
+		llvm::FunctionCallee fflush = ctx.Module.getOrInsertFunction("fflush", llvm::FunctionType::get(builder.getInt32Ty(), { builder.getPtrTy() }, false));
+		builder.CreateCall(fflush, { llvm::ConstantPointerNull::get(builder.getPtrTy()) });
+
+		builder.CreateCall(dprintf, args);
+		llvm::CallInst* call = builder.CreateCall(abort);
+		call->setDoesNotReturn();
+		builder.CreateUnreachable();
+	}
+
+	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		llvm::BasicBlock* failBlock = llvm::BasicBlock::Create(ctx.Context, "check.fail", function);
+		llvm::BasicBlock* okBlock = llvm::BasicBlock::Create(ctx.Context, "check.ok", function);
+
+		// tell the optimizer the failure is rare so the happy path stays straight-line code
+		llvm::MDBuilder weights(ctx.Context);
+		ctx.Builder.CreateCondBr(ok, okBlock, failBlock, weights.createBranchWeights(1 << 20, 1));
+
+		ctx.Builder.SetInsertPoint(failBlock);
+		EmitPanic(ctx, message, location, detail);
+
+		ctx.Builder.SetInsertPoint(okBlock);
+	}
+
+	Symbol ASTAssert::Codegen(CodegenContext& ctx)
+	{
+		// like Python's -O, asserts disappear (unevaluated) when run-time checks are off
+		if (!ctx.RuntimeChecks)
+			return Symbol();
+
+		Symbol condition = Condition->Codegen(ctx);
+		Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
+		condition = SymbolOps::Cast(condition, boolType, ctx.Builder);
+
+		llvm::Value* detail = Message ? Message->Codegen(ctx).GetLLVMValue() : nullptr;
+		EmitCheck(ctx, condition.GetLLVMValue(), "assertion failed", Location, detail);
+
+		return Symbol();
+	}
+
+	Symbol ASTContains::Codegen(CodegenContext& ctx)
+	{
+		Symbol needle = Needle->Codegen(ctx);
+		Symbol haystack = Haystack->Codegen(ctx);
+
+		auto arrayType = ArrayTy->As<ArrayType>();
+		auto elementType = arrayType->GetBaseType();
+		auto boolType = ctx.ClearModule->Lookup("bool").value()->GetType();
+
+		// a short unrolled chain of comparisons; LLVM turns small arrays into straight-line code
+		llvm::Value* found = ctx.Builder.getFalse();
+
+		for (size_t i = 0; i < arrayType->GetArraySize(); i++)
+		{
+			llvm::Value* address = ctx.Builder.CreateInBoundsGEP(arrayType->Get(), haystack.GetLLVMValue(), { ctx.Builder.getInt64(0), ctx.Builder.getInt64(i) });
+			llvm::Value* element = ctx.Builder.CreateLoad(elementType->Get(), address);
+			llvm::Value* equal = element->getType()->isFloatingPointTy() ? ctx.Builder.CreateFCmpOEQ(element, needle.GetLLVMValue()) 
+																		: ctx.Builder.CreateICmpEQ(element, needle.GetLLVMValue());
+			found = ctx.Builder.CreateOr(found, equal);
+		}
+
+		if (Negate)
+			found = ctx.Builder.CreateNot(found);
+
+		return Symbol::CreateValue(found, boolType);
+	}
+
+	Symbol ASTIntrinsic::Codegen(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		llvm::SmallVector<llvm::Value*> args;
+
+		for (auto& argument : Arguments)
+			args.push_back(argument->Codegen(ctx).GetLLVMValue());
+
+		if (Name == "strlen")
+		{
+			llvm::FunctionCallee strlen = ctx.Module.getOrInsertFunction("strlen", llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false));
+			return Symbol::CreateValue(builder.CreateCall(strlen, args), ResultType);
+		}
+
+		if (Name == "str_contains")
+		{
+			llvm::FunctionCallee strstr = ctx.Module.getOrInsertFunction("strstr", llvm::FunctionType::get(builder.getPtrTy(), { builder.getPtrTy(), builder.getPtrTy() }, false));
+			llvm::Value* position = builder.CreateCall(strstr, { args[1], args[0] });
+			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+		}
+
+		// Generator[T] / Task[T] handles
+		if (Name.starts_with("coro_") || Name == "task_run")
+		{
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::Value* handle = args[0];
+			auto done = [&]() { return builder.CreateIntrinsic(llvm::Intrinsic::coro_done, {}, { handle }); };
+			auto value = [&](std::shared_ptr<Type> type)
 			{
-				llvm::ConstantInt* casted = llvm::dyn_cast<llvm::ConstantInt>(value->Codegen(ctx).GetLLVMValue());
-				CLEAR_VERIFY(casted, "not a constant int!");
+				llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { handle, builder.getInt32(16), builder.getInt1(false) });
+				return builder.CreateLoad(type->Get(), promise, "coro.value");
+			};
 
-				switchStatement->addCase(casted, block);
+			if (Name == "coro_done")
+				return Symbol::CreateValue(done(), ResultType);
+
+			if (Name == "coro_value")
+				return Symbol::CreateValue(value(ResultType), ResultType);
+
+			if (Name == "coro_destroy")
+			{
+				llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "coro.destroy", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "coro.destroyed", function);
+				builder.CreateCondBr(builder.CreateIsNotNull(handle), destroy, after);
+				builder.SetInsertPoint(destroy);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+				builder.CreateBr(after);
+				builder.SetInsertPoint(after);
+				return Symbol();
+			}
+
+			// resume (unless already finished), then report: resume -> finished?  advance -> a new value?
+			if (Name == "coro_resume" || Name == "coro_advance")
+			{
+				llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "coro.resume", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "coro.resumed", function);
+				llvm::BasicBlock* before = builder.GetInsertBlock();
+				builder.CreateCondBr(done(), after, resume);
+
+				builder.SetInsertPoint(resume);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
+				llvm::Value* finishedNow = done();
+				llvm::BasicBlock* resumed = builder.GetInsertBlock();
+				builder.CreateBr(after);
+
+				builder.SetInsertPoint(after);
+				llvm::PHINode* finished = builder.CreatePHI(builder.getInt1Ty(), 2);
+				finished->addIncoming(builder.getTrue(), before);
+				finished->addIncoming(finishedNow, resumed);
+
+				llvm::Value* result = Name == "coro_resume" ? (llvm::Value*)finished : builder.CreateNot(finished);
+				return Symbol::CreateValue(result, ResultType);
+			}
+
+			if (Name == "task_run")
+			{
+				llvm::BasicBlock* check = llvm::BasicBlock::Create(ctx.Context, "run.check", function);
+				llvm::BasicBlock* step = llvm::BasicBlock::Create(ctx.Context, "run.step", function);
+				llvm::BasicBlock* after = llvm::BasicBlock::Create(ctx.Context, "run.done", function);
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(check);
+				builder.CreateCondBr(done(), after, step);
+
+				builder.SetInsertPoint(step);
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(after);
+				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
+				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}
 
-		function->insert(function->end(), continueBlock);
-		ctx.Builder.SetInsertPoint(continueBlock);
+		if (Name == "hash_int")
+		{
+			// any scalar: its bits, mixed (splitmix64) so nearby values spread over the whole range
+			llvm::Value* value = args[0];
+
+			if (value->getType()->isPointerTy())
+				value = builder.CreatePtrToInt(value, builder.getInt64Ty());
+			else if (value->getType()->isFloatingPointTy())
+				value = builder.CreateBitCast(value, builder.getIntNTy((unsigned)value->getType()->getPrimitiveSizeInBits()));
+
+			value = builder.CreateZExtOrTrunc(value, builder.getInt64Ty());
+			value = builder.CreateXor(value, builder.CreateLShr(value, 30));
+			value = builder.CreateMul(value, builder.getInt64(0xbf58476d1ce4e5b9ULL));
+			value = builder.CreateXor(value, builder.CreateLShr(value, 27));
+			value = builder.CreateMul(value, builder.getInt64(0x94d049bb133111ebULL));
+			value = builder.CreateXor(value, builder.CreateLShr(value, 31));
+			return Symbol::CreateValue(value, ResultType);
+		}
+
+		if (Name == "hash_str")
+		{
+			// FNV-1a over the bytes, in a small helper shared by the whole module
+			llvm::Function* helper = ctx.Module.getFunction("clear.hash_str");
+
+			if (!helper)
+			{
+				auto type = llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false);
+				helper = llvm::Function::Create(type, llvm::Function::LinkOnceODRLinkage, "clear.hash_str", ctx.Module);
+
+				llvm::IRBuilder<> local(ctx.Context);
+				auto entry = llvm::BasicBlock::Create(ctx.Context, "entry", helper);
+				auto loop = llvm::BasicBlock::Create(ctx.Context, "loop", helper);
+				auto body = llvm::BasicBlock::Create(ctx.Context, "body", helper);
+				auto done = llvm::BasicBlock::Create(ctx.Context, "done", helper);
+
+				local.SetInsertPoint(entry);
+				local.CreateBr(loop);
+
+				local.SetInsertPoint(loop);
+				auto hash = local.CreatePHI(local.getInt64Ty(), 2, "hash");
+				auto position = local.CreatePHI(local.getPtrTy(), 2, "position");
+				hash->addIncoming(local.getInt64(0xcbf29ce484222325ULL), entry);
+				position->addIncoming(helper->getArg(0), entry);
+				auto byte = local.CreateLoad(local.getInt8Ty(), position, "byte");
+				local.CreateCondBr(local.CreateICmpEQ(byte, local.getInt8(0)), done, body);
+
+				local.SetInsertPoint(body);
+				auto mixed = local.CreateMul(local.CreateXor(hash, local.CreateZExt(byte, local.getInt64Ty())), local.getInt64(0x100000001b3ULL));
+				auto next = local.CreateConstInBoundsGEP1_64(local.getInt8Ty(), position, 1);
+				hash->addIncoming(mixed, body);
+				position->addIncoming(next, body);
+				local.CreateBr(loop);
+
+				local.SetInsertPoint(done);
+				local.CreateRet(hash);
+			}
+
+			return Symbol::CreateValue(builder.CreateCall(helper, { args[0] }), ResultType);
+		}
+
+		CLEAR_UNREACHABLE("unknown intrinsic ", Name);
+		return Symbol();
+	}
+
+	llvm::Value* LoadVariantPayload(CodegenContext& ctx, std::shared_ptr<Type> variantType, size_t caseIndex, llvm::Value* storage)
+	{
+		auto& variantCase = variantType->As<ClassType>()->Cases[caseIndex];
+		llvm::Value* payload = ctx.Builder.CreateStructGEP(variantType->Get(), storage, 1, "payload");
+		return ctx.Builder.CreateLoad(variantCase.Payload, payload);
+	}
+
+	// keeps a value in a stack slot so parts of it can be addressed
+	static llvm::Value* SpillToStack(CodegenContext& ctx, std::shared_ptr<Type> type, llvm::Value* value)
+	{
+		Symbol slot = CreateAlloca(type, ctx);
+		ctx.Builder.CreateStore(value, slot.GetLLVMValue());
+		return slot.GetLLVMValue();
+	}
+
+	Symbol ASTVariantConstruct::Codegen(CodegenContext& ctx)
+	{
+		auto classType = VariantTy->As<ClassType>();
+		auto& variantCase = classType->Cases[CaseIndex];
+
+		// fill the case's payload, then store tag and payload into a zeroed value
+		llvm::Value* payload = llvm::UndefValue::get(variantCase.Payload);
+
+		for (size_t i = 0; i < Values.size(); i++)
+		{
+			Symbol value = Values[i]->Codegen(ctx);
+			Symbol fieldType = Symbol::CreateType(variantCase.Fields[i].second);
+			value = SymbolOps::Cast(value, fieldType, ctx.Builder);
+			payload = ctx.Builder.CreateInsertValue(payload, value.GetLLVMValue(), { (unsigned)i });
+		}
+
+		llvm::Value* storage = SpillToStack(ctx, VariantTy, llvm::Constant::getNullValue(VariantTy->Get()));
+		ctx.Builder.CreateStore(ctx.Builder.getInt32((uint32_t)CaseIndex), ctx.Builder.CreateStructGEP(VariantTy->Get(), storage, 0));
+
+		if (!Values.empty())
+			ctx.Builder.CreateStore(payload, ctx.Builder.CreateStructGEP(VariantTy->Get(), storage, 1));
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(VariantTy->Get(), storage), VariantTy);
+	}
+
+	Symbol ASTVariantField::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		llvm::Value* payload = LoadVariantPayload(ctx, VariantTy, CaseIndex, subject.GetLLVMValue());
+
+		auto fieldType = VariantTy->As<ClassType>()->Cases[CaseIndex].Fields[FieldIndex].second;
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(payload, { (unsigned)FieldIndex }), fieldType);
+	}
+
+	Symbol ASTVariantTag::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u }, "tag"), TagType);
+	}
+
+	Symbol ASTOptionalUnwrap::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		auto classType = OptionalTy->As<ClassType>();
+		size_t someIndex = classType->FindCase("some").value();
+
+		if (ctx.RuntimeChecks)
+		{
+			llvm::Value* tag = ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u });
+			EmitCheck(ctx, ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex)), "unwrapping an optional that is none", Location);
+		}
+
+		llvm::Value* storage = SpillToStack(ctx, OptionalTy, subject.GetLLVMValue());
+		llvm::Value* payload = LoadVariantPayload(ctx, OptionalTy, someIndex, storage);
+		auto valueType = classType->Cases[someIndex].Fields[0].second;
+
+		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(payload, { 0u }), valueType);
+	}
+
+	Symbol ASTOptionalValueOr::Codegen(CodegenContext& ctx)
+	{
+		Symbol subject = Subject->Codegen(ctx);
+		auto classType = OptionalTy->As<ClassType>();
+		size_t someIndex = classType->FindCase("some").value();
+		auto valueType = classType->Cases[someIndex].Fields[0].second;
+
+		llvm::Value* storage = SpillToStack(ctx, OptionalTy, subject.GetLLVMValue());
+		llvm::Value* payload = LoadVariantPayload(ctx, OptionalTy, someIndex, storage);
+		llvm::Value* value = ctx.Builder.CreateExtractValue(payload, { 0u });
+
+		Symbol fallback = Default->Codegen(ctx);
+		Symbol valueTypeSymbol = Symbol::CreateType(valueType);
+		fallback = SymbolOps::Cast(fallback, valueTypeSymbol, ctx.Builder);
+
+		llvm::Value* tag = ctx.Builder.CreateExtractValue(subject.GetLLVMValue(), { 0u });
+		llvm::Value* hasValue = ctx.Builder.CreateICmpEQ(tag, ctx.Builder.getInt32((uint32_t)someIndex));
+
+		return Symbol::CreateValue(ctx.Builder.CreateSelect(hasValue, value, fallback.GetLLVMValue()), valueType);
+	}
+
+	Symbol ASTUnionConstruct::Codegen(CodegenContext& ctx)
+	{
+		llvm::Value* storage = SpillToStack(ctx, UnionTy, llvm::Constant::getNullValue(UnionTy->Get()));
+
+		if (Value)
+		{
+			Symbol value = Value->Codegen(ctx);
+			Symbol fieldType = Symbol::CreateType(FieldTy);
+			value = SymbolOps::Cast(value, fieldType, ctx.Builder);
+			ctx.Builder.CreateStore(value.GetLLVMValue(), storage);
+		}
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(UnionTy->Get(), storage), UnionTy);
+	}
+
+	Symbol ASTTupleExpr::Codegen(CodegenContext& ctx)
+	{
+		if (IsType)
+			return Symbol::CreateType(TupleTy);
+
+		// build the value in registers, element by element
+		auto& elements = TupleTy->As<TupleType>()->GetElements();
+		llvm::Value* tuple = llvm::UndefValue::get(TupleTy->Get());
+
+		for (size_t i = 0; i < Values.size(); i++)
+		{
+			Symbol value = Values[i]->Codegen(ctx);
+			Symbol elementType = Symbol::CreateType(elements[i]);
+			value = SymbolOps::Cast(value, elementType, ctx.Builder);
+			tuple = ctx.Builder.CreateInsertValue(tuple, value.GetLLVMValue(), { (unsigned)i });
+		}
+
+		return Symbol::CreateValue(tuple, TupleTy);
+	}
+
+	Symbol ASTTupleGet::Codegen(CodegenContext& ctx)
+	{
+		Symbol tuple = Tuple->Codegen(ctx);
+		auto elementType = TupleTy->As<TupleType>()->GetElements()[Index];
+
+		if (!TupleIsStorage)
+			return Symbol::CreateValue(ctx.Builder.CreateExtractValue(tuple.GetLLVMValue(), { (unsigned)Index }), elementType);
+
+		llvm::Value* address = ctx.Builder.CreateStructGEP(TupleTy->Get(), tuple.GetLLVMValue(), (unsigned)Index);
+		auto pointerType = ctx.ClearModule->GetTypeRegistry()->GetPointerTo(elementType);
+
+		if (WantAddress)
+			return Symbol::CreateValue(address, pointerType);
+
+		return Symbol::CreateValue(ctx.Builder.CreateLoad(elementType->Get(), address), elementType);
+	}
+
+	Symbol ASTTemporary::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Operand->Codegen(ctx);
+		Symbol storage = CreateAlloca(ValueType, ctx);
+		SymbolOps::Store(storage, value, ctx.Builder, ctx.Module, true);
+
+		return storage;
+	}
+
+	Symbol ASTConstantValue::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(llvm::ConstantInt::get(ValueType->Get(), Value, /* isSigned = */ true), ValueType);
+	}
+
+	Symbol ASTDefer::Codegen(CodegenContext& ctx)
+	{
+		// nothing runs now, the expression is emitted at every exit of the enclosing block
+		CLEAR_VERIFY(!ctx.Defers->empty(), "defer outside of a block");
+		ctx.Defers->back().push_back(Expr);
 
 		return Symbol();
+	}
+
+	void EmitDefers(CodegenContext& ctx, size_t downTo)
+	{
+		auto& defers = *ctx.Defers;
+
+		for (size_t scope = defers.size(); scope-- > downTo; )
+		{
+			// copy, emitting a deferred expression must not be affected by changes to the stack
+			auto pending = defers[scope];
+
+			for (auto it = pending.rbegin(); it != pending.rend(); it++)
+				(*it)->Codegen(ctx);
+		}
 	}
 
 	std::string ASTGenericTemplate::GetName()
@@ -1705,6 +2881,7 @@ namespace clear
 		switch (TemplateNode->GetType()) 
 		{
 			case ASTNodeType::Class: return std::dynamic_pointer_cast<ASTClass>(TemplateNode)->GetName();
+			case ASTNodeType::FunctionDefinition: return std::dynamic_pointer_cast<ASTFunctionDefinition>(TemplateNode)->GetName();
 			default:
 				break;
 		}

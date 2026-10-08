@@ -10,12 +10,62 @@ namespace clear {
 		if (!node)
 			return nullptr;
 
+		std::shared_ptr<ASTNodeBase> cloned = CloneNode(node);
+
+		// keep source locations so errors inside generic code point at the template
+		if (cloned && cloned->Location.GetSourceFile().empty())
+			cloned->Location = node->Location;
+
+		return cloned;
+	}
+
+	std::shared_ptr<ASTNodeBase> Cloner::CloneNode(std::shared_ptr<ASTNodeBase> node)
+	{
 		switch (node->GetType()) 
 		{
 			case ASTNodeType::Class:					return CloneClass(std::dynamic_pointer_cast<ASTClass>(node));
 			case ASTNodeType::FunctionDefinition:		return CloneFunction(std::dynamic_pointer_cast<ASTFunctionDefinition>(node));
 			case ASTNodeType::VariableDecleration:		return CloneVariableDecl(std::dynamic_pointer_cast<ASTVariableDeclaration>(node));
-			case ASTNodeType::Variable:					return CloneVariable(std::dynamic_pointer_cast<ASTVariable>(node));
+			case ASTNodeType::Variable:
+			{
+				// a macro parameter: paste a copy of what the caller wrote (cloned plainly, so it keeps the caller's names)
+				auto variable = std::dynamic_pointer_cast<ASTVariable>(node);
+				if (auto it = ExpressionMap.find(variable->GetName().GetData()); it != ExpressionMap.end())
+					return Cloner{}.Clone(it->second);
+
+				return CloneVariable(variable);
+			}
+			case ASTNodeType::MacroCall:
+			{
+				auto original = std::dynamic_pointer_cast<ASTMacroCall>(node);
+				auto call = std::make_shared<ASTMacroCall>();
+				call->Name = original->Name;
+				call->Location = original->Location;
+				for (auto& argument : original->Arguments)
+					call->Arguments.push_back(Clone(argument));
+				return call;
+			}
+			case ASTNodeType::Yield:
+			{
+				auto yield = std::make_shared<ASTYield>();
+				yield->Value = Clone(std::dynamic_pointer_cast<ASTYield>(node)->Value);
+				return yield;
+			}
+			case ASTNodeType::Await:
+			{
+				auto original = std::dynamic_pointer_cast<ASTAwait>(node);
+				auto await = std::make_shared<ASTAwait>();
+				await->Operand = Clone(original->Operand);
+				await->IsPause = original->IsPause;
+				return await;
+			}
+			case ASTNodeType::Sequence:
+			{
+				auto sequence = std::make_shared<ASTSequence>();
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children)
+					sequence->Children.push_back(Clone(child));
+				return sequence;
+			}
 			case ASTNodeType::TypeSpecifier:			return CloneTypeSpec(std::dynamic_pointer_cast<ASTTypeSpecifier>(node));
 			case ASTNodeType::BinaryExpression:			return CloneBinaryExpr(std::dynamic_pointer_cast<ASTBinaryExpression>(node));
 			case ASTNodeType::UnaryExpression:			return CloneUnaryExpr(std::dynamic_pointer_cast<ASTUnaryExpression>(node));
@@ -32,6 +82,136 @@ namespace clear {
 			case ASTNodeType::ArrayType:				return CloneArrayType(std::dynamic_pointer_cast<ASTArrayType>(node));
 			case ASTNodeType::IfExpression:				return CloneIfExpr(std::dynamic_pointer_cast<ASTIfExpression>(node));
 			case ASTNodeType::WhileLoop:				return CloneWhileLoop(std::dynamic_pointer_cast<ASTWhileExpression>(node));
+			case ASTNodeType::ForLoop:
+			{
+				auto original = std::dynamic_pointer_cast<ASTForExpression>(node);
+				auto forLoop = std::make_shared<ASTForExpression>();
+				forLoop->VariableName = original->VariableName;
+
+				if (!HygieneSuffix.empty())
+				{
+					std::string fresh = original->VariableName.GetData() + HygieneSuffix;
+					RenameMap[original->VariableName.GetData()] = fresh;
+					forLoop->VariableName.SetData(fresh);
+				}
+
+				forLoop->Start = Clone(original->Start);
+				forLoop->End = Clone(original->End);
+				forLoop->Iterable = Clone(original->Iterable);
+				forLoop->Inclusive = original->Inclusive;
+				forLoop->CodeBlock = CloneBlock(original->CodeBlock);
+				return forLoop;
+			}
+			case ASTNodeType::LoopControlFlow:
+			{
+				auto original = std::dynamic_pointer_cast<ASTLoopControlFlow>(node);
+				return std::make_shared<ASTLoopControlFlow>(original->GetToken().GetData(), original->GetToken());
+			}
+			case ASTNodeType::Switch:
+			{
+				auto original = std::dynamic_pointer_cast<ASTSwitch>(node);
+				auto switchNode = std::make_shared<ASTSwitch>();
+				switchNode->Value = Clone(original->Value);
+				switchNode->DefaultCaseCodeBlock = CloneBlock(original->DefaultCaseCodeBlock);
+
+				for (const auto& switchCase : original->Cases)
+				{
+					SwitchCase copy;
+					copy.CodeBlock = CloneBlock(switchCase.CodeBlock);
+
+					for (const auto& value : switchCase.Values)
+						copy.Values.push_back(Clone(value));
+
+					switchNode->Cases.push_back(copy);
+				}
+
+				return switchNode;
+			}
+			case ASTNodeType::Defer:
+			{
+				auto deferNode = std::make_shared<ASTDefer>();
+				deferNode->Expr = Clone(std::dynamic_pointer_cast<ASTDefer>(node)->Expr);
+				return deferNode;
+			}
+			case ASTNodeType::TernaryExpression:
+			{
+				auto original = std::dynamic_pointer_cast<ASTTernaryExpression>(node);
+				auto ternary = std::make_shared<ASTTernaryExpression>();
+				ternary->Condition = Clone(original->Condition);
+				ternary->Truthy = Clone(original->Truthy);
+				ternary->Falsy = Clone(original->Falsy);
+				return ternary;
+			}
+			case ASTNodeType::ListExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTListExpr>(node);
+				auto list = std::make_shared<ASTListExpr>();
+
+				for (const auto& value : original->Values)
+					list->Values.push_back(Clone(value));
+
+				return list;
+			}
+			case ASTNodeType::Lambda:
+			{
+				auto original = std::dynamic_pointer_cast<ASTLambda>(node);
+				auto lambda = std::make_shared<ASTLambda>();
+
+				for (auto& parameter : original->Parameters)
+					lambda->Parameters.push_back(CloneVariableDecl(parameter));
+
+				lambda->ReturnType = Clone(original->ReturnType);
+				lambda->Body = Clone(original->Body);
+				return lambda;
+			}
+			case ASTNodeType::FunctionTypeExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTFunctionTypeExpr>(node);
+				auto type = std::make_shared<ASTFunctionTypeExpr>();
+
+				for (auto& parameter : original->Parameters)
+					type->Parameters.push_back(Clone(parameter));
+
+				type->ReturnType = Clone(original->ReturnType);
+				return type;
+			}
+			case ASTNodeType::TupleExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTTupleExpr>(node);
+				auto tuple = std::make_shared<ASTTupleExpr>();
+
+				for (auto& value : original->Values)
+					tuple->Values.push_back(Clone(value));
+
+				return tuple;
+			}
+			case ASTNodeType::Destructure:
+			{
+				auto original = std::dynamic_pointer_cast<ASTDestructure>(node);
+				auto destructure = std::make_shared<ASTDestructure>();
+
+				for (auto& target : original->Targets)
+					destructure->Targets.push_back(Clone(target));
+
+				destructure->Value = Clone(original->Value);
+				destructure->IsDeclaration = original->IsDeclaration;
+				return destructure;
+			}
+			case ASTNodeType::TypeLiteral:
+				return node;
+			case ASTNodeType::Assert:
+			{
+				auto original = std::dynamic_pointer_cast<ASTAssert>(node);
+				auto assertNode = std::make_shared<ASTAssert>();
+				assertNode->Condition = Clone(original->Condition);
+				assertNode->Message = Clone(original->Message);
+				return assertNode;
+			}
+			case ASTNodeType::ConstantValue:
+			{
+				auto original = std::dynamic_pointer_cast<ASTConstantValue>(node);
+				return std::make_shared<ASTConstantValue>(original->Value, original->ValueType);
+			}
 			default: break;
 	}	
 
@@ -52,12 +232,19 @@ namespace clear {
 		for (auto value : node->DefaultValues)
 			newClass->DefaultValues.push_back(Clone(value));
 
+		for (auto base : node->Bases)
+			newClass->Bases.push_back(Clone(base));
+
+		newClass->IsUnion = node->IsUnion;
+		newClass->IsTrait = node->IsTrait;
 		return newClass;
 	}
 	
 	std::shared_ptr<ASTFunctionDefinition> Cloner::CloneFunction(std::shared_ptr<ASTFunctionDefinition> node)
 	{
 		std::shared_ptr<ASTFunctionDefinition> newNode = std::make_shared<ASTFunctionDefinition>(node->GetName());
+		newNode->SetNameToken(node->GetNameToken());
+		newNode->Location = node->Location;
 
 		newNode->CodeBlock = CloneBlock(node->CodeBlock);		
 		
@@ -69,6 +256,9 @@ namespace clear {
 
 		newNode->SourceModule = DestinationModule;
 		newNode->Linkage = node->Linkage;
+		newNode->IsVirtual = node->IsVirtual;
+		newNode->IsProperty = node->IsProperty;
+		newNode->IsAsync = node->IsAsync;
 
 		return newNode;
 	}
@@ -83,12 +273,37 @@ namespace clear {
 		if (node->Initializer)
 			newNode->Initializer = Clone(node->Initializer);
 
+		newNode->IsConst = node->IsConst;
+		newNode->Location = node->Location;
+
+		// a local declared by a macro body never clashes with (or captures) the caller's variables
+		if (!HygieneSuffix.empty() && !node->IsParameter)
+		{
+			Token fresh = node->GetName();
+			fresh.SetData(fresh.GetData() + HygieneSuffix);
+			RenameMap[node->GetName().GetData()] = fresh.GetData();
+
+			auto renamed = std::make_shared<ASTVariableDeclaration>(fresh);
+			renamed->TypeResolver = newNode->TypeResolver;
+			renamed->Initializer = newNode->Initializer;
+			renamed->IsConst = newNode->IsConst;
+			renamed->Location = newNode->Location;
+			return renamed;
+		}
+
 		return newNode;
 	}
 
 	std::shared_ptr<ASTVariable> Cloner::CloneVariable(std::shared_ptr<ASTVariable> node)
 	{
 		std::shared_ptr<ASTVariable> newNode = std::make_shared<ASTVariable>(node->GetName());
+
+		if (auto renamed = RenameMap.find(node->GetName().GetData()); renamed != RenameMap.end())
+		{
+			Token name = node->GetName();
+			name.SetData(renamed->second);
+			newNode = std::make_shared<ASTVariable>(name);
+		}
 
 		auto it = SubstitutionMap.find(node->GetName().GetData());
 		if (it != SubstitutionMap.end())

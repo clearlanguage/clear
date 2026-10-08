@@ -50,7 +50,7 @@ namespace clear
         None = 0, Floating, Integral, 
         Pointer, Signed, Array, Compound, 
         Void, Variadic, Constant, Class,
-        Generic, Count
+        Generic, Enum, Tuple, Function, Count
     };
     
     using TypeFlagSet = std::bitset<(size_t)TypeFlags::Count>;
@@ -93,6 +93,9 @@ namespace clear
         bool IsClass();
         bool IsConst();
         bool IsGeneric();
+        bool IsEnum();
+        bool IsTuple();
+        bool IsFunction();
 
         TypeFlagSet GetFlags() const { return m_Flags; }
 
@@ -138,7 +141,7 @@ namespace clear
         virtual ~PointerType() = default;
 
         virtual llvm::Type* Get() const override  { return m_LLVMType; }
-        virtual std::string GetHash() const override { return m_BaseType->GetHash() + "*"; }
+        virtual std::string GetHash() const override { return m_BaseType ? m_BaseType->GetHash() + "*" : "null"; }
        
         std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
         void SetBaseType(std::shared_ptr<Type> type);
@@ -146,6 +149,15 @@ namespace clear
     private:
         std::shared_ptr<Type> m_BaseType;
         llvm::PointerType* m_LLVMType;
+    };
+
+    // the type of string literals: a pointer to zero-terminated bytes whose ==, < and friends compare
+    // contents rather than addresses; it converts freely to and from *int8 for C functions
+    class StrType : public PointerType
+    {
+    public:
+        using PointerType::PointerType;
+        virtual std::string GetHash() const override { return "str"; }
     };
 
     class ArrayType : public Type 
@@ -169,6 +181,7 @@ namespace clear
     };
 	
     struct Symbol;
+    class ASTNodeBase;
 	
     class ClassType : public Type
     {
@@ -182,7 +195,46 @@ namespace clear
 		std::optional<std::shared_ptr<Symbol>> GetMember(llvm::StringRef name);
 		std::optional<std::shared_ptr<Symbol>> GetMemberValueByIndex(size_t index);
 		std::optional<size_t> GetMemberValueIndex(llvm::StringRef name);
+		const auto& GetMemberValues() const { return m_MemberValues; }
 		llvm::DenseMap<std::string,  std::shared_ptr<Symbol>> MemberFunctions;
+		std::vector<std::shared_ptr<ASTNodeBase>> MemberDefaults; // per field, null when the field has no default
+
+		// for instances of generic classes: List[int32] remembers "List" and [int32]
+		std::string GenericOrigin;
+		std::vector<std::shared_ptr<Type>> GenericArguments;
+
+		// rich enums: a tag plus storage big enough for the largest case's data
+		struct VariantCase
+		{
+			std::string Name;
+			std::vector<std::pair<std::string, std::shared_ptr<Type>>> Fields;
+			llvm::StructType* Payload = nullptr;
+		};
+
+		bool IsVariant = false;
+		bool IsOptional = false; // ?T: cases none (tag 0) and some(value)
+		bool IsUnion = false;    // every field starts at offset 0
+		std::vector<VariantCase> Cases;
+
+		// inheritance: fields of Base come first, so a *Derived is also a valid *Base
+		std::shared_ptr<ClassType> Base;
+		std::vector<std::shared_ptr<ClassType>> Traits; // traits this class declares it satisfies
+		bool IsTrait = false;
+
+		// virtual methods: slot i of the vtable calls VTable[i] (field 0, __vtable, points at the table)
+		bool HasVTable = false;
+		std::vector<std::string> VirtualNames;
+		std::vector<std::shared_ptr<Symbol>> VTable;
+
+		bool DerivesFrom(const std::shared_ptr<ClassType>& other) const;
+		bool Satisfies(const std::shared_ptr<ClassType>& trait) const;
+
+		std::optional<size_t> FindCase(llvm::StringRef name) const;
+
+		// lays the type out as { int32 tag, [n x i64] payload } for the given cases
+		void SetVariantBody(llvm::ArrayRef<VariantCase> cases, llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> methods);
+		// lays the type out as one block of storage shared by all fields
+		void SetUnionBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members);
 
     private:
 		llvm::StructType* m_LLVMType = nullptr;
@@ -204,6 +256,92 @@ namespace clear
     private:
         std::shared_ptr<Type> m_Base;
     };
+
+    // a named set of integer constants: `enum Color: Red, Green, Blue`
+    class EnumType : public Type
+    {
+    public:
+        EnumType(llvm::StringRef name, std::shared_ptr<Type> underlying);
+        virtual ~EnumType() = default;
+
+        virtual llvm::Type* Get() const override { return m_Underlying->Get(); }
+        virtual std::string GetHash() const override { return m_Name; }
+
+        std::shared_ptr<Type> GetUnderlyingType() const { return m_Underlying; }
+
+        bool AddValue(const std::string& name, int64_t value);
+        std::optional<int64_t> GetValue(llvm::StringRef name) const;
+        const auto& GetValues() const { return m_Values; }
+
+    private:
+        std::string m_Name;
+        std::shared_ptr<Type> m_Underlying;
+        llvm::MapVector<std::string, int64_t> m_Values;
+    };
+
+    // (int, float64): a fixed group of values, laid out like a struct with unnamed fields
+    class TupleType : public Type
+    {
+    public:
+        TupleType(llvm::ArrayRef<std::shared_ptr<Type>> elements, llvm::LLVMContext& context);
+        virtual ~TupleType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        const auto& GetElements() const { return m_Elements; }
+
+    private:
+        std::vector<std::shared_ptr<Type>> m_Elements;
+        llvm::StructType* m_LLVMType;
+    };
+
+    // function(int, int) -> int: a pointer to a function with that signature (no captured state)
+    class FunctionPointerType : public Type
+    {
+    public:
+        FunctionPointerType(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType, llvm::LLVMContext& context);
+        virtual ~FunctionPointerType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        const auto& GetParameters() const { return m_Parameters; }
+        std::shared_ptr<Type> GetReturnType() const { return m_ReturnType; } // null for no value
+        llvm::FunctionType* GetFunctionType() const { return m_FunctionType; }
+
+    private:
+        std::vector<std::shared_ptr<Type>> m_Parameters;
+        std::shared_ptr<Type> m_ReturnType;
+        llvm::Type* m_LLVMType;
+        llvm::FunctionType* m_FunctionType;
+    };
+
+    // Generator[T] (a function that yields) and Task[T] (an async function): a handle to a suspended
+    // LLVM coroutine. The handle is one pointer; the frame is allocated when the coroutine is called.
+    class CoroutineType : public Type
+    {
+    public:
+        enum class Kind { Generator, Task };
+
+        CoroutineType(Kind kind, std::shared_ptr<Type> value, llvm::LLVMContext& context)
+            : m_Kind(kind), m_Value(value), m_LLVMType(llvm::PointerType::get(context, 0)) {}
+        virtual ~CoroutineType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override;
+
+        Kind GetKind() const { return m_Kind; }
+        std::shared_ptr<Type> GetValueType() const { return m_Value; } // null for Task[none]
+
+    private:
+        Kind m_Kind;
+        std::shared_ptr<Type> m_Value;
+        llvm::Type* m_LLVMType;
+    };
+
+    // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics
+    std::string GetDisplayName(const std::shared_ptr<Type>& type);
 
     class GenericType : public Type 
     {

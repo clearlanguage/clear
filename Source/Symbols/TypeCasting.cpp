@@ -17,6 +17,26 @@ namespace clear
 
         llvm::Value* castedValue = nullptr;
 
+        // anything -> bool means "is it non-zero", never truncation
+        if (dstType->isIntegerTy(1))
+        {
+            if (srcType->isIntegerTy())
+                return builder.CreateICmpNE(value, llvm::ConstantInt::get(srcType, 0), "tobool");
+
+            if (srcType->isFloatingPointTy())
+                return builder.CreateFCmpUNE(value, llvm::ConstantFP::get(srcType, 0.0), "tobool");
+
+            if (srcType->isPointerTy())
+                return builder.CreateIsNotNull(value, "tobool");
+        }
+
+        // int -> pointer and back, needed for explicit `as` casts
+        if (srcType->isIntegerTy() && dstType->isPointerTy())
+            return builder.CreateIntToPtr(value, dstType, "cast");
+
+        if (srcType->isPointerTy() && dstType->isIntegerTy())
+            return builder.CreatePtrToInt(value, dstType, "cast");
+
         // int -> float
         if (srcType->isIntegerTy() && dstType->isFloatingPointTy()) 
         {
@@ -80,6 +100,9 @@ namespace clear
         if (srcType == dstType)
             return true;
 
+        if (dstType->isIntegerTy(1) && (srcType->isIntegerTy() || srcType->isFloatingPointTy() || srcType->isPointerTy())) return true;
+        if (srcType->isIntegerTy() && dstType->isPointerTy()) return true;
+        if (srcType->isPointerTy() && dstType->isIntegerTy()) return true;
         if (srcType->isIntegerTy() && dstType->isFloatingPointTy()) return true;
         else if (srcType->isFloatingPointTy() && dstType->isIntegerTy()) return true;
         else if (srcType->isFloatTy() && dstType->isDoubleTy()) return true;

@@ -14,8 +14,52 @@ namespace clear
 
 	std::shared_ptr<Type> Infer::InferTypeFromNode(std::shared_ptr<ASTNodeBase> node)
 	{
+		if (!node)
+			return nullptr;
+
 		switch (node->GetType()) 
 		{
+			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
+			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
+			case ASTNodeType::FunctionRef:	return std::dynamic_pointer_cast<ASTFunctionRef>(node)->FunctionTy;
+			case ASTNodeType::VTableRef:	return std::dynamic_pointer_cast<ASTVTableRef>(node)->PointerTy;
+			case ASTNodeType::Await:		return std::dynamic_pointer_cast<ASTAwait>(node)->ValueType;
+			case ASTNodeType::Yield:		return nullptr;
+			case ASTNodeType::VariantConstruct: return std::dynamic_pointer_cast<ASTVariantConstruct>(node)->VariantTy;
+			case ASTNodeType::VariantTag:	return std::dynamic_pointer_cast<ASTVariantTag>(node)->TagType;
+			case ASTNodeType::UnionConstruct: return std::dynamic_pointer_cast<ASTUnionConstruct>(node)->UnionTy;
+			case ASTNodeType::VariantField:
+			{
+				auto field = std::dynamic_pointer_cast<ASTVariantField>(node);
+				return field->VariantTy->As<ClassType>()->Cases[field->CaseIndex].Fields[field->FieldIndex].second;
+			}
+			case ASTNodeType::OptionalUnwrap:
+			case ASTNodeType::OptionalValueOr:
+			{
+				auto optional = node->GetType() == ASTNodeType::OptionalUnwrap ? std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->OptionalTy 
+																			   : std::dynamic_pointer_cast<ASTOptionalValueOr>(node)->OptionalTy;
+				auto classType = optional->As<ClassType>();
+				return classType->Cases[classType->FindCase("some").value()].Fields[0].second;
+			}
+			case ASTNodeType::Lambda:		return nullptr; // not analysed yet
+			case ASTNodeType::TupleExpr:	return std::dynamic_pointer_cast<ASTTupleExpr>(node)->TupleTy;
+			case ASTNodeType::TupleGet:
+			{
+				auto get = std::dynamic_pointer_cast<ASTTupleGet>(node);
+				return get->TupleTy->As<TupleType>()->GetElements()[get->Index];
+			}
+			case ASTNodeType::Intrinsic:	return std::dynamic_pointer_cast<ASTIntrinsic>(node)->ResultType;
+			case ASTNodeType::Slot:			return std::dynamic_pointer_cast<ASTSlot>(node)->ValueType;
+			case ASTNodeType::Construct:	return std::dynamic_pointer_cast<ASTConstruct>(node)->ClassTy;
+			case ASTNodeType::Temporary:
+			{
+				auto temporary = std::dynamic_pointer_cast<ASTTemporary>(node);
+				return m_Module->GetTypeRegistry()->GetPointerTo(temporary->ValueType);
+			}
+			case ASTNodeType::ConstantValue:
+			{
+				return std::dynamic_pointer_cast<ASTConstantValue>(node)->ValueType;
+			}
 			case ASTNodeType::SizeofExpr:
 			{
 				return m_Module->Lookup("uint64").value()->GetType();
@@ -37,7 +81,16 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
-				return variable->Variable->GetType();
+				auto& symbol = variable->Variable;
+
+				if (!symbol)
+					return nullptr;
+
+				// a variable from a file that was already compiled holds its storage (a pointer to the value)
+				if (symbol->Kind == SymbolKind::Value && symbol->GetLLVMValue() && symbol->GetType()->IsPointer())
+					return symbol->GetType()->As<PointerType>()->GetBaseType();
+
+				return symbol->GetType();
 			}
 			case ASTNodeType::BinaryExpression:
 			{
@@ -87,11 +140,15 @@ namespace clear
 				if (subscript->Meaning == SubscriptSemantic::ArrayIndex)
 				{
 					std::shared_ptr<Type> type = InferTypeFromNode(subscript->Target);
+
+					if (!type)
+						return nullptr;
+
 					if (type->IsClass())
 					{
 						auto clsType = std::dynamic_pointer_cast<ClassType>(type);
-						CLEAR_VERIFY(clsType->MemberFunctions.contains("operator_get"),"Class does not have array index overload ",clsType->GetHash())
-						auto f = clsType->MemberFunctions.at("operator_get");
+						CLEAR_VERIFY(clsType->MemberFunctions.contains("__getitem__"), "class has no __getitem__ ", clsType->GetHash());
+						auto f = clsType->MemberFunctions.at("__getitem__");
 						auto returnType =  f->GetFunctionSymbol().FunctionNode->ReturnTypeVal;
 						return returnType;
 
@@ -135,14 +192,25 @@ namespace clear
 	std::shared_ptr<Type> Infer::InferTypeFromUnaryExpr(std::shared_ptr<ASTUnaryExpression> unaryExpr)
 	{
 		std::shared_ptr<Type> base = InferTypeFromNode(unaryExpr->Operand);
-	
-		if(unaryExpr->GetOperatorType() == OperatorType::Address)
-			return m_Module->GetTypeRegistry()->GetPointerTo(base);
-		
-		if(unaryExpr->GetOperatorType() == OperatorType::Dereference)
-			return base->As<PointerType>()->GetBaseType();
 
-		return base;
+		if (!base)
+			return nullptr;
+	
+		switch (unaryExpr->GetOperatorType())
+		{
+			case OperatorType::Address:		return m_Module->GetTypeRegistry()->GetPointerTo(base);
+			case OperatorType::Dereference: return base->IsPointer() ? base->As<PointerType>()->GetBaseType() : nullptr;
+			case OperatorType::Not:			return m_Module->Lookup("bool").value()->GetType();
+			case OperatorType::Negation:
+			{
+				// -x on an unsigned value produces the signed type of the same width
+				if (base->IsIntegral() && !base->IsSigned() && base->GetHash() != "bool")
+					return m_Module->Lookup(base->GetHash().substr(1)).value()->GetType();
+
+				return base;
+			}
+			default:						return base;
+		}
 	}
 
 	std::shared_ptr<Type> Infer::InferTypeFromBinExpr(std::shared_ptr<ASTBinaryExpression> binExpr)
@@ -153,7 +221,15 @@ namespace clear
 		// member access (TODO need to handle all the cases such as members, artihemtic etc... seperately)
 		if (binExpr->GetExpression() == OperatorType::Dot)
 		{
-			std::shared_ptr<ClassType> lhsType = InferTypeFromNode(binExpr->LeftSide)->As<ClassType>(); // TODO: need to make a way to support other data types like enums
+			std::shared_ptr<Type> leftType = InferTypeFromNode(binExpr->LeftSide);
+
+			while (leftType && leftType->IsPointer())
+				leftType = leftType->As<PointerType>()->GetBaseType();
+
+			if (!leftType || !leftType->IsClass())
+				return nullptr;
+
+			std::shared_ptr<ClassType> lhsType = leftType->As<ClassType>();
 			std::shared_ptr<ASTVariable> rhs = std::dynamic_pointer_cast<ASTVariable>(binExpr->RightSide);
 			
 			std::shared_ptr<Symbol> member = lhsType->GetMember(rhs->GetName().GetData()).value_or(nullptr);
@@ -176,6 +252,16 @@ namespace clear
 
 		std::shared_ptr<Type> lhsType = InferTypeFromNode(binExpr->LeftSide);
 		std::shared_ptr<Type> rhsType = InferTypeFromNode(binExpr->RightSide);
+
+		if (!lhsType || !rhsType)
+			return nullptr;
+
+		// shifts keep the type of the value being shifted
+		if (binExpr->GetExpression() == OperatorType::LeftShift || binExpr->GetExpression() == OperatorType::RightShift)
+		{
+			binExpr->ResultantType = lhsType;
+			return lhsType;
+		}
 		
 		if (lhsType->IsPointer() && rhsType->IsIntegral())
 		{
@@ -189,6 +275,12 @@ namespace clear
 
 	std::shared_ptr<Type> Infer::InferTypeFromFunctionCall(std::shared_ptr<ASTFunctionCall> funcCall)
 	{
+		if (funcCall->IsBuiltinPrint)
+			return m_Module->Lookup("void").value()->GetType();
+
+		if (funcCall->IndirectType)
+			return funcCall->IndirectType->As<FunctionPointerType>()->GetReturnType();
+
 		return InferTypeFromNode(funcCall->Callee);
 	}
 

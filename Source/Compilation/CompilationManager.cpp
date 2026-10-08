@@ -3,8 +3,12 @@
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
 #include "Sema/Sema.h"
+#include "Symbols/SymbolOperations.h"
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/SubtargetFeature.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
 
@@ -18,14 +22,23 @@ namespace clear
         m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins, "main");
     }
 	
-	void CompilationManager::RunPipeline()
+	bool CompilationManager::RunPipeline()
 	{
 		LoadSources();
+		if (!CheckErrors()) return false;
+
 		CollectTopLevelSymbols();
 		CompileModules();
+		if (!CheckErrors()) return false;
+
 		LinkModules();
+		if (!CheckErrors()) return false;
+
 		GenerateIRAndObjectFiles();
+		if (!CheckErrors()) return false;
+
 		Emit();
+		return CheckErrors();
 	}
 
     void CompilationManager::LoadSources()
@@ -41,12 +54,10 @@ namespace clear
         }
     }
 
-    void CompilationManager::CheckErrors() 
+    bool CompilationManager::CheckErrors() 
     {
-		if (m_DiagnosticsBuilder.IsFatal()) 
-		{ 
-			m_DiagnosticsBuilder.Dump();
-        }
+		m_DiagnosticsBuilder.Dump();
+		return !m_DiagnosticsBuilder.IsFatal() && !m_Failed;
     }
 
 	void CompilationManager::CollectTopLevelSymbols()
@@ -59,37 +70,42 @@ namespace clear
 		for (auto& [path, unit] : m_CompilationUnits)
 		{
 			CompileModule(unit);
+
+			if (m_DiagnosticsBuilder.IsFatal())
+				return;
 		}
 	}
 
 	void CompilationManager::CompileModule(CompilationUnit& unit)
 	{
 		//TODO may need mutex if we introduce parallel compilation
-		if (unit.Compiled) return;
+		if (unit.Compiled || unit.InProgress) return; // InProgress: an import cycle, the other side is already being compiled
+
+		unit.InProgress = true;
 		
 		std::shared_ptr<ASTBlock> topLevel = std::dynamic_pointer_cast<ASTBlock>(std::dynamic_pointer_cast<ASTBlock>(unit.Ast)->Children[0]);
 		
+		// imported files are compiled first so their symbols exist (paths were resolved while loading)
 		for (const auto& node : topLevel->Children)
 		{
 			std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
 			if (!importNode) continue;
 
-			std::filesystem::path parent = unit.CompilationModule->GetPath().parent_path();
-			std::filesystem::path absolute = std::filesystem::absolute(parent / importNode->Filepath);
-			CompileModule(m_CompilationUnits.at(absolute));
+			auto it = m_CompilationUnits.find(importNode->Filepath);
+
+			if (it != m_CompilationUnits.end())
+				CompileModule(it->second);
 		}
 
 		Sema analyzer(unit.CompilationModule, m_DiagnosticsBuilder, m_CompilationUnits);
 		analyzer.Visit(unit.Ast);
 
 		if (m_DiagnosticsBuilder.IsFatal())
-		{
-			m_DiagnosticsBuilder.Dump();
 			return;
-		}
 	
 		CodegenContext ctx = unit.CompilationModule->GetCodegenContext();
 		unit.Ast->Codegen(ctx);
+		SymbolOps::FinalizeInitGlobals(*unit.CompilationModule->GetModule());
 		unit.Compiled = true;
 	}
 
@@ -103,6 +119,8 @@ namespace clear
 			if (!unit.CompilationModule->GetModule()) continue;
 			if (llvm::verifyModule(*unit.CompilationModule->GetModule(), &llvm::errs()))
 			{
+				std::println(stderr, "internal compiler error: invalid code generated for {}", path.string());
+				m_Failed = true;
 				continue;
 			}
 
@@ -123,14 +141,25 @@ namespace clear
             return;
         }
 
+        // every file is tracked by one canonical path, however it was named
+        std::filesystem::path canonical = std::filesystem::weakly_canonical(std::filesystem::absolute(path));
+
+        if (canonical != path)
+        {
+            LoadSourceFile(canonical);
+            return;
+        }
+
         if(path.extension() != m_Config.TargetExtension)
         {
             return;
         }
         
-        std::println("Loading source file {}" , path.string());
+        if (m_Config.Verbose)
+            std::println("Loading source file {}" , path.string());
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
+		newModule->RuntimeChecks = m_Config.RuntimeChecksEnabled();
 		
         Lexer lexer(path, m_DiagnosticsBuilder);
 
@@ -149,7 +178,102 @@ namespace clear
         }
 
 		m_CompilationUnits[path] = CompilationUnit { newModule, newModule->GetRoot() };
+
+		LoadImports(newModule);
     }
+
+	std::optional<std::filesystem::path> CompilationManager::ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name)
+	{
+		std::filesystem::path written = name;
+
+		if (!name.has_extension())
+			name += m_Config.TargetExtension;
+
+		std::vector<std::filesystem::path> candidates = { importingFile.parent_path() / name };
+
+		// a package: "colors" is its lib file, "colors/extra" a file inside it
+		for (const auto& package : m_Config.Packages)
+		{
+			if (written.begin() == written.end() || written.begin()->string() != package.Name)
+				continue;
+
+			if (std::next(written.begin()) == written.end())
+			{
+				candidates.push_back(package.Entry);
+			}
+			else
+			{
+				std::filesystem::path inside;
+				for (auto part = std::next(written.begin()); part != written.end(); part++)
+					inside /= *part;
+
+				if (!inside.has_extension())
+					inside += m_Config.TargetExtension;
+
+				candidates.push_back(package.Directory / inside);
+			}
+		}
+
+		if (!m_Config.StandardLibrary.empty())
+			candidates.push_back(m_Config.StandardLibrary / name);
+
+		if (const char* fromEnvironment = std::getenv("CLEAR_STANDARD_DIR"))
+			candidates.push_back(std::filesystem::path(fromEnvironment) / name);
+
+#ifdef CLEAR_STANDARD_DIR
+		candidates.push_back(std::filesystem::path(CLEAR_STANDARD_DIR) / name);
+#endif
+
+		std::filesystem::path self = std::filesystem::weakly_canonical(std::filesystem::absolute(importingFile));
+
+		for (const auto& candidate : candidates)
+		{
+			std::error_code ec;
+			if (!std::filesystem::is_regular_file(candidate, ec))
+				continue;
+
+			// a file never imports itself (tests/math.cl importing the standard "math")
+			std::filesystem::path resolved = std::filesystem::weakly_canonical(std::filesystem::absolute(candidate));
+
+			if (resolved != self)
+				return resolved;
+		}
+
+		return std::nullopt;
+	}
+
+	void CompilationManager::LoadImports(std::shared_ptr<Module> module)
+	{
+		auto root = module->GetRoot();
+
+		if (root->Children.empty())
+			return;
+
+		auto topLevel = std::dynamic_pointer_cast<ASTBlock>(root->Children[0]);
+
+		if (!topLevel)
+			return;
+
+		for (const auto& node : topLevel->Children)
+		{
+			auto importNode = std::dynamic_pointer_cast<ASTImport>(node);
+			if (!importNode) continue;
+
+			auto resolved = ResolveImport(module->GetPath(), importNode->Filepath);
+
+			if (!resolved)
+			{
+				Token location = importNode->Location;
+				location.SetData(importNode->Filepath.string());
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, DiagnosticCode_ImportNotFound);
+				continue;
+			}
+
+			// from here on the import refers to the file by its absolute path
+			importNode->Filepath = *resolved;
+			LoadSourceFile(*resolved);
+		}
+	}
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
@@ -161,11 +285,18 @@ namespace clear
 
         if(llvm::verifyModule(*m_MainModule->GetModule(), &llvm::errs()))
         {
-            std::println("failed to build module");
-            m_MainModule->GetModule()->print(llvm::errs(), nullptr);
+            std::println(stderr, "internal compiler error: failed to build module");
+            m_Failed = true;
 
             return;
         }
+
+        if (!CreateTargetMachine())
+            return;
+
+        // optimize before anything is written out, so both the emitted IR and the object file benefit
+        PrepareForOptimization(*m_MainModule->GetModule());
+        OptimizeModule();
 
         if(m_Config.EmitIntermiediateIR)
         {
@@ -178,7 +309,6 @@ namespace clear
         }   
 
         BuildModule(m_MainModule->GetModule(), m_Config.OutputPath / m_Config.OutputFilename);
-        OptimizeModule();
     }
 
     void CompilationManager::Emit()
@@ -220,7 +350,8 @@ namespace clear
         CLEAR_VERIFY(std::filesystem::exists(path), "directory does not exist");
         CLEAR_VERIFY(std::filesystem::is_directory(path), "not a valid directory");
 
-        std::println("Loading directory {}", path.string());
+        if (m_Config.Verbose)
+            std::println("Loading directory {}", path.string());
 
         if(m_DiagnosticsBuilder.IsFatal())
         {
@@ -245,49 +376,122 @@ namespace clear
         }
     }
 
-    void CompilationManager::BuildModule(llvm::Module* module, const std::filesystem::path& path)
+    bool CompilationManager::CreateTargetMachine()
     {
-        std::string errorStr;
-		llvm::raw_string_ostream errorStream(errorStr);
+		if (m_TargetMachine)
+			return true;
 
 		llvm::InitializeNativeTarget();
 		llvm::InitializeNativeTargetAsmPrinter();
 		llvm::InitializeNativeTargetAsmParser();
 
-		auto targetTriple = llvm::sys::getDefaultTargetTriple();
+		std::string targetTriple = llvm::sys::getDefaultTargetTriple();
 
 		std::string error;
 		const llvm::Target* target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
-		CLEAR_VERIFY(target, "failed to find target");
 
-		auto cpu = "generic";
-		auto features = "";
+		if (!target)
+		{
+			std::println(stderr, "error: no code generator for {}: {}", targetTriple, error);
+			m_Failed = true;
+			return false;
+		}
 
-		llvm::TargetOptions opt;
-		auto targetMachine = target->createTargetMachine(targetTriple, cpu, features, opt, llvm::Reloc::PIC_);
+		std::string cpu = m_Config.TargetCPU.empty() ? "generic" : m_Config.TargetCPU;
+		std::string features;
 
-		module->setDataLayout(targetMachine->createDataLayout());
-		module->setTargetTriple(targetTriple);
+		if (cpu == "native")
+		{
+			cpu = llvm::sys::getHostCPUName().str();
 
+			llvm::SubtargetFeatures featureSet;
+			llvm::StringMap<bool> hostFeatures;
+
+			if (llvm::sys::getHostCPUFeatures(hostFeatures))
+			{
+				for (const auto& feature : hostFeatures)
+					featureSet.AddFeature(feature.first(), feature.second);
+			}
+
+			features = featureSet.getString();
+		}
+
+		llvm::CodeGenOptLevel codegenLevel = llvm::CodeGenOptLevel::Default;
+
+		switch (m_Config.OptimizationLevel)
+		{
+			case BuildConfig::OptimizationLevelType::None:
+			case BuildConfig::OptimizationLevelType::Debugging:    codegenLevel = llvm::CodeGenOptLevel::None; break;
+			case BuildConfig::OptimizationLevelType::Development:  codegenLevel = llvm::CodeGenOptLevel::Less; break;
+			case BuildConfig::OptimizationLevelType::Distribution: codegenLevel = llvm::CodeGenOptLevel::Aggressive; break;
+		}
+
+		llvm::TargetOptions options;
+		m_TargetMachine.reset(target->createTargetMachine(targetTriple, cpu, features, options, llvm::Reloc::PIC_, std::nullopt, codegenLevel));
+
+		return m_TargetMachine != nullptr;
+    }
+
+    void CompilationManager::PrepareForOptimization(llvm::Module& module)
+    {
+		module.setDataLayout(m_TargetMachine->createDataLayout());
+		module.setTargetTriple(m_TargetMachine->getTargetTriple().str());
+
+		bool isExecutable = m_Config.OutputFormat == BuildConfig::OutputFormatType::Executable;
+
+		if (isExecutable)
+		{
+			for (llvm::GlobalVariable& global : module.globals())
+			{
+				if (!global.isDeclaration() && global.hasExternalLinkage())
+					global.setLinkage(llvm::GlobalValue::InternalLinkage);
+			}
+		}
+
+		for (llvm::Function& function : module)
+		{
+			if (function.isDeclaration())
+				continue;
+
+			// Clear has no exceptions, telling LLVM lets it drop unwind tables and optimize calls more freely
+			function.addFnAttr(llvm::Attribute::NoUnwind);
+
+			// an executable is one module, so everything but main is private to it: LLVM can inline it
+			// everywhere and delete the original
+			if (isExecutable && function.getName() != "main" && function.hasExternalLinkage())
+				function.setLinkage(llvm::GlobalValue::InternalLinkage);
+
+			if (m_TargetMachine->getTargetCPU() != "generic")
+				function.addFnAttr("target-cpu", m_TargetMachine->getTargetCPU());
+
+			if (!m_TargetMachine->getTargetFeatureString().empty())
+				function.addFnAttr("target-features", m_TargetMachine->getTargetFeatureString());
+		}
+    }
+
+    void CompilationManager::BuildModule(llvm::Module* module, const std::filesystem::path& path)
+    {
 		std::error_code EC;
 		llvm::raw_fd_ostream dest(path.string() + ".o", EC, llvm::sys::fs::OF_None);
 
-		CLEAR_VERIFY(!EC, "could not open file");
+		if (EC)
+		{
+			std::println(stderr, "error: could not write {}.o: {}", path.string(), EC.message());
+			m_Failed = true;
+			return;
+		}
 
 		llvm::legacy::PassManager pass;
-		auto fileType = llvm::CodeGenFileType::ObjectFile;
 
-		CLEAR_VERIFY(!(targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)), "TargetMachine can't emit a file of this type");
+		if (m_TargetMachine->addPassesToEmitFile(pass, dest, nullptr, llvm::CodeGenFileType::ObjectFile))
+		{
+			std::println(stderr, "error: the target cannot emit object files");
+			m_Failed = true;
+			return;
+		}
 
-		try
-		{
-			pass.run(*module);
-			dest.flush();
-		}
-		catch (const std::exception& e)
-		{
-			CLEAR_UNREACHABLE(e.what());
-		}
+		pass.run(*module);
+		dest.flush();
     }
 
     void CompilationManager::LinkToExecutableOrDynamic()
@@ -302,6 +506,7 @@ namespace clear
         if (!clangPath) 
         {
             llvm::errs() << "clang not found on PATH!\n";
+            m_Failed = true;
             return;
         }
 
@@ -359,6 +564,7 @@ namespace clear
             llvm::outs() << "\n";
 
             llvm::errs() << "Clang linking failed with exit code: " << result << "\n";
+            m_Failed = true;
         }
 
         std::filesystem::remove(objectPath);
@@ -371,13 +577,12 @@ namespace clear
 
     void CompilationManager::OptimizeModule()
     {
-        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::None) 
-           return;
+        llvm::PipelineTuningOptions tuning;
+        tuning.LoopVectorization = true;
+        tuning.SLPVectorization = true;
 
-        if(m_Config.OptimizationLevel == BuildConfig::OptimizationLevelType::Debugging) 
-            return;
-
-        llvm::PassBuilder passBuilder;
+        // the target machine gives the optimizer the CPU's cost model (vector widths, instruction costs)
+        llvm::PassBuilder passBuilder(m_TargetMachine.get(), tuning);
 
         llvm::LoopAnalysisManager loopAM;
         llvm::FunctionAnalysisManager funcAM;
@@ -408,7 +613,9 @@ namespace clear
                 break;
 
             default:
-                return;
+                // no optimization, but coroutines (generators, async functions) still have to be split into their parts
+                modulePM = passBuilder.buildO0DefaultPipeline(llvm::OptimizationLevel::O0);
+                break;
         }
 
 

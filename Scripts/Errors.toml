@@ -56,7 +56,7 @@ Advice  = "There is an unmatched ‘{}’."
 
 [UnexpectedToken]
 Message = "Unexpected token encountered."
-Advice  = "The parser encountered a token it didn't expect. Ensure your syntax follows the language grammar and that all expressions are well-formed."
+Advice  = "‘{}’ was not expected here. Check for a missing operator, bracket or line break."
 
 [ExpectedIndentation]
 Message = "Expected ':' for block indentation"
@@ -79,8 +79,8 @@ Message = "Unexpected 'else' without matching 'if'"
 Advice = "Ensure 'else' is used directly after a valid 'if' or 'elif' block"
 
 [InvalidForLoop]
-Message = "Invalid 'for' loop syntax: missing 'in'"
-Advice = "Use 'in' to complete the 'for' loop syntax (e.g. 'for item in list')"
+Message = "Invalid 'for' loop."
+Advice = "Write loops as 'for i in 0..n:', 'for i in 1..=n:' or 'for item in array:' (near ‘{}’)"
 
 [ExpectedLeftParanFunctionDefinition]
 Message = "Expected '(' after function name"
@@ -104,7 +104,7 @@ Advice = "Ensure all indented blocks are properly closed"
 
 [ExpectedModuleName]
 Message = "Expected a module name string"
-Advice = "Add a module name string (e.g. \"math\") after the module keyword"
+Advice = "Write the file to import as a string, e.g. import \"math\" (near ‘{}’)"
 
 [ExpectedComma]
 Message = "Expected ',' between list or argument elements."
@@ -113,3 +113,238 @@ Advice  = "Separate items with a comma ',' at {} to continue the list or argumen
 [ExpectedColon]
 Message = "Expected ':' after case label or block starter."
 Advice  = "Add a colon ':' after {} to start the block or specify the case body."
+[NeedsTypeOrValue]
+Message = "A variable needs a type or an initial value."
+Advice  = "Give ‘{}’ a type (let x: int) or a value to infer it from (let x = 0)."
+
+[LoopControlOutsideLoop]
+Message = "‘break’ or ‘continue’ used outside of a loop."
+Advice  = "‘{}’ can only appear inside a while or for loop."
+
+[VariadicNotLast]
+Message = "Variadic parameter must be the last parameter."
+Advice  = "Move ‘...’ to the end of the parameter list."
+
+[ImportNotFound]
+Message = "Imported file could not be found."
+Advice  = "‘{}’ was not found relative to the importing file. Check the path and that it is part of the build."
+
+[InvalidArraySize]
+Message = "Array size must be a positive compile-time constant."
+Advice  = "Use a literal or constant expression greater than zero for the size near ‘{}’."
+
+[InvalidMemberAccess]
+Message = "Invalid member access."
+Advice  = "Only a name can follow ‘.’, near ‘{}’."
+
+[UnknownMember]
+Message = "Type has no member with this name."
+Advice  = "‘{}’ is not a field or method of this type. Check the spelling or the class definition."
+
+[MissingIndexOverload]
+Message = "Type cannot be indexed."
+Advice  = "Define __getitem__ (and __setitem__ for assignment) on the class to support ‘[]’ near ‘{}’."
+
+[ExpectedType]
+Message = "Expected a type."
+Advice  = "‘{}’ is not a type. Use a built-in type like int or float64, a class name, or a pointer such as *int."
+
+[InvalidOperands]
+Message = "Operator cannot be applied to these operand types."
+Advice  = "‘{}’ is not supported. Convert one side with ‘as’ if a conversion is intended."
+
+[ReturnTypeMismatch]
+Message = "Returned value does not match the function's return type."
+Advice  = "The value near ‘{}’ cannot be converted to the declared return type."
+
+[MissingReturnValue]
+Message = "Function must return a value."
+Advice  = "Add a value after ‘{}’ that matches the function's return type."
+
+[WrongArgumentCount]
+Message = "Wrong number of arguments in function call."
+Advice  = "‘{}."
+
+[ArgumentTypeMismatch]
+Message = "Argument type does not match the parameter type."
+Advice  = "The argument near ‘{}’ cannot be converted implicitly. Use ‘as’ to convert explicitly."
+
+[NotCallable]
+Message = "Expression is not callable."
+Advice  = "‘{}’ is not a function or method."
+
+[AssignToRValue]
+Message = "Cannot assign to this expression."
+Advice  = "The left side near ‘{}’ must be a variable, field, dereferenced pointer or index."
+
+[DuplicateCase]
+Message = "Duplicate case value in switch."
+Advice  = "The value ‘{}’ already appears in an earlier case."
+
+[NonConstantCase]
+Message = "Case values must be integer constants."
+Advice  = "‘{}’ is not a compile-time integer constant."
+
+[CannotInferGeneric]
+Message = "Cannot infer the type arguments of a generic type."
+Advice  = "Write the type arguments explicitly, for example ‘{}[int]’."
+
+[ImplicitConversion]
+Message = "Cannot convert implicitly, the conversion may lose information."
+Advice  = "Converting ‘{}’ needs an explicit cast, for example ‘value as T’."
+
+[NotIterable]
+Message = "Value cannot be iterated over."
+Advice  = "A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither."
+
+[ExpectedCase]
+Message = "Expected ‘case’ or ‘default’ inside a switch."
+Advice  = "Each branch of a switch starts with ‘case value:’ or ‘default:’, found ‘{}’."
+
+[ConstNeedsValue]
+Message = "A constant needs a value."
+Advice  = "Give ‘{}’ a value: const name = value."
+
+[AssignToConst]
+Message = "Cannot change a constant."
+Advice  = "‘{}’ was declared with const. Use let if it needs to change."
+
+[InvalidEnumValue]
+Message = "Enum values must be integer constants."
+Advice  = "The value of ‘{}’ must be known at compile time."
+
+[DeferOutsideFunction]
+Message = "‘defer’ can only be used inside a function."
+Advice  = "Move ‘{}’ into a function body."
+
+[SwitchNotIntegral]
+Message = "Switch value must be an integer or an enum."
+Advice  = "‘{}’ cannot be switched on. Use if/elseif for other types."
+
+[MissingOperatorOverload]
+Message = "Operator is not defined for this class."
+Advice  = "‘{}’. Define the dunder method on the class to support the operator."
+
+[BadOperatorSignature]
+Message = "Operator method has the wrong number of parameters."
+Advice  = "‘{}’ must take exactly two parameters: self and the other operand."
+
+[TooManyValues]
+Message = "Too many values for this class."
+Advice  = "‘{}."
+
+[GenericMethodUnsupported]
+Message = "Methods cannot have their own type parameters yet."
+Advice  = "Make ‘{}’ a generic function outside the class, or make the class itself generic."
+
+[IndexNotInteger]
+Message = "Array index must be an integer."
+Advice  = "‘{}’). Use ‘as’ to convert the index to an integer type."
+
+[NoLength]
+Message = "Value has no length."
+Advice  = "len() works on arrays, str and classes with __len__, not ‘{}’."
+
+[IndexOutOfRange]
+Message = "Array index is out of range."
+Advice  = "‘{})."
+
+[NullDereference]
+Message = "Dereferencing null."
+Advice  = "‘{}’ never points at a value, so it cannot be dereferenced."
+
+[ShiftOutOfRange]
+Message = "Shift amount is out of range."
+Advice  = "Shifting by ‘{})."
+
+[LiteralOutOfRange]
+Message = "Literal does not fit in the target type."
+Advice  = "‘{}’. Use a wider type or an explicit ‘as’ if wrapping is intended."
+
+[MissingReturn]
+Message = "Function might end without returning a value."
+Advice  = "Every path through ‘{}’ must end with a return statement."
+
+[DestructureMismatch]
+Message = "The number of names does not match the number of values."
+Advice  = "Cannot unpack ‘{}."
+
+[PositionalAfterKeyword]
+Message = "A positional argument cannot follow a keyword argument."
+Advice  = "Move ‘{}’ before the name = value arguments."
+
+[UnknownKeyword]
+Message = "Invalid keyword argument."
+Advice  = "‘{}’."
+
+[CannotUnpack]
+Message = "Only a tuple or fixed array variable can be unpacked with ‘...’."
+Advice  = "‘{}’ cannot be spread into arguments. Store it in a variable first if it is the result of a call."
+
+[LambdaNeedsTypes]
+Message = "Cannot tell the type of a lambda parameter."
+Advice  = "Give ‘{}’ a type, e.g. lambda (x: int): ..., or use the lambda where a function type is expected."
+
+[ClosureNotFunction]
+Message = "A lambda that captures variables cannot be used as a plain function."
+Advice  = "It carries copies of the variables it uses. Accept it with a generic parameter, e.g. function apply[F](f: F, ...), or pass the values as arguments instead."
+
+[SwitchNotExhaustive]
+Message = "Switch does not handle every case."
+Advice  = "Missing: {}. Add those cases or a default."
+
+[UnknownCase]
+Message = "Not a case of this enum."
+Advice  = "‘{}’."
+
+[NeedsCaseValues]
+Message = "This enum case carries data."
+Advice  = "Give its values: {}(...)."
+
+[UnionNeedsField]
+Message = "A union is built from at most one field."
+Advice  = "Name the field to set, e.g. {}(f = 1.5), or leave it empty for all zeros."
+
+[InvalidBase]
+Message = "A class can inherit from one class and any number of traits."
+Advice  = "‘{}’ cannot be used here."
+
+[InheritanceCycle]
+Message = "A class cannot inherit from itself."
+Advice  = "‘{}’ is part of a cycle of base classes."
+
+[VirtualNeedsTable]
+Message = "Virtual methods must start in a class whose base has none."
+Advice  = "‘{}’ adds the first virtual method below a base class without one. Mark a method of the base virtual, or of the root class."
+
+[TraitNotSatisfied]
+Message = "Type does not satisfy the trait."
+Advice  = "{}."
+
+[NoSuperclass]
+Message = "‘super’ is only available in methods of a class with a base class."
+Advice  = "Only a class declared as class Name(Base) has a ‘{}’."
+
+[PropertyNotSettable]
+Message = "This property has no setter."
+Advice  = "Add ‘property {}(self, value: T)’ to the class to allow assigning to it."
+
+[MacroTooDeep]
+Message = "Macro expansion is nested too deeply."
+Advice  = "‘{}’ keeps expanding into itself. A macro may use other macros, but not endlessly."
+
+[NotHashable]
+Message = "This value cannot be hashed."
+Advice  = "‘{}’ is not a number, pointer, enum or str. Give the class a ‘__hash__(self) -> uint64’ method."
+
+[YieldOutsideGenerator]
+Message = "‘yield’ is only allowed in a generator."
+Advice  = "Declare the function as returning Generator[T], e.g. function {}s() -> Generator[int]:"
+
+[AwaitOutsideAsync]
+Message = "‘await’ is only allowed in an async function."
+Advice  = "Mark the function ‘async function’, or run the task from ordinary code with task.run() ({})."
+
+[NotAwaitable]
+Message = "Only a Task can be awaited."
+Advice  = "‘{}’ is not the result of calling an async function."

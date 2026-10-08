@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.20.0)
 include(FetchContent)
 
 project(clearc)
@@ -21,10 +21,15 @@ add_executable(clearc "${MY_SOURCES}"
 find_package(LLVM REQUIRED CONFIG)
 find_package(Python3 REQUIRED)
 
-add_custom_command(TARGET clearc PRE_BUILD 
+# Diagnostics are described in Scripts/Errors.toml and turned into a header before anything compiles
+set(CLEAR_DIAGNOSTIC_HEADER "${CMAKE_SOURCE_DIR}/Source/Diagnostics/DiagnosticCode.h")
+add_custom_command(OUTPUT ${CLEAR_DIAGNOSTIC_HEADER}
                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/Build.py
+                   DEPENDS ${CMAKE_SOURCE_DIR}/Scripts/Errors.toml ${CMAKE_SOURCE_DIR}/Scripts/Build.py
                    VERBATIM
 )
+add_custom_target(clear_diagnostics DEPENDS ${CLEAR_DIAGNOSTIC_HEADER})
+add_dependencies(clearc clear_diagnostics)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
@@ -68,3 +73,17 @@ target_link_libraries(clearc PUBLIC ${llvm_libs} fast_float tomlplusplus::tomlpl
 link_directories(${LLVM_LIBRARY_DIRS})
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
+
+# where `import "math"` finds the standard library when no other location is configured
+target_compile_definitions(clearc PRIVATE CLEAR_STANDARD_DIR="${CMAKE_SOURCE_DIR}/Standard")
+
+enable_testing()
+add_test(NAME clear_language_tests
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+add_test(NAME clear_language_tests_optimized
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+set_tests_properties(clear_language_tests_optimized PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O3")
+add_test(NAME clear_package_manager
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/test_packages.py $<TARGET_FILE:clearc>)
+add_test(NAME clear_examples
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/examples)

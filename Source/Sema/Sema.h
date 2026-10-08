@@ -10,6 +10,7 @@
 #include "Sema/SymbolTable.h"
 
 #include <memory>
+#include <unordered_set>
 
 namespace clear 
 {
@@ -25,6 +26,12 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<Type>> CallsiteArgs;
 		bool AllowGenericInferenceFromArgs = true;
 		bool GlobalState = true;
+		bool InLoop = false;
+		std::shared_ptr<Type> ReturnType; // of the function being analysed, null for void
+		std::shared_ptr<Type> ExpectedType; // what the value being analysed will be converted to (gives lambdas their parameter types)
+		ASTFunctionDefinition* InferReturnFor = nullptr; // a lambda whose return type comes from its body
+		int CoroutineKind = 0;                 // inside a generator (1) or an async function (2)
+		std::shared_ptr<Type> CoroutineValue;  // what a generator yields
 	};
 	
 	struct CompilationUnit;
@@ -50,6 +57,32 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionDeclaration> decl, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTClass> classExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTForExpression> forExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSwitch> switchNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDefer> deferNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAssert> assertNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTupleExpr> tuple, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTLambda> lambda, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTFunctionTypeExpr> type, SemaContext context);
+		std::shared_ptr<Type> FunctionTypeOf(const std::shared_ptr<ASTFunctionDefinition>& function);
+		std::shared_ptr<Type> GetOptionalType(std::shared_ptr<Type> valueType);
+		bool DeclareVariantType(std::shared_ptr<ASTEnum> enumNode);
+		bool DeclareVariantBody(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		void DefineVariant(std::shared_ptr<ASTEnum> enumNode, SemaContext context);
+		std::shared_ptr<ASTNodeBase> BuildVariantConstruct(std::shared_ptr<Type> variantType, size_t caseIndex, llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments,
+														   const std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>>& keywords, const Token& location);
+		std::shared_ptr<ASTNodeBase> LowerVariantSwitch(std::shared_ptr<ASTSwitch> switchNode, std::shared_ptr<Type> variantType, SemaContext context);
+		void DeclareInGlobalScope(const std::function<void()>& declare);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> AsValue(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<ASTNodeBase> CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name,
+												std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
+
+		// value of an integer expression known at compile time (literals, consts, enum members, arithmetic on those)
+		std::optional<int64_t> EvaluateInteger(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTStructExpr> structExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSubscript> subscript, SemaContext context);
@@ -61,11 +94,50 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTCastExpr> castExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTSizeofExpr> castExpr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTIsExpr> castExpr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTLoopControlFlow> controlFlow, SemaContext context);
 
 	private:
 		void Report(DiagnosticCode code, Token token);
+		std::shared_ptr<ASTNodeBase> VisitDeclaration(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
+		void VisitTopLevel(std::shared_ptr<ASTBlock> ast, SemaContext context);
+
+		bool DeclareFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context);
+		void DefineFunction(std::shared_ptr<ASTFunctionDefinition> func, SemaContext context);
+
+		bool DeclareClassType(std::shared_ptr<ASTClass> classExpr);
+		bool DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context);
+		bool DeclareClassBodyNow(std::shared_ptr<ASTClass> classExpr, SemaContext context);
+		bool CheckTrait(std::shared_ptr<ClassType> classTy, std::shared_ptr<ClassType> trait, const Token& location);
+		std::shared_ptr<ClassType> FindTrait(const std::string& name, std::shared_ptr<Module> home);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTMacro> macro, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTYield> yield, SemaContext context);
+		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTAwait> await, SemaContext context);
+		std::shared_ptr<ASTNodeBase> CoroutineMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> type, const Token& name);
+		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
+		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
+		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
+		void EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function);
+		bool AlwaysReturns(const std::shared_ptr<ASTNodeBase>& node);
+
+		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
+		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
+		bool IsImplicitlyConvertible(std::shared_ptr<Type> from, std::shared_ptr<Type> to, bool fromLiteral);
+		bool IsConstantThatFits(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
+		std::shared_ptr<ASTNodeBase> CheckCall(std::shared_ptr<ASTFunctionCall> funcCall);
+		std::shared_ptr<ASTNodeBase> CheckIndirectCall(std::shared_ptr<ASTFunctionCall> funcCall);
+		std::shared_ptr<ASTNodeBase> LowerClassIteration(std::shared_ptr<ASTForExpression> forExpr, std::shared_ptr<ASTNodeBase> iterable);
+		std::shared_ptr<ASTNodeBase> CompleteStructValues(std::shared_ptr<ASTStructExpr> structExpr);
+		std::shared_ptr<ASTNodeBase> BuildConstruction(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTVariable> target);
 		
-		void VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+		std::shared_ptr<ASTNodeBase> VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
+
+		// operators on classes call their dunder methods (a + b -> a.__add__(b)); nullopt when no overload applies
+		std::optional<std::shared_ptr<ASTNodeBase>> TryOperatorOverload(std::shared_ptr<ASTBinaryExpression> expr);
+		bool CheckOperands(std::shared_ptr<ASTBinaryExpression> expr);
+		std::shared_ptr<ASTNodeBase> AddressOf(std::shared_ptr<ASTNodeBase> node);
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);	
 		std::shared_ptr<ASTNodeBase> VisitBinaryExprBoolean(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context);
 		
@@ -75,10 +147,34 @@ namespace clear
 		void ConstructSymbol(std::shared_ptr<Symbol> symbol, std::shared_ptr<ASTNodeBase> clonnedNode);
 		void ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode);
 		
+		std::pair<std::optional<SymbolEntry>, size_t> LookupSymbol(llvm::StringRef name);
+		std::optional<std::shared_ptr<Symbol>> LookupInModules(llvm::StringRef name);
+		std::shared_ptr<Symbol> InstantiateFromValues(std::shared_ptr<ASTVariable> target, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, 
+													  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values);
+
 		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
 
     private:
 		std::vector<SymbolTable> m_ScopeStack;
+		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
+		std::unordered_map<Symbol*, int64_t> m_ConstantValues; // consts whose value is a known integer
+		std::unordered_set<Symbol*> m_ConstSymbols;
+		std::unordered_set<std::string> m_FailedDeclarations;
+		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
+		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances;
+		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first
+		std::unordered_set<ASTClass*> m_ClassesInProgress;
+		size_t m_MacroCounter = 0;
+		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
+
+		struct LazyBody
+		{
+			std::vector<SymbolTable> Scopes;
+			std::shared_ptr<Module> LookupModule;
+			std::shared_ptr<Type> ClassTy;
+		};
+
+		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

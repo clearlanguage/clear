@@ -7,7 +7,9 @@
 #include <functional>
 #include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/DataLayout.h>
 #include <memory>
+#include <format>
 
 namespace clear
 {
@@ -49,6 +51,74 @@ namespace clear
     bool Type::IsGeneric()
     {
         return m_Flags.test((size_t)TypeFlags::Generic);
+    }
+
+    bool Type::IsEnum()
+    {
+        return m_Flags.test((size_t)TypeFlags::Enum);
+    }
+
+    bool Type::IsTuple()
+    {
+        return m_Flags.test((size_t)TypeFlags::Tuple);
+    }
+
+    bool Type::IsFunction()
+    {
+        return m_Flags.test((size_t)TypeFlags::Function);
+    }
+
+    FunctionPointerType::FunctionPointerType(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType, llvm::LLVMContext& context)
+        : m_Parameters(parameters.begin(), parameters.end()), m_ReturnType(returnType)
+    {
+        llvm::SmallVector<llvm::Type*> types;
+
+        for (auto& parameter : m_Parameters)
+            types.push_back(parameter->Get());
+
+        m_FunctionType = llvm::FunctionType::get(returnType ? returnType->Get() : llvm::Type::getVoidTy(context), types, false);
+        m_LLVMType = llvm::PointerType::get(context, 0);
+
+        Toggle(TypeFlags::Function);
+    }
+
+    std::string FunctionPointerType::GetHash() const
+    {
+        std::string hash = "function(";
+
+        for (size_t i = 0; i < m_Parameters.size(); i++)
+            hash += (i ? ", " : "") + m_Parameters[i]->GetHash();
+
+        hash += ")";
+
+        if (m_ReturnType)
+            hash += " -> " + m_ReturnType->GetHash();
+
+        return hash;
+    }
+
+    TupleType::TupleType(llvm::ArrayRef<std::shared_ptr<Type>> elements, llvm::LLVMContext& context)
+        : m_Elements(elements.begin(), elements.end())
+    {
+        llvm::SmallVector<llvm::Type*> types;
+
+        for (auto& element : m_Elements)
+            types.push_back(element->Get());
+
+        m_LLVMType = llvm::StructType::get(context, types);
+
+        Toggle(TypeFlags::Compound);
+        Toggle(TypeFlags::Tuple);
+    }
+
+    std::string TupleType::GetHash() const
+    {
+        std::string hash = "(";
+
+        for (size_t i = 0; i < m_Elements.size(); i++)
+            hash += (i ? ", " : "") + m_Elements[i]->GetHash();
+
+        return hash + ")";
     }
 
     void Type::Toggle(TypeFlags flag)
@@ -130,6 +200,95 @@ namespace clear
 		m_LLVMType->setBody(types);
 	}
 
+	static uint64_t StorageSizeOf(llvm::Type* type)
+	{
+		// semantic analysis runs before the target is known, the generic 64 bit layout gives the same sizes
+		static llvm::DataLayout layout("e-m:e-i64:64-f80:128-n8:16:32:64-S128");
+		return type->isSized() ? layout.getTypeAllocSize(type).getFixedValue() : 0;
+	}
+
+	bool ClassType::DerivesFrom(const std::shared_ptr<ClassType>& other) const
+	{
+		for (auto base = Base; base; base = base->Base)
+		{
+			if (base == other)
+				return true;
+		}
+
+		return false;
+	}
+
+	bool ClassType::Satisfies(const std::shared_ptr<ClassType>& trait) const
+	{
+		for (auto& own : Traits)
+		{
+			if (own == trait)
+				return true;
+		}
+
+		return Base && Base->Satisfies(trait);
+	}
+
+	std::optional<size_t> ClassType::FindCase(llvm::StringRef name) const
+	{
+		for (size_t i = 0; i < Cases.size(); i++)
+		{
+			if (Cases[i].Name == name)
+				return i;
+		}
+
+		return std::nullopt;
+	}
+
+	void ClassType::SetVariantBody(llvm::ArrayRef<VariantCase> cases, llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> methods)
+	{
+		IsVariant = true;
+		Cases.assign(cases.begin(), cases.end());
+
+		uint64_t largest = 0;
+		llvm::LLVMContext& context = m_LLVMType->getContext();
+
+		for (auto& variantCase : Cases)
+		{
+			llvm::SmallVector<llvm::Type*> fields;
+
+			for (auto& [name, type] : variantCase.Fields)
+				fields.push_back(type->Get());
+
+			variantCase.Payload = llvm::StructType::get(context, fields);
+			largest = std::max(largest, StorageSizeOf(variantCase.Payload));
+		}
+
+		auto int32 = llvm::Type::getInt32Ty(context);
+		auto storage = llvm::ArrayType::get(llvm::Type::getInt64Ty(context), (largest + 7) / 8);
+		m_LLVMType->setBody({ int32, storage });
+
+		for (const auto& [name, method] : methods)
+			MemberFunctions[name] = method;
+	}
+
+	void ClassType::SetUnionBody(llvm::ArrayRef<std::pair<std::string, std::shared_ptr<Symbol>>> members)
+	{
+		IsUnion = true;
+		uint64_t largest = 0;
+
+		for (const auto& [memberName, member] : members)
+		{
+			if (member->Kind == SymbolKind::Type)
+			{
+				m_MemberValues[memberName] = member->GetType();
+				largest = std::max(largest, StorageSizeOf(member->GetType()->Get()));
+			}
+			else
+			{
+				MemberFunctions[memberName] = member;
+			}
+		}
+
+		llvm::LLVMContext& context = m_LLVMType->getContext();
+		m_LLVMType->setBody({ llvm::ArrayType::get(llvm::Type::getInt64Ty(context), (largest + 7) / 8) });
+	}
+
 	std::optional<std::shared_ptr<Symbol>> ClassType::GetMember(llvm::StringRef name)
 	{
 		std::string strName = std::string(name);
@@ -177,6 +336,71 @@ namespace clear
     {
         Toggle(TypeFlags::Constant);
         Toggle(base->GetFlags());
+    }
+
+    EnumType::EnumType(llvm::StringRef name, std::shared_ptr<Type> underlying)
+        : m_Name(name), m_Underlying(underlying)
+    {
+        Toggle(underlying->GetFlags());
+        Toggle(TypeFlags::Enum);
+    }
+
+    bool EnumType::AddValue(const std::string& name, int64_t value)
+    {
+        return m_Values.insert({ name, value }).second;
+    }
+
+    std::optional<int64_t> EnumType::GetValue(llvm::StringRef name) const
+    {
+        auto it = m_Values.find(name.str());
+
+        if (it == m_Values.end())
+            return std::nullopt;
+
+        return it->second;
+    }
+
+    std::string CoroutineType::GetHash() const
+    {
+        return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");
+    }
+
+    std::string GetDisplayName(const std::shared_ptr<Type>& type)
+    {
+        if (!type)
+            return "void";
+
+        if (auto coroutine = std::dynamic_pointer_cast<CoroutineType>(type))
+            return std::format("{}[{}]", coroutine->GetKind() == CoroutineType::Kind::Generator ? "Generator" : "Task", 
+                               coroutine->GetValueType() ? GetDisplayName(coroutine->GetValueType()) : "none");
+
+        if (type->GetHash() == "str")
+            return "str";
+
+        if (auto pointer = std::dynamic_pointer_cast<PointerType>(type))
+            return pointer->GetBaseType() ? "*" + GetDisplayName(pointer->GetBaseType()) : "null";
+
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+            return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        if (auto function = std::dynamic_pointer_cast<FunctionPointerType>(type))
+        {
+            std::string name = "function(";
+            for (size_t i = 0; i < function->GetParameters().size(); i++)
+                name += (i ? ", " : "") + GetDisplayName(function->GetParameters()[i]);
+            name += ")";
+            return function->GetReturnType() ? name + " -> " + GetDisplayName(function->GetReturnType()) : name;
+        }
+
+        if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+        {
+            std::string name = "(";
+            for (size_t i = 0; i < tuple->GetElements().size(); i++)
+                name += (i ? ", " : "") + GetDisplayName(tuple->GetElements()[i]);
+            return name + ")";
+        }
+
+        return type->GetHash();
     }
 
     GenericType::GenericType(llvm::StringRef name)

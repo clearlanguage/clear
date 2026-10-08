@@ -33,6 +33,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseCastExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseIsExpr(std::shared_ptr<ASTNodeBase> lhs);
 		std::shared_ptr<ASTNodeBase> ParseTernary();
+		std::shared_ptr<ASTNodeBase> ParseLambda();
+		std::shared_ptr<ASTNodeBase> ParseFunctionType();
 		std::shared_ptr<ASTNodeBase> ParseListInitializerExpr();
 		std::shared_ptr<ASTNodeBase> ParseArrayType();
 		std::shared_ptr<ASTNodeBase> ParseSizeofExpr();
@@ -42,6 +44,7 @@ namespace clear
         std::shared_ptr<Module> RootModule();
 
         Token Consume();
+        Token ErrorLocation();
         Token Peak();
         Token Next();
         Token Prev();
@@ -63,12 +66,24 @@ namespace clear
 		std::shared_ptr<ASTBlock>    ParseCodeBlock();
 		std::shared_ptr<ASTNodeBase> ParseStatement();
 		std::shared_ptr<ASTNodeBase> ParseGeneral();
-		std::shared_ptr<ASTFunctionDefinition> ParseFunctionDefinition(bool descriptionOnly = false);
+		std::shared_ptr<ASTNodeBase> ParseTupleOrExpr();
+		std::shared_ptr<ASTFunctionDefinition> ParseFunctionDefinition(bool descriptionOnly = false, bool isProperty = false);
+		std::shared_ptr<ASTNodeBase> ParseFunctionOrGeneric();
 		std::shared_ptr<ASTFunctionDeclaration> ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
 		std::shared_ptr<ASTReturn> ParseReturn();
 		std::shared_ptr<ASTIfExpression> ParseIf();
 		std::shared_ptr<ASTWhileExpression> ParseWhile();
+		std::shared_ptr<ASTNodeBase> ParseFor();
+		std::shared_ptr<ASTNodeBase> ParseSwitch();
+		std::shared_ptr<ASTNodeBase> ParseEnum();
+		std::shared_ptr<ASTNodeBase> ParseDefer();
+		std::shared_ptr<ASTNodeBase> ParseConst();
+		std::shared_ptr<ASTNodeBase> ParseMacro();
+		std::shared_ptr<ASTNodeBase> ParseAsync();
+		std::shared_ptr<ASTNodeBase> ParseYield();
 		std::shared_ptr<ASTImport> ParseImport();
+		std::shared_ptr<ASTNodeBase> ParseLoopControl();
+		std::shared_ptr<ASTNodeBase> ParseAssert();
 		std::shared_ptr<ASTNodeBase> ParseClass();
 		std::shared_ptr<ASTGenericTemplate> ParseGenericArgs(std::shared_ptr<ASTNodeBase> templateNode);
 		std::shared_ptr<ASTNodeBase> ParseLet();
@@ -101,5 +116,7 @@ namespace clear
         TokenSet m_Literals;
 
         DiagnosticsBuilder& m_DiagnosticsBuilder;
+        std::shared_ptr<ASTGenericTemplate> m_PendingGeneric; // type parameters of the function being parsed
+        bool m_ParsingDeclaration = false;
     };
 }

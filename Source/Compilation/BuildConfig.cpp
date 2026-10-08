@@ -90,6 +90,10 @@ namespace clear
         config.TargetArchitecture = getStrEnum(tbl["TargetArchitecture"].value_or("Default"), archMap, BuildConfig::TargetArchitectureType::Default);
 
         config.DebugInfo = tbl["DebugInfo"].value_or(false);
+        config.TargetCPU = tbl["TargetCPU"].value_or(std::string("generic"));
+
+        if (auto checks = tbl["RuntimeChecks"].value<bool>())
+            config.RuntimeChecks = *checks ? 1 : 0;
         config.FavourSize = tbl["FavourSize"].value_or(false);
         config.EmitIntermiediateIR = tbl["EmitIntermiediateIR"].value_or(false);
         config.ParallelBuild = tbl["ParallelBuild"].value_or(false);
@@ -125,6 +129,23 @@ namespace clear
         return config;
     }
 
+
+    BuildConfig BuildConfig::ForSingleFile(const std::filesystem::path& file, const std::filesystem::path& outputPath)
+    {
+        BuildConfig config;
+        config.ApplicationName    = file.stem().string();
+        config.SourceDirectories  = {};
+        config.SourceFiles        = { std::filesystem::absolute(file) };
+        config.LibraryDirectories = {};
+        config.LibraryNames       = {};
+        config.LibraryFilePaths   = {};
+        config.OutputPath         = outputPath.parent_path().empty() ? std::filesystem::path(".") : outputPath.parent_path();
+        config.OutputFilename     = outputPath.filename();
+        config.StandardLibrary    = "";
+        config.EmitIntermiediateIR = false;
+
+        return config;
+    }
 
     void BuildConfig::Serialize(const std::filesystem::path& path)
     {
@@ -208,6 +229,7 @@ namespace clear
             { "OutputFormat",           enumToString(OutputFormat) },
             { "EmitIntermiediateIR",    EmitIntermiediateIR },
             { "TargetArchitecture",     enumToString(TargetArchitecture) },
+            { "TargetCPU",              TargetCPU },
             { "ParallelBuild",          ParallelBuild },
             { "IncludeCStandard",       IncludeCStandard },
             { "IncludeClearStandard",   IncludeClearStandard },

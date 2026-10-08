@@ -5,6 +5,7 @@
 #include "Symbols/TypeRegistry.h"
 
 #include "Symbols/Symbol.h"
+#include "Sema/SymbolTable.h"
 
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Module.h>
@@ -45,12 +46,16 @@ namespace clear
 		void ExposeSymbol(llvm::StringRef symbolName, std::shared_ptr<Symbol> symbol);
 		const auto& GetExposedSymbols() const { return m_ExposedSymbols; }
 
+		// the file's top-level scopes after semantic analysis, used to analyse its generics from other files
+		std::vector<SymbolTable> GlobalScopes;
+
     private:
         std::string m_ModuleName;
 		std::filesystem::path m_ModulePath;
 
-        std::unique_ptr<llvm::Module> m_Module;
+        // the context must outlive the llvm module, so it is declared (and therefore destroyed) first
         std::shared_ptr<llvm::LLVMContext> m_Context;
+        std::unique_ptr<llvm::Module> m_Module;
         std::shared_ptr<llvm::IRBuilder<>> m_Builder;
 		
 		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_ExposedSymbols;
@@ -60,6 +65,9 @@ namespace clear
         std::shared_ptr<TypeRegistry> m_TypeRegistry;
 
         bool m_CodeGenerated = false;
+
+    public:
+        bool RuntimeChecks = false; // emit bounds/null/overflow/division checks (from the build configuration)
         bool m_IsBuiltin = false;
     };
 }

@@ -8,6 +8,7 @@
 #include "Symbols/Type.h"
 // #include <emmintrin.h>
 #include <optional>
+#include <map>
 #include <string>
 
 namespace clear 
@@ -39,7 +40,8 @@ namespace clear
 
         m_Types["int"]  = m_Types["int32"];
         m_Types["uint"] = m_Types["uint32"];
-        m_Types["string"] = GetPointerTo(m_Types["int8"]); //TODO: gonna be a class soon
+        m_Types["str"] = std::make_shared<StrType>(m_Types["int8"], *m_Context);
+        m_Types["string"] = m_Types["str"];
 
         TypeFlagSet floatingFlags;
         floatingFlags.set((size_t)TypeFlags::Floating);
@@ -48,11 +50,14 @@ namespace clear
         m_Types["float32"] = std::make_shared<PrimitiveType>(llvm::Type::getFloatTy(*m_Context),  floatingFlags, "float32");
         m_Types["float64"] = std::make_shared<PrimitiveType>(llvm::Type::getDoubleTy(*m_Context), floatingFlags, "float64");
         
-        m_Types["float"] = m_Types["float32"];
+        m_Types["float"] = m_Types["float64"]; // like Python, float is double precision
 
         m_Types["opaque_ptr"] = std::make_shared<PointerType>(nullptr, *m_Context);
 
         m_Types["void"] = std::make_shared<PrimitiveType>(*m_Context);
+
+        // the type of the `none` literal, converts to any optional ?T
+        m_Types["none"] = std::make_shared<PrimitiveType>(llvm::Type::getInt1Ty(*m_Context), TypeFlagSet(), "none");
     }
 
     void TypeRegistry::RegisterType(const std::string& name, std::shared_ptr<Type> type)
@@ -74,52 +79,111 @@ namespace clear
         return nullptr;
     }
 
+    // Pointer, array and const types are shared by every module: `*Rect` made while compiling one file
+    // is the very same object as `*Rect` made in another, so types can be compared by identity.
+    // The key is the base type's identity (not its name, two modules may both define a class `Node`).
+    static std::shared_ptr<Type>& DerivedTypeSlot(const std::shared_ptr<Type>& base, size_t kind)
+    {
+        static std::map<std::pair<Type*, size_t>, std::shared_ptr<Type>> s_DerivedTypes;
+        return s_DerivedTypes[{ base.get(), kind }];
+    }
+
+    static constexpr size_t s_PointerKind = (size_t)-1;
+    static constexpr size_t s_ConstKind   = (size_t)-2;
+
     std::shared_ptr<Type> TypeRegistry::GetPointerTo(std::shared_ptr<Type> base)
     {
         if(!base) 
             return nullptr;
 
-        std::string hash = base->GetHash();
-        hash += "*";
+        auto& slot = DerivedTypeSlot(base, s_PointerKind);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<PointerType>(base, *m_Context);
 
-        std::shared_ptr<PointerType> ptr = std::make_shared<PointerType>(base, *m_Context);
-        m_Types[hash] = ptr;
-
-        return ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetArrayFrom(std::shared_ptr<Type> base, size_t count)
     {
         CLEAR_VERIFY(base, "invalid base");
 
-        std::string hash = base->GetHash();
-        hash += "[" + std::to_string(count) + "]";
+        auto& slot = DerivedTypeSlot(base, count);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<ArrayType>(base, count);
 
-        std::shared_ptr<ArrayType> ptr = std::make_shared<ArrayType>(base, count);
-        m_Types[hash] = ptr;
-
-        return ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetConstFrom(std::shared_ptr<Type> base)
     {
         CLEAR_VERIFY(base, "invalid base");
 
-        std::string hash = "const" + base->GetHash();
+        auto& slot = DerivedTypeSlot(base, s_ConstKind);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<ConstantType>(base);
 
-        std::shared_ptr<ConstantType> ptr = std::make_shared<ConstantType>(base);
-        m_Types[hash] = ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
+    }
 
-        return ptr;
+    std::shared_ptr<Type> TypeRegistry::GetTupleFrom(llvm::ArrayRef<std::shared_ptr<Type>> elements)
+    {
+        // canonical across modules, like pointers: (int, str) is one type everywhere
+        static std::map<std::vector<Type*>, std::shared_ptr<Type>> s_Tuples;
+
+        std::vector<Type*> key;
+        for (auto& element : elements)
+        {
+            if (!element)
+                return nullptr;
+
+            key.push_back(element.get());
+        }
+
+        auto& slot = s_Tuples[key];
+
+        if (!slot)
+            slot = std::make_shared<TupleType>(elements, *m_Context);
+
+        return slot;
+    }
+
+    std::shared_ptr<Type> TypeRegistry::GetCoroutineOf(bool isTask, std::shared_ptr<Type> value)
+    {
+        static std::map<std::pair<bool, Type*>, std::shared_ptr<Type>> s_Coroutines;
+        auto& slot = s_Coroutines[{ isTask, value.get() }];
+
+        if (!slot)
+            slot = std::make_shared<CoroutineType>(isTask ? CoroutineType::Kind::Task : CoroutineType::Kind::Generator, value, *m_Context);
+
+        return slot;
+    }
+
+    std::shared_ptr<Type> TypeRegistry::GetFunctionFrom(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType)
+    {
+        static std::map<std::vector<Type*>, std::shared_ptr<Type>> s_Functions;
+
+        // the return type goes first in the key, null meaning no value
+        std::vector<Type*> key = { returnType.get() };
+        for (auto& parameter : parameters)
+        {
+            if (!parameter)
+                return nullptr;
+
+            key.push_back(parameter.get());
+        }
+
+        auto& slot = s_Functions[key];
+
+        if (!slot)
+            slot = std::make_shared<FunctionPointerType>(parameters, returnType, *m_Context);
+
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)
@@ -137,10 +201,11 @@ namespace clear
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
         if(token.GetData() == "null") return m_Types["opaque_ptr"];
+        if(token.GetData() == "none") return GetType("none");
 
         if(token.IsType(TokenType::String))
         {
-            return GetPointerTo(GetType("int8"));
+            return GetType("str");
         }
 
         if(token.IsType(TokenType::Char))
@@ -176,16 +241,9 @@ namespace clear
             return "";
         } 
 
+        // like Python, a float literal is double precision unless it is cast
         if(info.IsFloatingPoint)
-        {
-            switch (info.BitsNeeded)
-			{
-				case 32: return "float32"; break;
-				case 64: return "float64"; break;
-				default:
-					break;
-			}
-        }
+            return "float64";
         else if (info.IsSigned)
 		{
 			switch (info.BitsNeeded)

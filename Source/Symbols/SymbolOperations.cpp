@@ -207,8 +207,8 @@ namespace clear
     {
         return BinaryIntOpSignednessAware(
             lhs, rhs, builder,
-            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateAShr(l, r, name); },
-            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateLShr(l, r, name); },
+            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateLShr(l, r, name); }, // unsigned
+            [](llvm::IRBuilder<>& bd, llvm::Value* l, llvm::Value* r, const char* name) { return bd.CreateAShr(l, r, name); }, // signed keeps the sign bit
             "shr"
         );
     }
@@ -301,6 +301,9 @@ namespace clear
     {
         auto [value, type] = operand.GetValue();
 
+        if (value->getType()->isFloatingPointTy())
+            return Symbol::CreateValue(builder.CreateFNeg(value, "neg"), type);
+
         return Symbol::CreateValue(builder.CreateNeg(value, "neg"), signedType);
     }
     
@@ -350,15 +353,14 @@ namespace clear
             CLEAR_VERIFY(!baseTy->IsConst(), "cannot change a constant value!");
         }
 
-        if(llvm::isa<llvm::GlobalVariable>(storage))
+        // stores to globals outside any function belong in the global initializer
+        if(llvm::isa<llvm::GlobalVariable>(storage) && !builder.GetInsertBlock())
         {
             auto func = GetInitGlobalsFunction(module);
 
-            llvm::BasicBlock& entryBlock = func->getEntryBlock();
-
             auto savedIp = builder.saveIP();
 
-            builder.SetInsertPoint(entryBlock.getTerminator());
+            builder.SetInsertPoint(&func->back());
             builder.CreateStore(val, storage);
 
             builder.restoreIP(savedIp);
@@ -542,13 +544,21 @@ namespace clear
             module
         );
 
-        llvm::BasicBlock* entry = llvm::BasicBlock::Create(module.getContext(), "entry", func);
-        llvm::IRBuilder<> builder(entry);
-        builder.CreateRetVoid();
-
+        llvm::BasicBlock::Create(module.getContext(), "entry", func);
         llvm::appendToGlobalCtors(module, func, 1);
 
         return func;
+    }
+
+    void SymbolOps::FinalizeInitGlobals(llvm::Module& module)
+    {
+        llvm::Function* func = module.getFunction("__clrt_init_globals");
+
+        if (!func || func->back().getTerminator())
+            return;
+
+        llvm::IRBuilder<> builder(&func->back());
+        builder.CreateRetVoid();
     }
     
 }

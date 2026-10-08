@@ -1,29 +1,48 @@
-#pragma once 
+#pragma once
 
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
 
-namespace clear 
+namespace clear
 {
     namespace CommandLine
     {
-         // May include adding source directories and file directly in command line in future 
-         // for now build.toml is required for compilation
-
         enum class ProgramMode
         {
-            None = 0, 
-            ShowHelp, // --help
-            BuildTemplateConfig,  // --build_template source_directory
-            Compile  // --compile directory with build.toml
+            None = 0,
+            ShowHelp,             // --help
+            BuildTemplateConfig,  // --build_template directory
+            Compile,              // --compile directory (with build.toml)
+            Build,                // build file.cl | directory
+            Run,                  // run file.cl [-- program args]
+            New,                  // new <directory>
+            Add,                  // add <name> --git <url> [--tag t | --branch b | --rev r] | --path <dir>
+            Fetch,                // fetch [project]
+            Update                // update [project]
         };
 
         struct ParsingResult
         {
             ProgramMode Options = ProgramMode::None;
-            std::filesystem::path Directory;
+            std::filesystem::path Directory; // target file or directory
+            std::optional<std::filesystem::path> Output;  // -o
+            std::optional<std::string> OptimizationLevel; // -O0 .. -O3
+            std::vector<std::string> ProgramArguments;    // forwarded to the program by `run`
+            bool EmitIR = false;   // --emit-ir
+            std::optional<std::string> TargetCPU; // --native, --cpu=<name>
+            std::optional<bool> RuntimeChecks;     // --checks, --no-checks
+            bool Verbose = false;  // -v
+
+            // add: the dependency
+            std::string PackageName;
+            std::string Git, Tag, Branch, Rev, PackagePath;
             bool Successful = false;
-        };  
+            std::string Error;
+        };
 
         ParsingResult Parse(int argc, char* argv[]);
+        void PrintHelp();
     }
 }

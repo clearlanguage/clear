@@ -10,6 +10,7 @@ namespace clear {
 		~Cloner() = default;
 			
 		std::shared_ptr<ASTNodeBase> Clone(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<ASTNodeBase> CloneNode(std::shared_ptr<ASTNodeBase> node);
 
 		std::shared_ptr<ASTClass> CloneClass(std::shared_ptr<ASTClass> node);
 		std::shared_ptr<ASTFunctionDefinition> CloneFunction(std::shared_ptr<ASTFunctionDefinition> node);
@@ -35,5 +36,10 @@ namespace clear {
 
 		std::shared_ptr<Module> DestinationModule;
 		std::unordered_map<std::string, Symbol> SubstitutionMap;
+
+		// macro expansion: parameter names become the argument's syntax, local names get a fresh suffix (hygiene)
+		std::unordered_map<std::string, std::shared_ptr<ASTNodeBase>> ExpressionMap;
+		std::unordered_map<std::string, std::string> RenameMap;
+		std::string HygieneSuffix; // non-empty while expanding a macro
 	};
 }

@@ -61,6 +61,9 @@ namespace clear
         if(m_Position >= m_Contents.size())
             return;
 
+        m_StartLine   = m_LineNumber;
+        m_StartColumn = m_ColumnNumber;
+
         std::string top(1, m_Contents[m_Position]);
 
         if (std::isdigit(m_Contents[m_Position]))
@@ -202,6 +205,7 @@ namespace clear
             }
             
             EmplaceBack(g_OperatorMappings.at(operator_), operator_);
+            m_StartColumn += operator_.size();
             i += operator_.size();
         }
     }
@@ -307,13 +311,20 @@ namespace clear
 
         auto ShouldContinue = [&]() 
         {
-            return m_Position < m_Contents.size() &&
+            // `0..10` is a range, so a '.' followed by another '.' ends the number
+            if (m_Position >= m_Contents.size())
+                return false;
+
+            bool isRangeDot = m_Contents[m_Position] == '.' && m_Position + 1 < m_Contents.size() && m_Contents[m_Position + 1] == '.';
+
+            return
                    (std::isdigit(m_Contents[m_Position]) ||
-                    m_Contents[m_Position] == '.' ||
+                    (m_Contents[m_Position] == '.' && !isRangeDot) ||
                     m_Contents[m_Position] == 'e' ||
                     m_Contents[m_Position] == 'E' ||
-                    m_Contents[m_Position] == '+' ||
-                    m_Contents[m_Position] == '-');
+                    // a sign is only part of the number right after an exponent (1e-5), `n-1` is a subtraction
+                    ((m_Contents[m_Position] == '+' || m_Contents[m_Position] == '-') && m_Position > 0 &&
+                     (m_Contents[m_Position - 1] == 'e' || m_Contents[m_Position - 1] == 'E')));
         };
 
         std::string word = GetWord(ShouldContinue);
@@ -500,22 +511,32 @@ namespace clear
 
     bool Lexer::IsLineOnlyWhitespace()
     {
+        // look ahead without moving: restore the column and line counters too, not just the position
         size_t position = m_Position;
+        size_t line = m_LineNumber;
+        size_t column = m_ColumnNumber;
 
-        while(Peak() != "\n")
+        auto restore = [&]()
+        {
+            m_Position = position;
+            m_LineNumber = line;
+            m_ColumnNumber = column;
+        };
+
+        while(m_Position < m_Contents.size() && Peak() != "\n")
         {
             std::string top = Peak();
 
             if (!std::isspace(top.back())) 
             {
-                m_Position = position;
+                restore();
                 return false;   
             }
 
             Increment();
         }
 
-        m_Position = position;
+        restore();
         return true;
     }
 
@@ -600,12 +621,16 @@ namespace clear
 
     void Lexer::EmplaceBack(TokenType type, const std::string& data)
     {
-        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
+        // line structure tokens are positioned where they are produced, everything else at its start
+        if (type == TokenType::EndLine || type == TokenType::EndScope || type == TokenType::EndOfFile)
+            m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber);
+        else
+            m_Tokens.emplace_back(type, data, m_File, m_StartLine, m_StartColumn);
     }
 
 
     void Lexer::EmplaceBack(TokenType type, const std::string& data,const std::string& metadata)
     {
-        m_Tokens.emplace_back(type, data, m_File, m_LineNumber, m_ColumnNumber,metadata);
+        m_Tokens.emplace_back(type, data, m_File, m_StartLine, m_StartColumn, metadata);
     }
 }

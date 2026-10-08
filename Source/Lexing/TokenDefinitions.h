@@ -47,6 +47,7 @@ namespace clear
         PlusEquals,          // +=
         MinusEquals,         // -=
         StarEquals,          // *=
+        StarStar,            // **
         SlashEquals,         // /=
         PercentEquals,       // %=
         EqualsEquals,        // ==
@@ -65,6 +66,8 @@ namespace clear
         Increment,           // ++
         Decrement,           // --
         Ellipses,            // ...
+        DotDot,              // ..
+        DotDotEquals,        // ..=
         QuestionMark,        // ?
 
         EndLine,
@@ -109,10 +112,10 @@ namespace clear
         "switch", "case", "default", "import", "as",  
         "pass",
 
-         "function", "class", "when", "use", "otherwise",
+         "function", "class", "when", "use", "otherwise", "for",
          "property", "declare", "enum", "sizeof", "is",
 
-        "not","and","or",
+        "not","and","or", "assert", "lambda", "none", "union",
 
         "let", "const",
     };
@@ -146,6 +149,8 @@ namespace clear
             {"~",    TokenType::Telda},
             {".",    TokenType::Dot},
             {"...",  TokenType::Ellipses},
+            {"..",   TokenType::DotDot},
+            {"..=",  TokenType::DotDotEquals},
             {"?",    TokenType::QuestionMark},
 
             {"++",   TokenType::Increment},
@@ -153,6 +158,7 @@ namespace clear
             {"+=",   TokenType::PlusEquals},
             {"-=",   TokenType::MinusEquals},
             {"*=",   TokenType::StarEquals},
+            {"**",   TokenType::StarStar},
             {"/=",   TokenType::SlashEquals},
             {"%=",   TokenType::PercentEquals},
             {"==",   TokenType::EqualsEquals},
@@ -201,12 +207,15 @@ namespace clear
         {TokenType::Telda,             1},
         {TokenType::Dot,               1},
         {TokenType::Ellipses,          3},
+        {TokenType::DotDot,            2},
+        {TokenType::DotDotEquals,      3},
 
         {TokenType::Increment,         2},
         {TokenType::Decrement,         2},
         {TokenType::PlusEquals,        2},
         {TokenType::MinusEquals,       2},
         {TokenType::StarEquals,        2},
+        {TokenType::StarStar,          2},
         {TokenType::SlashEquals,       2},
         {TokenType::PercentEquals,     2},
         {TokenType::EqualsEquals,      2},
