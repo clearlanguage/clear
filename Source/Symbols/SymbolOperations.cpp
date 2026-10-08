@@ -301,6 +301,9 @@ namespace clear
     {
         auto [value, type] = operand.GetValue();
 
+        if (value->getType()->isFloatingPointTy())
+            return Symbol::CreateValue(builder.CreateFNeg(value, "neg"), type);
+
         return Symbol::CreateValue(builder.CreateNeg(value, "neg"), signedType);
     }
     

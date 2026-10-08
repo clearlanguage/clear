@@ -79,7 +79,9 @@ namespace clear
 	void CompilationManager::CompileModule(CompilationUnit& unit)
 	{
 		//TODO may need mutex if we introduce parallel compilation
-		if (unit.Compiled) return;
+		if (unit.Compiled || unit.InProgress) return; // InProgress: an import cycle, the other side is already being compiled
+
+		unit.InProgress = true;
 		
 		std::shared_ptr<ASTBlock> topLevel = std::dynamic_pointer_cast<ASTBlock>(std::dynamic_pointer_cast<ASTBlock>(unit.Ast)->Children[0]);
 		
@@ -196,11 +198,19 @@ namespace clear
 		candidates.push_back(std::filesystem::path(CLEAR_STANDARD_DIR) / name);
 #endif
 
+		std::filesystem::path self = std::filesystem::weakly_canonical(std::filesystem::absolute(importingFile));
+
 		for (const auto& candidate : candidates)
 		{
 			std::error_code ec;
-			if (std::filesystem::is_regular_file(candidate, ec))
-				return std::filesystem::weakly_canonical(std::filesystem::absolute(candidate));
+			if (!std::filesystem::is_regular_file(candidate, ec))
+				continue;
+
+			// a file never imports itself (tests/math.cl importing the standard "math")
+			std::filesystem::path resolved = std::filesystem::weakly_canonical(std::filesystem::absolute(candidate));
+
+			if (resolved != self)
+				return resolved;
 		}
 
 		return std::nullopt;

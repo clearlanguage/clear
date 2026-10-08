@@ -112,6 +112,10 @@ namespace clear
 
 		// failed declarations were replaced by null, drop them so code generation never sees them
 		std::erase(children, nullptr);
+
+		// the file block (imports scope + file scope): remember it for generics instantiated from other files
+		if (m_ScopeStack.size() == 2)
+			m_Module->GlobalScopes = m_ScopeStack;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTypeSpecifier> type, SemaContext context)
@@ -239,7 +243,7 @@ namespace clear
 		
 		if (!symbol.has_value())
 		{
-			auto sym = m_Module->Lookup(variable->GetName().GetData());
+			auto sym = LookupInModules(variable->GetName().GetData());
 			
 			if (sym.has_value())
 				symbol = SymbolEntry { SymbolEntryType::None, sym.value() };
@@ -531,6 +535,16 @@ namespace clear
 			return nullptr;
 
 		// max[float64](1, 2): the explicitly instantiated function is called like any other
+		// List[int]() constructs the explicitly instantiated class
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(funcCall->Callee); 
+			subscript && subscript->Meaning == SubscriptSemantic::Generic && subscript->GeneratedType && subscript->GeneratedType->Kind == SymbolKind::Type)
+		{
+			auto target = std::dynamic_pointer_cast<ASTVariable>(subscript->Target);
+			auto callee = std::make_shared<ASTVariable>(target ? target->GetName() : Token());
+			callee->Variable = subscript->GeneratedType;
+			funcCall->Callee = callee;
+		}
+
 		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(funcCall->Callee); 
 			subscript && subscript->Meaning == SubscriptSemantic::Generic && subscript->GeneratedType && subscript->GeneratedType->Kind == SymbolKind::Function)
 		{
@@ -616,6 +630,8 @@ namespace clear
 
 		if (!function)
 			return funcCall;
+
+		EnsureDefined(function);
 
 		size_t offset = isMethod ? 1 : 0;
 		size_t expected = function->Arguments.size() >= offset ? function->Arguments.size() - offset : 0;
@@ -760,6 +776,7 @@ namespace clear
 			}
 
 			auto setFunc = clsType->MemberFunctions.at("__setitem__");
+			EnsureDefined(setFunc->GetFunctionSymbol().FunctionNode);
 
     		auto funcCall = std::make_shared<ASTFunctionCall>( );
     		funcCall->Callee = setFunc->GetFunctionSymbol().FunctionNode;
@@ -883,6 +900,7 @@ namespace clear
 		}
 
 		decl->DeclSymbol = symbol;
+		m_Module->ExposeSymbol(decl->GetName(), symbol);
 		return decl;
 	}
 
@@ -891,8 +909,42 @@ namespace clear
 		if (!DeclareClassType(classExpr) || !DeclareClassBody(classExpr, context))
 			return nullptr;
 
+		if (classExpr->LazyMethods)
+		{
+			for (auto& method : classExpr->MemberFunctions)
+				m_LazyBodies[method.get()] = LazyBody { m_ScopeStack, m_LookupModule, classExpr->ClassTy };
+
+			return classExpr;
+		}
+
 		DefineClass(classExpr, context);
 		return classExpr;
+	}
+
+	void Sema::EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function)
+	{
+		if (!function || function->BodyResolved)
+			return;
+
+		auto it = m_LazyBodies.find(function.get());
+
+		if (it == m_LazyBodies.end())
+			return;
+
+		LazyBody body = std::move(it->second);
+		m_LazyBodies.erase(it);
+
+		// analyse the body with the names that were visible where the class was instantiated
+		std::vector<SymbolTable> callerScopes = std::move(m_ScopeStack);
+		auto previousLookup = m_LookupModule;
+
+		m_ScopeStack = std::move(body.Scopes);
+		m_LookupModule = body.LookupModule;
+
+		DefineFunction(function, SemaContext { .TypeHint = body.ClassTy });
+
+		m_ScopeStack = std::move(callerScopes);
+		m_LookupModule = previousLookup;
 	}
 
 	bool Sema::DeclareClassType(std::shared_ptr<ASTClass> classExpr)
@@ -1313,6 +1365,8 @@ namespace clear
 		}
 	}
 
+	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
@@ -1320,6 +1374,33 @@ namespace clear
 		ternaryExpr->Condition = Visit(ternaryExpr->Condition, context);
 		ternaryExpr->Truthy = Visit(ternaryExpr->Truthy, context);
 		ternaryExpr->Falsy = Visit(ternaryExpr->Falsy, context);
+
+		if (!ternaryExpr->Condition || !ternaryExpr->Truthy || !ternaryExpr->Falsy)
+			return nullptr;
+
+		// both branches meet in one type: the wider of the two (a literal adapts to the other side)
+		auto truthyType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr->Truthy);
+		auto falsyType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr->Falsy);
+
+		if (truthyType && falsyType && truthyType != falsyType)
+		{
+			std::shared_ptr<Type> common;
+
+			bool truthyAdapts = (IsNumericLiteral(ternaryExpr->Truthy) && IsImplicitlyConvertible(truthyType, falsyType, true)) || IsConstantThatFits(ternaryExpr->Truthy, falsyType);
+			bool falsyAdapts = (IsNumericLiteral(ternaryExpr->Falsy) && IsImplicitlyConvertible(falsyType, truthyType, true)) || IsConstantThatFits(ternaryExpr->Falsy, truthyType);
+
+			if (truthyAdapts)
+				common = falsyType;
+			else if (falsyAdapts)
+				common = truthyType;
+			else if ((truthyType->IsIntegral() || truthyType->IsFloatingPoint()) && (falsyType->IsIntegral() || falsyType->IsFloatingPoint()))
+				common = m_TypeInferEngine.GetCommonType(truthyType, falsyType);
+			else
+				common = IsImplicitlyConvertible(falsyType, truthyType, false) ? truthyType : falsyType;
+
+			ternaryExpr->Truthy = Coerce(ternaryExpr->Truthy, common);
+			ternaryExpr->Falsy = Coerce(ternaryExpr->Falsy, common);
+		}
 
 		return ternaryExpr;
 	}
@@ -1488,6 +1569,17 @@ namespace clear
 		return construct;
 	}
 
+	std::optional<std::shared_ptr<Symbol>> Sema::LookupInModules(llvm::StringRef name)
+	{
+		if (m_LookupModule && m_LookupModule != m_Module)
+		{
+			if (auto symbol = m_LookupModule->Lookup(name))
+				return symbol;
+		}
+
+		return m_Module->Lookup(name);
+	}
+
 	std::pair<std::optional<SymbolEntry>, size_t> Sema::LookupSymbol(llvm::StringRef name)
 	{
 		for (int64_t i = (int64_t)m_ScopeStack.size() - 1; i >= 0; i--)
@@ -1496,7 +1588,7 @@ namespace clear
 				return { entry, (size_t)i };
 		}
 
-		if (auto symbol = m_Module->Lookup(name))
+		if (auto symbol = LookupInModules(name))
 			return { SymbolEntry { SymbolEntryType::None, symbol.value() }, 0 };
 
 		return { std::nullopt, 0 };
@@ -1578,6 +1670,8 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context)
 	{
+		generic->HomeModule = m_Module;
+
 		bool success = m_ScopeStack.back().Insert(generic->GetName(), SymbolEntryType::GenericTemplate, std::make_shared<Symbol>(Symbol::CreateGenericTemplate(generic)));
 			
 		if (!success)
@@ -1617,6 +1711,7 @@ namespace clear
 				}
 
 				auto memberFunc = clsType->MemberFunctions.at("__getitem__");
+				EnsureDefined(memberFunc->GetFunctionSymbol().FunctionNode);
 				auto funcCall = std::make_shared<ASTFunctionCall>( );
 				funcCall->Callee = memberFunc->GetFunctionSymbol().FunctionNode;
 				funcCall->ClassType = clsType;
@@ -1981,6 +2076,7 @@ namespace clear
 		}
 
 		auto function = method->GetFunctionSymbol().FunctionNode;
+		EnsureDefined(function);
 
 		if (function->Arguments.size() != 2)
 		{
@@ -2230,7 +2326,7 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(node);
-				auto sym = var->Variable ? std::optional(var->Variable) : m_Module->Lookup(var->GetName().GetData());
+				auto sym = var->Variable ? std::optional(var->Variable) : LookupInModules(var->GetName().GetData());
 
 				if (!sym || sym.value()->Kind != SymbolKind::Type)
 					return nullptr;
@@ -2325,6 +2421,10 @@ namespace clear
 		std::string instanceName = m_NameMangler.MangleGeneric(name, substitutedArgs);
 		std::shared_ptr<Symbol> instanceSymbol;
 
+		// one instance per set of type arguments, wherever in the file it is asked for
+		if (auto it = m_GenericInstances.find(instanceName); it != m_GenericInstances.end())
+			return it->second->GetGeneric().GeneratedSymbol;
+
 		for (auto rit = m_ScopeStack.rbegin(); rit != m_ScopeStack.rend(); rit++)
 		{
 			if (auto entry = rit->Get(instanceName))
@@ -2352,6 +2452,11 @@ namespace clear
 		ChangeNameOfNode(instanceName, clonned);
 
 		instanceSymbol = std::make_shared<Symbol>(Symbol::CreateGeneric(clonned));
+		m_GenericInstances[instanceName] = instanceSymbol;
+
+		// methods of generic classes are only analysed when used, so List[T] can hold types that lack some operations
+		if (auto classNode = std::dynamic_pointer_cast<ASTClass>(clonned))
+			classNode->LazyMethods = true;
 		bool success = m_ScopeStack[scopeIndex].Insert(instanceName, SymbolEntryType::None, instanceSymbol);
 		CLEAR_VERIFY(success, ""); //TODO Report(...)
 
@@ -2362,16 +2467,40 @@ namespace clear
 			instanceSymbol->GetGeneric().GeneratedSymbol = function->FunctionSymbol;
 		}
 
-		// analyse the instance where the template was declared: it must not see the caller's local variables
-		std::vector<SymbolTable> callerScopes(std::make_move_iterator(m_ScopeStack.begin() + scopeIndex + 1), std::make_move_iterator(m_ScopeStack.end()));
-		m_ScopeStack.resize(scopeIndex + 1);
-
 		auto pendingNode = clonned.get();
 		m_PendingInstances[pendingNode] = instanceSymbol;
-		clonned = Visit(clonned);
-		m_PendingInstances.erase(pendingNode);
 
-		m_ScopeStack.insert(m_ScopeStack.end(), std::make_move_iterator(callerScopes.begin()), std::make_move_iterator(callerScopes.end()));
+		if (node->HomeModule && node->HomeModule != m_Module)
+		{
+			// a template from another file: analyse it with that file's names, as if it were written there
+			std::vector<SymbolTable> callerScopes = std::move(m_ScopeStack);
+			m_ScopeStack = node->HomeModule->GlobalScopes;
+
+			if (m_ScopeStack.empty())
+				m_ScopeStack.emplace_back();
+
+			m_ScopeStack.back().Insert(instanceName, SymbolEntryType::None, instanceSymbol);
+
+			auto previousLookup = m_LookupModule;
+			m_LookupModule = node->HomeModule;
+
+			clonned = Visit(clonned);
+
+			m_LookupModule = previousLookup;
+			m_ScopeStack = std::move(callerScopes);
+		}
+		else
+		{
+			// analyse the instance where the template was declared: it must not see the caller's local variables
+			std::vector<SymbolTable> callerScopes(std::make_move_iterator(m_ScopeStack.begin() + scopeIndex + 1), std::make_move_iterator(m_ScopeStack.end()));
+			m_ScopeStack.resize(scopeIndex + 1);
+
+			clonned = Visit(clonned);
+
+			m_ScopeStack.insert(m_ScopeStack.end(), std::make_move_iterator(callerScopes.begin()), std::make_move_iterator(callerScopes.end()));
+		}
+
+		m_PendingInstances.erase(pendingNode);
 
 		if (!clonned)
 			return nullptr;

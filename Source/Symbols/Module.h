@@ -5,6 +5,7 @@
 #include "Symbols/TypeRegistry.h"
 
 #include "Symbols/Symbol.h"
+#include "Sema/SymbolTable.h"
 
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Module.h>
@@ -44,6 +45,9 @@ namespace clear
 		
 		void ExposeSymbol(llvm::StringRef symbolName, std::shared_ptr<Symbol> symbol);
 		const auto& GetExposedSymbols() const { return m_ExposedSymbols; }
+
+		// the file's top-level scopes after semantic analysis, used to analyse its generics from other files
+		std::vector<SymbolTable> GlobalScopes;
 
     private:
         std::string m_ModuleName;

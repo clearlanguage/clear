@@ -52,7 +52,16 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				std::shared_ptr<ASTVariable> variable = std::dynamic_pointer_cast<ASTVariable>(node);
-				return variable->Variable->GetType();
+				auto& symbol = variable->Variable;
+
+				if (!symbol)
+					return nullptr;
+
+				// a variable from a file that was already compiled holds its storage (a pointer to the value)
+				if (symbol->Kind == SymbolKind::Value && symbol->GetLLVMValue() && symbol->GetType()->IsPointer())
+					return symbol->GetType()->As<PointerType>()->GetBaseType();
+
+				return symbol->GetType();
 			}
 			case ASTNodeType::BinaryExpression:
 			{

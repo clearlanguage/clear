@@ -523,6 +523,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
 		std::shared_ptr<Type> ClassTy;
 		bool BodyDeclared = false;
+		bool LazyMethods = false; // generic instance: methods are analysed on first use
 	
 	private:
 		std::string m_Name;
@@ -711,6 +712,7 @@ namespace clear
 	public:
 		llvm::SmallVector<std::string> GenericTypeNames;
 		std::shared_ptr<ASTNodeBase> TemplateNode;
+		std::shared_ptr<Module> HomeModule; // the file the template is written in
 	};
 
 	class ASTArrayType : public ASTNodeBase 

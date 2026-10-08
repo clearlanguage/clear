@@ -16,6 +16,7 @@ namespace clear
 		std::shared_ptr<Module>	CompilationModule;
 		std::shared_ptr<ASTNodeBase> Ast;
 		bool Compiled = false;
+		bool InProgress = false;
 	};
 	
     class CompilationManager

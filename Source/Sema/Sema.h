@@ -84,6 +84,7 @@ namespace clear
 		bool DeclareClassType(std::shared_ptr<ASTClass> classExpr);
 		bool DeclareClassBody(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
+		void EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function);
 
 		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise
 		std::shared_ptr<ASTNodeBase> Coerce(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> target);
@@ -109,6 +110,7 @@ namespace clear
 		void ChangeNameOfNode(llvm::StringRef newName, std::shared_ptr<ASTNodeBase> clonnedNode);
 		
 		std::pair<std::optional<SymbolEntry>, size_t> LookupSymbol(llvm::StringRef name);
+		std::optional<std::shared_ptr<Symbol>> LookupInModules(llvm::StringRef name);
 		std::shared_ptr<Symbol> InstantiateFromValues(std::shared_ptr<ASTVariable> target, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, 
 													  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values);
 
@@ -120,6 +122,17 @@ namespace clear
 		std::unordered_map<Symbol*, int64_t> m_ConstantValues; // consts whose value is a known integer
 		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::unordered_set<std::string> m_FailedDeclarations;
+		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
+		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances;
+
+		struct LazyBody
+		{
+			std::vector<SymbolTable> Scopes;
+			std::shared_ptr<Module> LookupModule;
+			std::shared_ptr<Type> ClassTy;
+		};
+
+		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;
