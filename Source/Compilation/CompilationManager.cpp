@@ -14,6 +14,23 @@
 
 namespace clear 
 {
+	namespace
+	{
+		// LLVM < 20: bool getHostCPUFeatures(StringMap<bool>&)
+		template <typename Map>
+		auto FillHostCPUFeatures(Map& out, int) -> decltype(llvm::sys::getHostCPUFeatures(out), void())
+		{
+			llvm::sys::getHostCPUFeatures(out);
+		}
+
+		// LLVM >= 20: StringMap<bool> getHostCPUFeatures()
+		template <typename Map, typename... Args>
+		auto FillHostCPUFeatures(Map& out, long, Args&... args) -> decltype(out = llvm::sys::getHostCPUFeatures(args...), void())
+		{
+			out = llvm::sys::getHostCPUFeatures(args...);
+		}
+	}
+
     CompilationManager::CompilationManager(const BuildConfig& config)
         : m_Config(config)
     {
@@ -407,11 +424,10 @@ namespace clear
 			llvm::SubtargetFeatures featureSet;
 			llvm::StringMap<bool> hostFeatures;
 
-			if (llvm::sys::getHostCPUFeatures(hostFeatures))
-			{
-				for (const auto& feature : hostFeatures)
-					featureSet.AddFeature(feature.first(), feature.second);
-			}
+			FillHostCPUFeatures(hostFeatures, 0);
+
+			for (const auto& feature : hostFeatures)
+				featureSet.AddFeature(feature.first(), feature.second);
 
 			features = featureSet.getString();
 		}

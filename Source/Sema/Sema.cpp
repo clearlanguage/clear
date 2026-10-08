@@ -1499,7 +1499,10 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTAssignmentOperator> assignmentOp, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::LValue;
-		assignmentOp->Storage = Visit(assignmentOp->Storage, context);
+
+		SemaContext storageContext = context;
+		storageContext.AssignmentTarget = true;
+		assignmentOp->Storage = Visit(assignmentOp->Storage, storageContext);
 		// auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
 		//if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
 		//	CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
@@ -4340,7 +4343,10 @@ namespace clear
 				bool hasGet = clsType->MemberFunctions.contains("__getitem__");
 				bool hasSet = clsType->MemberFunctions.contains("__setitem__");
 
-				if (!hasGet && !(hasSet && context.ValueReq == ValueRequired::LValue))
+				// other lvalue uses (len(obj[i]), obj[i].method()) only need the value __getitem__ returns
+				bool assignTarget = context.AssignmentTarget && context.ValueReq == ValueRequired::LValue;
+
+				if (!hasGet && !(hasSet && assignTarget))
 				{
 					Report(DiagnosticCode_MissingIndexOverload, GetNodeLocation(subscript->Target));
 					return nullptr;
@@ -4361,7 +4367,7 @@ namespace clear
 				var->Variable = clsType->MemberFunctions.at("__getitem__");
 
 				// an assignment rewrites this call into __setitem__, its arguments are checked there
-				if (context.ValueReq == ValueRequired::LValue && hasSet)
+				if (assignTarget && hasSet)
 					return funcCall;
 
 				return CheckCall(funcCall);
