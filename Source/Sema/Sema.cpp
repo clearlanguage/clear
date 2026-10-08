@@ -389,7 +389,11 @@ namespace clear
 		std::string mangledName = func->GetName() != "main" ? m_NameMangler.MangleFunctionFromNode(func) : func->GetName();
 		std::optional<std::shared_ptr<Symbol>> symbol;
 		
-		if (func->FunctionSymbol)
+		if (func->IsGenericInstance)
+		{
+			symbol = func->FunctionSymbol;
+		}
+		else if (func->FunctionSymbol)
 		{
 			bool success = m_ScopeStack[m_ScopeStack.size() - 2].Insert(func->GetName(), SymbolEntryType::Function, func->FunctionSymbol);
 			symbol = success ? std::optional(func->FunctionSymbol) : std::nullopt;
@@ -409,7 +413,9 @@ namespace clear
 			return false;
 		}
 		
-		m_Module->ExposeSymbol(func->GetName(), symbol.value());
+		if (!func->IsGenericInstance)
+			m_Module->ExposeSymbol(func->GetName(), symbol.value());
+
 		func->SetName(mangledName);
 
 		std::shared_ptr<Symbol> fnSymbolPtr = symbol.value();
@@ -504,6 +510,15 @@ namespace clear
 					if (!var->Variable)
 						return nullptr;
 				}
+
+				// max(3, 9) on `function max[T](a: T, b: T)`: T comes from the arguments
+				if (generic && generic->TemplateNode->GetType() == ASTNodeType::FunctionDefinition)
+				{
+					var->Variable = InstantiateFromValues(var, entry->Symbol, scopeIndex, funcCall->Arguments);
+
+					if (!var->Variable)
+						return nullptr;
+				}
 			}
 		}
 
@@ -514,6 +529,16 @@ namespace clear
 
 		if (!funcCall->Callee)
 			return nullptr;
+
+		// max[float64](1, 2): the explicitly instantiated function is called like any other
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(funcCall->Callee); 
+			subscript && subscript->Meaning == SubscriptSemantic::Generic && subscript->GeneratedType && subscript->GeneratedType->Kind == SymbolKind::Function)
+		{
+			auto target = std::dynamic_pointer_cast<ASTVariable>(subscript->Target);
+			auto callee = std::make_shared<ASTVariable>(target ? target->GetName() : Token());
+			callee->Variable = subscript->GeneratedType;
+			funcCall->Callee = callee;
+		}
 
 		// Point(1, 2) constructs a value of the class
 		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); 
@@ -1509,20 +1534,27 @@ namespace clear
 														  llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> values)
 	{
 		auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(genericSymbol->GetGenericTemplate().GenericTemplate);
-		auto classNode = std::dynamic_pointer_cast<ASTClass>(generic->TemplateNode);
 
-		if (!classNode)
+		// what each value is matched against: class fields in order, or function parameters in order
+		std::vector<std::shared_ptr<ASTNodeBase>> patterns;
+
+		if (auto classNode = std::dynamic_pointer_cast<ASTClass>(generic->TemplateNode))
 		{
-			Report(DiagnosticCode_ExpectedType, target->GetName());
-			return nullptr;
+			for (auto& member : classNode->Members)
+				patterns.push_back(member->TypeResolver);
+		}
+		else if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(generic->TemplateNode))
+		{
+			for (auto& argument : function->Arguments)
+				patterns.push_back(argument ? argument->TypeResolver : nullptr);
 		}
 
 		std::unordered_map<std::string, std::shared_ptr<Type>> bindings;
 
-		for (size_t i = 0; i < values.size() && i < classNode->Members.size(); i++)
+		for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
 		{
 			if (values[i])
-				BindGenericType(classNode->Members[i]->TypeResolver, m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+				BindGenericType(patterns[i], m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
 		}
 
 		llvm::SmallVector<Symbol> arguments;
@@ -2323,9 +2355,26 @@ namespace clear
 		bool success = m_ScopeStack[scopeIndex].Insert(instanceName, SymbolEntryType::None, instanceSymbol);
 		CLEAR_VERIFY(success, ""); //TODO Report(...)
 
-		m_PendingInstances[clonned.get()] = instanceSymbol;
+		// a generic function's symbol exists before its body is analysed, so it can call itself
+		if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(clonned))
+		{
+			function->IsGenericInstance = true;
+			instanceSymbol->GetGeneric().GeneratedSymbol = function->FunctionSymbol;
+		}
+
+		// analyse the instance where the template was declared: it must not see the caller's local variables
+		std::vector<SymbolTable> callerScopes(std::make_move_iterator(m_ScopeStack.begin() + scopeIndex + 1), std::make_move_iterator(m_ScopeStack.end()));
+		m_ScopeStack.resize(scopeIndex + 1);
+
+		auto pendingNode = clonned.get();
+		m_PendingInstances[pendingNode] = instanceSymbol;
 		clonned = Visit(clonned);
-		m_PendingInstances.erase(clonned.get());
+		m_PendingInstances.erase(pendingNode);
+
+		m_ScopeStack.insert(m_ScopeStack.end(), std::make_move_iterator(callerScopes.begin()), std::make_move_iterator(callerScopes.end()));
+
+		if (!clonned)
+			return nullptr;
 
 		ConstructSymbol(instanceSymbol, clonned);
 

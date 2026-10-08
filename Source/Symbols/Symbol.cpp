@@ -239,7 +239,7 @@ namespace clear
 		return std::get<GenericTemplateSymbol>(Data);
 	}
 
-	GenericSymbol Symbol::GetGeneric()
+	GenericSymbol& Symbol::GetGeneric()
 	{
 		CLEAR_VERIFY(Kind == SymbolKind::Generic, "cannot call Symbol::GetGeneric() when kind is not Generic");
 		return std::get<GenericSymbol>(Data);

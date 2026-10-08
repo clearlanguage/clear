@@ -268,6 +268,7 @@ namespace clear
 		llvm::Function::LinkageTypes Linkage = llvm::Function::ExternalLinkage;
 		bool IsVariadic = false;
 		bool SignatureResolved = false; // semantic analysis progress, see Sema::DeclareFunction
+		bool IsGenericInstance = false; // made from a generic template, reached through the template not by name
 		bool BodyResolved = false;
 
 	private:

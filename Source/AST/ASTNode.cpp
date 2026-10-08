@@ -2062,6 +2062,7 @@ namespace clear
 		switch (TemplateNode->GetType()) 
 		{
 			case ASTNodeType::Class: return std::dynamic_pointer_cast<ASTClass>(TemplateNode)->GetName();
+			case ASTNodeType::FunctionDefinition: return std::dynamic_pointer_cast<ASTFunctionDefinition>(TemplateNode)->GetName();
 			default:
 				break;
 		}

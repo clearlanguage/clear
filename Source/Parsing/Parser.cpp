@@ -299,7 +299,7 @@ namespace clear
 
         // the handlers take the parser as an argument: a static table capturing `this` would stay bound to the first parser
         static const std::map<std::string, std::shared_ptr<ASTNodeBase>(*)(Parser*)> s_MappedKeywordsToFunctions = {
-            {"function",  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFunctionDefinition(); }},
+            {"function",  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFunctionOrGeneric(); }},
             {"declare",   [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFunctionDeclaration(); }}, 
             {"return",    [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseReturn(); }}, 
             {"if",        [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseIf(); }},
@@ -651,6 +651,22 @@ namespace clear
 	}
 
 
+	std::shared_ptr<ASTNodeBase> Parser::ParseFunctionOrGeneric()
+	{
+		auto function = ParseFunctionDefinition();
+
+		if (function && m_PendingGeneric)
+		{
+			auto generic = m_PendingGeneric;
+			m_PendingGeneric = nullptr;
+			generic->TemplateNode = function;
+			return generic;
+		}
+
+		m_PendingGeneric = nullptr;
+		return function;
+	}
+
 	std::shared_ptr<ASTFunctionDefinition> Parser::ParseFunctionDefinition(bool descriptionOnly)
 	{
 		EXPECT_DATA_RETURN("function", DiagnosticCode_None, nullptr);
@@ -661,6 +677,16 @@ namespace clear
 
 		auto funcNode = std::make_shared<ASTFunctionDefinition>(nameToken.GetData());
 		funcNode->SetNameToken(nameToken);
+		funcNode->Location = nameToken;
+
+		// function max[T](a: T, b: T) -> T
+		if (Match(TokenType::LeftBracket))
+		{
+			m_PendingGeneric = ParseGenericArgs(funcNode);
+
+			if (!m_PendingGeneric)
+				return nullptr;
+		}
 
 		EXPECT_TOKEN_RETURN(TokenType::LeftParen, DiagnosticCode_ExpectedLeftParanFunctionDefinition, nullptr);
 		Consume();
@@ -1324,7 +1350,18 @@ namespace clear
 
             if(Match("function"))
             {
-				classNode->MemberFunctions.push_back(ParseFunctionDefinition());
+				Token methodToken = Next();
+				auto method = ParseFunctionDefinition();
+
+				if (m_PendingGeneric)
+				{
+					m_PendingGeneric = nullptr;
+					m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, methodToken, DiagnosticCode_GenericMethodUnsupported);
+				}
+
+				if (method)
+					classNode->MemberFunctions.push_back(method);
+
                 continue;
             }
 			

@@ -232,3 +232,7 @@ Advice  = "‘{}’ must take exactly two parameters: self and the other operand
 [TooManyValues]
 Message = "Too many values for this class."
 Advice  = "‘{}."
+
+[GenericMethodUnsupported]
+Message = "Methods cannot have their own type parameters yet."
+Advice  = "Make ‘{}’ a generic function outside the class, or make the class itself generic."

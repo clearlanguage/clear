@@ -62,6 +62,7 @@ namespace clear
 		DiagnosticCode_MissingOperatorOverload,
 		DiagnosticCode_BadOperatorSignature,
 		DiagnosticCode_TooManyValues,
+		DiagnosticCode_GenericMethodUnsupported,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -124,6 +125,7 @@ namespace clear
 		"Operator is not defined for this class.",
 		"Operator method has the wrong number of parameters.",
 		"Too many values for this class.",
+		"Methods cannot have their own type parameters yet.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -185,5 +187,6 @@ namespace clear
 		"‘{}’. Define the dunder method on the class to support the operator.",
 		"‘{}’ must take exactly two parameters: self and the other operand.",
 		"‘{}.",
+		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
 	};
 }

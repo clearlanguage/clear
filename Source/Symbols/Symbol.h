@@ -145,6 +145,6 @@ namespace clear
 		FunctionSymbol& GetFunctionSymbol();
 		CalleeSymbol GetCalleeSymbol();
 		GenericTemplateSymbol GetGenericTemplate();
-		GenericSymbol GetGeneric();
+		GenericSymbol& GetGeneric();
     };
 }
