@@ -8,6 +8,7 @@
 #include "Symbols/Type.h"
 // #include <emmintrin.h>
 #include <optional>
+#include <map>
 #include <string>
 
 namespace clear 
@@ -74,52 +75,56 @@ namespace clear
         return nullptr;
     }
 
+    // Pointer, array and const types are shared by every module: `*Rect` made while compiling one file
+    // is the very same object as `*Rect` made in another, so types can be compared by identity.
+    // The key is the base type's identity (not its name, two modules may both define a class `Node`).
+    static std::shared_ptr<Type>& DerivedTypeSlot(const std::shared_ptr<Type>& base, size_t kind)
+    {
+        static std::map<std::pair<Type*, size_t>, std::shared_ptr<Type>> s_DerivedTypes;
+        return s_DerivedTypes[{ base.get(), kind }];
+    }
+
+    static constexpr size_t s_PointerKind = (size_t)-1;
+    static constexpr size_t s_ConstKind   = (size_t)-2;
+
     std::shared_ptr<Type> TypeRegistry::GetPointerTo(std::shared_ptr<Type> base)
     {
         if(!base) 
             return nullptr;
 
-        std::string hash = base->GetHash();
-        hash += "*";
+        auto& slot = DerivedTypeSlot(base, s_PointerKind);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<PointerType>(base, *m_Context);
 
-        std::shared_ptr<PointerType> ptr = std::make_shared<PointerType>(base, *m_Context);
-        m_Types[hash] = ptr;
-
-        return ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetArrayFrom(std::shared_ptr<Type> base, size_t count)
     {
         CLEAR_VERIFY(base, "invalid base");
 
-        std::string hash = base->GetHash();
-        hash += "[" + std::to_string(count) + "]";
+        auto& slot = DerivedTypeSlot(base, count);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<ArrayType>(base, count);
 
-        std::shared_ptr<ArrayType> ptr = std::make_shared<ArrayType>(base, count);
-        m_Types[hash] = ptr;
-
-        return ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetConstFrom(std::shared_ptr<Type> base)
     {
         CLEAR_VERIFY(base, "invalid base");
 
-        std::string hash = "const" + base->GetHash();
+        auto& slot = DerivedTypeSlot(base, s_ConstKind);
 
-        if(m_Types.contains(hash)) 
-            return m_Types.at(hash);
+        if (!slot)
+            slot = std::make_shared<ConstantType>(base);
 
-        std::shared_ptr<ConstantType> ptr = std::make_shared<ConstantType>(base);
-        m_Types[hash] = ptr;
-
-        return ptr;
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
     }
 
     std::shared_ptr<Type> TypeRegistry::GetSignedType(std::shared_ptr<Type> type)

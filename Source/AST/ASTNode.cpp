@@ -70,6 +70,8 @@ namespace clear
 		return symbol;
 	}
 
+	static Symbol UseGlobalHere(const Symbol& symbol, CodegenContext& ctx);
+
     ASTNodeBase::ASTNodeBase()
     {
     }
@@ -574,30 +576,7 @@ namespace clear
 		}
 		else if (symbol->Kind == SymbolKind::Value) //variable
 		{
-			llvm::GlobalVariable* existingGV = ctx.Module.getNamedGlobal(member->GetName().GetData());
-			Symbol value;
-
-			if(existingGV)
-			{
-				value = Symbol::CreateValue(existingGV, symbol->GetType());
-			}
-			else 
-			{
-				llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(symbol->GetLLVMValue());
-
-				llvm::GlobalVariable* decl = new llvm::GlobalVariable(
-					ctx.Module,
-					gv->getValueType(),
-					gv->isConstant(),
-					llvm::GlobalValue::ExternalLinkage,
-					nullptr,
-					gv->getName()
-				);
-
-				value = Symbol::CreateValue(decl, symbol->GetType());
-			}
-
-			return value;
+			return UseGlobalHere(*symbol, ctx);
 		}
 		else if (symbol->Kind == SymbolKind::Function)
 		{
@@ -621,13 +600,15 @@ namespace clear
 		{
 			llvm::Type* llvmType = resolvedType.GetType()->Get();
 
+			// qualified by the module so files can each have their own `count`; external so other files can use it
+			// (executables internalize everything after linking, so this costs nothing)
 			llvm::GlobalVariable* global = new llvm::GlobalVariable(
 				ctx.Module, 
 				llvmType,
 				/* isConstant = */ false,
-				llvm::GlobalValue::InternalLinkage,
+				llvm::GlobalValue::ExternalLinkage,
 				llvm::Constant::getNullValue(llvmType),
-				m_Name.GetData()
+				std::format("{}.{}", ctx.ClearModule->GetName(), m_Name.GetData())
 			);
 
 			*Variable = Symbol::CreateValue(global, ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
@@ -674,12 +655,34 @@ namespace clear
     {
     }
 
+	// a global defined in another module is used through a declaration in this one
+	static Symbol UseGlobalHere(const Symbol& symbol, CodegenContext& ctx)
+	{
+		if (symbol.Kind != SymbolKind::Value)
+			return symbol;
+
+		auto global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(symbol.GetLLVMValue());
+
+		if (!global || global->getParent() == &ctx.Module)
+			return symbol;
+
+		llvm::GlobalVariable* local = ctx.Module.getNamedGlobal(global->getName());
+
+		if (!local)
+		{
+			local = new llvm::GlobalVariable(ctx.Module, global->getValueType(), global->isConstant(), 
+											 llvm::GlobalValue::ExternalLinkage, nullptr, global->getName());
+		}
+
+		return Symbol::CreateValue(local, symbol.GetType());
+	}
+
 	Symbol ASTVariable::Codegen(CodegenContext& ctx)
     {
 		if (Variable->Kind == SymbolKind::Function)
 			return Symbol::CreateCallee(Variable, nullptr);
 
-		return *Variable;
+		return UseGlobalHere(*Variable, ctx);
 	}
 	
 	void ASTVariable::Print()

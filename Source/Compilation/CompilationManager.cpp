@@ -83,14 +83,16 @@ namespace clear
 		
 		std::shared_ptr<ASTBlock> topLevel = std::dynamic_pointer_cast<ASTBlock>(std::dynamic_pointer_cast<ASTBlock>(unit.Ast)->Children[0]);
 		
+		// imported files are compiled first so their symbols exist (paths were resolved while loading)
 		for (const auto& node : topLevel->Children)
 		{
 			std::shared_ptr<ASTImport> importNode = std::dynamic_pointer_cast<ASTImport>(node);
 			if (!importNode) continue;
 
-			std::filesystem::path parent = unit.CompilationModule->GetPath().parent_path();
-			std::filesystem::path absolute = std::filesystem::absolute(parent / importNode->Filepath);
-			CompileModule(m_CompilationUnits.at(absolute));
+			auto it = m_CompilationUnits.find(importNode->Filepath);
+
+			if (it != m_CompilationUnits.end())
+				CompileModule(it->second);
 		}
 
 		Sema analyzer(unit.CompilationModule, m_DiagnosticsBuilder, m_CompilationUnits);
@@ -137,6 +139,15 @@ namespace clear
             return;
         }
 
+        // every file is tracked by one canonical path, however it was named
+        std::filesystem::path canonical = std::filesystem::weakly_canonical(std::filesystem::absolute(path));
+
+        if (canonical != path)
+        {
+            LoadSourceFile(canonical);
+            return;
+        }
+
         if(path.extension() != m_Config.TargetExtension)
         {
             return;
@@ -164,7 +175,69 @@ namespace clear
         }
 
 		m_CompilationUnits[path] = CompilationUnit { newModule, newModule->GetRoot() };
+
+		LoadImports(newModule);
     }
+
+	std::optional<std::filesystem::path> CompilationManager::ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name)
+	{
+		if (!name.has_extension())
+			name += m_Config.TargetExtension;
+
+		std::vector<std::filesystem::path> candidates = { importingFile.parent_path() / name };
+
+		if (!m_Config.StandardLibrary.empty())
+			candidates.push_back(m_Config.StandardLibrary / name);
+
+		if (const char* fromEnvironment = std::getenv("CLEAR_STANDARD_DIR"))
+			candidates.push_back(std::filesystem::path(fromEnvironment) / name);
+
+#ifdef CLEAR_STANDARD_DIR
+		candidates.push_back(std::filesystem::path(CLEAR_STANDARD_DIR) / name);
+#endif
+
+		for (const auto& candidate : candidates)
+		{
+			std::error_code ec;
+			if (std::filesystem::is_regular_file(candidate, ec))
+				return std::filesystem::weakly_canonical(std::filesystem::absolute(candidate));
+		}
+
+		return std::nullopt;
+	}
+
+	void CompilationManager::LoadImports(std::shared_ptr<Module> module)
+	{
+		auto root = module->GetRoot();
+
+		if (root->Children.empty())
+			return;
+
+		auto topLevel = std::dynamic_pointer_cast<ASTBlock>(root->Children[0]);
+
+		if (!topLevel)
+			return;
+
+		for (const auto& node : topLevel->Children)
+		{
+			auto importNode = std::dynamic_pointer_cast<ASTImport>(node);
+			if (!importNode) continue;
+
+			auto resolved = ResolveImport(module->GetPath(), importNode->Filepath);
+
+			if (!resolved)
+			{
+				Token location = importNode->Location;
+				location.SetData(importNode->Filepath.string());
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, DiagnosticCode_ImportNotFound);
+				continue;
+			}
+
+			// from here on the import refers to the file by its absolute path
+			importNode->Filepath = *resolved;
+			LoadSourceFile(*resolved);
+		}
+	}
 
     void CompilationManager::GenerateIRAndObjectFiles()
     {
@@ -329,6 +402,15 @@ namespace clear
 		module.setTargetTriple(m_TargetMachine->getTargetTriple().str());
 
 		bool isExecutable = m_Config.OutputFormat == BuildConfig::OutputFormatType::Executable;
+
+		if (isExecutable)
+		{
+			for (llvm::GlobalVariable& global : module.globals())
+			{
+				if (!global.isDeclaration() && global.hasExternalLinkage())
+					global.setLinkage(llvm::GlobalValue::InternalLinkage);
+			}
+		}
 
 		for (llvm::Function& function : module)
 		{

@@ -152,7 +152,7 @@ namespace clear
 		"Separate each function parameter with a comma ','",
 		"Add '->' followed by the return type after the parameter list",
 		"Ensure all indented blocks are properly closed",
-		"Add a module name string (e.g. \"math\") after the module keyword",
+		"Write the file to import as a string, e.g. import \"math\" (near ‘{}’)",
 		"Separate items with a comma ',' at {} to continue the list or argument sequence.",
 		"Add a colon ':' after {} to start the block or specify the case body.",
 		"Give ‘{}’ a type (let x: int) or a value to infer it from (let x = 0).",

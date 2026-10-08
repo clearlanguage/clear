@@ -74,6 +74,9 @@ link_directories(${LLVM_LIBRARY_DIRS})
 
 add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 
+# where `import "math"` finds the standard library when no other location is configured
+target_compile_definitions(clearc PRIVATE CLEAR_STANDARD_DIR="${CMAKE_SOURCE_DIR}/Standard")
+
 enable_testing()
 add_test(NAME clear_language_tests
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)

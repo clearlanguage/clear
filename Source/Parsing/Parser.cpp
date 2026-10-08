@@ -297,27 +297,28 @@ namespace clear
 		if (Match(TokenType::EndScope))
 			return nullptr;
 
-        static std::map<std::string, std::function<std::shared_ptr<ASTNodeBase>()>> s_MappedKeywordsToFunctions = {
-            {"function",  [this]() { return ParseFunctionDefinition(); }},
-            {"declare",   [this]() { return ParseFunctionDeclaration(); }}, 
-            {"return",    [this]() { return ParseReturn(); }}, 
-            {"if",        [this]() { return ParseIf(); }},
-			{"while",	  [this]() { return ParseWhile(); }},
-			{"for",		  [this]() { return ParseFor(); }},
-			{"switch",	  [this]() { return ParseSwitch(); }},
-			{"enum",	  [this]() { return ParseEnum(); }},
-			{"defer",	  [this]() { return ParseDefer(); }},
-			{"const",	  [this]() { return ParseConst(); }},
-			{"class",     [this]() { return ParseClass(); }},
-			{"let",		  [this]() { return ParseLet(); }},
-			{"import",	  [this]() { return ParseImport(); }},
-			{"break",	  [this]() { return ParseLoopControl(); }},
-			{"continue",  [this]() { return ParseLoopControl(); }},
+        // the handlers take the parser as an argument: a static table capturing `this` would stay bound to the first parser
+        static const std::map<std::string, std::shared_ptr<ASTNodeBase>(*)(Parser*)> s_MappedKeywordsToFunctions = {
+            {"function",  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFunctionDefinition(); }},
+            {"declare",   [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFunctionDeclaration(); }}, 
+            {"return",    [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseReturn(); }}, 
+            {"if",        [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseIf(); }},
+			{"while",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseWhile(); }},
+			{"for",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseFor(); }},
+			{"switch",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseSwitch(); }},
+			{"enum",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseEnum(); }},
+			{"defer",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseDefer(); }},
+			{"const",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseConst(); }},
+			{"class",     [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseClass(); }},
+			{"let",		  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLet(); }},
+			{"import",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseImport(); }},
+			{"break",	  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
+			{"continue",  [](Parser* p) -> std::shared_ptr<ASTNodeBase> { return p->ParseLoopControl(); }},
         };
         
         if(s_MappedKeywordsToFunctions.contains(Peak().GetData()))
         {
-            return s_MappedKeywordsToFunctions.at(Peak().GetData())();
+            return s_MappedKeywordsToFunctions.at(Peak().GetData())(this);
         }
 
 		return ParseGeneral();
@@ -635,6 +636,9 @@ namespace clear
 		Consume();
 
 		std::shared_ptr<ASTImport> importExpr = std::make_shared<ASTImport>();
+		importExpr->Location = Peak();
+
+		EXPECT_TOKEN_RETURN(TokenType::String, DiagnosticCode_ExpectedModuleName, nullptr);
 		importExpr->Filepath = Consume().GetData();
 
 		if (!Match("as"))

@@ -977,10 +977,8 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTImport> importExpr, SemaContext context)
 	{
-		std::filesystem::path parent = m_Module->GetPath().parent_path();
-		std::filesystem::path absolute = std::filesystem::absolute(parent / importExpr->Filepath);
-		
-		auto it = m_CompilationUnits.find(absolute);
+		// the loader already resolved the import to an absolute path
+		auto it = m_CompilationUnits.find(importExpr->Filepath);
 		if (it == m_CompilationUnits.end())
 		{
 			Report(DiagnosticCode_ImportNotFound, Token(TokenType::String, importExpr->Filepath.string()));
@@ -990,12 +988,16 @@ namespace clear
 		if (!importExpr->Namespace.empty())
 		{
 			m_Module->InsertModule(importExpr->Namespace, it->second.CompilationModule);
+			m_ScopeStack.front().Insert(importExpr->Namespace, SymbolEntryType::None, std::make_shared<Symbol>(Symbol::CreateModule(it->second.CompilationModule)));
 			return importExpr;
 		}
 		
 		for (const auto& [symbolName, exposedSymbol] : it->second.CompilationModule->GetExposedSymbols())
 		{
-			m_ScopeStack.back().Insert(symbolName, SymbolEntryType::None, exposedSymbol);
+			// imported globals are variables like local ones: reading them loads the value
+			// the outermost scope holds imports, so a file's own definitions shadow imported names (like Python)
+			SymbolEntryType entryType = exposedSymbol->Kind == SymbolKind::Value ? SymbolEntryType::Variable : SymbolEntryType::None;
+			m_ScopeStack.front().Insert(symbolName, entryType, exposedSymbol);
 		}
 		
 		return importExpr;

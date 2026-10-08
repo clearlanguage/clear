@@ -11,6 +11,8 @@ is written in comments inside the test itself:
     // expect-exit: 3        (optional, default 0)
     // expect-error          (compilation must fail)
 
+Files inside a folder named `lib` are helpers that tests import, not tests.
+
 usage: run_tests.py <path to clearc> <tests directory> [name filter]
 
 Set CLEAR_TEST_FLAGS to pass extra compiler flags, e.g. CLEAR_TEST_FLAGS=-O3
@@ -109,7 +111,10 @@ def main():
     name_filter = sys.argv[3] if len(sys.argv) > 3 else ""
 
     tests = []
-    for root, _, files in os.walk(tests_dir):
+    for root, dirs, files in os.walk(tests_dir):
+        # files under a `lib` folder are imported by tests, they are not tests themselves
+        dirs[:] = [d for d in dirs if d != "lib"]
+
         for name in files:
             if name.endswith(".cl"):
                 path = os.path.join(root, name)

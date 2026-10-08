@@ -104,7 +104,7 @@ Advice = "Ensure all indented blocks are properly closed"
 
 [ExpectedModuleName]
 Message = "Expected a module name string"
-Advice = "Add a module name string (e.g. \"math\") after the module keyword"
+Advice = "Write the file to import as a string, e.g. import \"math\" (near ‘{}’)"
 
 [ExpectedComma]
 Message = "Expected ',' between list or argument elements."
