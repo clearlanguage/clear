@@ -124,12 +124,12 @@ print("total:", total, "avg:", total / count)   // built-in, type-aware
       first, or copies would free twice.
 - [ ] Slices `[]T` (pointer + length) for passing arrays of any length;
       bounds-checked in debug builds.
-- [ ] Optionals `?T` with `if value is some:` style unwrapping.
-- [ ] Tagged unions / variants.
-- [ ] Traits/interfaces with static dispatch (monomorphised, zero cost).
-- [ ] Lambdas (non-capturing first, then capturing by explicit list).
+- [x] Optionals `?T`: `none`, `x is none`, `x.value`, `x.value_or(d)`, `case some(v)`.
+- [x] Tagged unions / variants: enum cases with data, matched by `switch` (checked to be exhaustive); plain `union`.
+- [x] Traits with static dispatch: `trait`, `class C(Trait)`, generic constraints `[T: Trait]`.
+- [x] Lambdas and function values (`function(int) -> int`); capturing lambdas become small objects with `__call__`.
 - [ ] Generic methods (type parameters on a method of a class).
-- [ ] An owned, length-tracked `String` type with `+` and comparisons.
+- [x] An owned, length-tracked `String` type with `+` and comparisons.
 
 ## Phase 4: Performance
 
@@ -147,7 +147,7 @@ Clear's promise is C-level speed, so this is measured, not assumed.
 - [ ] Struct/array literals built in registers instead of `memcpy` from a
       global constant (only matters at -O0).
 - [ ] Debug info (`DebugInfo = true`) so gdb/lldb work.
-- [ ] Optional bounds checks for arrays and slices in debug builds.
+- [x] Run-time checks (bounds, division, overflow, null, `none`) in debug builds; `--checks` / `--no-checks`.
 - [ ] Compiler speed: parse files in parallel; reduce `shared_ptr` churn
       in the AST.
 
@@ -158,11 +158,28 @@ Clear's promise is C-level speed, so this is measured, not assumed.
 - [x] Imports are followed automatically; `import "math"` finds the
       standard library; files can use each other's functions, classes and
       globals.
-- [ ] `map[K, V]`, `io` (files, stdin), an owned string type.
+- [x] `Map[K, V]`, `io` (files, stdin), an owned `String`.
 - [ ] `clearc fmt` formatter.
 - [ ] Language server (diagnostics + go-to-definition) built on the same
       front end.
-- [ ] Package manager.
+- [x] Package manager: `clear.toml`, git/path dependencies, `clear.lock`, `clearc new/add/fetch/update`.
+
+## Phase 6: A full language
+
+Everything here follows the same rules: visible cost, opt-in dynamism, checked at compile time where possible.
+
+- [x] Inheritance (`class Dog(Animal)`, base fields first, `*Dog` → `*Animal`), `super.method()`.
+- [x] `virtual` methods: opt-in dynamic dispatch through a per-class table; everything else stays static.
+- [x] Properties: `property name(self)` getters and `property name(self, value)` setters.
+- [x] Hygienic macros: `macro name(args):`, used as `name!(...)`.
+- [x] Generators (`Generator[T]`, `yield`) and `async` / `await` / `Task[T]` on LLVM coroutines, no hidden runtime.
+- [x] Tuples, multiple return values, destructuring, default and keyword arguments, `...` unpacking.
+- [x] `in`, `len`, `assert`, `**`, `else if`, `str` with value comparison, `hash()`, `__str__`.
+- [ ] Destructors (`__del__`) with moves, so `List`/`String`/`Map` free themselves.
+- [ ] Slices `[]T` (pointer + length).
+- [ ] Generic methods (type parameters on a method).
+- [ ] Debug info for gdb/lldb; `clearc fmt`; a language server.
+- [ ] A package registry (today dependencies are git URLs or paths).
 
 ## Out of scope (on purpose)
 

@@ -70,8 +70,7 @@ cmake --build build -j
 clearc run hello.cl              # compile for this machine and run
 clearc build hello.cl -O3        # produce ./hello, fully optimized
 clearc build hello.cl -o app --native --emit-ir
-clearc build my_project/         # a directory with a build.toml
-clearc --build_template my_project/
+clearc new app && clearc run app # a project with dependencies (see "Modules, packages and C")
 ```
 
 | option | meaning |
@@ -80,6 +79,7 @@ clearc --build_template my_project/
 | `--native`, `--cpu=<name>` | use every instruction this CPU (or the named one) supports; `run` does this by default |
 | `--emit-ir` | also write the LLVM IR as a `.ll` file |
 | `-o <path>` | output path |
+| `--checks`, `--no-checks` | run-time safety checks (default: on below `-O2`) |
 | `-v` | print progress |
 
 Errors point at the exact place in the source:
@@ -106,21 +106,23 @@ let small: uint8 = 200         // literals adapt to the declared type
 let big: int64 = count         // widening is implicit
 let back = big as int32        // narrowing needs `as`
 const LIMIT = 64               // folded at compile time
-let buffer: [LIMIT; int] = {}  // fixed size arrays (sizes may use consts)
+let buffer: [LIMIT; int] = {}  // fixed size arrays (sizes may use consts), all zero
 let p: *int = &count           // pointers, *p to dereference
-let name = "clear"             // string literals are *int8
+let name: str = "clear"        // string literals; == compares their contents
+let t = (1, 2.5, "three")      // tuples: t[0], t[2]
+let empty: int                 // never garbage: starts at zero
 ```
 
-Built-in types: `int8 … int64`, `uint8 … uint64`, `int` (= `int32`), `uint` (= `uint32`), `float32`, `float64`, `float` (= `float64`, like Python), `bool`, pointers `*T`, arrays `[N; T]`. Array literals may be shorter than the array, the rest is zero: `let grid: [9; int] = {}`.
+Built-in types: `int8 … int64`, `uint8 … uint64`, `int` (= `int32`), `uint` (= `uint32`), `float32`, `float64`, `float` (= `float64`), `bool`, `str`, pointers `*T`, arrays `[N; T]`, tuples `(A, B)`, optionals `?T`, function types `function(int) -> int`.
 
-Conversions that cannot lose information happen automatically (int → wider int, int → float64, float32 → float64). Everything else needs an explicit `as`, which keeps silent precision bugs out of your code.
+Conversions that cannot lose information happen automatically (int → wider int, int → float64, float32 → float64, `*Derived` → `*Base`). Everything else needs an explicit `as`.
 
 ### Control flow
 
 ```clear
 if x > 10 and not done:
     ...
-elseif x == 10:
+else if x == 10:               // or elseif
     ...
 else:
     ...
@@ -128,25 +130,21 @@ else:
 while i < n:
     i++
 
-for i in 0..10:        // 0 to 9
-for i in 1..=10:       // 1 to 10
-for x in numbers:      // arrays, and any class with __len__ and __getitem__
+for i in 0..10:                // 0 to 9;  1..=10 includes 10
+for x in numbers:              // arrays, List, Map, generators, any class with __len__ and __getitem__
     if x < 0:
         continue
-    if x > 100:
-        break
 
-switch command:        // no fallthrough
+switch command:                // no fallthrough; must cover every case of an enum (or have default)
     case 1, 2:
         start()
-    case Command.Stop:
-        stop()
     default:
         print("unknown")
 
 let label = when total > 20 use "big" otherwise "small"
-
-defer free(buffer)     // runs when the block exits, however it exits
+defer free(buffer)             // runs when the block exits, however it exits
+assert count > 0, "count must be positive"
+print(3 in values, "ell" in "hello", len(values))
 ```
 
 ### Functions
@@ -154,75 +152,234 @@ defer free(buffer)     // runs when the block exits, however it exits
 Functions can be used before the line that defines them. Calls are checked: argument count and types.
 
 ```clear
-function area(shape: Shape, size: float64) -> float64:
-    switch shape:
-        case Shape.Circle:
-            return PI * size * size
-        default:
-            return size * size
+function greet(name: str, greeting: str = "hello") -> str:   // default values
+    return greeting
 
-function max[T](a: T, b: T) -> T:       // generic, T is inferred at the call
+greet("ada", greeting = "hi")                                // keyword arguments
+
+function divmod(a: int, b: int) -> (int, int):               // several results
+    return a / b, a % b
+
+let q, r = divmod(17, 5)                                     // destructuring
+a, b = b, a                                                  // swap
+add3(values...)                                              // spread an array or tuple into arguments
+
+function max[T](a: T, b: T) -> T:                            // generic, T is inferred
     return when a > b use a otherwise b
+```
 
-max(3, 9)
-max[float64](1, 2)
+Functions are values. Lambdas take their parameter types from where they are used, and capture variables by reference:
+
+```clear
+function apply(f: function(int) -> int, x: int) -> int:
+    return f(x)
+
+apply(lambda x: x + 100, 1)
+let offset = 10
+let shifted = lambda (x: int): x + offset
 ```
 
 ### Classes
 
 ```clear
 class Account:
-    owner: *int8
+    owner: str
     balance: float64 = 0.0                   // fields can have defaults
 
-    function __init__(self: *Account, owner: *int8):
+    function __init__(self: *Account, owner: str):
         self.owner = owner
 
     function deposit(self: *Account, amount: float64):
         self.balance += amount
 
 let account = Account("ada")                 // runs __init__ on a stack value
-account.deposit(25.5)
-print(account)                               // Account(owner=ada, balance=25.5)
-
-let p = Point(3, 4)                          // no __init__: fields in order
-let q = Point { 3 }                          // struct literal, missing fields use defaults
+let p = Point(3, 4)                          // no __init__: fields in order (or Point(y = 4, x = 3))
 ```
 
-Operators are customised with Python's dunder methods: `__add__ __sub__ __mul__ __div__ __mod__ __eq__ __ne__ __lt__ __le__ __gt__ __ge__ __getitem__ __setitem__ __len__`. Classes can be generic: `class Box[T]`, used as `Box(7)` (inferred) or `Box[int64](7)`.
+Operators are customised with Python's dunder methods: `__add__ __sub__ __mul__ __div__ __mod__ __pow__ __eq__ __ne__ __lt__ __le__ __gt__ __ge__ __getitem__ __setitem__ __len__ __contains__ __call__ __str__ __hash__`. Classes can be generic: `class Box[T]`, used as `Box(7)` or `Box[int64](7)`.
 
-### Enums
+**Inheritance** puts the base's fields first, so a `*Dog` can be passed wherever a `*Animal` is expected. Calls are static (no hidden cost) unless a method is marked `virtual`, which adds one table pointer to the object:
 
 ```clear
-enum Shape:
-    Circle
-    Square = 10
+class Animal:
+    name: str
 
-let s = Shape.Circle
-print(s)                // Shape.Circle
+    virtual function sound(self: *Animal) -> str:
+        return "..."
+
+    function speak(self: *Animal):
+        print(self.name, "says", self.sound())   // calls the object's own sound()
+
+class Dog(Animal):
+    function sound(self: *Dog) -> str:
+        return "woof"
+
+    function speak(self: *Dog):
+        super.speak()                            // the base version
 ```
 
-Enums are their own types. They never mix with integers unless you use `as`.
+**Properties** look like fields but run code:
+
+```clear
+class Temperature:
+    celsius: float64
+
+    property fahrenheit(self: *Temperature) -> float64:
+        return self.celsius * 9.0 / 5.0 + 32.0
+
+    property fahrenheit(self: *Temperature, value: float64):
+        self.celsius = (value - 32.0) * 5.0 / 9.0
+
+t.fahrenheit = 212.0
+```
+
+**Traits** list methods a class promises to have. They are checked when the class is declared, and generic functions can require them; the call is resolved at compile time, so it costs nothing:
+
+```clear
+trait Shape:
+    function area(self: *Shape) -> float64
+
+class Circle(Shape):
+    radius: float64
+
+    function area(self: *Circle) -> float64:
+        return 3.14159 * self.radius * self.radius
+
+function total_area[T: Shape](shapes: *[4; T]) -> float64:
+    ...
+```
+
+### Enums, variants, optionals and unions
+
+```clear
+enum Color:                       // plain enums never mix with integers without `as`
+    Red
+    Green = 10
+
+enum Shape:                       // cases can carry data (tagged unions)
+    Circle(radius: float64)
+    Rect(width: float64, height: float64)
+    Empty
+
+    function area(self: *Shape) -> float64:
+        switch *self:
+            case Circle(r):
+                return PI * r * r
+            case Rect(w, h):
+                return w * h
+            case Empty:
+                return 0.0
+
+function find(values: [4; int], target: int) -> ?int:     // an int, or none
+    ...
+    return none
+
+let found = find(data, 9)
+if found is not none:
+    print(found.value)
+print(found.value_or(-1))
+
+union Bits:                       // every field shares the same bytes
+    i: int64
+    f: float64
+```
+
+### Generators and async
+
+A function that returns `Generator[T]` produces values with `yield`; nothing runs until the loop asks for the next one:
+
+```clear
+function fibonacci() -> Generator[int64]:
+    let a: int64 = 0
+    let b: int64 = 1
+    while true:
+        yield a
+        a, b = b, a + b
+
+for f in fibonacci():
+    if f > 100:
+        break
+    print(f)
+```
+
+`async function` returns a `Task`. `await` runs another task, and when that task pauses, this one pauses too, so tasks can be interleaved by whoever runs them. There is no hidden scheduler or thread: `task.run()` runs a task to the end, and `resume()` / `done()` / `result()` let you write your own scheduler (see `Tests/async/tasks.cl`).
+
+```clear
+async function add(a: int, b: int) -> int:
+    return a + b
+
+async function worker(steps: int) -> int:
+    for i in 0..steps:
+        await pause()                  // let other tasks run
+    return await add(steps, 1)
+
+print(worker(3).run())                 // 4
+```
+
+Both compile to LLVM coroutines. When a generator or task does not outlive its caller, LLVM keeps its state on the stack.
+
+### Macros
+
+A macro pastes code in, with its arguments, where you write `name!(...)`. The `!` shows that it is a macro and not a call. Variables declared inside a macro can never clash with yours:
+
+```clear
+macro swap(a, b):
+    let tmp = a
+    a = b
+    b = tmp
+
+macro square(x):
+    x * x
+
+swap!(x, y)
+print(square!(7))
+```
 
 ### Printing
 
-`print` takes any number of values of any type and separates them with spaces. It is built into the compiler and becomes a single `printf` call, so it costs no more than writing the format string yourself:
+`print` takes any number of values of any type. It becomes a single `printf` call, so it costs no more than writing the format string yourself. A class can choose how it is printed with `__str__`.
 
 ```clear
-let scores: [3; int] = {7, 8, 9}
-print("total:", 42, 2.5, true, scores, Point(1, 2))
-// total: 42 2.5 true [7, 8, 9] Point(x=1, y=2)
+print("total:", 42, 2.5, true, scores, Point(1, 2), (1, "a"), Shape.Circle(1.0))
+// total: 42 2.5 true [7, 8, 9] Point(x=1, y=2) (1, a) Shape.Circle(radius=1.0)
 ```
 
-### Modules and C
+### Safety checks
+
+Mistakes that can be found at compile time are errors: a constant index out of range, a division by a constant zero, dereferencing `null`, a missing `return`, or a `switch` that misses a case. At run time, debug builds (`-O0`, `-O1`) check array bounds, integer division by zero, signed overflow, null pointers and unwrapping `none`, and stop with a message such as `panic: index out of range for an array of 3 (main.cl:5:13)`. Release builds (`-O2`, `-O3`) leave these checks out. Use `--checks` or `--no-checks` to choose either way.
+
+### Modules, packages and C
 
 ```clear
 import "math"                 // the standard library
 import "lib/shapes"           // a file next to this one (.cl is implied)
 import "lib/shapes" as shapes // shapes.square(2)
+import "colors"               // a package from clear.toml
 
 declare printf(format: *int8, args: ...) -> int32   // any C function
 ```
+
+A project is a directory with a `clear.toml`:
+
+```toml
+[package]
+name = "app"
+main = "main.cl"
+
+[dependencies]
+colors = { git = "https://github.com/someone/colors", tag = "v1.2" }
+shapes = { path = "../shapes" }
+```
+
+```
+clearc new app                                         # clear.toml + main.cl
+clearc add colors --git <url> --tag v1.2               # or --branch, --rev, --path <dir>
+clearc run app                                         # fetches what is missing, builds, runs
+clearc fetch                                           # download the exact versions in clear.lock
+clearc update                                          # move to the newest versions the manifest allows
+```
+
+Dependencies are cloned into `.clear/packages`, dependencies of dependencies are followed, and the exact commits are recorded in `clear.lock`, so a fresh checkout builds the same code.
 
 ### Standard library
 
@@ -231,7 +388,11 @@ declare printf(format: *int8, args: ...) -> int32   // any C function
 | `math` | `PI`, `TAU`, `E`, `sqrt`, `pow`, `sin` … (libm), generic `min`, `max`, `clamp`, `abs`, `sign`, `gcd`, `is_prime`, `lerp` |
 | `memory` | `allocate[T](count)`, `reallocate`, `release`, `copy` |
 | `list` | `List[T]`, a growable array: `push`, `pop`, `[]`, `for x in list`, `contains`, `free` |
-| `string` | `length`, `equals`, `starts_with`, `contains`, `to_int`, `to_float` |
+| `map` | `Map[K, V]`, a hash table: `m[k] = v`, `m[k]`, `get` (→ `?V`), `get_or`, `k in m`, `remove`, `for key in m`, `free` |
+| `string` | `String`, an owned growable string (`append`, `+`, `==`, `<`, `find`, `slice`, `strip`, `upper`, `to_int`, `from_int` …), and helpers for `str` |
+| `io` | `File`, `open`, `read_file`, `write_file`, `append_file`, `read_line`, `input`, `file_exists`, `delete_file` |
+
+Nothing allocates behind your back: `List`, `Map`, `String` and file contents live on the heap because you created them, and `free()` gives the memory back.
 
 ---
 
