@@ -169,8 +169,11 @@ namespace clear {
 				return info;
 		}
 
-		if (testTypeAgainst(float{}) || testTypeAgainst(double{}))
-			return info;
+		// any literal written with a '.' or exponent is a float64 (numeric_limits<double>::min() is the
+		// smallest *positive* double, so a range test would wrongly reject 0.0 and negative values)
+		info.IsFloatingPoint = true;
+		info.IsSigned = true;
+		info.BitsNeeded = 64;
 
         return info;
     }

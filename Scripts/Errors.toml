@@ -79,8 +79,8 @@ Message = "Unexpected 'else' without matching 'if'"
 Advice = "Ensure 'else' is used directly after a valid 'if' or 'elif' block"
 
 [InvalidForLoop]
-Message = "Invalid 'for' loop syntax: missing 'in'"
-Advice = "Use 'in' to complete the 'for' loop syntax (e.g. 'for item in list')"
+Message = "Invalid 'for' loop."
+Advice = "Write loops as 'for i in 0..n:', 'for i in 1..=n:' or 'for item in array:' (near ‘{}’)"
 
 [ExpectedLeftParanFunctionDefinition]
 Message = "Expected '(' after function name"
@@ -192,3 +192,7 @@ Advice  = "Write the type arguments explicitly, for example ‘{}[int]’."
 [ImplicitConversion]
 Message = "Cannot convert implicitly, the conversion may lose information."
 Advice  = "Converting ‘{}’ needs an explicit cast, for example ‘value as T’."
+
+[NotIterable]
+Message = "Value cannot be iterated over."
+Advice  = "A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither."

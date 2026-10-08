@@ -691,6 +691,10 @@ namespace clear
 			CLEAR_UNREACHABLE("invalid assignment type");
 		}
 
+		// the arithmetic may have been done in a wider type, store it back in the variable's own type
+		Symbol baseType = Symbol::CreateType(storage.GetType()->As<PointerType>()->GetBaseType());
+		tmp = SymbolOps::Cast(tmp, baseType, ctx.Builder);
+
 		SymbolOps::Store(storage, tmp, ctx.Builder, ctx.Module);
 		return Symbol();
     }
@@ -798,6 +802,17 @@ namespace clear
 
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
 	{
+		if (IsBuiltinPrint)
+		{
+			llvm::SmallVector<Symbol> values;
+
+			for (auto& argument : Arguments)
+				values.push_back(argument->Codegen(ctx));
+
+			EmitBuiltinPrint(ctx, values);
+			return Symbol();
+		}
+
 		std::vector<llvm::Value*> args;
 		std::vector<std::shared_ptr<Type>> types;
 		
@@ -1586,6 +1601,106 @@ namespace clear
 		return {};
 	}
 
+
+	Symbol ASTForExpression::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		auto registry = ctx.ClearModule->GetTypeRegistry();
+
+		llvm::BasicBlock* conditionBlock = llvm::BasicBlock::Create(ctx.Context, "for.condition");
+		llvm::BasicBlock* bodyBlock      = llvm::BasicBlock::Create(ctx.Context, "for.body");
+		llvm::BasicBlock* stepBlock      = llvm::BasicBlock::Create(ctx.Context, "for.step");
+		llvm::BasicBlock* endBlock       = llvm::BasicBlock::Create(ctx.Context, "for.end");
+
+		Symbol variable = CreateAlloca(VariableType, ctx);
+		*Variable = variable;
+
+		// ranges count the variable itself, arrays count a hidden index
+		Symbol counter;
+		llvm::Value* limit = nullptr;
+		bool isSigned = true;
+		Symbol iterable;
+
+		if (Iterable)
+		{
+			iterable = Iterable->Codegen(ctx);
+			counter = CreateAlloca(ctx.ClearModule->Lookup("uint64").value()->GetType(), ctx);
+			ctx.Builder.CreateStore(ctx.Builder.getInt64(0), counter.GetLLVMValue());
+			limit = ctx.Builder.getInt64(IterableType->As<ArrayType>()->GetArraySize());
+			isSigned = false;
+		}
+		else
+		{
+			Symbol start = Start->Codegen(ctx);
+			ctx.Builder.CreateStore(start.GetLLVMValue(), variable.GetLLVMValue());
+
+			// the end is evaluated once, before the first iteration
+			limit = End->Codegen(ctx).GetLLVMValue();
+			counter = variable;
+			isSigned = VariableType->IsSigned();
+		}
+
+		ctx.Builder.CreateBr(conditionBlock);
+
+		function->insert(function->end(), conditionBlock);
+		ctx.Builder.SetInsertPoint(conditionBlock);
+
+		llvm::Type* counterType = Iterable ? ctx.Builder.getInt64Ty() : VariableType->Get();
+		llvm::Value* current = ctx.Builder.CreateLoad(counterType, counter.GetLLVMValue(), "for.counter");
+		llvm::Value* keepGoing = nullptr;
+
+		if (Inclusive)
+			keepGoing = isSigned ? ctx.Builder.CreateICmpSLE(current, limit) : ctx.Builder.CreateICmpULE(current, limit);
+		else
+			keepGoing = isSigned ? ctx.Builder.CreateICmpSLT(current, limit) : ctx.Builder.CreateICmpULT(current, limit);
+
+		ctx.Builder.CreateCondBr(keepGoing, bodyBlock, endBlock);
+
+		function->insert(function->end(), bodyBlock);
+		ctx.Builder.SetInsertPoint(bodyBlock);
+
+		if (Iterable)
+		{
+			// copy the current element into the loop variable
+			llvm::Value* index = ctx.Builder.CreateLoad(ctx.Builder.getInt64Ty(), counter.GetLLVMValue());
+			llvm::Value* address = ctx.Builder.CreateInBoundsGEP(IterableType->Get(), iterable.GetLLVMValue(), { ctx.Builder.getInt64(0), index }, "for.element");
+			llvm::Value* element = ctx.Builder.CreateLoad(VariableType->Get(), address);
+			ctx.Builder.CreateStore(element, variable.GetLLVMValue());
+		}
+
+		{
+			ValueRestoreGuard continueGuard(ctx.LoopConditionBlock, stepBlock);
+			ValueRestoreGuard breakGuard(ctx.LoopEndBlock, endBlock);
+
+			CodeBlock->Codegen(ctx);
+		}
+
+		if (!ctx.Builder.GetInsertBlock()->getTerminator())
+			ctx.Builder.CreateBr(stepBlock);
+
+		function->insert(function->end(), stepBlock);
+		ctx.Builder.SetInsertPoint(stepBlock);
+
+		llvm::Value* value = ctx.Builder.CreateLoad(counterType, counter.GetLLVMValue());
+		llvm::Value* next = ctx.Builder.CreateAdd(value, llvm::ConstantInt::get(counterType, 1), "for.next", /* NUW = */ false, /* NSW = */ isSigned);
+		ctx.Builder.CreateStore(next, counter.GetLLVMValue());
+
+		// an inclusive range ending at the type's maximum would wrap around, stop after the last value instead
+		if (Inclusive)
+		{
+			llvm::Value* wasLast = ctx.Builder.CreateICmpEQ(value, limit);
+			ctx.Builder.CreateCondBr(wasLast, endBlock, conditionBlock);
+		}
+		else
+		{
+			ctx.Builder.CreateBr(conditionBlock);
+		}
+
+		function->insert(function->end(), endBlock);
+		ctx.Builder.SetInsertPoint(endBlock);
+
+		return {};
+	}
 
 	ASTTernaryExpression::ASTTernaryExpression() 
 	{

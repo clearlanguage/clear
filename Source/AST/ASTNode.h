@@ -33,7 +33,8 @@ namespace clear
 		DefaultArgument, DefaultInitializer, 
 		Defer, TypeResolver,TypeSpecifier, TernaryExpression, 
 		Switch, ListExpr, StructExpr, Block, Load, GenericTemplate,
-		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr
+		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
+		ForLoop
 	};
 
 	class ASTNodeBase;
@@ -82,6 +83,9 @@ namespace clear
 
 	// best source location for a node, looking through nodes created by the compiler itself
 	Token GetNodeLocation(const std::shared_ptr<ASTNodeBase>& node);
+
+	// emits the code for the built-in print(...): values separated by spaces, then a newline
+	void EmitBuiltinPrint(CodegenContext& ctx, llvm::ArrayRef<Symbol> values);
 	
 	class ASTBlock : public ASTNodeBase
 	{
@@ -276,6 +280,7 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> Arguments;
 		//TODO: Make a different node for this
 		std::shared_ptr<ClassType> ClassType;
+		bool IsBuiltinPrint = false; // print(...) is lowered to printf by the compiler
 
 
 
@@ -431,6 +436,29 @@ namespace clear
 
 	public:
 		ConditionalBlock WhileBlock;
+	};
+
+	// for i in start..end / start..=end / for x in array
+	class ASTForExpression : public ASTNodeBase
+	{
+	public:
+		ASTForExpression() = default;
+		virtual ~ASTForExpression() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::ForLoop; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		Token VariableName;
+		std::shared_ptr<ASTNodeBase> Start;     // range start, or null when iterating an array
+		std::shared_ptr<ASTNodeBase> End;       // range end
+		std::shared_ptr<ASTNodeBase> Iterable;  // array being iterated
+		bool Inclusive = false;                 // ..= includes the end
+		std::shared_ptr<ASTBlock> CodeBlock;
+
+		// filled in by semantic analysis
+		std::shared_ptr<Symbol> Variable;
+		std::shared_ptr<Type> VariableType;
+		std::shared_ptr<Type> IterableType;
 	};
 
 	class ASTTernaryExpression : public ASTNodeBase

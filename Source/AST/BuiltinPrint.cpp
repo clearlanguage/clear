@@ -1,0 +1,177 @@
+#include "ASTNode.h"
+
+#include "Symbols/Module.h"
+
+#include <llvm/IR/Intrinsics.h>
+
+namespace clear
+{
+	// Builds a single printf call whose format string is decided at compile time from the
+	// argument types. Floats are the exception: Python prints 5.0 as "5.0" but 0.1 as "0.1",
+	// which needs a runtime choice of format, so each float gets its own small printf call.
+	class PrintBuilder
+	{
+	public:
+		PrintBuilder(CodegenContext& ctx)
+			: m_Ctx(ctx)
+		{
+			llvm::FunctionType* printfType = llvm::FunctionType::get(ctx.Builder.getInt32Ty(), { ctx.Builder.getPtrTy() }, true);
+			m_Printf = ctx.Module.getOrInsertFunction("printf", printfType);
+		}
+
+		void Text(llvm::StringRef text)
+		{
+			for (char c : text)
+			{
+				if (c == '%')
+					m_Format += "%%";
+				else
+					m_Format += c;
+			}
+		}
+
+		void Value(llvm::Value* value, std::shared_ptr<Type> type)
+		{
+			auto& builder = m_Ctx.Builder;
+			llvm::Type* llvmType = value->getType();
+
+			if (llvmType->isIntegerTy(1))
+			{
+				m_Format += "%s";
+				m_Args.push_back(builder.CreateSelect(value, String("true"), String("false")));
+			}
+			else if (llvmType->isIntegerTy())
+			{
+				bool isSigned = type && type->IsSigned();
+				m_Format += isSigned ? "%lld" : "%llu";
+				m_Args.push_back(isSigned ? builder.CreateSExt(value, builder.getInt64Ty()) : builder.CreateZExt(value, builder.getInt64Ty()));
+			}
+			else if (llvmType->isFloatingPointTy())
+			{
+				Float(value);
+			}
+			else if (llvmType->isPointerTy())
+			{
+				bool isString = type && type->IsPointer() && type->As<PointerType>()->GetBaseType() &&
+								type->As<PointerType>()->GetBaseType()->GetHash() == "int8";
+
+				m_Format += isString ? "%s" : "%p";
+				m_Args.push_back(value);
+			}
+			else if (llvmType->isArrayTy())
+			{
+				auto elementType = type ? type->As<ArrayType>()->GetBaseType() : nullptr;
+
+				Text("[");
+
+				for (uint64_t i = 0; i < llvmType->getArrayNumElements(); i++)
+				{
+					if (i > 0) Text(", ");
+					Value(builder.CreateExtractValue(value, { (unsigned)i }), elementType);
+				}
+
+				Text("]");
+			}
+			else if (llvmType->isStructTy() && type && type->IsClass())
+			{
+				// dataclass style: Point(x=1, y=2)
+				auto classType = type->As<ClassType>();
+				Text(classType->GetHash());
+				Text("(");
+
+				unsigned index = 0;
+				for (const auto& [name, memberType] : classType->GetMemberValues())
+				{
+					if (index > 0) Text(", ");
+					Text(name);
+					Text("=");
+					Value(builder.CreateExtractValue(value, { index }), memberType);
+					index++;
+				}
+
+				Text(")");
+			}
+			else
+			{
+				Text("<value>");
+			}
+		}
+
+		void Flush()
+		{
+			if (m_Format.empty())
+				return;
+
+			llvm::SmallVector<llvm::Value*> args = { String(m_Format) };
+			args.append(m_Args.begin(), m_Args.end());
+
+			m_Ctx.Builder.CreateCall(m_Printf, args);
+
+			m_Format.clear();
+			m_Args.clear();
+		}
+
+	private:
+		void Float(llvm::Value* value)
+		{
+			auto& builder = m_Ctx.Builder;
+
+			if (!value->getType()->isDoubleTy())
+				value = builder.CreateFPExt(value, builder.getDoubleTy());
+
+			Flush();
+
+			// whole numbers keep a ".0" like Python, everything else uses the shortest sensible form
+			llvm::Value* truncated = builder.CreateUnaryIntrinsic(llvm::Intrinsic::trunc, value);
+			llvm::Value* magnitude = builder.CreateUnaryIntrinsic(llvm::Intrinsic::fabs, value);
+			llvm::Value* isWhole = builder.CreateAnd(builder.CreateFCmpOEQ(value, truncated),
+													 builder.CreateFCmpOLT(magnitude, llvm::ConstantFP::get(builder.getDoubleTy(), 1e16)));
+
+			llvm::Value* format = builder.CreateSelect(isWhole, String("%.1f"), String("%.15g"));
+			builder.CreateCall(m_Printf, { format, value });
+		}
+
+		llvm::Value* String(llvm::StringRef text)
+		{
+			auto it = m_Strings.find(text);
+
+			if (it != m_Strings.end())
+				return it->second;
+
+			llvm::Value* global = m_Ctx.Builder.CreateGlobalStringPtr(text, "print.fmt");
+			m_Strings[text] = global;
+			return global;
+		}
+
+	private:
+		CodegenContext& m_Ctx;
+		llvm::FunctionCallee m_Printf;
+		std::string m_Format;
+		llvm::SmallVector<llvm::Value*> m_Args;
+		llvm::StringMap<llvm::Value*> m_Strings;
+	};
+
+	void EmitBuiltinPrint(CodegenContext& ctx, llvm::ArrayRef<Symbol> values)
+	{
+		PrintBuilder printer(ctx);
+
+		for (size_t i = 0; i < values.size(); i++)
+		{
+			if (i > 0)
+				printer.Text(" ");
+
+			const Symbol& symbol = values[i];
+
+			if (symbol.Kind != SymbolKind::Value)
+			{
+				printer.Text("<none>");
+				continue;
+			}
+
+			printer.Value(symbol.GetLLVMValue(), symbol.GetType());
+		}
+
+		printer.Text("\n");
+		printer.Flush();
+	}
+}

@@ -225,6 +225,9 @@ namespace clear
 
 	std::shared_ptr<Type> Infer::InferTypeFromFunctionCall(std::shared_ptr<ASTFunctionCall> funcCall)
 	{
+		if (funcCall->IsBuiltinPrint)
+			return m_Module->Lookup("void").value()->GetType();
+
 		return InferTypeFromNode(funcCall->Callee);
 	}
 

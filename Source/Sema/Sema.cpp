@@ -207,6 +207,7 @@ namespace clear
 			case ASTNodeType::Class:					return Visit(std::dynamic_pointer_cast<ASTClass>(ast), context);
 			case ASTNodeType::IfExpression:				return Visit(std::dynamic_pointer_cast<ASTIfExpression>(ast), context);
 			case ASTNodeType::WhileLoop:				return Visit(std::dynamic_pointer_cast<ASTWhileExpression>(ast), context);
+			case ASTNodeType::ForLoop:					return Visit(std::dynamic_pointer_cast<ASTForExpression>(ast), context);
 			case ASTNodeType::StructExpr:				return Visit(std::dynamic_pointer_cast<ASTStructExpr>(ast), context);
 			case ASTNodeType::GenericTemplate:			return Visit(std::dynamic_pointer_cast<ASTGenericTemplate>(ast), context);
 			case ASTNodeType::Subscript:				return Visit(std::dynamic_pointer_cast<ASTSubscript>(ast), context);
@@ -311,6 +312,25 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
+
+		// print(...) is built in unless the program defines its own print
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "print")
+		{
+			if (!LookupSymbol("print").first)
+			{
+				funcCall->IsBuiltinPrint = true;
+
+				for (auto& arg : funcCall->Arguments)
+				{
+					arg = Visit(arg, context);
+
+					if (!arg)
+						return nullptr;
+				}
+
+				return funcCall;
+			}
+		}
 		
 		for (auto& arg : funcCall->Arguments)
 		{
@@ -404,11 +424,14 @@ namespace clear
 		if (!assignmentOp->Storage || !assignmentOp->Value)
 			return assignmentOp;
 
-		// plain `=` converts the value to the type being stored into
-		if (assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
+		// the value must convert to the type being stored into (for `x += v` too, so `count += 0.5` on an int is an error)
+		if (assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
 		{
 			std::shared_ptr<Type> storageType = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
-			assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
+
+			// pointer += n is pointer arithmetic, not a conversion
+			if (storageType && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
+				assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
 		}
 
     	if (assignmentOp->Storage->GetType() == ASTNodeType::FunctionCall) 
@@ -626,6 +649,69 @@ namespace clear
 		return whileExpr;
 	}
 	
+
+	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTForExpression> forExpr, SemaContext context)
+	{
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		if (forExpr->Iterable)
+		{
+			// arrays are iterated in place, so analyse the storage rather than a copy
+			SemaContext storageContext = context;
+			storageContext.ValueReq = ValueRequired::LValue;
+			forExpr->Iterable = Visit(forExpr->Iterable, storageContext);
+
+			if (!forExpr->Iterable)
+				return nullptr;
+
+			forExpr->IterableType = m_TypeInferEngine.InferTypeFromNode(forExpr->Iterable);
+
+			if (!forExpr->IterableType || !forExpr->IterableType->IsArray())
+			{
+				Report(DiagnosticCode_NotIterable, GetNodeLocation(forExpr->Iterable));
+				return nullptr;
+			}
+
+			forExpr->VariableType = forExpr->IterableType->As<ArrayType>()->GetBaseType();
+		}
+		else
+		{
+			forExpr->Start = Visit(forExpr->Start, valueContext);
+			forExpr->End = Visit(forExpr->End, valueContext);
+
+			if (!forExpr->Start || !forExpr->End)
+				return nullptr;
+
+			auto startType = m_TypeInferEngine.InferTypeFromNode(forExpr->Start);
+			auto endType = m_TypeInferEngine.InferTypeFromNode(forExpr->End);
+
+			if (!startType || !endType || !startType->IsIntegral() || !endType->IsIntegral())
+			{
+				Report(DiagnosticCode_InvalidForLoop, forExpr->Location);
+				return nullptr;
+			}
+
+			// the loop variable takes the wider of the two bounds
+			forExpr->VariableType = m_TypeInferEngine.GetCommonType(startType, endType);
+			forExpr->Start = Coerce(forExpr->Start, forExpr->VariableType);
+			forExpr->End = Coerce(forExpr->End, forExpr->VariableType);
+		}
+
+		m_ScopeStack.emplace_back();
+
+		auto symbol = m_ScopeStack.back().InsertEmpty(forExpr->VariableName.GetData(), SymbolEntryType::Variable);
+		*symbol.value() = Symbol::CreateValue(nullptr, forExpr->VariableType);
+		forExpr->Variable = symbol.value();
+
+		SemaContext bodyContext = context;
+		bodyContext.ValueReq = ValueRequired::Any;
+		bodyContext.InLoop = true;
+		Visit(forExpr->CodeBlock, bodyContext);
+
+		m_ScopeStack.pop_back();
+		return forExpr;
+	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTTernaryExpression> ternaryExpr, SemaContext context)
 	{

@@ -65,6 +65,8 @@ namespace clear
         Increment,           // ++
         Decrement,           // --
         Ellipses,            // ...
+        DotDot,              // ..
+        DotDotEquals,        // ..=
         QuestionMark,        // ?
 
         EndLine,
@@ -109,7 +111,7 @@ namespace clear
         "switch", "case", "default", "import", "as",  
         "pass",
 
-         "function", "class", "when", "use", "otherwise",
+         "function", "class", "when", "use", "otherwise", "for",
          "property", "declare", "enum", "sizeof", "is",
 
         "not","and","or",
@@ -146,6 +148,8 @@ namespace clear
             {"~",    TokenType::Telda},
             {".",    TokenType::Dot},
             {"...",  TokenType::Ellipses},
+            {"..",   TokenType::DotDot},
+            {"..=",  TokenType::DotDotEquals},
             {"?",    TokenType::QuestionMark},
 
             {"++",   TokenType::Increment},
@@ -201,6 +205,8 @@ namespace clear
         {TokenType::Telda,             1},
         {TokenType::Dot,               1},
         {TokenType::Ellipses,          3},
+        {TokenType::DotDot,            2},
+        {TokenType::DotDotEquals,      3},
 
         {TokenType::Increment,         2},
         {TokenType::Decrement,         2},

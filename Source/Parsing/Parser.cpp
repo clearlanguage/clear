@@ -303,6 +303,7 @@ namespace clear
             {"return",    [this]() { return ParseReturn(); }}, 
             {"if",        [this]() { return ParseIf(); }},
 			{"while",	  [this]() { return ParseWhile(); }},
+			{"for",		  [this]() { return ParseFor(); }},
 			{"class",     [this]() { return ParseClass(); }},
 			{"let",		  [this]() { return ParseLet(); }},
 			{"import",	  [this]() { return ParseImport(); }},
@@ -408,6 +409,53 @@ namespace clear
 	{
 		Token keyword = Consume();
 		return std::make_shared<ASTLoopControlFlow>(keyword.GetData(), keyword);
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseFor()
+	{
+		Token keyword = Consume(); // for
+
+		auto forExpr = std::make_shared<ASTForExpression>();
+		forExpr->Location = keyword;
+
+		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
+		forExpr->VariableName = Consume();
+
+		EXPECT_DATA_RETURN("in", DiagnosticCode_InvalidForLoop, nullptr);
+		Consume();
+
+		auto first = ParseExpr();
+
+		if (!first)
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_InvalidForLoop);
+			SkipUntil(TokenType::EndLine);
+			return nullptr;
+		}
+
+		if (Match(TokenType::DotDot) || Match(TokenType::DotDotEquals))
+		{
+			forExpr->Inclusive = Consume().IsType(TokenType::DotDotEquals);
+			forExpr->Start = first;
+			forExpr->End = ParseExpr();
+
+			if (!forExpr->End)
+			{
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_InvalidForLoop);
+				SkipUntil(TokenType::EndLine);
+				return nullptr;
+			}
+		}
+		else
+		{
+			forExpr->Iterable = first;
+		}
+
+		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
+		Consume();
+
+		forExpr->CodeBlock = ParseCodeBlock();
+		return forExpr;
 	}
 
 	std::shared_ptr<ASTImport> Parser::ParseImport()

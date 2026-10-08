@@ -52,6 +52,7 @@ namespace clear
 		DiagnosticCode_NonConstantCase,
 		DiagnosticCode_CannotInferGeneric,
 		DiagnosticCode_ImplicitConversion,
+		DiagnosticCode_NotIterable,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -75,7 +76,7 @@ namespace clear
 		"Expected an identifier",
 		"Expected '=' after identifier",
 		"Unexpected 'else' without matching 'if'",
-		"Invalid 'for' loop syntax: missing 'in'",
+		"Invalid 'for' loop.",
 		"Expected '(' after function name",
 		"Expected ')' at end of parameter list",
 		"Expected ',' between function parameters",
@@ -104,6 +105,7 @@ namespace clear
 		"Case values must be integer constants.",
 		"Cannot infer the type arguments of a generic type.",
 		"Cannot convert implicitly, the conversion may lose information.",
+		"Value cannot be iterated over.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -126,7 +128,7 @@ namespace clear
 		"Add a valid name or identifier after {}",
 		"Assign a value using '=' after the identifier to complete the statement",
 		"Ensure 'else' is used directly after a valid 'if' or 'elif' block",
-		"Use 'in' to complete the 'for' loop syntax (e.g. 'for item in list')",
+		"Write loops as 'for i in 0..n:', 'for i in 1..=n:' or 'for item in array:' (near ‘{}’)",
 		"Add '(' to begin the function’s parameter list",
 		"Close the function’s parameter list with ')'",
 		"Separate each function parameter with a comma ','",
@@ -155,5 +157,6 @@ namespace clear
 		"‘{}’ is not a compile-time integer constant.",
 		"Write the type arguments explicitly, for example ‘{}[int]’.",
 		"Converting ‘{}’ needs an explicit cast, for example ‘value as T’.",
+		"A for loop needs a range (0..n) or a fixed size array, ‘{}’ is neither.",
 	};
 }
