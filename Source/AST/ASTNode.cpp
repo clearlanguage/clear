@@ -1152,7 +1152,8 @@ namespace clear
 
 		// allocate array, copy from static to local alloca, assign any dynamic values
 
-		llvm::Value* arrayAlloc = ctx.Builder.CreateAlloca(llvmArrayType, nullptr, "array.alloc");
+		// in the entry block, an alloca inside a loop would grow the stack on every iteration
+		llvm::Value* arrayAlloc = CreateAlloca(arrayType, ctx).GetLLVMValue();
 
 		uint64_t sizeInBytes = ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType);
 		llvm::Value* size = llvm::ConstantInt::get(ctx.Builder.getInt64Ty(), sizeInBytes);

@@ -77,3 +77,6 @@ add_compile_definitions("$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 enable_testing()
 add_test(NAME clear_language_tests
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+add_test(NAME clear_language_tests_optimized
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+set_tests_properties(clear_language_tests_optimized PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O3")

@@ -24,6 +24,9 @@ static void ApplyOptions(BuildConfig& config, const CommandLine::ParsingResult& 
     }
 
     config.EmitIntermiediateIR = config.EmitIntermiediateIR || options.EmitIR;
+
+    if (options.TargetCPU)
+        config.TargetCPU = *options.TargetCPU;
     config.Verbose = config.Verbose || options.Verbose;
 }
 
@@ -64,7 +67,13 @@ static int RunFile(const CommandLine::ParsingResult& options)
     std::filesystem::create_directories(tempDir);
 
     std::filesystem::path executable = tempDir / options.Directory.stem();
-    int status = CompileFile(options.Directory, executable, options);
+
+    // the program runs right here, so it can use every feature of this CPU
+    CommandLine::ParsingResult runOptions = options;
+    if (!runOptions.TargetCPU)
+        runOptions.TargetCPU = "native";
+
+    int status = CompileFile(options.Directory, executable, runOptions);
 
     if (status == 0)
     {

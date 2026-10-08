@@ -27,6 +27,7 @@ namespace clear
             std::optional<std::string> OptimizationLevel; // -O0 .. -O3
             std::vector<std::string> ProgramArguments;    // forwarded to the program by `run`
             bool EmitIR = false;   // --emit-ir
+            std::optional<std::string> TargetCPU; // --native, --cpu=<name>
             bool Verbose = false;  // -v
             bool Successful = false;
             std::string Error;

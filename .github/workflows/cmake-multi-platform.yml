@@ -35,3 +35,6 @@ jobs:
     - name: Test
       working-directory: build
       run: ctest --output-on-failure
+
+    - name: Benchmarks (Clear vs C, informational)
+      run: python3 Scripts/bench.py build/clearc Benchmarks 3

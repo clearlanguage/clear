@@ -90,6 +90,7 @@ namespace clear
         config.TargetArchitecture = getStrEnum(tbl["TargetArchitecture"].value_or("Default"), archMap, BuildConfig::TargetArchitectureType::Default);
 
         config.DebugInfo = tbl["DebugInfo"].value_or(false);
+        config.TargetCPU = tbl["TargetCPU"].value_or(std::string("generic"));
         config.FavourSize = tbl["FavourSize"].value_or(false);
         config.EmitIntermiediateIR = tbl["EmitIntermiediateIR"].value_or(false);
         config.ParallelBuild = tbl["ParallelBuild"].value_or(false);
@@ -225,6 +226,7 @@ namespace clear
             { "OutputFormat",           enumToString(OutputFormat) },
             { "EmitIntermiediateIR",    EmitIntermiediateIR },
             { "TargetArchitecture",     enumToString(TargetArchitecture) },
+            { "TargetCPU",              TargetCPU },
             { "ParallelBuild",          ParallelBuild },
             { "IncludeCStandard",       IncludeCStandard },
             { "IncludeClearStandard",   IncludeClearStandard },

@@ -44,6 +44,8 @@ namespace clear
         void LinkToExecutableOrDynamic();
         void LinkToStaticLibrary();
         void OptimizeModule();
+        bool CreateTargetMachine();
+        void PrepareForOptimization(llvm::Module& module);
 
         void CodegenModule(const std::filesystem::path& path);
 		
@@ -59,5 +61,6 @@ namespace clear
 		
 		std::unordered_map<std::filesystem::path, CompilationUnit> m_CompilationUnits;
 		bool m_Failed = false;
+		std::unique_ptr<llvm::TargetMachine> m_TargetMachine;
     };
 }

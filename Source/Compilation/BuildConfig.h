@@ -80,6 +80,10 @@ namespace clear
 
         bool Verbose = false; // print progress while compiling
 
+        // "generic" runs on any CPU of the target architecture, "native" uses everything the
+        // building machine supports (fastest, but the binary may not run elsewhere)
+        std::string TargetCPU = "generic";
+
         static BuildConfig BuildConfigFromToml(const std::filesystem::path& path);
 
         // configuration used when compiling a single file without a build.toml

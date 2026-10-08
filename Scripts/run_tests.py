@@ -12,6 +12,8 @@ is written in comments inside the test itself:
     // expect-error          (compilation must fail)
 
 usage: run_tests.py <path to clearc> <tests directory> [name filter]
+
+Set CLEAR_TEST_FLAGS to pass extra compiler flags, e.g. CLEAR_TEST_FLAGS=-O3
 """
 
 import os
@@ -62,8 +64,10 @@ def run_test(clearc, path, workdir):
     expected_lines, expected_exit, expect_error = parse_expectations(path)
     output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
 
+    extra_flags = os.environ.get("CLEAR_TEST_FLAGS", "").split()
+
     compile_result = subprocess.run(
-        [clearc, "build", path, "-o", output],
+        [clearc, "build", path, "-o", output, *extra_flags],
         capture_output=True, text=True, timeout=30,
     )
 
