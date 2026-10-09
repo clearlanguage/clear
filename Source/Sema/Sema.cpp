@@ -29,6 +29,7 @@ namespace clear
 	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
 	static std::optional<size_t> FindTypeCase(const std::shared_ptr<ClassType>& variant, const std::shared_ptr<Type>& type);
 	static bool IsFreshValue(const std::shared_ptr<ASTNodeBase>& node);
+	static std::shared_ptr<ASTVariable> RootVariable(std::shared_ptr<ASTNodeBase> node, bool* throughCall);
 	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
 								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
@@ -274,6 +275,20 @@ namespace clear
 				m_LocalOrder[decl->Variable.get()] = m_LocalCounter++;
 				m_Moved.erase(decl->Variable.get());
 				NoteElementPointer(decl);
+
+				// p = &a.items[0], v: str = name, part = xs[1:3]: what they look into is not moved away later
+				if (decl->ResolvedType && (decl->ResolvedType->IsPointer() || std::dynamic_pointer_cast<SliceType>(decl->ResolvedType)))
+					NeverMove(decl->Initializer);
+
+				// let w = words[i]: a copy that may turn out to be needless (if w is only read; see FinishCopies)
+				if (auto copy = std::dynamic_pointer_cast<ASTCopy>(decl->Initializer))
+				{
+					auto root = RootVariable(copy->Value, nullptr);
+					auto rootType = root && root->Variable ? root->Variable->GetType() : nullptr;
+
+					if (root && root->Variable && m_LocalVariables.contains(root->Variable.get()) && rootType && !rootType->IsPointer() && AddressOfRead(copy->Value))
+						m_Copies.Views.push_back({ decl, copy, decl->Variable.get(), root->Variable.get(), m_Copies.Clock });
+				}
 			}
 
 			if (decl->IsConst)
@@ -360,6 +375,8 @@ namespace clear
 			CheckStalePointer(variable);
 		}
 
+		NoteUse(variable, context.ValueReq);
+
 		// a function used as a value (not called) is its address
 		if (context.ValueReq == ValueRequired::RValue && variable->Variable->Kind == SymbolKind::Function)
 		{
@@ -401,6 +418,14 @@ namespace clear
     {
 		if (ast)
 			NoteProgress("checking", ast->Location.GetSourceFile(), ast->Location.LineNumber, ast->Location.ColumnNumber);
+
+		// "only read" applies to x and x.field.field, not to anything inside a call or another expression
+		bool chain = ast && (ast->GetType() == ASTNodeType::Variable || 
+							 (ast->GetType() == ASTNodeType::BinaryExpression && std::dynamic_pointer_cast<ASTBinaryExpression>(ast)->GetExpression() == OperatorType::Dot));
+		struct ReadingGuard { bool& Flag; bool Saved; ~ReadingGuard() { Flag = Saved; } } readingGuard { m_ReadingUse, m_ReadingUse };
+
+		if (!chain)
+			m_ReadingUse = false;
 
 		if (!ast) return nullptr;
 
@@ -663,9 +688,13 @@ namespace clear
 		MovedSet outerMoved = std::exchange(m_Moved, {});
 		bool outerUnreachable = std::exchange(m_Unreachable, false);
 		auto outerLoops = std::exchange(m_LoopMoves, {});
+		auto outerCopies = std::exchange(m_Copies, {});
 
 		Visit(func->CodeBlock, context);	
 		m_ScopeStack.pop_back();
+
+		FinishCopies();
+		m_Copies = std::move(outerCopies);
 
 		m_Moved = std::move(outerMoved);
 		m_Unreachable = outerUnreachable;
@@ -1996,6 +2025,9 @@ namespace clear
 
 				bool modifies = unaryExpr->GetOperatorType() != OperatorType::Address;
 
+				if (!modifies)
+					NeverMove(unaryExpr->Operand); // a pointer to it may be used after its last mention
+
 				if (auto var = std::dynamic_pointer_cast<ASTVariable>(unaryExpr->Operand); modifies && var && m_ConstSymbols.contains(var->Variable.get()))
 				{
 					Report(DiagnosticCode_AssignToConst, var->GetName());
@@ -3184,7 +3216,9 @@ namespace clear
 		SemaContext storageContext = context;
 		storageContext.ValueReq = ValueRequired::LValue;
 
+		bool wasReading = std::exchange(m_ReadingUse, true); // len(x) only reads x
 		auto argument = Visit(funcCall->Arguments[0], storageContext);
+		m_ReadingUse = wasReading;
 
 		if (!argument)
 			return nullptr;
@@ -3685,6 +3719,7 @@ namespace clear
 					type = type->As<PointerType>()->GetBaseType();
 
 				captures.push_back({ name, type });
+				m_Copies.NeverMove.insert(entry->Symbol.get()); // the lambda may run after the variable's last mention
 			}
 		}
 
@@ -4257,7 +4292,10 @@ namespace clear
 		}
 
 		context.ValueReq = ValueRequired::Any;
+		// a defer runs at the end of the block, after everything below it: what it uses is never moved away
+		bool wasInDefer = std::exchange(m_Copies.InDefer, true);
 		deferNode->Expr = Visit(deferNode->Expr, context);
+		m_Copies.InDefer = wasInDefer;
 
 		return deferNode->Expr ? deferNode : nullptr;
 	}
@@ -6247,6 +6285,7 @@ namespace clear
 		copy->Location = node->Location;
 		copy->Value = node;
 		copy->ValueType = type;
+		m_Copies.Copies.push_back(copy);
 		return copy;
 	}
 
@@ -6301,18 +6340,31 @@ namespace clear
 			result->Location = node->Location;
 			result->Value = node;
 			result->ValueType = type;
+			m_Copies.Copies.push_back(result);
 			return result;
 		};
 
 		bool copyable = IsCopyable(type);
 
-		// let b = a  /  f(a): b gets its own copy and a stays as it was;  return a: a ends here, so it is moved
+		// let b = a  /  f(a): b gets its own copy and a stays as it was;  return a: a ends here, so it is moved.
+		// If a turns out not to be used again, the copy becomes a move too (see FinishCopies)
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand) && copyable && !m_Returning)
-			return copy();
+		{
+			auto result = copy();
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(load->Operand);
+
+			if (auto use = m_Copies.UseOf.find(variable.get()); use != m_Copies.UseOf.end())
+				m_Copies.Candidates.push_back(CopyCandidate { variable->Variable.get(), use->second, result, variable, true });
+
+			return result;
+		}
 
 		// a value that cannot be copied (a File, a class with its own destruct) moves out of a local, which is left empty
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand))
 		{
+			if (auto variable = std::dynamic_pointer_cast<ASTVariable>(load->Operand))
+				m_Copies.NotViewable.insert(variable->Variable.get());
+
 			RecordMove(std::dynamic_pointer_cast<ASTVariable>(load->Operand));
 
 			auto move = std::make_shared<ASTMove>();
@@ -6613,7 +6665,7 @@ namespace clear
 		m_Moved.erase(it); // one error per move is enough
 	}
 
-	static std::shared_ptr<ASTVariable> RootVariable(std::shared_ptr<ASTNodeBase> node, bool* throughCall = nullptr)
+	static std::shared_ptr<ASTVariable> RootVariable(std::shared_ptr<ASTNodeBase> node, bool* throughCall)
 	{
 		// the variable an expression like &a.items[i].field or a.get(i) starts from
 		while (node)
@@ -6714,7 +6766,7 @@ namespace clear
 		if (m_ElementPointers.empty())
 			return;
 
-		auto root = RootVariable(container);
+		auto root = RootVariable(container, nullptr);
 
 		if (!root)
 			return;
@@ -6747,6 +6799,116 @@ namespace clear
 
 		m_StalePointers.erase(stale); // warn once
 		m_ElementPointers.erase(variable->Variable.get());
+	}
+
+	void Sema::NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired)
+	{
+		Symbol* symbol = variable->Variable.get();
+
+		if (!symbol || !m_LocalVariables.contains(symbol))
+			return;
+
+		m_Copies.UseOf[variable.get()] = ++m_Copies.Uses[symbol];
+
+		if (m_Copies.InDefer)
+			m_Copies.NeverMove.insert(symbol);
+
+		// for views: when it is used, and whether the use may change it (anything but reading its value)
+		size_t clock = ++m_Copies.Clock;
+		m_Copies.LastUse[symbol] = clock;
+
+		if ((valueRequired != ValueRequired::RValue && !m_ReadingUse) || variable.get() == m_Reinitialised)
+			m_Copies.Writes[symbol].push_back(clock);
+
+		if (!m_LoopMoves.empty())
+		{
+			auto order = m_LocalOrder.find(symbol);
+
+			if (order != m_LocalOrder.end() && order->second < m_LoopMoves.back().FirstLocal)
+				m_Copies.NotViewable.insert(symbol);
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::AddressOfRead(const std::shared_ptr<ASTNodeBase>& value)
+	{
+		// where a value that was read lives: list[i] is *(pointer), obj.field and a[i] are loads of storage
+		if (auto element = std::dynamic_pointer_cast<ASTUnaryExpression>(value); element && element->GetOperatorType() == OperatorType::Dereference && element->IsElement)
+			return element->Operand;
+
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(value); load && IsStorageNode(load->Operand))
+		{
+			auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+			address->Location = value->Location;
+			address->Operand = load->Operand;
+			return address;
+		}
+
+		return nullptr;
+	}
+
+	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (auto root = RootVariable(node, nullptr); root && root->Variable)
+			m_Copies.NeverMove.insert(root->Variable.get());
+	}
+
+	void Sema::FinishCopies()
+	{
+		// views first: a variable that only looks at the item is never moved from, and is not a copy
+		for (auto& view : m_Copies.Views)
+		{
+			Symbol* variable = view.Variable;
+
+			if (m_Copies.NeverMove.contains(variable) || m_Copies.NeverMove.contains(view.Source) || m_Copies.NotViewable.contains(variable) ||
+				!m_Copies.Writes[variable].empty())
+				continue;
+
+			// the place it came from must not change while it is in use
+			size_t last = m_Copies.LastUse.contains(variable) ? m_Copies.LastUse[variable] : view.Since;
+			auto& writes = m_Copies.Writes[view.Source];
+
+			if (std::any_of(writes.begin(), writes.end(), [&](size_t clock) { return clock > view.Since && clock <= last; }))
+				continue;
+
+			auto address = AddressOfRead(view.Copy->Value);
+
+			if (!address)
+				continue;
+
+			view.Declaration->Initializer = address;
+			view.Declaration->IsAlias = true;
+			view.Copy->Elided = true;
+			m_Copies.NeverMove.insert(variable);
+		}
+
+		// a copy whose variable is not used after it (and is not looked into by a pointer, a defer or a lambda)
+		// can take the value instead: nobody would see the difference, and nothing is allocated
+		for (auto& candidate : m_Copies.Candidates)
+		{
+			if (!candidate.Valid || candidate.Copy->Elided || m_Copies.NeverMove.contains(candidate.Variable) || m_Copies.Uses[candidate.Variable] != candidate.Use)
+				continue;
+
+			candidate.Copy->MoveFrom = candidate.Storage;
+		}
+
+		// clearc --copies: say where the rest are (in the program, not the standard library)
+		if (!m_Module->ReportCopies)
+			return;
+
+		for (auto& copy : m_Copies.Copies)
+		{
+			if (copy->MoveFrom || copy->Elided)
+				continue;
+
+			Token location = GetNodeLocation(copy->Value);
+
+			if (location.GetSourceFile().empty() || location.GetSourceFile().string().starts_with(CLEAR_STANDARD_DIR))
+				continue;
+
+			size_t width = location.GetData().size();
+			location.SetData(GetDisplayName(copy->ValueType));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::None, location, DiagnosticCode_CopyMade, std::max<size_t>(width, 1));
+		}
 	}
 
 	// if/else and switch: each branch starts from the same state, afterwards a variable is moved if any branch that carries on moved it
@@ -6784,13 +6946,22 @@ namespace clear
 
 	void Sema::BeginLoop()
 	{
-		m_LoopMoves.push_back(LoopMoves { m_LocalCounter, {}, {} });
+		m_LoopMoves.push_back(LoopMoves { m_LocalCounter, {}, {}, m_Copies.Candidates.size() });
 	}
 
 	void Sema::EndLoop(const MovedSet& beforeLoop)
 	{
 		LoopMoves loop = std::move(m_LoopMoves.back());
 		m_LoopMoves.pop_back();
+
+		// a copy of a variable from outside the loop is not its last use: the next time round uses it again
+		for (size_t i = loop.FirstCandidate; i < m_Copies.Candidates.size(); i++)
+		{
+			auto order = m_LocalOrder.find(m_Copies.Candidates[i].Variable);
+
+			if (order == m_LocalOrder.end() || order->second < loop.FirstLocal)
+				m_Copies.Candidates[i].Valid = false;
+		}
 
 		// whatever is still moved when the body starts again was moved by the previous time round
 		MovedSet atEnd = m_Unreachable ? MovedSet {} : m_Moved;
@@ -7093,8 +7264,11 @@ namespace clear
 	{
 		bool insertLoad = context.ValueReq == ValueRequired::RValue;
 
+		// obj.field read as a value only reads obj (a method call or a write does not come through here as a value)
 		context.ValueReq = ValueRequired::LValue;
+		bool wasReading = std::exchange(m_ReadingUse, insertLoad || m_ReadingUse);
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
+		m_ReadingUse = wasReading;
 
 		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); var && var->Variable->Kind == SymbolKind::Module)
 		{

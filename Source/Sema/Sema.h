@@ -197,7 +197,7 @@ namespace clear
 		// moves out of locals, followed through the function body so an emptied variable is not used again
 		using MovedSet = std::unordered_map<Symbol*, Token>; // variable -> where it was moved
 		struct BranchMoves { MovedSet Start; MovedSet Out; bool AnyLive = false; };
-		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; };
+		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; size_t FirstCandidate = 0; };
 
 		MovedSet m_Moved;
 		bool m_Unreachable = false;                     // after return, break or continue nothing runs
@@ -205,6 +205,32 @@ namespace clear
 		std::unordered_map<Symbol*, size_t> m_LocalOrder; // declaration order, to tell variables from outside a loop
 		size_t m_LocalCounter = 0;
 		std::unordered_set<Type*> m_BorrowingClosures; // lambdas holding pointers to local variables
+
+		// copies out of local variables become moves where the variable is not used again (the last use)
+		struct CopyCandidate { Symbol* Variable = nullptr; size_t Use = 0; std::shared_ptr<ASTCopy> Copy; std::shared_ptr<ASTNodeBase> Storage; bool Valid = true; };
+		struct FunctionCopies
+		{
+			std::vector<CopyCandidate> Candidates;
+			std::vector<std::shared_ptr<ASTCopy>> Copies;          // every copy made in the function (for --copies)
+			std::unordered_map<Symbol*, size_t> Uses;              // how many times each variable was used so far
+			std::unordered_map<ASTVariable*, size_t> UseOf;        // which use a variable node was
+			std::unordered_set<Symbol*> NeverMove;                 // used in a defer, captured, or looked into by a pointer
+			bool InDefer = false;
+
+			// let w = words[i] where w is only read and words does not change meanwhile: w looks at the item instead
+			struct View { std::shared_ptr<ASTVariableDeclaration> Declaration; std::shared_ptr<ASTCopy> Copy; Symbol* Variable; Symbol* Source; size_t Since; };
+			std::vector<View> Views;
+			size_t Clock = 0;                                      // counts uses, in the order they are written
+			std::unordered_map<Symbol*, size_t> LastUse;
+			std::unordered_map<Symbol*, std::vector<size_t>> Writes; // uses that may change the variable
+			std::unordered_set<Symbol*> NotViewable;               // moved out, or used in a loop it was not declared in
+		};
+		bool m_ReadingUse = false; // the variable being visited is only read (len(x), x.field as a value...)
+		std::shared_ptr<ASTNodeBase> AddressOfRead(const std::shared_ptr<ASTNodeBase>& value);
+		FunctionCopies m_Copies;
+		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
+		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+		void FinishCopies();
 
 		// lambda x: ... with no types to go on: analysed again for each set of argument types it is called with
 		struct LambdaTemplate

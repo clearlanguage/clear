@@ -56,6 +56,7 @@ namespace clear
                 if (arg == "--native" || arg == "-march=native") { result.TargetCPU = "native";      continue; }
                 if (arg == "--checks")         { result.RuntimeChecks = true;                       continue; }
                 if (arg == "--no-checks")      { result.RuntimeChecks = false;                      continue; }
+                if (arg == "--copies")         { result.ReportCopies = true;                        continue; }
                 if (arg.starts_with("--cpu=")) { result.TargetCPU = std::string(arg.substr(6));      continue; }
 
                 if (result.Options == ProgramMode::None && result.Directory.empty())
@@ -190,6 +191,7 @@ namespace clear
             std::println("  --native                    optimize for this machine's CPU (default for run)");
             std::println("  --cpu=<name>                optimize for a specific CPU, e.g. --cpu=x86-64-v3");
             std::println("  --checks, --no-checks       run-time safety checks (default: on, off with -O2/-O3)");
+            std::println("  --copies                    list every place a String, List... is copied");
             std::println("  -v, --verbose               print progress while compiling");
         }
     }

@@ -408,3 +408,7 @@ Advice  = "‘{}’."
 [OptionalBoolCondition]
 Message = "An optional bool is ambiguous as a condition."
 Advice  = "Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’."
+
+[CopyMade]
+Message = "A copy is made here."
+Advice  = "This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead."

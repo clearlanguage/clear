@@ -33,6 +33,7 @@ namespace clear
             bool EmitIR = false;   // --emit-ir
             std::optional<std::string> TargetCPU; // --native, --cpu=<name>
             std::optional<bool> RuntimeChecks;     // --checks, --no-checks
+            bool ReportCopies = false;             // --copies
             bool Verbose = false;  // -v
 
             // add: the dependency

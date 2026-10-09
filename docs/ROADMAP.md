@@ -186,6 +186,7 @@ Everything here follows the same rules: visible cost, opt-in dynamism, checked a
 - [x] Slices `[]T` (pointer + length): `xs[a:b]`, `[]T` parameters take arrays, lists and slices.
 - [x] Generic methods (type parameters on a method); `List.map/filter/sort/sort_by`.
 - [x] Optionals: `if r:` narrowing, `if not r: return`, `??`, `:=`, `?.`.
+- [x] Copies skipped where unobservable: last use moves, read-only values look at the original; `--copies` lists the rest.
 - [x] `str` is a pointer and a length: `text[a:b]` views without copying, `String` turns into `str` for free, C gets a checked `char*`.
 - [ ] Debug info for gdb/lldb; `clearc fmt`; a language server.
 - [ ] A package registry (today dependencies are git URLs or paths).

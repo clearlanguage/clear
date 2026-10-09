@@ -709,7 +709,14 @@ class Session:                 // no destruct needed: its String and Connection 
 | `x = new_value` | the old value of `x` is cleaned up first |
 | `make().qty = 5`, or `bag[0].qty = 5` when `get` returns a copy | compile error: the change would go to a temporary and be lost |
 
-Copies allocate, so in hot loops prefer working in place (`for w in words`, `words[i].method()`). A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
+A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
+
+**Copies nobody would notice are skipped.** A copy allocates, so the compiler leaves it out where it can prove the program behaves the same:
+
+- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, or through a pointer or slice into it.
+- **a value that is only read looks at the original.** In `let w = words[i]`, if `w` is only read (its value, its fields, `len(w)`) and `words` doesn't change while `w` is in use, `w` is the item itself. Changing `w`, calling a method on it, or changing `words` meanwhile keeps the copy.
+
+So `operator copy` must make an equal, independent value. The compiler may skip it, the same rule as C++ copy elision. To see the copies that remain, build with `clearc build file.cl --copies`: each one gets a note with its line.
 
 **Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
 

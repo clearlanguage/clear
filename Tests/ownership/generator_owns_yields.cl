@@ -32,7 +32,8 @@ function main() -> int32:
         print("key", k, m[k])
     print(len(m))
     let c = Counted(1)
-    let d = c
+    let d = c                // d is changed below, so it needs its own copy: operator copy runs
+    d.n += 1
     print(c.n, d.n)
     return 0
 
@@ -48,4 +49,4 @@ function main() -> int32:
 // key b 2
 // 2
 // copying 1
-// 1 101
+// 1 102

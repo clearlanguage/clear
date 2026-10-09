@@ -969,6 +969,8 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Value; // the value as it is (sharing memory with the original)
 		std::shared_ptr<Type> ValueType;
+		std::shared_ptr<ASTNodeBase> MoveFrom; // set when the variable is not used again: hand it over instead
+		bool Elided = false;                   // the variable it went into only looks at the original instead
 	};
 
 	// a deep copy of `value` (which shares memory with the original)

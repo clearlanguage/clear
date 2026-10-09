@@ -3099,6 +3099,15 @@ namespace clear
 	Symbol ASTCopy::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Value->Codegen(ctx);
+
+		// the variable's last use: take the value and leave the variable empty, as a move does
+		if (MoveFrom)
+		{
+			Symbol storage = MoveFrom->Codegen(ctx);
+			ctx.Builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), storage.GetLLVMValue());
+			return value;
+		}
+
 		return Symbol::CreateValue(EmitCopy(ctx, ValueType, value.GetLLVMValue()), ValueType);
 	}
 

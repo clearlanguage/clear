@@ -106,6 +106,7 @@ namespace clear
 		DiagnosticCode_ImportShadowsStandard,
 		DiagnosticCode_NotOptional,
 		DiagnosticCode_OptionalBoolCondition,
+		DiagnosticCode_CopyMade,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -212,6 +213,7 @@ namespace clear
 		"This import finds a file next to this one, not the standard module of the same name.",
 		"This is not an optional.",
 		"An optional bool is ambiguous as a condition.",
+		"A copy is made here.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -317,5 +319,6 @@ namespace clear
 		"{}.",
 		"‘{}’.",
 		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
+		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
 	};
 }

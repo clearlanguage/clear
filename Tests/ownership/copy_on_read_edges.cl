@@ -43,7 +43,8 @@ function main() -> int32:
     shout(msg)
     print("7", msg)
     let c = Counted(1)
-    let d = c
+    let d = c                // changed below, so a real copy: operator copy runs
+    d.n += 1
     print("8", c.n, d.n)
     let maybe: ?String = String("opt")
     let got = maybe.value
@@ -61,5 +62,5 @@ function main() -> int32:
 // inside hi!!
 // 7 hi
 // copying 1
-// 8 1 101
+// 8 1 102
 // 9 opt opt?

@@ -218,6 +218,7 @@ namespace clear
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
 		newModule->RuntimeChecks = m_Config.RuntimeChecksEnabled();
+		newModule->ReportCopies = m_Config.ReportCopies;
 		
         Lexer lexer(path, m_DiagnosticsBuilder);
 
