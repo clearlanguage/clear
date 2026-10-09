@@ -8,6 +8,7 @@
 #include <llvm/Support/Program.h>
 #include <toml++/toml.h>
 #include <filesystem>
+#include <fstream>
 #include <cstdlib>
 #include <print>
 #include <unistd.h>
@@ -190,7 +191,7 @@ int main(int argc, char* argv[])
                 if (!project)
                     return 1;
 
-                std::filesystem::path output = result.Output.value_or(project->Project.Root / "build" / project->Project.Name);
+                std::filesystem::path output = result.Output.value_or(project->Project.Root / "build" / project->Project.Name).lexically_normal();
                 std::filesystem::create_directories(std::filesystem::absolute(output).parent_path());
 
                 int status = CompileFile(project->Project.Root / project->Project.Main, output, result, project->Packages);
@@ -225,10 +226,34 @@ int main(int argc, char* argv[])
 
             Dependency dependency { result.PackageName, result.Git, result.Tag, result.Branch, result.Rev, result.PackagePath };
 
+            // clear.toml only keeps the new entry when the package could be fetched
+            std::filesystem::path manifestFile = result.Directory / "clear.toml";
+            std::string before;
+            {
+                std::ifstream stream(manifestFile, std::ios::binary);
+                before.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+            }
+
+            std::filesystem::path clone = result.Directory / ".clear" / "packages" / dependency.Name;
+            bool hadClone = std::filesystem::exists(clone);
+
             if (int status = PackageManager::AddDependency(result.Directory, dependency); status != 0)
                 return status;
 
-            return PrepareProject(result.Directory, false, result.Verbose) ? 0 : 1;
+            if (!PrepareProject(result.Directory, false, result.Verbose))
+            {
+                std::ofstream(manifestFile, std::ios::binary) << before;
+
+                std::error_code ec;
+                if (!dependency.Git.empty() && !hadClone)
+                    std::filesystem::remove_all(clone, ec);
+
+                std::println(stderr, "clearc: '{}' was not added (clear.toml is unchanged)", dependency.Name);
+                return 1;
+            }
+
+            std::println("Added {} ({})", dependency.Name, PackageManager::Describe(dependency));
+            return 0;
         }
         case CommandLine::ProgramMode::Fetch:
         case CommandLine::ProgramMode::Update:

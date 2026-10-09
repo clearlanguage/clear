@@ -6976,6 +6976,22 @@ namespace clear
 			return move;
 		}
 
+		// let s = maybe.value of a copyable value: a copy, which becomes a move (leaving the optional none) when the
+		// optional is not used again
+		if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node); unwrap && copyable && !m_Returning)
+		{
+			if (auto load = std::dynamic_pointer_cast<ASTLoad>(unwrap->Subject); load && isLocal(load->Operand))
+			{
+				auto result = copy();
+				auto variable = std::dynamic_pointer_cast<ASTVariable>(load->Operand);
+
+				if (auto use = m_Copies.UseOf.find(variable.get()); use != m_Copies.UseOf.end())
+					m_Copies.Candidates.push_back(CopyCandidate { variable->Variable.get(), use->second, result, variable, true });
+
+				return result;
+			}
+		}
+
 		// let line = maybe.value (of something that cannot be copied): the optional is left as none
 		if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node); unwrap && !copyable)
 		{

@@ -3190,8 +3190,10 @@ namespace clear
 		// the variable's last use: take the value and leave the variable empty, as a move does
 		if (MoveFrom)
 		{
+			// (the variable may hold more than the value: maybe.value empties the whole optional, which makes it none)
 			Symbol storage = MoveFrom->Codegen(ctx);
-			ctx.Builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), storage.GetLLVMValue());
+			auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
+			ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
 			return value;
 		}
 

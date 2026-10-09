@@ -15,7 +15,7 @@ namespace clear
     static const char* s_ManifestName = "clear.toml";
     static const char* s_LockName = "clear.lock";
 
-    static std::string Describe(const Dependency& dependency)
+    std::string PackageManager::Describe(const Dependency& dependency)
     {
         if (!dependency.Path.empty())
             return "path " + dependency.Path.string();
@@ -96,7 +96,22 @@ namespace clear
         return Root / (Name + ".cl");
     }
 
-    // runs git with the given arguments; the first line it prints goes to `output`
+    // what git said on its last failure (its own "fatal: ..." line), to put in our error message
+    static std::string s_GitError;
+
+    static std::string GitReason()
+    {
+        if (s_GitError.empty())
+            return "";
+
+        std::string reason = s_GitError;
+        if (reason.starts_with("fatal: "))
+            reason = reason.substr(7);
+        return " (git: " + reason + ")";
+    }
+
+    // runs git with the given arguments; the first line it prints goes to `output`. Its error output is kept
+    // for GitReason() instead of going to the terminal, so a failure is reported once, by us
     static bool Git(const std::vector<std::string>& arguments, std::string* output = nullptr)
     {
         auto git = llvm::sys::findProgramByName("git");
@@ -112,8 +127,25 @@ namespace clear
         llvm::sys::fs::createTemporaryFile("clear-git", "txt", captured);
         std::string capturedPath(captured.str());
 
-        std::optional<llvm::StringRef> redirects[] = { std::nullopt, llvm::StringRef(capturedPath), std::nullopt };
+        llvm::SmallString<128> capturedErrors;
+        llvm::sys::fs::createTemporaryFile("clear-git-errors", "txt", capturedErrors);
+        std::string errorsPath(capturedErrors.str());
+
+        std::optional<llvm::StringRef> redirects[] = { std::nullopt, llvm::StringRef(capturedPath), llvm::StringRef(errorsPath) };
         int status = llvm::sys::ExecuteAndWait(*git, argv, std::nullopt, redirects);
+
+        s_GitError.clear();
+        if (status != 0)
+        {
+            std::ifstream errors(errorsPath);
+            for (std::string line; std::getline(errors, line);)
+            {
+                if (!line.empty())
+                    s_GitError = line; // the last line is the reason ("fatal: ...")
+            }
+        }
+
+        std::filesystem::remove(errorsPath);
 
         if (output)
         {
@@ -242,7 +274,6 @@ namespace clear
             for (auto& text : lines)
                 output << text << "\n";
 
-            std::println("Added {} ({})", dependency.Name, Describe(dependency));
             return 0;
         }
 
@@ -291,7 +322,14 @@ namespace clear
                 {
                     if (seen->second != source)
                     {
-                        error = std::format("two different packages are both called '{}': {} and {}", dependency.Name, seen->second, source);
+                        // the same repository at two versions, or two repositories with one name
+                        auto location = [](const std::string& text) { return std::filesystem::path(text.substr(0, text.find(' '))).lexically_normal(); };
+
+                        if (!dependency.Git.empty() && location(seen->second) == location(source))
+                            error = std::format("'{}' is needed at two different versions: {} and {} (make them agree in clear.toml)", dependency.Name, seen->second, source);
+                        else
+                            error = std::format("two different packages are both called '{}': {} and {}", dependency.Name, seen->second, source);
+
                         return std::nullopt;
                     }
 
@@ -324,7 +362,8 @@ namespace clear
                         if (!Git({ "clone", "--quiet", dependency.Git, directory.string() }))
                         {
                             std::filesystem::remove_all(directory);
-                            error = std::format("could not clone '{}' from {} (is git installed and the URL reachable?)", dependency.Name, dependency.Git);
+                            std::string reason = GitReason();
+                            error = std::format("could not clone '{}' from {}{}", dependency.Name, dependency.Git, reason.empty() ? " (is git installed and the URL reachable?)" : reason);
                             return std::nullopt;
                         }
                     }
@@ -360,7 +399,7 @@ namespace clear
 
                         if (wanted != current && !Git({ "-C", directory.string(), "checkout", "--quiet", "--detach", wanted }))
                         {
-                            error = std::format("dependency '{}': could not check out {}", dependency.Name, target);
+                            error = std::format("dependency '{}': could not check out {}{}", dependency.Name, target, GitReason());
                             return std::nullopt;
                         }
                     }
