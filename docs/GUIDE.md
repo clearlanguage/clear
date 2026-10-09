@@ -92,7 +92,7 @@ clearc build hello.cl            # write ./hello
 | --- | --- |
 | `clearc run file.cl [-- args]` | compile for this CPU and run; arguments after `--` go to the program |
 | `clearc build file.cl` | write an executable named after the file |
-| `clearc build file.cl -o out` | choose the output path |
+| `clearc build file.cl -o out` | choose the output path (used exactly as written: `-o app.v2` makes `app.v2`) |
 | `clearc new <dir>` | start a project (`clear.toml` + `main.cl`) |
 | `clearc run <dir>` / `clearc build <dir>` | run or build a project (output in `<dir>/build/`) |
 | `clearc add <name> --git <url> [--tag t \| --branch b \| --rev r]` | add a git dependency |
@@ -104,7 +104,7 @@ clearc build hello.cl            # write ./hello
 | `-O0` `-O1` `-O2` `-O3` | optimization (default `-O1`; `-O3` is fastest) |
 | `--checks` / `--no-checks` | run-time safety checks on/off (default: on for `-O0`/`-O1`, off for `-O2`/`-O3`) |
 | `--native`, `--cpu=<name>` | use every instruction of this CPU (or the named one); `run` does this already |
-| `--emit-ir` | also write the LLVM IR (`.ll`), to see exactly what your code became |
+| `--emit-ir` | also write the LLVM IR (`<output>.ll`), to see exactly what your code became |
 | `-v` | print progress |
 
 ---

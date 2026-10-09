@@ -82,6 +82,16 @@ def main():
         run(clearc, "build", app)
         assert run(f"{app}/build/app").stdout.strip() == "102 3"
 
+        # -o keeps the name exactly as given, dots included, and leaves no object file behind
+        write(f"{root}/single/hello.cl", 'function main() -> int32:\n    print("hi")\n    return 0\n')
+        for name in ("app.v2", "out.exe", "bin/r1.O0"):
+            target = f"{root}/single/{name}"
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            run(clearc, "build", f"{root}/single/hello.cl", "-o", target)
+            assert run(target).stdout.strip() == "hi", name
+        left = sorted(f for _, _, files in os.walk(f"{root}/single") for f in files if f.endswith(".o"))
+        assert not left, left
+
         # adding the same name twice is refused
         again = run(clearc, "add", "colors", "--path", "../x", cwd=app, check=False)
         assert again.returncode != 0 and "already a dependency" in again.stderr, again.stderr

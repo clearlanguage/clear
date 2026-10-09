@@ -36,6 +36,7 @@ namespace clear
     private:
         void LoadDirectory(const std::filesystem::path& path);
         void BuildModule(llvm::Module* module, const std::filesystem::path& path);
+        static std::filesystem::path ObjectPathFor(const std::filesystem::path& output);
         bool CheckErrors();
 		void CollectTopLevelSymbols();
 		void CollectBaseClassNames();

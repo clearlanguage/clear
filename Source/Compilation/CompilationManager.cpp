@@ -487,8 +487,9 @@ namespace clear
 
         if(m_Config.EmitIntermiediateIR)
         {
+            // app.v2 -> app.v2.ll: nothing of the name the user chose is replaced
             std::filesystem::path irPath = m_Config.OutputPath / m_Config.OutputFilename;
-            irPath.replace_extension(".ll");
+            irPath += ".ll";
             std::error_code EC;
             llvm::raw_fd_ostream file(irPath.string(), EC, llvm::sys::fs::OF_None);
             
@@ -517,8 +518,7 @@ namespace clear
         else if(m_Config.OutputFormat == BuildConfig::OutputFormatType::IR)
         {
             std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
-            std::filesystem::path objectPath = filepath;
-            objectPath.replace_extension(".o");
+            std::filesystem::path objectPath = ObjectPathFor(filepath);
 
             std::error_code EC;
             llvm::raw_fd_ostream file(filepath.string(), EC, llvm::sys::fs::OF_None);
@@ -655,14 +655,23 @@ namespace clear
 		}
     }
 
+    // the object file written for an output: its name plus .o (app.v2 -> app.v2.o, out.exe -> out.exe.o),
+    // never with part of the name replaced
+    std::filesystem::path CompilationManager::ObjectPathFor(const std::filesystem::path& output)
+    {
+        std::filesystem::path objectPath = output;
+        objectPath += ".o";
+        return objectPath;
+    }
+
     void CompilationManager::BuildModule(llvm::Module* module, const std::filesystem::path& path)
     {
 		std::error_code EC;
-		llvm::raw_fd_ostream dest(path.string() + ".o", EC, llvm::sys::fs::OF_None);
+		llvm::raw_fd_ostream dest(ObjectPathFor(path).string(), EC, llvm::sys::fs::OF_None);
 
 		if (EC)
 		{
-			std::println(stderr, "error: could not write {}.o: {}", path.string(), EC.message());
+			std::println(stderr, "error: could not write {}: {}", ObjectPathFor(path).string(), EC.message());
 			m_Failed = true;
 			return;
 		}
@@ -683,9 +692,7 @@ namespace clear
     void CompilationManager::LinkToExecutableOrDynamic()
     {
         std::filesystem::path filepath = m_Config.OutputPath / m_Config.OutputFilename;
-        std::filesystem::path objectPath = filepath;
-
-        objectPath.replace_extension(".o");
+        std::filesystem::path objectPath = ObjectPathFor(filepath);
 
         auto clangPath = llvm::sys::findProgramByName("clang");
 
