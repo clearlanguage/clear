@@ -387,7 +387,8 @@ namespace clear
             return false;
         }
 
-        if (classType->MemberFunctions.contains("__destruct__"))
+        // operator copy: copies have to go through it, so the value is handled like one that owns something
+        if (classType->MemberFunctions.contains("__destruct__") || classType->MemberFunctions.contains("__copy__"))
             return true;
 
         for (const auto& [name, fieldType] : classType->GetMemberValues())
@@ -447,6 +448,13 @@ namespace clear
         return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");
     }
 
+    SliceType::SliceType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context)
+        : m_BaseType(baseType)
+    {
+        m_LLVMType = llvm::StructType::get(context, { llvm::PointerType::get(context, 0), llvm::Type::getInt64Ty(context) });
+        Toggle(TypeFlags::Compound);
+    }
+
     std::string GetDisplayName(const std::shared_ptr<Type>& type)
     {
         if (!type)
@@ -464,6 +472,9 @@ namespace clear
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+            return "[]" + GetDisplayName(slice->GetBaseType());
 
         if (auto function = std::dynamic_pointer_cast<FunctionPointerType>(type))
         {

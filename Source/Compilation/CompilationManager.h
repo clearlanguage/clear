@@ -54,6 +54,7 @@ namespace clear
 		void LoadImports(std::shared_ptr<Module> module);
 		std::optional<std::filesystem::path> ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name, std::filesystem::path* shadowedStandard = nullptr);
 		std::vector<std::filesystem::path> StandardCandidates(const std::filesystem::path& name);
+		void AddPreludeImports(std::shared_ptr<Module> module, const std::filesystem::path& path, const std::vector<Token>& tokens);
 		
 
     private:

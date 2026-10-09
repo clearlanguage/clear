@@ -1,4 +1,7 @@
-// string: helpers for C strings (str, the type of "string literals"), and String, an owned growable string.
+// string: String, an owned growable string, plus helpers for C strings (*int8).
+//
+// str is text you look at (a literal, a String, part of either): a pointer and a length. A String turns into a
+// str wherever one is expected, without copying; text[2:5] is a str looking at part of it.
 //
 //     import "string"
 //     let greeting = String("hello")
@@ -66,7 +69,7 @@ class String:
         self.data[self.length] = 0
 
     function append(self: *String, text: str):
-        self.append_bytes(text, strlen(text) as int64)
+        self.append_bytes(pointer(text), len(text))
 
     function append_string(self: *String, other: *String):
         self.append_bytes(other.data, other.length)
@@ -87,14 +90,21 @@ class String:
         let count = snprintf(&buffer[0], 64, "%g", value)
         self.append_bytes(&buffer[0], count as int64)
 
-    // the text as a str (valid until the String changes or is freed)
+    // the text as a str (valid until the String changes or is freed); it ends with a zero byte, so C can use it
     function text(self: *String) -> str:
         if self.data == null:
             return ""
-        return self.data
+        return view(self.data, self.length)
 
     function c_str(self: *String) -> str:
         return self.text()
+
+    // text[a:b]: a str looking at those bytes (no copy). It is also how a String becomes a str
+    operator slice(self, start: int64, end: int64) -> str:
+        assert start >= 0 and start <= end and end <= self.length, "String slice out of range"
+        if self.data == null:
+            return ""
+        return view(self.data + start, end - start)
 
     operator str(self: *String) -> str:
         return self.text()
@@ -111,13 +121,13 @@ class String:
         self.data[index] = character
 
     operator equals(self: *String, other: *String) -> bool:
-        return self.length == other.length and strcmp(self.text(), other.text()) == 0
+        return self.text() == other.text()
 
     operator not_equals(self: *String, other: *String) -> bool:
-        return self.length != other.length or strcmp(self.text(), other.text()) != 0
+        return self.text() != other.text()
 
     operator less(self: *String, other: *String) -> bool:
-        return strcmp(self.text(), other.text()) < 0
+        return self.text() < other.text()
 
     operator hash(self: *String) -> uint64:
         return hash(self.text())
@@ -129,10 +139,10 @@ class String:
         return result
 
     operator contains(self: *String, part: str) -> bool:
-        return strstr(self.text(), part) != null
+        return part in self.text()
 
     function equals(self: *String, text: str) -> bool:
-        return strcmp(self.text(), text) == 0
+        return self.text() == text
 
     // let t = s (or reading a String out of a list or field) gives t its own copy of the text
     operator copy(self) -> String:
@@ -140,24 +150,23 @@ class String:
 
     function copy(self: *String) -> String:
         let result = String { }
-        result.append_bytes(self.text(), self.length)
+        result.append_bytes(self.data, self.length)
         return result
 
     // the index of the first `part`, or -1
     function find(self: *String, part: str) -> int64:
-        let found = strstr(self.text(), part)
-        if found == null:
-            return -1
-        return (found as int64) - (self.data as int64)
+        let text = self.text()
+        let count = len(part)
+        for i in 0..self.length - count + 1:
+            if text[i:i + count] == part:
+                return i
+        return -1
 
     function starts_with(self: *String, prefix: str) -> bool:
-        return strncmp(self.text(), prefix, strlen(prefix)) == 0
+        return len(prefix) <= self.length and self.text()[:len(prefix)] == prefix
 
     function ends_with(self: *String, suffix: str) -> bool:
-        let count = strlen(suffix) as int64
-        if count > self.length:
-            return false
-        return strcmp(&self.data[self.length - count], suffix) == 0
+        return len(suffix) <= self.length and self.text()[self.length - len(suffix):] == suffix
 
     // bytes [start, end) as a new String
     function slice(self: *String, start: int64, end: int64) -> String:
@@ -209,6 +218,20 @@ class String:
         self.data = null
         self.length = 0
         self.capacity = 0
+
+// "a" + "b", name + "!": a new String holding both (allocates once, the right size)
+function concat_text(a: str, b: str) -> String:
+    let result = String { }
+    result.reserve(len(a) + len(b))
+    result.append(a)
+    result.append(b)
+    return result
+
+// let s: String = "text": a literal becomes a String where one is written as the type
+function string_from_literal(text: str) -> String:
+    let result = String { }
+    result.append(text)
+    return result
 
 function is_space(character: int8) -> bool:
     return character == ' ' or character == '\t' or character == '\n' or character == '\r'

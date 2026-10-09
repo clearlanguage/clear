@@ -35,7 +35,14 @@ namespace clear
 			auto& builder = m_Ctx.Builder;
 			llvm::Type* llvmType = value->getType();
 
-			if (type && type->IsEnum())
+			// str: its length says where it ends (part of a text has no zero after it)
+			if (type && type->GetHash() == "str")
+			{
+				m_Format += "%.*s";
+				m_Args.push_back(builder.CreateTrunc(builder.CreateExtractValue(value, 1), builder.getInt32Ty()));
+				m_Args.push_back(builder.CreateExtractValue(value, 0));
+			}
+			else if (type && type->IsEnum())
 			{
 				// Color.Red rather than 0
 				auto enumType = std::dynamic_pointer_cast<EnumType>(type);
@@ -104,6 +111,15 @@ namespace clear
 			{
 				Variant(value, type->As<ClassType>());
 			}
+			else if (llvmType->isStructTy() && type && type->IsClass() && PrintsItself(type->As<ClassType>()))
+			{
+				// operator str (a String inside a list, an array or a field prints its text)
+				auto classType = type->As<ClassType>();
+				Symbol slot = CreateStackSlot(classType, value);
+				llvm::Function* method = GetFunctionHere(classType->MemberFunctions.at("__str__"), m_Ctx);
+				auto result = classType->MemberFunctions.at("__str__")->GetFunctionSymbol().FunctionNode->ReturnTypeVal;
+				Value(builder.CreateCall(method, { slot.GetLLVMValue() }), result);
+			}
 			else if (llvmType->isStructTy() && type && type->IsClass())
 			{
 				// dataclass style: Point(x=1, y=2)
@@ -130,10 +146,54 @@ namespace clear
 
 				Text(")");
 			}
+			else if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+			{
+				// [1, 2, 3]: the length is only known at run time, so a loop printing one item at a time
+				Text("[");
+				Flush();
+
+				llvm::Function* function = builder.GetInsertBlock()->getParent();
+				llvm::Value* data = builder.CreateExtractValue(value, 0);
+				llvm::Value* length = builder.CreateExtractValue(value, 1);
+				llvm::BasicBlock* before = builder.GetInsertBlock();
+				llvm::BasicBlock* check = llvm::BasicBlock::Create(m_Ctx.Context, "print.slice", function);
+				llvm::BasicBlock* body = llvm::BasicBlock::Create(m_Ctx.Context, "print.item", function);
+				llvm::BasicBlock* done = llvm::BasicBlock::Create(m_Ctx.Context, "print.slice_done", function);
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(check);
+				llvm::PHINode* index = builder.CreatePHI(builder.getInt64Ty(), 2);
+				index->addIncoming(builder.getInt64(0), before);
+				builder.CreateCondBr(builder.CreateICmpULT(index, length), body, done);
+
+				builder.SetInsertPoint(body);
+				m_Format += "%s";
+				m_Args.push_back(builder.CreateSelect(builder.CreateICmpEQ(index, builder.getInt64(0)), String(""), String(", ")));
+				auto element = slice->GetBaseType();
+				Value(builder.CreateLoad(element->Get(), builder.CreateInBoundsGEP(element->Get(), data, { index })), element);
+				Flush();
+				index->addIncoming(builder.CreateAdd(index, builder.getInt64(1)), builder.GetInsertBlock());
+				builder.CreateBr(check);
+
+				builder.SetInsertPoint(done);
+				Text("]");
+			}
 			else
 			{
 				Text("<value>");
 			}
+		}
+
+		// a class with an operator str that has been analysed (and takes just self)
+		static bool PrintsItself(const std::shared_ptr<ClassType>& classType)
+		{
+			auto method = classType->MemberFunctions.find("__str__");
+
+			if (method == classType->MemberFunctions.end())
+				return false;
+
+			auto node = method->second->GetFunctionSymbol().FunctionNode;
+			return node && node->BodyResolved && node->Arguments.size() == 1 && node->ReturnTypeVal;
 		}
 
 		void Flush()

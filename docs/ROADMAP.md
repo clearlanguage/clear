@@ -123,13 +123,13 @@ print("total:", total, "avg:", total / count)   // built-in, type-aware
       arguments inferred through pointers, arrays and generic classes.
 - [x] Methods of generic classes are only analysed when used.
 - [x] Destructors (`operator destruct`) called at scope exit, with moves.
-- [ ] Slices `[]T` (pointer + length) for passing arrays of any length;
+- [x] Slices `[]T` (pointer + length) for passing arrays of any length;
       bounds-checked in debug builds.
 - [x] Optionals `?T`: `none`, `x is none`, `x.value`, `x.value_or(d)`, `case some(v)`.
 - [x] Tagged unions / variants: enum cases with data, matched by `switch` (checked to be exhaustive); plain `union`.
 - [x] Traits with static dispatch: `trait`, `class C(Trait)`, generic constraints `[T: Trait]`.
 - [x] Lambdas and function values (`function(int) -> int`); capturing lambdas become small objects with `__call__`.
-- [ ] Generic methods (type parameters on a method of a class).
+- [x] Generic methods (type parameters on a method of a class).
 - [x] An owned, length-tracked `String` type with `+` and comparisons.
 
 ## Phase 4: Performance
@@ -145,12 +145,15 @@ Clear's promise is C-level speed, so this is measured, not assumed.
 - [x] `--native` / `--cpu=<name>` targets; `clearc run` uses the host CPU.
 - [x] Benchmarks in `Benchmarks/` comparing against equivalent C, reported
       in CI.
-- [ ] Struct/array literals built in registers instead of `memcpy` from a
-      global constant (only matters at -O0).
+- [x] Struct/array literals up to 256 bytes built in registers instead of `memcpy`
+      from a global constant (about 15% faster struct-heavy code at -O0).
 - [ ] Debug info (`DebugInfo = true`) so gdb/lldb work.
 - [x] Run-time checks (bounds, division, overflow, null, `none`) in debug builds; `--checks` / `--no-checks`.
-- [ ] Compiler speed: parse files in parallel; reduce `shared_ptr` churn
-      in the AST.
+- [ ] Compiler speed. Measured (Oct 2026): 20k lines in 0.33 s, 100k lines in 2 s,
+      linear. About half the time is LLVM optimisation and about a quarter is
+      instruction selection; parsing barely shows up, so parallel parsing would
+      not help yet. Next step when it matters: per-function caching, and
+      less `shared_ptr` churn in Sema.
 
 ## Phase 5: Standard library and tooling
 
@@ -183,8 +186,11 @@ Everything here follows the same rules: visible cost, opt-in dynamism, checked a
 - [x] Move checking: using a moved variable, moving inside a loop, and moving twice in one call are compile errors; writes into temporaries are errors; a warning for pointers into a collection used after it changes.
 - [x] Lambdas borrow owning values, `move lambda` moves them in; generators and tasks are owned values cleaned up like the rest (also when abandoned mid-way).
 - [x] Internal compiler errors are reported with the source line being compiled and a stack trace.
-- [ ] Slices `[]T` (pointer + length).
-- [ ] Generic methods (type parameters on a method).
+- [x] Slices `[]T` (pointer + length): `xs[a:b]`, `[]T` parameters take arrays, lists and slices.
+- [x] Generic methods (type parameters on a method); `List.map/filter/sort/sort_by`.
+- [x] Optionals: `if r:` narrowing, `if not r: return`, `??`, `:=`, `?.`.
+- [x] Copies skipped where unobservable: last use moves, read-only values look at the original; `--copies` lists the rest.
+- [x] `str` is a pointer and a length: `text[a:b]` views without copying, `String` turns into `str` for free, C gets a checked `char*`.
 - [ ] Debug info for gdb/lldb; `clearc fmt`; a language server.
 - [ ] A package registry (today dependencies are git URLs or paths).
 

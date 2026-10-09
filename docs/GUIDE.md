@@ -359,6 +359,20 @@ let s = Box[str]("text")
 
 Each set of type arguments produces its own specialised copy (like C++ templates, so there is no run-time cost). Methods of generic classes are only checked when they are used.
 
+Methods can have type parameters of their own, inferred from the arguments at each call:
+
+```clear
+class Stack[T]:
+    items: List[T]
+
+    function convert[U](self, f: function(T) -> U) -> Stack[U]:   // U: whatever f returns
+        ...
+
+let halves = stack.convert(lambda x: x as float64 / 2.0)          // Stack[float64]
+```
+
+A `function(T) -> U` parameter of a generic method accepts plain functions, and lambdas that capture variables too. `U` comes from the lambda's result. A type parameter that no argument determines is an error (trait methods can't have their own type parameters).
+
 ### 3.9 Inheritance · [`examples/10_inheritance.cl`](../examples/10_inheritance.cl)
 
 ```clear
@@ -450,12 +464,31 @@ function find(values: [4; int], target: int) -> ?int:
 let found = find(data, 9)
 found.value                  // the int (checked: reading none stops the program)
 found.value_or(-1)
+found ?? -1                  // the same; `a ?? b ?? 0` tries a, then b, then 0
 found is none / found is not none
 switch found:
     case some(index):
         ...
     case none:
         ...
+
+if found:                    // holds a value: inside, found is the int itself
+    print(found + 1)
+else:
+    print("missing")
+
+if not found:                // ...and after an early exit it is the int from there on
+    return -1
+print(found * 2)
+
+if index := find(data, 3):   // declare and test in one go (also in `else if`)
+    print(index)
+while line := read_line():   // keeps going while there is a value
+    print(line)
+
+user?.name                   // ?String: none when user is none
+user?.address?.city          // stops at the first none
+user?.greet()                // only called when user holds a value
 
 union Bits:                  // fields share memory
     i: int64
@@ -466,6 +499,8 @@ let b = Bits(f = 1.0)
 A union can't have a field that needs cleaning up (a `String`, a `List`, a class with `operator destruct`...), because it doesn't know which field it holds. That is a compile error that suggests a variant.
 
 `none` can only go into a `?T`. Writing `let n: int = none` is a compile error.
+
+An optional in a condition means "holds a value". `found` being `0` still counts as holding one, unlike in Python. `?bool` in a condition is a compile error, because it could mean "holds a value" or "is true"; write `flag is not none` or `flag ?? false`. Only local variables are treated as their value inside `if found:`. A field (`if self.user:`) could be changed by a call in the block, so write `if user := self.user:` there instead.
 
 ### 3.14 Variants · [`examples/24_variants.cl`](../examples/24_variants.cl)
 
@@ -505,6 +540,7 @@ for i in count_up(3, 6):     // 3 4 5
 - Values are produced only when the loop asks, so a generator can be endless (`fibonacci()` in the example).
 - A generator is cleaned up like any other value: `for x in gen():` cleans it up when the loop ends (also on `break`), and `let g = gen()` when `g`'s scope ends. Values the generator was holding while paused are cleaned up too.
 - `for x in g:` on a variable steps through `g` in place, so a second loop carries on where a `break` left off.
+- A generator owns what it yields: `yield String(...)` hands the new value over, `yield s` yields a copy (so `s` is still yours), and each value is cleaned up when the next one replaces it. `g.value()` gives you a copy.
 - By hand: `g.advance()` (true when a new value is ready), `g.value()`, `g.done()`, `g.free()` (frees it early).
 
 ### 3.16 Async / await · [`examples/16_async_await.cl`](../examples/16_async_await.cl)
@@ -580,13 +616,29 @@ panic: index out of range for an array of 3 (18_safety_checks.cl:15:18)
 
 ### 3.19 Strings · [`examples/19_strings.cl`](../examples/19_strings.cl)
 
-There are two string types:
+There are two string types, like `[]T` and `List[T]`:
 
 | | `str` | `String` (`import "string"`) |
 | --- | --- | --- |
-| what | a C string, the type of `"literals"` | an owned, growable string on the heap |
-| cost | free | allocates; freed automatically at the end of its scope |
-| `==`, `in`, `len`, print | yes | yes, plus `+`, `<`, `find`, `slice`, `strip`, `upper`, `lower`, `starts_with`, `ends_with`, `to_int`, `to_float`, `append`, `push`, `from_int` … |
+| what | text you **look at**: a pointer and a length (a literal, a String, or part of either) | text you **own**: on the heap, growable |
+| cost | free to make and pass around | allocates; cleaned up automatically at the end of its scope |
+| can do | `==`, `<`, `in`, `len`, `s[i]`, `s[a:b]`, `for c in s`, print, `hash`, Map keys | the same, plus `append`, `push`, `+`, `find`, `upper`, `lower`, `strip`, `starts_with`, `ends_with`, `to_int`, `to_float`… |
+
+```clear
+let name = String("ada lovelace")
+let first: str = name[:3]          // "ada", looks at name's bytes: nothing copied
+greet(name)                        // a String goes wherever a str is expected, for free
+greet("literal")
+name == "ada lovelace"             // String and str compare by content
+let mine = String(first)           // a str variable -> String is written out, because it allocates
+let greeting: String = "hello"     // a literal becomes a String where String is the written type
+let both = "hello " + name         // + on text: a new String holding both (also str + str, and +=)
+
+function greet(who: str):          // take str unless you need to keep or change the text
+    print("hi", who)
+```
+
+A `str` must not outlive the String it looks at, or be used after that String changes, the same rule as for slices. Indexing is checked against the length (`s[len(s)]` is out of range, even though a literal has a zero byte there for C).
 
 ### 3.20 Collections · [`examples/20_collections.cl`](../examples/20_collections.cl)
 
@@ -598,6 +650,29 @@ let numbers = List[int]()    // freed automatically at the end of the scope
 numbers.push(4)              // also: pop, last, contains, clear, is_empty, numbers[i], len, for
 numbers[0] += 1              // numbers[i] is the element itself
 
+let doubled = numbers.map(lambda n: n * 2)          // a new List (here List[int])
+let evens = numbers.filter(lambda n: n % 2 == 0)    // a new List with the items that pass
+numbers.sort()                                       // in place, smallest first (items need <)
+words.sort_by(lambda w: len(w))                      // in place, by a key; equal keys keep their order
+```
+
+**Slices** are views: a pointer to some items plus how many there are, with nothing copied.
+
+```clear
+let xs: [6; int] = {10, 20, 30, 40, 50, 60}
+let part = xs[1:4]          // []int: 20 30 40 (the end is left out, like Python)
+xs[:3]  xs[3:]  xs[:]       // from the start / to the end / everything
+part[0] = 99                // changes xs[1]
+len(part)  part[1:]  for x in part:
+
+function sum(values: []int) -> int:   // takes any array, List or slice of ints
+    ...
+sum(xs)  sum(numbers)  sum(numbers[2:5])
+```
+
+`List` supports slicing through `operator slice`, and your own classes can too. Indexes and bounds are checked when checks are on. A slice of a list must not be used after the list grows or shrinks (`push`, `remove`...), because that can move the items. The compiler warns when it sees that happen in one function.
+
+```clear
 let ages = Map[str, int]()
 ages["ada"] = 36             // also: m[k] += 1, get (-> ?V), get_or, `in`, remove, len, for key in m
 ```
@@ -636,7 +711,14 @@ class Session:                 // no destruct needed: its String and Connection 
 | `x = new_value` | the old value of `x` is cleaned up first |
 | `make().qty = 5`, or `bag[0].qty = 5` when `get` returns a copy | compile error: the change would go to a temporary and be lost |
 
-Copies allocate, so in hot loops prefer working in place (`for w in words`, `words[i].method()`). A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
+A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
+
+**Copies nobody would notice are skipped.** A copy allocates, so the compiler leaves it out where it can prove the program behaves the same:
+
+- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, or through a pointer or slice into it.
+- **a value that is only read looks at the original.** In `let w = words[i]`, if `w` is only read (its value, its fields, `len(w)`) and `words` doesn't change while `w` is in use, `w` is the item itself. Changing `w`, calling a method on it, or changing `words` meanwhile keeps the copy.
+
+So `operator copy` must make an equal, independent value. The compiler may skip it, the same rule as C++ copy elision. To see the copies that remain, build with `clearc build file.cl --copies`: each one gets a note with its line.
 
 **Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
 
@@ -685,7 +767,7 @@ A module is just a `.cl` file, and everything at its top level can be imported. 
 
 So a file of yours named `math.cl` hides the standard `math`, as in Python. The compiler warns when that happens, and `import "std/math"` always means the standard one.
 
-Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`.
+Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`. `String` is always available, and `List` and `Map` are too as soon as a file uses them, like Python's built-ins. The compiler adds `import "std/string"` (and `std/list`, `std/map`) itself unless the file defines its own class with that name.
 
 ### 3.24 Calling C · [`examples/23_c_interop.cl`](../examples/23_c_interop.cl)
 
@@ -694,7 +776,7 @@ declare printf(format: *int8, args: ...) -> int32
 declare abs(n: int32) -> int32
 ```
 
-Any function from the C library can be declared and called directly. `*int8` is a C `char*`; `str` converts to it automatically.
+Any function from the C library can be declared and called directly. `*int8` is a C `char*`. A `str` passed to C (as `*int8`, or as `str` in a `declare`) becomes a pointer to its bytes, and C needs those to end with a zero. Literals and a String's text always do, but part of a text (`s[0:5]`) does not. With checks on, passing one stops the program and tells you to use `String(part).c_str()`. A `char*` that C returns becomes a `str` by measuring it.
 
 ---
 

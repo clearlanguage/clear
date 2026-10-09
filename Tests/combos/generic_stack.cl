@@ -17,9 +17,7 @@ class Stack[T]:
 function balanced(text: str) -> bool:
     let s = Stack[int8](List[int8]())
     defer s.items.free()
-    let i = 0
-    while text[i] != 0:
-        let c = text[i]
+    for c in text:
         if c == '(' or c == '[':
             s.push(c)
         else if c == ')' or c == ']':
@@ -28,7 +26,6 @@ function balanced(text: str) -> bool:
                 return false
             if (c == ')' and top.value != '(') or (c == ']' and top.value != '['):
                 return false
-        i += 1
     return s.size() == 0
 
 function main() -> int32:

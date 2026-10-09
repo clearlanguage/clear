@@ -104,6 +104,9 @@ namespace clear
 		DiagnosticCode_BorrowingLambdaEscapes,
 		DiagnosticCode_StaleElementPointer,
 		DiagnosticCode_ImportShadowsStandard,
+		DiagnosticCode_NotOptional,
+		DiagnosticCode_OptionalBoolCondition,
+		DiagnosticCode_CopyMade,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -166,7 +169,7 @@ namespace clear
 		"Operator is not defined for this class.",
 		"Operator method has the wrong number of parameters.",
 		"Too many values for this class.",
-		"Methods cannot have their own type parameters yet.",
+		"A trait method cannot have its own type parameters.",
 		"Array index must be an integer.",
 		"Value has no length.",
 		"Array index is out of range.",
@@ -208,6 +211,9 @@ namespace clear
 		"This lambda borrows local variables, so it cannot be returned.",
 		"This pointer may point at memory that has been moved or freed.",
 		"This import finds a file next to this one, not the standard module of the same name.",
+		"This is not an optional.",
+		"An optional bool is ambiguous as a condition.",
+		"A copy is made here.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -269,7 +275,7 @@ namespace clear
 		"‘{}’. Define the dunder method on the class to support the operator.",
 		"‘{}’ must take exactly two parameters: self and the other operand.",
 		"‘{}.",
-		"Make ‘{}’ a generic function outside the class, or make the class itself generic.",
+		"Give ‘{}’ concrete types, or make the trait's classes generic.",
 		"‘{}’). Use ‘as’ to convert the index to an integer type.",
 		"len() works on arrays, str and classes with ‘operator len’, not ‘{}’.",
 		"‘{}).",
@@ -311,5 +317,8 @@ namespace clear
 		"It holds pointers to values that are cleaned up when this function ends. Write ‘move lambda’ to move them into the lambda instead.",
 		"{}. Adding or removing items can move all of them. Take the pointer again after the change, or store an index instead.",
 		"{}.",
+		"‘{}’.",
+		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
+		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
 	};
 }

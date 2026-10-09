@@ -33,6 +33,7 @@ static void ApplyOptions(BuildConfig& config, const CommandLine::ParsingResult& 
     if (options.RuntimeChecks)
         config.RuntimeChecks = *options.RuntimeChecks ? 1 : 0;
     config.Verbose = config.Verbose || options.Verbose;
+    config.ReportCopies = config.ReportCopies || options.ReportCopies;
 }
 
 static int CompileProject(const std::filesystem::path& directory, const CommandLine::ParsingResult& options, bool verbose)

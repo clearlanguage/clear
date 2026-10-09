@@ -97,6 +97,8 @@ namespace clear
         // on for debug/development builds and off for optimized (Distribution) builds
         int RuntimeChecks = -1;
 
+        bool ReportCopies = false; // --copies: a note at each copy of a value that owns memory
+
         bool RuntimeChecksEnabled() const { return RuntimeChecks == -1 ? OptimizationLevel != OptimizationLevelType::Distribution : RuntimeChecks == 1; }
 
         static BuildConfig BuildConfigFromToml(const std::filesystem::path& path);

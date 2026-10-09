@@ -218,6 +218,7 @@ namespace clear
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
 		newModule->RuntimeChecks = m_Config.RuntimeChecksEnabled();
+		newModule->ReportCopies = m_Config.ReportCopies;
 		
         Lexer lexer(path, m_DiagnosticsBuilder);
 
@@ -237,8 +238,58 @@ namespace clear
 
 		m_CompilationUnits[path] = CompilationUnit { newModule, newModule->GetRoot() };
 
+		AddPreludeImports(newModule, path, lexer.GetTokens());
 		LoadImports(newModule);
     }
+
+	void CompilationManager::AddPreludeImports(std::shared_ptr<Module> module, const std::filesystem::path& path, const std::vector<Token>& tokens)
+	{
+		// String is always at hand ("a" + "b" makes one), List and Map when the file uses them, like Python's
+		// built-ins. Not inside the standard library, and not when the file defines a class of that name itself.
+		std::filesystem::path standard = std::filesystem::weakly_canonical(std::filesystem::path(CLEAR_STANDARD_DIR));
+		std::filesystem::path self = std::filesystem::weakly_canonical(std::filesystem::absolute(path));
+
+		if (std::mismatch(standard.begin(), standard.end(), self.begin(), self.end()).first == standard.end())
+			return;
+
+		auto root = module->GetRoot();
+		auto topLevel = root->Children.empty() ? nullptr : std::dynamic_pointer_cast<ASTBlock>(root->Children[0]);
+
+		if (!topLevel)
+			return;
+
+		std::unordered_set<std::string> used, defined, imported;
+
+		for (size_t i = 0; i < tokens.size(); i++)
+		{
+			if (tokens[i].IsType(TokenType::Identifier))
+				used.insert(tokens[i].GetData());
+
+			if (tokens[i].GetData() == "class" && i + 1 < tokens.size())
+				defined.insert(tokens[i + 1].GetData());
+		}
+
+		for (auto& node : topLevel->Children)
+		{
+			if (auto import = std::dynamic_pointer_cast<ASTImport>(node))
+				imported.insert(import->Filepath.stem().string());
+		}
+
+		static const std::pair<const char*, const char*> prelude[] = { { "String", "string" }, { "List", "list" }, { "Map", "map" } };
+
+		for (auto& [type, name] : prelude)
+		{
+			bool always = std::string(name) == "string";
+
+			if ((!always && !used.contains(type)) || defined.contains(type) || imported.contains(name))
+				continue;
+
+			auto import = std::make_shared<ASTImport>();
+			import->Filepath = std::string("std/") + name;
+			import->Location = tokens.empty() ? Token() : tokens.front();
+			topLevel->Children.insert(topLevel->Children.begin(), import);
+		}
+	}
 
 	std::vector<std::filesystem::path> CompilationManager::StandardCandidates(const std::filesystem::path& name)
 	{

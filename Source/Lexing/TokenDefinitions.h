@@ -69,6 +69,8 @@ namespace clear
         DotDot,              // ..
         DotDotEquals,        // ..=
         QuestionMark,        // ?
+        QuestionQuestion,    // ??
+        QuestionDot,         // ?.
 
         EndLine,
         EndScope,
@@ -152,6 +154,8 @@ namespace clear
             {"..",   TokenType::DotDot},
             {"..=",  TokenType::DotDotEquals},
             {"?",    TokenType::QuestionMark},
+            {"??",   TokenType::QuestionQuestion},
+            {"?.",   TokenType::QuestionDot},
 
             {"++",   TokenType::Increment},
             {"--",   TokenType::Decrement},
@@ -216,6 +220,8 @@ namespace clear
         {TokenType::MinusEquals,       2},
         {TokenType::StarEquals,        2},
         {TokenType::StarStar,          2},
+        {TokenType::QuestionQuestion,  2},
+        {TokenType::QuestionDot,       2},
         {TokenType::SlashEquals,       2},
         {TokenType::PercentEquals,     2},
         {TokenType::EqualsEquals,      2},

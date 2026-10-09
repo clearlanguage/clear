@@ -37,7 +37,7 @@ namespace clear
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
 		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy, Copy,
-		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
+		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct, Once, SliceExpr
 	};
 
 	class ASTNodeBase;
@@ -246,6 +246,7 @@ namespace clear
 	
 
 		AssignmentOperatorType GetAssignType() const { return m_Type; }
+		void SetAssignType(AssignmentOperatorType type) { m_Type = type; }
 
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;
@@ -352,6 +353,21 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> SubscriptArgs;
 		SubscriptSemantic Meaning = SubscriptSemantic::None;
 		std::shared_ptr<Symbol> GeneratedType;
+	};
+
+	// xs[a:b], xs[:b], xs[a:], xs[:] (lowered by Sema)
+	class ASTSliceExpr : public ASTNodeBase
+	{
+	public:
+		ASTSliceExpr() = default;
+		virtual ~ASTSliceExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::SliceExpr; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		std::shared_ptr<ASTNodeBase> Target;
+		std::shared_ptr<ASTNodeBase> Start; // null: from the beginning
+		std::shared_ptr<ASTNodeBase> End;   // null: to the end
 	};
 
 	class ASTFunctionDeclaration : public ASTNodeBase
@@ -542,6 +558,8 @@ namespace clear
 	};
 
 
+	class ASTGenericTemplate;
+
 	class ASTClass : public ASTNodeBase
 	{
 	public:
@@ -558,6 +576,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
 		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
+		std::vector<std::shared_ptr<ASTGenericTemplate>> GenericMethods; // function map[U](self, ...): made per use
 		std::shared_ptr<Type> ClassTy;
 		bool BodyDeclared = false;
 		bool LazyMethods = false; // generic instance: methods are analysed on first use
@@ -906,6 +925,22 @@ namespace clear
 		std::shared_ptr<Type> FunctionTy;
 	};
 
+	// a value used in more than one place but computed only once (user?.name reads user twice: to test it, then
+	// to read the field). The first use computes it; that use comes first in the code, so it runs first.
+	class ASTOnce : public ASTNodeBase
+	{
+	public:
+		ASTOnce() = default;
+		virtual ~ASTOnce() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Once; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
+		Symbol Computed;
+		llvm::Function* ComputedIn = nullptr; // a generic body is generated once per function it is in
+	};
+
 	// reading an owning value out of a local variable: the variable is left empty (all zero), so
 	// destroying it at the end of its scope does nothing and the value has exactly one owner
 	class ASTMove : public ASTNodeBase
@@ -935,6 +970,8 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Value; // the value as it is (sharing memory with the original)
 		std::shared_ptr<Type> ValueType;
+		std::shared_ptr<ASTNodeBase> MoveFrom; // set when the variable is not used again: hand it over instead
+		bool Elided = false;                   // the variable it went into only looks at the original instead
 	};
 
 	// a deep copy of `value` (which shares memory with the original)
@@ -1139,6 +1176,7 @@ namespace clear
 
 	// branches to a panic when `ok` is false, code generation continues on the success path
 	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
+	llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx); // the function, declared in this module
 
 	// stops the program: prints "panic: <message>" with the source location to stderr and aborts
 	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail = nullptr);

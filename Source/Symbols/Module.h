@@ -68,6 +68,7 @@ namespace clear
 
     public:
         bool RuntimeChecks = false; // emit bounds/null/overflow/division checks (from the build configuration)
+        bool ReportCopies = false;  // a note at each copy (clearc --copies)
         bool m_IsBuiltin = false;
     };
 }

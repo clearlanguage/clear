@@ -10,11 +10,13 @@ namespace clear
 
 	Value::ConstantPair Value::GetConstant(const std::shared_ptr<Type>& type, const Token& data, llvm::LLVMContext& context, llvm::Module& module)
 	{
-		if(data.GetData() == "null") return { llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), nullptr} ;
+		bool keyword = !data.IsType(TokenType::String); // "null" in quotes is text
+
+		if(keyword && data.GetData() == "null") return { llvm::ConstantPointerNull::get(llvm::PointerType::get(context, 0)), nullptr} ;
 
 		std::string hash = type->GetHash();
 
-		if(data.GetData() == "none") return {llvm::ConstantInt::getFalse(context), nullptr};
+		if(keyword && data.GetData() == "none") return {llvm::ConstantInt::getFalse(context), nullptr};
 
 		if(data.IsType(TokenType::Char)) return {llvm::ConstantInt::get(type->Get(), (uint64_t)(uint8_t)data.AsChar()), nullptr};
 
@@ -33,7 +35,16 @@ namespace clear
 
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data.AsBool()), nullptr};
 		
-		if(hash == "int8*" || hash == "str") return GetConstantString(data.GetData(), context, module);
+		if(hash == "int8*") return GetConstantString(data.GetData(), context, module);
+
+		// { bytes (followed by a zero, for C), length }
+		if(hash == "str")
+		{
+			auto [bytes, _] = GetConstantString(data.GetData(), context, module);
+			auto length = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), data.GetData().size());
+			llvm::Constant* fields[] = { llvm::cast<llvm::Constant>(bytes), length };
+			return { llvm::ConstantStruct::get(llvm::cast<llvm::StructType>(type->Get()), fields), nullptr };
+		}
 		if(hash == "void*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
 
 

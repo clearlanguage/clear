@@ -447,14 +447,20 @@ namespace clear
     {
 		auto booleanType = ctx.ClearModule->Lookup("bool").value()->GetType();
 
-		// str values compare their contents, unless one side is null
-		bool isStr = lhs.GetType()->GetHash() == "str" || rhs.GetType()->GetHash() == "str";
-		bool isNull = llvm::isa<llvm::ConstantPointerNull>(lhs.GetLLVMValue()) || llvm::isa<llvm::ConstantPointerNull>(rhs.GetLLVMValue());
+		// str values compare their contents: bytes first (memcmp), then the shorter one comes first
+		bool isStr = lhs.GetType()->GetHash() == "str" && rhs.GetType()->GetHash() == "str";
 
-		if (isStr && !isNull && lhs.GetLLVMValue()->getType()->isPointerTy() && rhs.GetLLVMValue()->getType()->isPointerTy())
+		if (isStr)
 		{
-			llvm::FunctionCallee strcmp = ctx.Module.getOrInsertFunction("strcmp", llvm::FunctionType::get(ctx.Builder.getInt32Ty(), { ctx.Builder.getPtrTy(), ctx.Builder.getPtrTy() }, false));
-			llvm::Value* order = ctx.Builder.CreateCall(strcmp, { lhs.GetLLVMValue(), rhs.GetLLVMValue() }, "strcmp");
+			auto& b = ctx.Builder;
+			llvm::FunctionCallee memcmp = ctx.Module.getOrInsertFunction("memcmp", llvm::FunctionType::get(b.getInt32Ty(), { b.getPtrTy(), b.getPtrTy(), b.getInt64Ty() }, false));
+			llvm::Value* leftLength = b.CreateExtractValue(lhs.GetLLVMValue(), 1);
+			llvm::Value* rightLength = b.CreateExtractValue(rhs.GetLLVMValue(), 1);
+			llvm::Value* shorter = b.CreateSelect(b.CreateICmpULT(leftLength, rightLength), leftLength, rightLength);
+			llvm::Value* bytes = b.CreateCall(memcmp, { b.CreateExtractValue(lhs.GetLLVMValue(), 0), b.CreateExtractValue(rhs.GetLLVMValue(), 0), shorter }, "memcmp");
+			llvm::Value* byLength = b.CreateSelect(b.CreateICmpULT(leftLength, rightLength), b.getInt32(-1), 
+												   b.CreateSelect(b.CreateICmpUGT(leftLength, rightLength), b.getInt32(1), b.getInt32(0)));
+			llvm::Value* order = b.CreateSelect(b.CreateICmpNE(bytes, b.getInt32(0)), bytes, byLength);
 			llvm::Value* zero = ctx.Builder.getInt32(0);
 			llvm::Value* result = nullptr;
 
@@ -1010,12 +1016,29 @@ namespace clear
 		frame->addIncoming(memory, allocate);
 		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
 
+		// a generator owns the value it yielded last: it starts empty, so replacing or cleaning it up is safe
+		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+			builder.CreateStore(llvm::Constant::getNullValue(CoroutineValue->Get()), coroutine.Promise);
+
 		// destroying the coroutine frees its frame; suspending returns the handle to the caller
 		coroutine.Cleanup = llvm::BasicBlock::Create(ctx.Context, "coro.cleanup", function);
 		coroutine.Suspend = llvm::BasicBlock::Create(ctx.Context, "coro.suspend", function);
 		llvm::BasicBlock* release = llvm::BasicBlock::Create(ctx.Context, "coro.free", function);
 
 		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
+
+		// the last value a generator yielded is cleaned up with it
+		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		{
+			llvm::BasicBlock* freeFrame = llvm::BasicBlock::Create(ctx.Context, "coro.free_frame", function);
+			auto saved = builder.saveIP();
+			builder.SetInsertPoint(coroutine.Cleanup);
+			EmitDestroy(ctx, CoroutineValue, coroutine.Promise);
+			builder.CreateBr(freeFrame);
+			builder.restoreIP(saved);
+			cleanup.SetInsertPoint(freeFrame);
+		}
+
 		llvm::Value* toFree = cleanup.CreateIntrinsic(llvm::Intrinsic::coro_free, {}, { id, coroutine.Handle });
 		cleanup.CreateCondBr(cleanup.CreateIsNotNull(toFree), release, coroutine.Suspend);
 
@@ -1053,6 +1076,11 @@ namespace clear
 	Symbol ASTYield::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Value->Codegen(ctx);
+
+		// the previous value is replaced: clean it up first (it starts out empty)
+		if (value.GetType() && IsOwning(value.GetType()))
+			EmitDestroy(ctx, value.GetType(), ctx.Coroutine->Promise);
+
 		ctx.Builder.CreateStore(value.GetLLVMValue(), ctx.Coroutine->Promise);
 
 		llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "yield.resume", ctx.Builder.GetInsertBlock()->getParent());
@@ -1232,7 +1260,7 @@ namespace clear
 	}
 
 	// the function behind a symbol, generated on first use and declared in this module if it lives in another
-	static llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
+	llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
 	{
 		FunctionSymbol& functionSymbol = symbol->GetFunctionSymbol();
 
@@ -1636,6 +1664,20 @@ namespace clear
 
 		llvm::Constant* initializer = llvm::ConstantArray::get(llvmArrayType, constantValues);
 
+		// a small literal is built as a value: its constant part, with the computed items put in (no memory involved)
+		if (ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType) <= 256)
+		{
+			llvm::Value* aggregate = initializer;
+
+			for (size_t i = 0; i < values.size(); i++)
+			{
+				if (!llvm::isa<llvm::Constant>(values[i]))
+					aggregate = ctx.Builder.CreateInsertValue(aggregate, values[i], { (unsigned)i });
+			}
+
+			return Symbol::CreateValue(aggregate, arrayType);
+		}
+
 		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
 		    ctx.Module,
 		    llvmArrayType,
@@ -1752,6 +1794,20 @@ namespace clear
 		llvm::StructType* llvmStructTy = llvm::dyn_cast<llvm::StructType>(structTy->Get());
 
 		llvm::Constant* initializer = llvm::ConstantStruct::get(llvmStructTy, constantValues);
+
+		// a small literal is built as a value: its constant part, with the computed fields put in (no memory involved)
+		if (ctx.Module.getDataLayout().getTypeAllocSize(llvmStructTy) <= 256)
+		{
+			llvm::Value* aggregate = initializer;
+
+			for (size_t i = 0; i < values.size(); i++)
+			{
+				if (!llvm::isa<llvm::Constant>(values[i]))
+					aggregate = ctx.Builder.CreateInsertValue(aggregate, values[i], { (unsigned)i });
+			}
+
+			return Symbol::CreateValue(aggregate, structTy);
+		}
 
 		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
 		    ctx.Module,
@@ -2566,7 +2622,12 @@ namespace clear
 		Symbol boolType = Symbol::GetBooleanType(ctx.ClearModule);
 		condition = SymbolOps::Cast(condition, boolType, ctx.Builder);
 
+		// the message is a str: its bytes (messages are literals, so they end with a zero)
 		llvm::Value* detail = Message ? Message->Codegen(ctx).GetLLVMValue() : nullptr;
+
+		if (detail && detail->getType()->isStructTy())
+			detail = ctx.Builder.CreateExtractValue(detail, 0);
+
 		EmitCheck(ctx, condition.GetLLVMValue(), "assertion failed", Location, detail);
 
 		return Symbol();
@@ -2607,6 +2668,108 @@ namespace clear
 		for (auto& argument : Arguments)
 			args.push_back(argument->Codegen(ctx).GetLLVMValue());
 
+		// slices: { pointer to the first item, number of items }
+		if (Name == "slice_retype")
+			return Symbol::CreateValue(args[0], ResultType); // str and []int8 are laid out the same
+
+		if (Name == "slice_data")
+			return Symbol::CreateValue(builder.CreateExtractValue(args[0], 0), ResultType);
+
+		// str -> char*: the bytes, which C needs to end with a zero (true of literals and String's text, not of
+		// every part of a text)
+		if (Name == "str_c")
+		{
+			llvm::Value* data = builder.CreateExtractValue(args[0], 0);
+
+			if (ctx.RuntimeChecks && !llvm::isa<llvm::Constant>(args[0]))
+			{
+				llvm::Function* function = builder.GetInsertBlock()->getParent();
+				llvm::BasicBlock* look = llvm::BasicBlock::Create(ctx.Context, "str.look", function);
+				llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "str.checked", function);
+				llvm::BasicBlock* start = builder.GetInsertBlock();
+				builder.CreateCondBr(builder.CreateIsNull(data), done, look);
+
+				builder.SetInsertPoint(look);
+				llvm::Value* end = builder.CreateLoad(builder.getInt8Ty(), builder.CreateInBoundsGEP(builder.getInt8Ty(), data, { builder.CreateExtractValue(args[0], 1) }));
+				llvm::Value* terminated = builder.CreateICmpEQ(end, builder.getInt8(0));
+				llvm::BasicBlock* lookEnd = builder.GetInsertBlock();
+				builder.CreateBr(done);
+
+				builder.SetInsertPoint(done);
+				llvm::PHINode* ok = builder.CreatePHI(builder.getInt1Ty(), 2);
+				ok->addIncoming(builder.getTrue(), start);
+				ok->addIncoming(terminated, lookEnd);
+				EmitCheck(ctx, ok, "a str passed to C must end with a zero byte (part of a text does not: use String(text).c_str())", Location, nullptr);
+			}
+
+			return Symbol::CreateValue(data, ResultType);
+		}
+
+		// char* -> str: measured with strlen (null stays an empty str)
+		if (Name == "str_from_c")
+		{
+			llvm::FunctionCallee strlen = ctx.Module.getOrInsertFunction("strlen", llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false));
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock* measure = llvm::BasicBlock::Create(ctx.Context, "str.measure", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "str.measured", function);
+			llvm::BasicBlock* start = builder.GetInsertBlock();
+			builder.CreateCondBr(builder.CreateIsNull(args[0]), done, measure);
+
+			builder.SetInsertPoint(measure);
+			llvm::Value* counted = builder.CreateCall(strlen, { args[0] });
+			llvm::BasicBlock* measureEnd = builder.GetInsertBlock();
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(done);
+			llvm::PHINode* length = builder.CreatePHI(builder.getInt64Ty(), 2);
+			length->addIncoming(builder.getInt64(0), start);
+			length->addIncoming(counted, measureEnd);
+
+			llvm::Value* value = llvm::UndefValue::get(ResultType->Get());
+			value = builder.CreateInsertValue(value, args[0], 0);
+			return Symbol::CreateValue(builder.CreateInsertValue(value, length, 1), ResultType);
+		}
+
+		if (Name == "make_slice" || Name == "slice_of_array" || Name == "slice_len" || Name == "slice_at" || Name == "slice_range")
+		{
+			auto slice = [&](llvm::Value* data, llvm::Value* length)
+			{
+				llvm::Value* value = llvm::UndefValue::get(ResultType->Get());
+				value = builder.CreateInsertValue(value, data, 0);
+				return builder.CreateInsertValue(value, length, 1);
+			};
+
+			if (Name == "make_slice")
+				return Symbol::CreateValue(slice(args[0], args[1]), ResultType);
+
+			if (Name == "slice_of_array")
+				return Symbol::CreateValue(slice(args[0], args[1]), ResultType); // an array's address is its first item's
+
+			if (Name == "slice_len")
+				return Symbol::CreateValue(builder.CreateExtractValue(args[0], 1), ResultType);
+
+			llvm::Value* data = builder.CreateExtractValue(args[0], 0);
+			llvm::Value* length = builder.CreateExtractValue(args[0], 1);
+
+			if (Name == "slice_at")
+			{
+				auto element = ResultType->As<PointerType>()->GetBaseType();
+
+				if (ctx.RuntimeChecks)
+					EmitCheck(ctx, builder.CreateICmpULT(args[1], length), "index out of range for a slice", Location, nullptr);
+
+				return Symbol::CreateValue(builder.CreateInBoundsGEP(element->Get(), data, { args[1] }), ResultType);
+			}
+
+			// slice_range(s, start, end): 0 <= start <= end <= len(s)
+			auto element = ResultType->As<SliceType>()->GetBaseType();
+
+			if (ctx.RuntimeChecks)
+				EmitCheck(ctx, builder.CreateAnd(builder.CreateICmpULE(args[1], args[2]), builder.CreateICmpULE(args[2], length)), "slice bounds out of range", Location, nullptr);
+
+			return Symbol::CreateValue(slice(builder.CreateInBoundsGEP(element->Get(), data, { args[1] }), builder.CreateSub(args[2], args[1])), ResultType);
+		}
+
 		if (Name == "strlen")
 		{
 			llvm::FunctionCallee strlen = ctx.Module.getOrInsertFunction("strlen", llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false));
@@ -2615,9 +2778,14 @@ namespace clear
 
 		if (Name == "str_contains")
 		{
-			llvm::FunctionCallee strstr = ctx.Module.getOrInsertFunction("strstr", llvm::FunctionType::get(builder.getPtrTy(), { builder.getPtrTy(), builder.getPtrTy() }, false));
-			llvm::Value* position = builder.CreateCall(strstr, { args[1], args[0] });
-			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+			// needle in haystack: memmem over the bytes (an empty needle is found everywhere)
+			llvm::FunctionCallee memmem = ctx.Module.getOrInsertFunction("memmem", llvm::FunctionType::get(builder.getPtrTy(), 
+				{ builder.getPtrTy(), builder.getInt64Ty(), builder.getPtrTy(), builder.getInt64Ty() }, false));
+			llvm::Value* needleLength = builder.CreateExtractValue(args[0], 1);
+			llvm::Value* position = builder.CreateCall(memmem, { builder.CreateExtractValue(args[1], 0), builder.CreateExtractValue(args[1], 1), 
+																	builder.CreateExtractValue(args[0], 0), needleLength });
+			llvm::Value* found = builder.CreateOr(builder.CreateIsNotNull(position), builder.CreateICmpEQ(needleLength, builder.getInt64(0)));
+			return Symbol::CreateValue(found, ResultType);
 		}
 
 		// Generator[T] / Task[T] handles
@@ -2724,13 +2892,13 @@ namespace clear
 
 		if (Name == "hash_str")
 		{
-			// FNV-1a over the bytes, in a small helper shared by the whole module
-			llvm::Function* helper = ctx.Module.getFunction("clear.hash_str");
+			// FNV-1a over the str's bytes, in a small helper shared by the whole module
+			llvm::Function* helper = ctx.Module.getFunction("clear.hash_bytes");
 
 			if (!helper)
 			{
-				auto type = llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false);
-				helper = llvm::Function::Create(type, llvm::Function::LinkOnceODRLinkage, "clear.hash_str", ctx.Module);
+				auto type = llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy(), builder.getInt64Ty() }, false);
+				helper = llvm::Function::Create(type, llvm::Function::LinkOnceODRLinkage, "clear.hash_bytes", ctx.Module);
 
 				llvm::IRBuilder<> local(ctx.Context);
 				auto entry = llvm::BasicBlock::Create(ctx.Context, "entry", helper);
@@ -2743,24 +2911,23 @@ namespace clear
 
 				local.SetInsertPoint(loop);
 				auto hash = local.CreatePHI(local.getInt64Ty(), 2, "hash");
-				auto position = local.CreatePHI(local.getPtrTy(), 2, "position");
+				auto index = local.CreatePHI(local.getInt64Ty(), 2, "index");
 				hash->addIncoming(local.getInt64(0xcbf29ce484222325ULL), entry);
-				position->addIncoming(helper->getArg(0), entry);
-				auto byte = local.CreateLoad(local.getInt8Ty(), position, "byte");
-				local.CreateCondBr(local.CreateICmpEQ(byte, local.getInt8(0)), done, body);
+				index->addIncoming(local.getInt64(0), entry);
+				local.CreateCondBr(local.CreateICmpULT(index, helper->getArg(1)), body, done);
 
 				local.SetInsertPoint(body);
+				auto byte = local.CreateLoad(local.getInt8Ty(), local.CreateInBoundsGEP(local.getInt8Ty(), helper->getArg(0), { index }), "byte");
 				auto mixed = local.CreateMul(local.CreateXor(hash, local.CreateZExt(byte, local.getInt64Ty())), local.getInt64(0x100000001b3ULL));
-				auto next = local.CreateConstInBoundsGEP1_64(local.getInt8Ty(), position, 1);
 				hash->addIncoming(mixed, body);
-				position->addIncoming(next, body);
+				index->addIncoming(local.CreateAdd(index, local.getInt64(1)), body);
 				local.CreateBr(loop);
 
 				local.SetInsertPoint(done);
 				local.CreateRet(hash);
 			}
 
-			return Symbol::CreateValue(builder.CreateCall(helper, { args[0] }), ResultType);
+			return Symbol::CreateValue(builder.CreateCall(helper, { builder.CreateExtractValue(args[0], 0), builder.CreateExtractValue(args[0], 1) }), ResultType);
 		}
 
 		CLEAR_UNREACHABLE("unknown intrinsic ", Name);
@@ -2960,6 +3127,15 @@ namespace clear
 	Symbol ASTCopy::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Value->Codegen(ctx);
+
+		// the variable's last use: take the value and leave the variable empty, as a move does
+		if (MoveFrom)
+		{
+			Symbol storage = MoveFrom->Codegen(ctx);
+			ctx.Builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), storage.GetLLVMValue());
+			return value;
+		}
+
 		return Symbol::CreateValue(EmitCopy(ctx, ValueType, value.GetLLVMValue()), ValueType);
 	}
 
@@ -3041,6 +3217,19 @@ namespace clear
 		}
 
 		return builder.CreateLoad(type->Get(), result.GetLLVMValue());
+	}
+
+	Symbol ASTOnce::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		if (ComputedIn != function)
+		{
+			Computed = Operand->Codegen(ctx);
+			ComputedIn = function;
+		}
+
+		return Computed;
 	}
 
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)

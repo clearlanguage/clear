@@ -1,0 +1,8 @@
+ada: 91  (A)
+alan: 78
+grace: 99  (A)
+linus: 64
+margaret: 87
+----------
+average: 83.8
+top: grace

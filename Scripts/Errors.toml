@@ -234,8 +234,8 @@ Message = "Too many values for this class."
 Advice  = "‘{}."
 
 [GenericMethodUnsupported]
-Message = "Methods cannot have their own type parameters yet."
-Advice  = "Make ‘{}’ a generic function outside the class, or make the class itself generic."
+Message = "A trait method cannot have its own type parameters."
+Advice  = "Give ‘{}’ concrete types, or make the trait's classes generic."
 
 [IndexNotInteger]
 Message = "Array index must be an integer."
@@ -400,3 +400,15 @@ Advice  = "{}. Adding or removing items can move all of them. Take the pointer a
 [ImportShadowsStandard]
 Message = "This import finds a file next to this one, not the standard module of the same name."
 Advice  = "{}."
+
+[NotOptional]
+Message = "This is not an optional."
+Advice  = "‘{}’."
+
+[OptionalBoolCondition]
+Message = "An optional bool is ambiguous as a condition."
+Advice  = "Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’."
+
+[CopyMade]
+Message = "A copy is made here."
+Advice  = "This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead."

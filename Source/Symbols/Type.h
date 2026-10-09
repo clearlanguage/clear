@@ -151,12 +151,30 @@ namespace clear
         llvm::PointerType* m_LLVMType;
     };
 
-    // the type of string literals: a pointer to zero-terminated bytes whose ==, < and friends compare
-    // contents rather than addresses; it converts freely to and from *int8 for C functions
-    class StrType : public PointerType
+
+    // []T: a view of some T's that live somewhere else, { pointer to the first, how many }
+    class SliceType : public Type
     {
     public:
-        using PointerType::PointerType;
+        SliceType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context);
+        virtual ~SliceType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override { return "[]" + m_BaseType->GetHash(); }
+
+        std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
+
+    private:
+        std::shared_ptr<Type> m_BaseType;
+        llvm::StructType* m_LLVMType;
+    };
+
+    // str: text you look at but do not own (a literal, a String, part of either): a slice of bytes whose
+    // ==, < and friends compare contents. Passed to C as a pointer to its bytes (checked to end with a zero)
+    class StrType : public SliceType
+    {
+    public:
+        using SliceType::SliceType;
         virtual std::string GetHash() const override { return "str"; }
     };
 

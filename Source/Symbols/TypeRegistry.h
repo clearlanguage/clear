@@ -29,6 +29,7 @@ namespace clear
         std::shared_ptr<Type> GetType(const std::string& name) const; 
         std::shared_ptr<Type> GetPointerTo(std::shared_ptr<Type> base);
         std::shared_ptr<Type> GetArrayFrom(std::shared_ptr<Type> base, size_t count);
+        std::shared_ptr<Type> GetSliceOf(std::shared_ptr<Type> base);
         std::shared_ptr<Type> GetConstFrom(std::shared_ptr<Type> base);
         std::shared_ptr<Type> GetTupleFrom(llvm::ArrayRef<std::shared_ptr<Type>> elements);
         std::shared_ptr<Type> GetFunctionFrom(llvm::ArrayRef<std::shared_ptr<Type>> parameters, std::shared_ptr<Type> returnType);

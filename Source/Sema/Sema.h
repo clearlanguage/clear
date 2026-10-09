@@ -123,6 +123,24 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+
+		// optionals: `a ?? b`, `a?.b`, `if r:` (r is its value inside), `if not r: return` (and after it)
+		struct Narrowing { std::shared_ptr<Symbol> Variable; Token Name; std::shared_ptr<Type> Optional; };
+		std::optional<Narrowing> NarrowableOptional(const std::shared_ptr<ASTNodeBase>& node);
+		std::shared_ptr<ASTVariableDeclaration> NarrowedDeclaration(const Narrowing& narrowing);
+		std::shared_ptr<ASTNodeBase> OptionalTest(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> optional, bool hasValue);
+		std::shared_ptr<ASTNodeBase> TestCondition(std::shared_ptr<ASTNodeBase> condition, bool hasValue);
+		std::shared_ptr<ASTNodeBase> EvaluatedOnce(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> type);
+		// slices: xs[a:b], s[i], len(s), for x in s, and arrays/lists passed where a []T is expected
+		std::shared_ptr<ASTNodeBase> VisitSlice(std::shared_ptr<ASTSliceExpr> slice, SemaContext context);
+		std::shared_ptr<ASTNodeBase> SliceOf(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type, const Token& location);
+		std::shared_ptr<ASTNodeBase> SliceIntrinsic(const std::string& name, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
+		std::shared_ptr<ASTNodeBase> VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
+		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
+		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> TextConcat(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, const Token& location);
+		std::shared_ptr<ASTNodeBase> CallLibraryFunction(const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
@@ -181,7 +199,7 @@ namespace clear
 		// moves out of locals, followed through the function body so an emptied variable is not used again
 		using MovedSet = std::unordered_map<Symbol*, Token>; // variable -> where it was moved
 		struct BranchMoves { MovedSet Start; MovedSet Out; bool AnyLive = false; };
-		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; };
+		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; size_t FirstCandidate = 0; };
 
 		MovedSet m_Moved;
 		bool m_Unreachable = false;                     // after return, break or continue nothing runs
@@ -189,6 +207,32 @@ namespace clear
 		std::unordered_map<Symbol*, size_t> m_LocalOrder; // declaration order, to tell variables from outside a loop
 		size_t m_LocalCounter = 0;
 		std::unordered_set<Type*> m_BorrowingClosures; // lambdas holding pointers to local variables
+
+		// copies out of local variables become moves where the variable is not used again (the last use)
+		struct CopyCandidate { Symbol* Variable = nullptr; size_t Use = 0; std::shared_ptr<ASTCopy> Copy; std::shared_ptr<ASTNodeBase> Storage; bool Valid = true; };
+		struct FunctionCopies
+		{
+			std::vector<CopyCandidate> Candidates;
+			std::vector<std::shared_ptr<ASTCopy>> Copies;          // every copy made in the function (for --copies)
+			std::unordered_map<Symbol*, size_t> Uses;              // how many times each variable was used so far
+			std::unordered_map<ASTVariable*, size_t> UseOf;        // which use a variable node was
+			std::unordered_set<Symbol*> NeverMove;                 // used in a defer, captured, or looked into by a pointer
+			bool InDefer = false;
+
+			// let w = words[i] where w is only read and words does not change meanwhile: w looks at the item instead
+			struct View { std::shared_ptr<ASTVariableDeclaration> Declaration; std::shared_ptr<ASTCopy> Copy; Symbol* Variable; Symbol* Source; size_t Since; };
+			std::vector<View> Views;
+			size_t Clock = 0;                                      // counts uses, in the order they are written
+			std::unordered_map<Symbol*, size_t> LastUse;
+			std::unordered_map<Symbol*, std::vector<size_t>> Writes; // uses that may change the variable
+			std::unordered_set<Symbol*> NotViewable;               // moved out, or used in a loop it was not declared in
+		};
+		bool m_ReadingUse = false; // the variable being visited is only read (len(x), x.field as a value...)
+		std::shared_ptr<ASTNodeBase> AddressOfRead(const std::shared_ptr<ASTNodeBase>& value);
+		FunctionCopies m_Copies;
+		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
+		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+		void FinishCopies();
 
 		// lambda x: ... with no types to go on: analysed again for each set of argument types it is called with
 		struct LambdaTemplate
@@ -204,6 +248,13 @@ namespace clear
 																std::shared_ptr<Type> closureType, const std::vector<std::pair<Token, std::shared_ptr<Type>>>& captures,
 																const std::vector<std::shared_ptr<Type>>& parameterTypes, std::shared_ptr<Type> declaredReturn);
 		std::shared_ptr<ASTNodeBase> CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType);
+		std::string InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location);
+
+		std::unordered_set<std::string> m_GenericMethodNames;
+		std::shared_ptr<ASTNodeBase> CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
+													   std::shared_ptr<ClassType> classType, const std::string& name);
+		bool BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
+						  std::unordered_map<std::string, std::shared_ptr<Type>>& bindings, const Token& location);
 		ASTVariable* m_Reinitialised = nullptr;         // `x = v`: x is given a new value, not read
 
 		void RecordMove(const std::shared_ptr<ASTVariable>& variable);
@@ -232,6 +283,14 @@ namespace clear
 			std::shared_ptr<Type> ClassTy;
 		};
 
+		// generic methods: one template per class and name, a method made for each set of type arguments
+		struct GenericMethod
+		{
+			std::shared_ptr<ASTGenericTemplate> Template;
+			LazyBody Context;
+			std::unordered_map<std::string, std::string> Instances; // type arguments -> the method made for them
+		};
+		std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
 		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;

@@ -75,6 +75,16 @@ namespace clear {
 			case ASTNodeType::ReturnStatement:			return CloneReturn(std::dynamic_pointer_cast<ASTReturn>(node));
 			case ASTNodeType::StructExpr:				return CloneStructExpr(std::dynamic_pointer_cast<ASTStructExpr>(node));
 			case ASTNodeType::Subscript:				return CloneSubscript(std::dynamic_pointer_cast<ASTSubscript>(node));
+			case ASTNodeType::SliceExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTSliceExpr>(node);
+				auto slice = std::make_shared<ASTSliceExpr>();
+				slice->Location = original->Location;
+				slice->Target = Clone(original->Target);
+				slice->Start = Clone(original->Start);
+				slice->End = Clone(original->End);
+				return slice;
+			}
 			case ASTNodeType::CastExpr:					return CloneCastExpr(std::dynamic_pointer_cast<ASTCastExpr>(node));		
 			case ASTNodeType::SizeofExpr:				return CloneSizeofExpr(std::dynamic_pointer_cast<ASTSizeofExpr>(node));		
 			case ASTNodeType::IsExpr:					return CloneIsExpr(std::dynamic_pointer_cast<ASTIsExpr>(node));		
@@ -236,6 +246,17 @@ namespace clear {
 		for (auto base : node->Bases)
 			newClass->Bases.push_back(Clone(base));
 
+		// a generic method of a generic class: the class's type arguments go in now, the method's own later
+		for (auto& method : node->GenericMethods)
+		{
+			auto generic = std::make_shared<ASTGenericTemplate>();
+			generic->GenericTypeNames = method->GenericTypeNames;
+			generic->Constraints = method->Constraints;
+			generic->HomeModule = method->HomeModule;
+			generic->TemplateNode = CloneFunction(std::dynamic_pointer_cast<ASTFunctionDefinition>(method->TemplateNode));
+			newClass->GenericMethods.push_back(generic);
+		}
+
 		newClass->IsUnion = node->IsUnion;
 		newClass->IsTrait = node->IsTrait;
 		return newClass;
@@ -311,6 +332,8 @@ namespace clear {
 		auto it = SubstitutionMap.find(node->GetName().GetData());
 		if (it != SubstitutionMap.end())
 			newNode->Variable = std::make_shared<Symbol>(it->second);
+		else if (node->Variable && node->Variable->Kind == SymbolKind::Type)
+			newNode->Variable = node->Variable; // a type argument put in by an earlier clone (T of List[T] in a generic method)
 		
 		return newNode;
 	}
