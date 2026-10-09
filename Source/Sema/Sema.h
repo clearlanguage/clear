@@ -120,6 +120,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		void EnsureCopyDefined(std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
@@ -173,6 +174,7 @@ namespace clear
 		size_t m_MacroCounter = 0;
 		std::unordered_set<Symbol*> m_LocalVariables; // locals and parameters: owning values can be moved out of them
 		bool m_ViewsAllowed = false;                  // yield hands out views, it does not take ownership
+		bool m_Returning = false;                     // analysing a return value: locals are moved, not copied
 		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
 
 		struct LazyBody

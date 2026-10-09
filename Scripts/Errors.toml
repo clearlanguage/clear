@@ -366,8 +366,8 @@ Message = "This type is not one of the variant's types."
 Advice  = "‘{}."
 
 [CannotCopyOwning]
-Message = "This value owns memory, so it is not copied implicitly."
-Advice  = "Two owners of one ‘{}’ would free it twice. Make a separate copy with .copy(), or use it in place (a pointer, or the element itself). Only a local variable is moved, and it is left empty."
+Message = "This value cannot be copied."
+Advice  = "‘{}’ cleans up after itself (operator destruct) and has no ‘operator copy’, so a copy would free the same thing twice. Use it in place, move it out of a local variable, or give the class an operator copy."
 
 [OwningOperatorArgument]
 Message = "An operator cannot take an owning value as a copy."

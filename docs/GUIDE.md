@@ -313,6 +313,7 @@ class Vec2:
 | `str` | what `print(obj)` shows |
 | `hash` | `hash(obj)`, so it can be a `Map` key |
 | `destruct` | cleanup when the object's scope ends (see automatic cleanup below) |
+| `copy` | what `let b = a` makes when the object owns memory (see automatic cleanup below) |
 
 Python-style names like `__add__` are a compile error that tells you the Clear spelling.
 
@@ -598,19 +599,22 @@ class Session:                 // no destruct needed: its String and Connection 
     link: Connection
 ```
 
-**One owner at a time.** A value that owns memory is never silently copied, because two copies would free the same memory twice:
+**Reading copies, writing goes in place.** Each value that owns memory has exactly one owner, so nothing is ever freed twice:
 
 | you write | what happens |
 | --- | --- |
-| `let b = a`, `f(a)`, `return a`, `list.push(a)` (a is a local variable) | the value **moves**: `a` is left empty (all zero), so nothing is freed twice |
-| `let x = list[0]`, `return self.name` (a field or element) | compile error: use `.copy()` for a separate copy, or use it in place |
-| `let s = maybe.value` (a local optional) | moves the value out; `maybe` becomes `none` |
+| `let x = list[0]`, `let b = a`, `f(a)`, `list.push(a)`, `return self.name`, `let s = maybe.value` | **reading**: a separate copy with its own memory; the original is untouched |
+| `list[0].append("!")`, `list[0] = s`, `list[0].qty += 1`, `for item in list`, `case some(s):` | **in place**: works on the element itself, no copy |
+| `return s` (a local) | handed over without a copy (s ends here anyway) |
 | `x = new_value` | the old value of `x` is cleaned up first |
-| `list[0].append("!")`, `for item in list`, `case some(s):` | work on the value in place, no copy |
 
-`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, and `take(p)` to hand a value out of raw memory without copying it.
+Copies allocate, so in hot loops prefer working in place (`for w in words`, `words[i].method()`). A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
 
-The cost is visible and predictable: one cleanup call where a scope ends, and nothing running in the background.
+**Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
+
+`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, `take(p)` to hand a value out of raw memory without copying it, and `clone(p)` to copy it.
+
+The cost is visible and predictable: a copy where you read an owning value, a cleanup call where a scope ends, and nothing running in the background.
 
 ### 3.22 Files and input · [`examples/21_files.cl`](../examples/21_files.cl)
 

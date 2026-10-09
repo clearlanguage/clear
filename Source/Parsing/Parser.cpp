@@ -1843,7 +1843,7 @@ namespace clear
 		{ "greater", "__gt__" }, { "greater_equal", "__ge__" },
 		{ "get", "__getitem__" }, { "set", "__setitem__" }, { "len", "__len__" }, { "contains", "__contains__" },
 		{ "iterate", "__iter__" }, { "call", "__call__" }, { "str", "__str__" }, { "hash", "__hash__" },
-		{ "destruct", "__destruct__" },
+		{ "destruct", "__destruct__" }, { "copy", "__copy__" },
 	};
 
 	bool Parser::NameSpecialMethod(std::shared_ptr<ASTFunctionDefinition> method, const Token& nameToken, bool isOperator)

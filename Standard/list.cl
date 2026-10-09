@@ -63,3 +63,13 @@ class List[T]:
 
     operator destruct(self):
         self.free()
+
+    // let b = a gives b its own list (and its own copies of the items)
+    operator copy(self) -> List[T]:
+        let result = List[T]()
+        for i in 0..self.length:
+            result.push(clone(self.data + i))
+        return result
+
+    function copy(self) -> List[T]:
+        return clone(self)
