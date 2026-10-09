@@ -360,6 +360,39 @@ namespace clear
         return it->second;
     }
 
+    bool IsOwning(const std::shared_ptr<Type>& type)
+    {
+        if (!type)
+            return false;
+
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+            return IsOwning(array->GetBaseType());
+
+        auto classType = std::dynamic_pointer_cast<ClassType>(type);
+
+        if (!classType || classType->IsUnion || classType->IsTrait)
+            return false;
+
+        if (classType->IsVariant)
+        {
+            for (auto& variantCase : classType->Cases)
+                for (auto& [name, fieldType] : variantCase.Fields)
+                    if (IsOwning(fieldType))
+                        return true;
+
+            return false;
+        }
+
+        if (classType->MemberFunctions.contains("__destruct__"))
+            return true;
+
+        for (const auto& [name, fieldType] : classType->GetMemberValues())
+            if (IsOwning(fieldType))
+                return true;
+
+        return false;
+    }
+
     std::string CoroutineType::GetHash() const
     {
         return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");

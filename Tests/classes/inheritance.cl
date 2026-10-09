@@ -5,7 +5,7 @@ class Animal:
     function describe(self: *Animal):
         print(self.name, "has", self.legs, "legs")
 
-    virtual function sound(self: *Animal) -> str:
+    function sound(self: *Animal) -> str:
         return "..."
 
     function speak(self: *Animal):

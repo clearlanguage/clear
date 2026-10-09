@@ -14,7 +14,7 @@ class Handler:
 class Multiplier:
     factor: int
 
-    function __call__(self: *Multiplier, x: int) -> int:
+    operator call(self: *Multiplier, x: int) -> int:
         return x * self.factor
 
 function main() -> int32:

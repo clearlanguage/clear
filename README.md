@@ -11,10 +11,10 @@ class Vec2:
     x: float64
     y: float64
 
-    function __add__(self: *Vec2, other: Vec2) -> Vec2:
+    operator add(self, other: Vec2) -> Vec2:
         return Vec2(self.x + other.x, self.y + other.y)
 
-    function length(self: *Vec2) -> float64:
+    function length(self) -> float64:
         return sqrt(self.x * self.x + self.y * self.y)
 
 function largest[T](values: *List[T]) -> T:
@@ -27,8 +27,7 @@ function main() -> int32:
     let v = Vec2(3.0, 4.0) + Vec2(0.0, 0.0)
     print(v, v.length())               // Vec2(x=3.0, y=4.0) 5.0
 
-    let numbers = List[int]()
-    defer numbers.free()
+    let numbers = List[int]()          // freed automatically when main ends
     for n in 0..5:
         numbers.push(n * n)
     print(largest(&numbers))           // 16
@@ -133,7 +132,7 @@ while i < n:
     i++
 
 for i in 0..10:                // 0 to 9;  1..=10 includes 10
-for x in numbers:              // arrays, List, Map, generators, any class with __len__ and __getitem__
+for x in numbers:              // arrays, List, Map, generators, classes with operator len + get or operator iterate
     if x < 0:
         continue
 
@@ -188,35 +187,54 @@ class Account:
     owner: str
     balance: float64 = 0.0                   // fields can have defaults
 
-    function __init__(self: *Account, owner: str):
+    function init(self, owner: str):         // the constructor
         self.owner = owner
 
-    function deposit(self: *Account, amount: float64):
+    function deposit(self, amount: float64):  // `self` is a pointer to the object
         self.balance += amount
 
-let account = Account("ada")                 // runs __init__ on a stack value
-let p = Point(3, 4)                          // no __init__: fields in order (or Point(y = 4, x = 3))
+    function snapshot(self: Account) -> float64:   // `self: Account` works on a copy instead
+        return self.balance
+
+let account = Account("ada")                 // runs init on a stack value
+let p = Point(3, 4)                          // no init: fields in order (or Point(y = 4, x = 3))
 ```
 
-Operators are customised with Python's dunder methods: `__add__ __sub__ __mul__ __div__ __mod__ __pow__ __eq__ __ne__ __lt__ __le__ __gt__ __ge__ __getitem__ __setitem__ __len__ __contains__ __call__ __str__ __hash__`. Classes can be generic: `class Box[T]`, used as `Box(7)` or `Box[int64](7)`.
+Operators are written with `operator`:
 
-**Inheritance** puts the base's fields first, so a `*Dog` can be passed wherever a `*Animal` is expected. Calls are static (no hidden cost) unless a method is marked `virtual`, which adds one table pointer to the object:
+```clear
+class Grid:
+    cells: [9; int]
+
+    operator get(self, i: int64) -> *int:     // returning a pointer makes grid[i] the cell itself
+        return &self.cells[i]
+
+    operator len(self) -> int64:              // with get: for cell in grid
+        return 9
+
+    operator add(self, other: Grid) -> Grid:  // grid + other
+        ...
+```
+
+The operators are `add subtract multiply divide modulo power equals not_equals less less_equal greater greater_equal get set len contains iterate call str hash destruct`. When `get` returns a pointer, `grid[i]` is the element itself: `cart[0].qty = 10` changes the item in the list, and `for item in cart` visits each object in place (numbers are still copied, as in Python). Classes can be generic: `class Box[T]`, used as `Box(7)` or `Box[int64](7)`.
+
+**Inheritance** puts the base's fields first, so a `*Dog` can be passed wherever a `*Animal` is expected. A method always runs the object's own version; there is no `virtual` keyword. Only classes that inherit or are inherited from pay for this (one hidden pointer), every other class is unchanged:
 
 ```clear
 class Animal:
     name: str
 
-    virtual function sound(self: *Animal) -> str:
+    function sound(self) -> str:
         return "..."
 
-    function speak(self: *Animal):
-        print(self.name, "says", self.sound())   // calls the object's own sound()
+    function speak(self):
+        print(self.name, "says", self.sound())   // a Dog says woof
 
 class Dog(Animal):
-    function sound(self: *Dog) -> str:
+    function sound(self) -> str:
         return "woof"
 
-    function speak(self: *Dog):
+    function speak(self):
         super.speak()                            // the base version
 ```
 
@@ -286,6 +304,46 @@ union Bits:                       // every field shares the same bytes
     f: float64
 ```
 
+### Variants
+
+A `variant` holds a value of one of several types and remembers which. Reading it as the wrong type stops the program instead of returning garbage. Unions stay available for when you want raw shared memory.
+
+```clear
+variant Number:
+    int
+    float64
+
+let n: Number = 2.5
+print(n is float64, n as float64)      // true 2.5
+n = 7                                   // now an int
+switch n:
+    case int(i):
+        print("int", i)
+    case float64(f):
+        print("float", f)
+print(n as float64)                     // panic: reading float64 from a Number that holds another type
+```
+
+### Automatic cleanup
+
+There is no garbage collector, and nothing needs `free()`. A value that owns memory is cleaned up when its scope ends: at the end of the block, on `return`/`break`/`continue`, and for by-value parameters when the function returns. `String`, `List`, `Map` and `File` already do this. Your own class gets it with `operator destruct`, or for free if its fields need it:
+
+```clear
+class Connection:
+    name: str
+
+    operator destruct(self):
+        print("closing", self.name)
+
+let words = List[String]()             // no free(), no defer
+let w = String("world")
+words.push(w)                          // moved into the list: w is left empty
+let first = words[0].copy()            // copies are explicit
+let bad = words[0]                     // compile error: would give the text two owners
+```
+
+Assigning from a local variable *moves* the value and leaves the variable empty, so there is always exactly one owner and nothing is freed twice. Copying out of a field or element is a compile error that suggests `.copy()`. The cost is visible: one cleanup call where a scope ends, nothing running in the background.
+
 ### Generators and async
 
 A function that returns `Generator[T]` produces values with `yield`; nothing runs until the loop asks for the next one:
@@ -339,7 +397,7 @@ print(square!(7))
 
 ### Printing
 
-`print` takes any number of values of any type. It becomes a single `printf` call, so it costs no more than writing the format string yourself. A class can choose how it is printed with `__str__`.
+`print` takes any number of values of any type. It becomes a single `printf` call, so it costs no more than writing the format string yourself. A class can choose how it is printed with `operator str`.
 
 ```clear
 print("total:", 42, 2.5, true, scores, Point(1, 2), (1, "a"), Shape.Circle(1.0))
@@ -394,7 +452,7 @@ Dependencies are cloned into `.clear/packages`, dependencies of dependencies are
 | `string` | `String`, an owned growable string (`append`, `+`, `==`, `<`, `find`, `slice`, `strip`, `upper`, `to_int`, `from_int` …), and helpers for `str` |
 | `io` | `File`, `open`, `read_file`, `write_file`, `append_file`, `read_line`, `input`, `file_exists`, `delete_file` |
 
-Nothing allocates behind your back: `List`, `Map`, `String` and file contents live on the heap because you created them, and `free()` gives the memory back.
+Nothing allocates behind your back: `List`, `Map`, `String` and file contents live on the heap because you created them, and they give the memory back when their scope ends (`free()` does it sooner).
 
 ---
 

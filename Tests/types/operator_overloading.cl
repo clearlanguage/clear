@@ -2,19 +2,19 @@ class Vec2:
     x: float64
     y: float64
 
-    function __add__(self: *Vec2, other: Vec2) -> Vec2:
+    operator add(self: *Vec2, other: Vec2) -> Vec2:
         return Vec2 { self.x + other.x, self.y + other.y }
 
-    function __sub__(self: *Vec2, other: Vec2) -> Vec2:
+    operator subtract(self: *Vec2, other: Vec2) -> Vec2:
         return Vec2 { self.x - other.x, self.y - other.y }
 
-    function __mul__(self: *Vec2, k: float64) -> Vec2:
+    operator multiply(self: *Vec2, k: float64) -> Vec2:
         return Vec2 { self.x * k, self.y * k }
 
-    function __eq__(self: *Vec2, other: *Vec2) -> bool:
+    operator equals(self: *Vec2, other: *Vec2) -> bool:
         return self.x == other.x and self.y == other.y
 
-    function __lt__(self: *Vec2, other: Vec2) -> bool:
+    operator less(self: *Vec2, other: Vec2) -> bool:
         return self.length2() < other.length2()
 
     function length2(self: *Vec2) -> float64:

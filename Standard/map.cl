@@ -9,7 +9,7 @@
 //     for name in ages:              // keys, in no particular order
 //         print(name, ages[name])
 //
-// Keys are hashed with the built-in hash() (numbers, enums, pointers, str, or a class with __hash__)
+// Keys are hashed with the built-in hash() (numbers, enums, pointers, str, or a class with operator hash)
 // and compared with ==. Open addressing with linear probing; the table doubles when it is 3/4 full.
 
 import "memory"
@@ -23,18 +23,18 @@ class Map[K, V]:
     removed: int64
 
     // the slot holding key, or -1
-    function find(self: *Map[K, V], key: K) -> int64:
+    function find(self, key: *K) -> int64:
         if self.capacity == 0:
             return -1
         let mask = self.capacity - 1
-        let slot = (hash(key) as int64) & mask
+        let slot = (hash(*key) as int64) & mask
         while self.states[slot] != 0:
-            if self.states[slot] == 1 and *(self.keys + slot) == key:
+            if self.states[slot] == 1 and *(self.keys + slot) == *key:
                 return slot
             slot = (slot + 1) & mask
         return -1
 
-    function grow(self: *Map[K, V]):
+    function grow(self):
         let old_keys = self.keys
         let old_values = self.values
         let old_states = self.states
@@ -47,16 +47,21 @@ class Map[K, V]:
         self.length = 0
         self.removed = 0
 
+        // the entries move to the new table (take hands them over without copying)
         for i in 0..old_capacity:
             if old_states[i] == 1:
-                self.__setitem__(*(old_keys + i), *(old_values + i))
+                self.insert(take(old_keys + i), take(old_values + i))
 
         if old_capacity > 0:
             release(old_keys)
             release(old_values)
             release(old_states)
 
-    function __setitem__(self: *Map[K, V], key: K, value: V):
+    // map[key] = value
+    operator set(self, key: K, value: V):
+        self.insert(key, value)
+
+    function insert(self, key: K, value: V):
         if (self.length + self.removed + 1) * 4 > self.capacity * 3:
             self.grow()
 
@@ -66,6 +71,7 @@ class Map[K, V]:
 
         while self.states[slot] != 0:
             if self.states[slot] == 1 and *(self.keys + slot) == key:
+                destroy(self.values + slot)            // the value it replaces
                 *(self.values + slot) = value
                 return
             if self.states[slot] == 2 and reuse < 0:
@@ -81,58 +87,62 @@ class Map[K, V]:
         self.states[slot] = 1
         self.length += 1
 
-    // map[key] for a key that must be present (checked like a list index)
-    function __getitem__(self: *Map[K, V], key: K) -> V:
-        let slot = self.find(key)
+    // map[key] is the value itself (checked like a list index): read it, change it, map[key] += 1
+    operator get(self, key: K) -> *V:
+        let slot = self.find(&key)
         assert slot >= 0, "key not in Map"
-        return *(self.values + slot)
+        return self.values + slot
 
-    function get(self: *Map[K, V], key: K) -> ?V:
-        let slot = self.find(key)
-        if slot < 0:
+    // the value, or none (a copy, so for values that own memory use map[key] or `key in map`)
+    function get(self, key: K) -> ?V:
+        if self.find(&key) < 0:
             return none
-        return *(self.values + slot)
+        return self[key]
 
-    function get_or(self: *Map[K, V], key: K, fallback: V) -> V:
-        let slot = self.find(key)
-        return when slot < 0 use fallback otherwise *(self.values + slot)
+    function get_or(self, key: K, fallback: V) -> V:
+        if self.find(&key) < 0:
+            return fallback
+        return self[key]
 
-    function __contains__(self: *Map[K, V], key: K) -> bool:
-        return self.find(key) >= 0
+    operator contains(self, key: K) -> bool:
+        return self.find(&key) >= 0
 
     // true when the key was there
-    function remove(self: *Map[K, V], key: K) -> bool:
-        let slot = self.find(key)
+    function remove(self, key: K) -> bool:
+        let slot = self.find(&key)
         if slot < 0:
             return false
+        destroy(self.keys + slot)
+        destroy(self.values + slot)
         self.states[slot] = 2
         self.length -= 1
         self.removed += 1
         return true
 
-    function __len__(self: *Map[K, V]) -> int64:
+    operator len(self) -> int64:
         return self.length
 
-    function is_empty(self: *Map[K, V]) -> bool:
+    function is_empty(self) -> bool:
         return self.length == 0
 
-    function clear(self: *Map[K, V]):
+    function clear(self):
         for i in 0..self.capacity:
+            if self.states[i] == 1:
+                destroy(self.keys + i)
+                destroy(self.values + i)
             self.states[i] = 0
         self.length = 0
         self.removed = 0
 
-    // `for key in map` walks the slots in use
-    function __slots__(self: *Map[K, V]) -> int64:
-        return self.capacity
+    // `for key in map`: the keys, in no particular order
+    operator iterate(self) -> Generator[K]:
+        for slot in 0..self.capacity:
+            if self.states[slot] == 1:
+                yield *(self.keys + slot)
 
-    function __used__(self: *Map[K, V], slot: int64) -> bool:
-        return self.states[slot] == 1
-
-    function __at__(self: *Map[K, V], slot: int64) -> K:
-        return *(self.keys + slot)
-
-    function free(self: *Map[K, V]):
+    // gives the memory back now (it is also given back automatically at the end of the map's scope)
+    function free(self):
+        self.clear()
         if self.capacity > 0:
             release(self.keys)
             release(self.values)
@@ -143,3 +153,6 @@ class Map[K, V]:
         self.length = 0
         self.capacity = 0
         self.removed = 0
+
+    operator destruct(self):
+        self.free()

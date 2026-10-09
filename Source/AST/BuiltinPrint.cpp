@@ -192,7 +192,8 @@ namespace clear
 
 				llvm::Value* payload = LoadVariantPayload(m_Ctx, classType, i, slot.GetLLVMValue());
 
-				if (classType->IsOptional)
+				// optionals and type variants print the value they hold
+				if (classType->IsOptional || classType->IsTypeVariant)
 				{
 					if (variantCase.Fields.empty())
 						Text("none");

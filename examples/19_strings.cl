@@ -1,8 +1,7 @@
 import "string"
 
 function main() -> int32:
-    let s = String("hello")            // an owned, growable string
-    defer s.free()                     // you decide when its memory goes back
+    let s = String("hello")            // an owned, growable string, freed automatically at the end of main
     s.append(", world")
     s.push('!')
     print(s, len(s), s.find("world"))
@@ -11,7 +10,6 @@ function main() -> int32:
 
     let shout = s.upper()
     print(shout, s.slice(7, 12))
-    shout.free()
 
     let a = String("abc")
     let b = a + String("def")          // + makes a new String

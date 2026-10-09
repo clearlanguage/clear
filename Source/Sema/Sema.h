@@ -43,6 +43,9 @@ namespace clear
 		Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits);
 		~Sema() = default;
 
+		// names used as base classes anywhere in the program (collected before analysis starts)
+		static inline std::unordered_set<std::string> BaseClassNames;
+
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTBlock> ast, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTTypeSpecifier> typeSpec, SemaContext context);
 		std::shared_ptr<ASTNodeBase> Visit(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
@@ -117,6 +120,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
@@ -155,6 +159,7 @@ namespace clear
 
 		std::shared_ptr<Symbol> SolveConstraints(llvm::StringRef name, std::shared_ptr<Symbol> genericSymbol, size_t scopeIndex, llvm::ArrayRef<Symbol> substitutedArgs);
 
+
     private:
 		std::vector<SymbolTable> m_ScopeStack;
 		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
@@ -166,6 +171,8 @@ namespace clear
 		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first
 		std::unordered_set<ASTClass*> m_ClassesInProgress;
 		size_t m_MacroCounter = 0;
+		std::unordered_set<Symbol*> m_LocalVariables; // locals and parameters: owning values can be moved out of them
+		bool m_ViewsAllowed = false;                  // yield hands out views, it does not take ownership
 		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
 
 		struct LazyBody

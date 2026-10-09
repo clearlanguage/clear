@@ -274,6 +274,7 @@ namespace clear {
 			newNode->Initializer = Clone(node->Initializer);
 
 		newNode->IsConst = node->IsConst;
+		newNode->IsAlias = node->IsAlias;
 		newNode->Location = node->Location;
 
 		// a local declared by a macro body never clashes with (or captures) the caller's variables
@@ -287,6 +288,7 @@ namespace clear {
 			renamed->TypeResolver = newNode->TypeResolver;
 			renamed->Initializer = newNode->Initializer;
 			renamed->IsConst = newNode->IsConst;
+			renamed->IsAlias = newNode->IsAlias;
 			renamed->Location = newNode->Location;
 			return renamed;
 		}

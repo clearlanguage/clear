@@ -2,17 +2,17 @@ class Point:
     x: int
     y: int
 
-    function length_squared(self: *Point) -> int:
+    function length_squared(self) -> int:
         return self.x * self.x + self.y * self.y
 
 class Account:
     owner: str
     balance: float64 = 0.0                 // a default
 
-    function __init__(self: *Account, owner: str):
+    function init(self, owner: str):
         self.owner = owner
 
-    function deposit(self: *Account, amount: float64):
+    function deposit(self, amount: float64):
         self.balance += amount
 
 function main() -> int32:
@@ -21,7 +21,7 @@ function main() -> int32:
     let r = Point { 5 }                    // struct literal: missing fields are 0 / their default
     print(p, q, r, p.length_squared())
 
-    let account = Account("ada")           // runs __init__
+    let account = Account("ada")           // runs init
     account.deposit(25.5)
     account.deposit(4.5)
     print(account.owner, account.balance)

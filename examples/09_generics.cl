@@ -4,7 +4,7 @@ function largest[T](a: T, b: T) -> T:
 class Box[T]:
     value: T
 
-    function get(self: *Box[T]) -> T:
+    function get(self) -> T:
         return self.value
 
 class Pair[A, B]:

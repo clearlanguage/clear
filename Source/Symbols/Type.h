@@ -214,6 +214,7 @@ namespace clear
 		bool IsVariant = false;
 		bool IsOptional = false; // ?T: cases none (tag 0) and some(value)
 		bool IsUnion = false;    // every field starts at offset 0
+		bool IsTypeVariant = false; // variant Number: int, float64 — a case per type, each holding one value
 		std::vector<VariantCase> Cases;
 
 		// inheritance: fields of Base come first, so a *Derived is also a valid *Base
@@ -339,6 +340,11 @@ namespace clear
         std::shared_ptr<Type> m_Value;
         llvm::Type* m_LLVMType;
     };
+
+    // a type whose values own something that must be cleaned up: a class with `operator destruct`,
+    // or a class, variant, optional or array containing one. Such values are destroyed at the end of
+    // their scope and moved (never silently copied).
+    bool IsOwning(const std::shared_ptr<Type>& type);
 
     // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics
     std::string GetDisplayName(const std::shared_ptr<Type>& type);

@@ -36,7 +36,7 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy,
 		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
@@ -203,6 +203,7 @@ namespace clear
 		std::shared_ptr<Type> ResolvedType;
 		bool IsConst = false;
 		bool IsParameter = false;
+		bool IsAlias = false; // the initializer is a pointer and the variable *is* what it points at (for loops over references)
 		std::shared_ptr<ASTNodeBase> DefaultValue; // parameters: used when a call leaves the argument out
 
 	private:
@@ -249,6 +250,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;
 		std::shared_ptr<ASTNodeBase> Value;
+		bool DestroyOld = false; // the target holds an owning value: clean it up before it is overwritten
 
 	private:
 		void HandleDifferentTypes(Symbol& storage, Symbol& data, CodegenContext& ctx);
@@ -431,6 +433,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Operand;
 		bool IsStorage = false; // `*p` on the left of an assignment: produce the address instead of loading
+		bool IsElement = false; // obj[i] through an operator get that returns a reference (an element, not raw memory)
 
 	private: 
 		OperatorType m_Type;
@@ -501,6 +504,7 @@ namespace clear
 		std::shared_ptr<Symbol> Variable;
 		std::shared_ptr<Type> VariableType;
 		std::shared_ptr<Type> IterableType;
+		bool IterableIsTemporary = false; // not a variable/field: objects in it are copied out rather than visited in place
 	};
 
 	class ASTTernaryExpression : public ASTNodeBase
@@ -559,6 +563,7 @@ namespace clear
 		bool LazyMethods = false; // generic instance: methods are analysed on first use
 		bool IsUnion = false;
 		bool IsTrait = false;                             // `trait Name:` method signatures a class promises to have
+		std::string TemplateName;                         // for an instance of a generic class: the template's name
 		std::vector<std::shared_ptr<ASTNodeBase>> Bases;  // class Dog(Animal, Named): one base class, any number of traits
 	
 	private:
@@ -662,10 +667,11 @@ namespace clear
 		std::vector<std::vector<std::shared_ptr<ASTVariableDeclaration>>> Payloads; // per member, the data it carries
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> Methods;
 		bool HasPayloads = false;
+		bool IsTypeVariant = false; // `variant Number: int, float64`: each case is a type, named after it
 		std::shared_ptr<EnumType> EnumTy;
 		std::shared_ptr<Type> VariantTy; // rich enums (payloads or methods) are classes with a tag
 
-		bool IsRich() const { return HasPayloads || !Methods.empty(); }
+		bool IsRich() const { return HasPayloads || !Methods.empty() || IsTypeVariant; }
 	};
 
 	// an integer known at compile time (enum members, consts)
@@ -694,6 +700,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Operand;
 		std::shared_ptr<Type> ValueType;
+		bool DestroyAtScopeEnd = false; // a new owning value (make().method()): cleaned up when the block ends
 	};
 
 	// the all-zero value of a type (used for fields without a default)
@@ -898,6 +905,40 @@ namespace clear
 		std::shared_ptr<Type> FunctionTy;
 	};
 
+	// reading an owning value out of a local variable: the variable is left empty (all zero), so
+	// destroying it at the end of its scope does nothing and the value has exactly one owner
+	class ASTMove : public ASTNodeBase
+	{
+	public:
+		ASTMove() = default;
+		virtual ~ASTMove() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Move; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Storage; // the variable (or, for opt.value, the optional) being emptied
+		std::shared_ptr<ASTNodeBase> Value;   // what is read from it
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// destroy(p): run the cleanup of *p now (used by containers for their elements); nothing for plain types
+	class ASTDestroy : public ASTNodeBase
+	{
+	public:
+		ASTDestroy() = default;
+		virtual ~ASTDestroy() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Destroy; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Pointer;  // an expression giving the address (or null when Address is set)
+		llvm::Value* Address = nullptr;        // set by the compiler for variables it destroys at scope exit
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// runs the cleanup of the value at `address` (operator destruct, then the fields that need it)
+	void EmitDestroy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* address);
+
 	// yield value: hands a value to the loop that resumed this generator, then waits to be resumed
 	class ASTYield : public ASTNodeBase
 	{
@@ -1012,6 +1053,7 @@ namespace clear
 		std::shared_ptr<Type> VariantTy;
 		size_t CaseIndex = 0;
 		size_t FieldIndex = 0;
+		bool AsAddress = false; // give the field's address (switch bindings refer to the field, they do not copy it)
 	};
 
 	// which case a rich enum value holds
@@ -1040,6 +1082,7 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Subject; // the optional value
 		std::shared_ptr<Type> OptionalTy;
+		int64_t CaseIndex = -1;               // the case to read (default: some); a type variant reads the case of one type
 	};
 
 	// optional.value_or(default)

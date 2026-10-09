@@ -1,24 +1,24 @@
 // a trait lists methods a class promises to have
 trait Shape:
-    function area(self: *Shape) -> float64
-    function name(self: *Shape) -> str
+    function area(self) -> float64
+    function name(self) -> str
 
 class Circle(Shape):
     radius: float64
 
-    function area(self: *Circle) -> float64:
+    function area(self) -> float64:
         return 3.0 * self.radius * self.radius
 
-    function name(self: *Circle) -> str:
+    function name(self) -> str:
         return "circle"
 
 class Square(Shape):
     side: float64
 
-    function area(self: *Square) -> float64:
+    function area(self) -> float64:
         return self.side * self.side
 
-    function name(self: *Square) -> str:
+    function name(self) -> str:
         return "square"
 
 // only types that satisfy Shape are accepted; each call is resolved at compile time

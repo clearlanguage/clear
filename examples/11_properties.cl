@@ -2,11 +2,11 @@ class Temperature:
     celsius: float64
 
     // read as t.fahrenheit
-    property fahrenheit(self: *Temperature) -> float64:
+    property fahrenheit(self) -> float64:
         return self.celsius * 9.0 / 5.0 + 32.0
 
     // t.fahrenheit = value
-    property fahrenheit(self: *Temperature, value: float64):
+    property fahrenheit(self, value: float64):
         self.celsius = (value - 32.0) * 5.0 / 9.0
 
 function main() -> int32:

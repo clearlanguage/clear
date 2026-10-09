@@ -18,7 +18,7 @@ function main() -> int32:
     for item in cart:
         sum += item.total()
     print(sum, cart[1].name, cart[2].total())
-    // cart[i] returns a copy: change an element by reading, editing and storing it back
+    // `let` copies an element; cart[0].qty = 10 would change it in place (see list_references.cl)
     let first = cart[0]
     first.qty = 10
     cart[0] = first

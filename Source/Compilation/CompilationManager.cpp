@@ -39,11 +39,52 @@ namespace clear
         m_MainModule = std::make_shared<Module>("main_module", context, m_Builtins, "main");
     }
 	
+	// every name used as a base class, in any file: those classes get a method table (see Sema::DeclareClassBodyNow)
+	void CompilationManager::CollectBaseClassNames()
+	{
+		auto nameOf = [](std::shared_ptr<ASTNodeBase> node) -> std::string
+		{
+			if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node))   // Base[int]
+				node = subscript->Target;
+
+			if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(node)) // module.Base
+				node = member->RightSide;
+
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(node);
+			return variable ? variable->GetName().GetData() : "";
+		};
+
+		for (auto& [path, unit] : m_CompilationUnits)
+		{
+			auto root = std::dynamic_pointer_cast<ASTBlock>(unit.Ast);
+
+			if (!root || root->Children.empty())
+				continue;
+
+			auto topLevel = std::dynamic_pointer_cast<ASTBlock>(root->Children[0]);
+
+			for (auto& node : topLevel ? topLevel->Children : root->Children)
+			{
+				auto classNode = std::dynamic_pointer_cast<ASTClass>(node);
+
+				if (auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(node))
+					classNode = std::dynamic_pointer_cast<ASTClass>(generic->TemplateNode);
+
+				if (!classNode)
+					continue;
+
+				for (auto& base : classNode->Bases)
+					Sema::BaseClassNames.insert(nameOf(base));
+			}
+		}
+	}
+
 	bool CompilationManager::RunPipeline()
 	{
 		LoadSources();
 		if (!CheckErrors()) return false;
 
+		CollectBaseClassNames();
 		CollectTopLevelSymbols();
 		CompileModules();
 		if (!CheckErrors()) return false;
