@@ -1,5 +1,8 @@
 #include "CommandLineParsing.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <filesystem>
 #include <print>
 #include <vector>
@@ -84,9 +87,20 @@ namespace clear
                         result.Options = ProgramMode::Add;
                         result.PackageName = std::string(arguments[++i]);
 
+                        // the name becomes a key in clear.toml and a folder name
+                        bool validName = std::ranges::all_of(result.PackageName, [](char c) { return std::isalnum((unsigned char)c) || c == '_' || c == '-'; });
+
+                        if (!validName)
+                            return Fail(std::format("'{}' is not a valid package name: use letters, digits, '_' and '-'", result.PackageName));
+
+                        static const std::array<std::string_view, 5> s_AddOptions = { "--git", "--tag", "--branch", "--rev", "--path" };
+
                         for (i++; i < arguments.size(); i++)
                         {
                             std::string_view option = arguments[i];
+
+                            if (std::ranges::find(s_AddOptions, option) == s_AddOptions.end())
+                                return Fail(std::format("unknown option '{}' for add", option));
 
                             if (i + 1 >= arguments.size())
                                 return Fail(std::format("{} expects a value", option));
@@ -97,12 +111,22 @@ namespace clear
                             else if (option == "--tag")    result.Tag = value;
                             else if (option == "--branch") result.Branch = value;
                             else if (option == "--rev")    result.Rev = value;
-                            else if (option == "--path")   result.PackagePath = value;
-                            else return Fail(std::format("unknown option '{}' for add", option));
+                            else                           result.PackagePath = value;
                         }
 
-                        if (result.Git.empty() == result.PackagePath.empty())
+                        if (!result.Git.empty() && !result.PackagePath.empty())
+                            return Fail("add takes --git <url> or --path <directory>, not both");
+
+                        if (result.Git.empty() && result.PackagePath.empty())
                             return Fail("add needs either --git <url> or --path <directory>");
+
+                        int selectors = !result.Tag.empty() + !result.Branch.empty() + !result.Rev.empty();
+
+                        if (selectors > 1)
+                            return Fail("add takes at most one of --tag, --branch and --rev");
+
+                        if (selectors > 0 && result.Git.empty())
+                            return Fail("--tag, --branch and --rev only apply to a --git dependency");
 
                         result.Directory = std::filesystem::current_path();
                         result.Successful = true;

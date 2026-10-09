@@ -116,6 +116,38 @@ def main():
         for name in ("'one'", "'two'", "'three'"):
             assert name in fetched.stderr, fetched.stderr
 
+        # add refuses conflicting or unknown options and bad names, and leaves clear.toml alone
+        before = open(f"{app}/clear.toml").read()
+        for args, message in (
+            (("x", "--git", f"file://{colors}", "--tag", "v1.0", "--rev", "HEAD~1"), "at most one of --tag, --branch and --rev"),
+            (("x", "--git", f"file://{colors}", "--frob"), "unknown option '--frob'"),
+            (("bad name!", "--git", f"file://{colors}"), "not a valid package name"),
+            (("x", "--git", f"file://{colors}", "--path", "../x"), "not both"),
+            (("x", "--path", "../x", "--tag", "v1.0"), "only apply to a --git dependency"),
+        ):
+            refused = run(clearc, "add", *args, cwd=app, check=False)
+            assert refused.returncode != 0 and message in refused.stderr, refused.stderr
+        assert open(f"{app}/clear.toml").read() == before
+
+        # a hand-written manifest with two selectors is refused too
+        two = f"{root}/two_selectors"
+        write(f"{two}/clear.toml", f'[package]\nname = "two"\n\n[dependencies]\ncolors = {{ git = "file://{colors}", tag = "v1.0", branch = "main" }}\n')
+        write(f"{two}/main.cl", 'function main() -> int32:\n    return 0\n')
+        refused = run(clearc, "fetch", two, check=False)
+        assert refused.returncode != 0 and "more than one of tag, branch and rev" in refused.stderr, refused.stderr
+
+        # an update that fails leaves the checkout at the locked commit
+        pinned = f"{root}/pinned"
+        write(f"{pinned}/clear.toml", f'[package]\nname = "pinned"\n\n[dependencies]\ncolors = {{ git = "file://{colors}", tag = "v1.0" }}\n')
+        write(f"{pinned}/main.cl", 'function main() -> int32:\n    return 0\n')
+        run(clearc, "fetch", pinned)
+        checkout = f"{pinned}/.clear/packages/colors"
+        locked = git("rev-parse", "HEAD", cwd=checkout).stdout.strip()
+        write(f"{pinned}/clear.toml", f'[package]\nname = "pinned"\n\n[dependencies]\ncolors = {{ git = "file://{colors}" }}\nmissing = {{ git = "file://{root}/missing" }}\n')
+        failed = run(clearc, "update", pinned, check=False)
+        assert failed.returncode != 0, failed.stdout + failed.stderr
+        assert git("rev-parse", "HEAD", cwd=checkout).stdout.strip() == locked
+
     print("package manager: all checks passed")
     return 0
 

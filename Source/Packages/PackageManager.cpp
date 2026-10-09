@@ -76,6 +76,12 @@ namespace clear
                     return std::nullopt;
                 }
 
+                if (!dependency.Tag.empty() + !dependency.Branch.empty() + !dependency.Rev.empty() > 1)
+                {
+                    error = std::format("{}: dependency '{}' names more than one of tag, branch and rev: keep one", file.string(), dependency.Name);
+                    return std::nullopt;
+                }
+
                 manifest.Dependencies.push_back(dependency);
             }
         }
@@ -470,6 +476,18 @@ namespace clear
 
             if (!errors.empty())
             {
+                // a failed fetch or update leaves every checkout at the commit clear.lock names, so the two still agree
+                for (auto& [name, commit] : LoadLock(manifest.Root))
+                {
+                    auto directory = manifest.Root / ".clear" / "packages" / name;
+                    auto moved = commits.find(name);
+
+                    if (!commit.empty() && moved != commits.end() && moved->second != commit && std::filesystem::exists(directory / ".git"))
+                        Git({ "-C", directory.string(), "checkout", "--quiet", "--detach", commit });
+                }
+
+                // progress lines (stdout) come before the errors about them (stderr), also when piped
+                std::fflush(stdout);
                 error.clear();
 
                 for (auto& message : errors)
