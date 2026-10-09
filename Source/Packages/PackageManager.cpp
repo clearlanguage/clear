@@ -5,6 +5,7 @@
 #include <llvm/Support/Program.h>
 #include <toml++/toml.h>
 
+#include <cctype>
 #include <fstream>
 #include <map>
 #include <print>
@@ -99,15 +100,19 @@ namespace clear
     // what git said on its last failure (its own "fatal: ..." line), to put in our error message
     static std::string s_GitError;
 
+    // what git said when it failed, one "git: ..." line per message, under the error it explains
     static std::string GitReason()
     {
         if (s_GitError.empty())
             return "";
 
-        std::string reason = s_GitError;
-        if (reason.starts_with("fatal: "))
-            reason = reason.substr(7);
-        return " (git: " + reason + ")";
+        std::string reason;
+        std::istringstream lines(s_GitError);
+
+        for (std::string line; std::getline(lines, line);)
+            reason += "\n    git: " + line;
+
+        return reason;
     }
 
     // runs git with the given arguments; the first line it prints goes to `output`. Its error output is kept
@@ -134,14 +139,38 @@ namespace clear
         std::optional<llvm::StringRef> redirects[] = { std::nullopt, llvm::StringRef(capturedPath), llvm::StringRef(errorsPath) };
         int status = llvm::sys::ExecuteAndWait(*git, argv, std::nullopt, redirects);
 
+        // everything git said, trimmed: "fatal: " and "error: " dropped, a message wrapped over several
+        // lines ("Please make sure you have...\nand the repository exists.") joined back into one
         s_GitError.clear();
         if (status != 0)
         {
             std::ifstream errors(errorsPath);
             for (std::string line; std::getline(errors, line);)
             {
-                if (!line.empty())
-                    s_GitError = line; // the last line is the reason ("fatal: ...")
+                size_t first = line.find_first_not_of(" \t\r");
+                size_t last = line.find_last_not_of(" \t\r");
+
+                if (first == std::string::npos)
+                    continue;
+
+                line = line.substr(first, last - first + 1);
+                bool starts = false;
+
+                for (std::string prefix : { "fatal: ", "error: ", "warning: ", "hint: ", "remote: " })
+                {
+                    if (line.starts_with(prefix))
+                    {
+                        line = line.substr(prefix.size());
+                        starts = true;
+                    }
+                }
+
+                bool continues = !starts && !s_GitError.empty() && std::islower((unsigned char)line[0]) && s_GitError.back() != '.';
+
+                if (continues)
+                    s_GitError += " " + line;
+                else
+                    s_GitError += (s_GitError.empty() ? "" : "\n") + line;
             }
         }
 
@@ -308,6 +337,10 @@ namespace clear
             std::map<std::string, std::string> sources;
             std::vector<Package> packages;
 
+            // every broken dependency is reported, not just the first one
+            std::vector<std::string> errors;
+            auto fail = [&](std::string message) { errors.push_back(std::move(message)); };
+
             // breadth first: the project's own dependencies, then theirs
             std::vector<std::pair<Dependency, std::filesystem::path>> queue;
             for (auto& dependency : manifest.Dependencies)
@@ -326,11 +359,9 @@ namespace clear
                         auto location = [](const std::string& text) { return std::filesystem::path(text.substr(0, text.find(' '))).lexically_normal(); };
 
                         if (!dependency.Git.empty() && location(seen->second) == location(source))
-                            error = std::format("'{}' is needed at two different versions: {} and {} (make them agree in clear.toml)", dependency.Name, seen->second, source);
+                            fail(std::format("'{}' is needed at two different versions: {} and {} (make them agree in clear.toml)", dependency.Name, seen->second, source));
                         else
-                            error = std::format("two different packages are both called '{}': {} and {}", dependency.Name, seen->second, source);
-
-                        return std::nullopt;
+                            fail(std::format("two different packages are both called '{}': {} and {}", dependency.Name, seen->second, source));
                     }
 
                     continue;
@@ -345,8 +376,8 @@ namespace clear
 
                     if (!std::filesystem::is_directory(directory))
                     {
-                        error = std::format("dependency '{}': {} is not a directory", dependency.Name, directory.string());
-                        return std::nullopt;
+                        fail(std::format("dependency '{}': {} is not a directory", dependency.Name, directory.string()));
+                        continue;
                     }
                 }
                 else
@@ -363,8 +394,8 @@ namespace clear
                         {
                             std::filesystem::remove_all(directory);
                             std::string reason = GitReason();
-                            error = std::format("could not clone '{}' from {}{}", dependency.Name, dependency.Git, reason.empty() ? " (is git installed and the URL reachable?)" : reason);
-                            return std::nullopt;
+                            fail(std::format("could not clone '{}' from {}{}", dependency.Name, dependency.Git, reason.empty() ? " (is git installed and the URL reachable?)" : ":" + reason));
+                            continue;
                         }
                     }
                     else if (update)
@@ -392,15 +423,16 @@ namespace clear
 
                             if (!Git({ "-C", directory.string(), "rev-parse", target + "^{commit}" }, &wanted))
                             {
-                                error = std::format("dependency '{}': {} not found in {}", dependency.Name, target, dependency.Git);
-                                return std::nullopt;
+                                fail(std::format("dependency '{}': {} not found in {}", dependency.Name, target, dependency.Git));
+                                continue;
                             }
                         }
 
                         if (wanted != current && !Git({ "-C", directory.string(), "checkout", "--quiet", "--detach", wanted }))
                         {
-                            error = std::format("dependency '{}': could not check out {}{}", dependency.Name, target, GitReason());
-                            return std::nullopt;
+                            std::string reason = GitReason();
+                            fail(std::format("dependency '{}': could not check out {}{}", dependency.Name, target, reason.empty() ? "" : ":" + reason));
+                            continue;
                         }
                     }
 
@@ -417,10 +449,14 @@ namespace clear
 
                 if (IsProject(directory))
                 {
-                    auto loaded = Manifest::Load(directory, error);
+                    std::string problem;
+                    auto loaded = Manifest::Load(directory, problem);
 
                     if (!loaded)
-                        return std::nullopt;
+                    {
+                        fail(problem);
+                        continue;
+                    }
 
                     inner = *loaded;
                     inner.Name = dependency.Name; // imported by the name the depending project gave it
@@ -430,6 +466,16 @@ namespace clear
                 }
 
                 packages.push_back(Package { dependency.Name, directory, inner.LibraryFile() });
+            }
+
+            if (!errors.empty())
+            {
+                error.clear();
+
+                for (auto& message : errors)
+                    error += (error.empty() ? "" : "\nclearc: ") + message;
+
+                return std::nullopt;
             }
 
             // clear.lock: the exact commit of every git package

@@ -100,6 +100,22 @@ def main():
         bad = run(clearc, "add", "nothing", "--git", f"file://{root}/missing", cwd=app, check=False)
         assert bad.returncode != 0 and "could not clone" in bad.stderr, bad.stderr
 
+        # ...with git's own reason, not just its last line
+        assert "does not appear to be a git repository" in bad.stderr, bad.stderr
+        assert "Please make sure you have the correct access rights and the repository exists" in bad.stderr, bad.stderr
+
+        # fetch reports every broken dependency, not only the first
+        broken = f"{root}/broken"
+        write(f"{broken}/clear.toml", '[package]\nname = "broken"\n\n[dependencies]\n'
+              f'one = {{ git = "file://{root}/missing1" }}\n'
+              f'two = {{ git = "file://{root}/missing2" }}\n'
+              'three = { path = "../nowhere" }\n')
+        write(f"{broken}/main.cl", 'function main() -> int32:\n    return 0\n')
+        fetched = run(clearc, "fetch", broken, check=False)
+        assert fetched.returncode != 0, fetched.stdout + fetched.stderr
+        for name in ("'one'", "'two'", "'three'"):
+            assert name in fetched.stderr, fetched.stderr
+
     print("package manager: all checks passed")
     return 0
 

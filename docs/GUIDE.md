@@ -872,6 +872,7 @@ What happens:
 - `clearc update` moves dependencies to the newest commit their tag, branch or default branch allows, and rewrites `clear.lock`.
 - A `path` dependency is relative to the `clear.toml` that declares it, and is used in place without copying.
 - `clearc build myapp` writes `myapp/build/myapp`.
+- When dependencies can't be fetched, every one that failed is listed, each with what git said about it.
 
 To try packages locally without publishing anything, make a git repo on disk and use a `file://` URL. `Scripts/test_packages.py` does exactly that.
 
