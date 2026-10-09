@@ -113,6 +113,7 @@ namespace clear
 		DiagnosticCode_NoConversion,
 		DiagnosticCode_UsedHere,
 		DiagnosticCode_NotAPointer,
+		DiagnosticCode_IntegerLiteralTooLarge,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -226,6 +227,7 @@ namespace clear
 		"These types do not convert to each other.",
 		"The standard library code above is used from this line of the program.",
 		"Only a pointer can be dereferenced.",
+		"Integer literal is too large.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -338,5 +340,6 @@ namespace clear
 		"{}.",
 		"The problem comes from how ‘{}’ is used here.",
 		"‘{}’, not a pointer, so ‘*’ cannot read through it. Use the value as it is, or take its address with ‘&’.",
+		"‘{}’ does not fit in 64 bits (the largest integer is 18446744073709551615, 0xFFFF_FFFF_FFFF_FFFF). Write it as a float, with a ‘.’ or an exponent, if an approximate value is enough.",
 	};
 }

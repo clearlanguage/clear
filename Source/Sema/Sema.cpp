@@ -5054,8 +5054,24 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSizeofExpr> sizeofExpr, SemaContext context)
 	{
 		sizeofExpr->Object = Visit(sizeofExpr->Object, context);
-		sizeofExpr->Size = m_TypeInferEngine.InferTypeFromNode(sizeofExpr->Object)->GetSizeInBytes(*m_Module->GetModule());
-		
+
+		if (!sizeofExpr->Object)
+			return nullptr;
+
+		// sizeof a type (?int64, [3; int8], *T) or of a value's type: the bytes one takes in memory, padding
+		// included (the distance between two of them in an array)
+		auto type = GetTypeFromNode(sizeofExpr->Object);
+
+		if (!type)
+			type = m_TypeInferEngine.InferTypeFromNode(sizeofExpr->Object);
+
+		if (!type || type->GetHash() == "void")
+		{
+			Report(DiagnosticCode_ExpectedType, GetNodeLocation(sizeofExpr->Object));
+			return nullptr;
+		}
+
+		sizeofExpr->Size = type->GetSizeInBytes(*m_Module->GetModule());
 		return sizeofExpr;
 	}
 
@@ -5522,9 +5538,45 @@ namespace clear
 		valueContext.ValueReq = ValueRequired::RValue;
 		valueContext.CallsiteArgs.clear();
 
+		// P { 1, y = 2 }: `name = value` sets that field (after the positional values, like keyword arguments)
+		{
+			std::vector<std::shared_ptr<ASTNodeBase>> positional;
+
+			for (auto& value : structExpr->Values)
+			{
+				auto assignment = std::dynamic_pointer_cast<ASTAssignmentOperator>(value);
+				auto name = assignment ? std::dynamic_pointer_cast<ASTVariable>(assignment->Storage) : nullptr;
+
+				if (assignment && name && assignment->GetAssignType() == AssignmentOperatorType::Normal)
+				{
+					structExpr->NamedValues.push_back({ name->GetName(), assignment->Value });
+					continue;
+				}
+
+				if (!structExpr->NamedValues.empty())
+				{
+					Report(DiagnosticCode_PositionalAfterKeyword, GetNodeLocation(value));
+					return nullptr;
+				}
+
+				positional.push_back(value);
+			}
+
+			structExpr->Values = positional;
+		}
+
 		for (auto& value : structExpr->Values)
 		{
 			// lambdas wait for the field type (see CompleteStructValues)
+			if (value->GetType() != ASTNodeType::Lambda)
+				value = Visit(value, valueContext);
+
+			if (!value)
+				return nullptr;
+		}
+
+		for (auto& [name, value] : structExpr->NamedValues)
+		{
 			if (value->GetType() != ASTNodeType::Lambda)
 				value = Visit(value, valueContext);
 
@@ -5594,6 +5646,41 @@ namespace clear
 		// the hidden vtable field is never written by hand: values start at the first real field
 		if (classType->HasVTable && (structExpr->Values.empty() || structExpr->Values[0]->GetType() != ASTNodeType::VTableRef))
 			structExpr->Values.insert(structExpr->Values.begin(), classType->MemberDefaults[0]);
+
+		if (!structExpr->NamedValues.empty() && structExpr->Values.size() <= members.size())
+		{
+			// named fields go in their place; fields neither given nor named keep their default (below)
+			std::vector<std::shared_ptr<ASTNodeBase>> placed(structExpr->Values.begin(), structExpr->Values.end());
+			placed.resize(members.size());
+			size_t hidden = classType->HasVTable ? 1 : 0;
+
+			for (auto& [name, value] : structExpr->NamedValues)
+			{
+				auto index = classType->GetMemberValueIndex(name.GetData());
+
+				if (!index || *index < hidden || placed[*index])
+				{
+					Token where = name;
+					where.SetData(std::format("{}’ is not a field of ‘{}’ (or is given twice", name.GetData(), GetDisplayName(classType)));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+					return nullptr;
+				}
+
+				placed[*index] = value;
+			}
+
+			for (size_t i = 0; i < placed.size(); i++)
+			{
+				if (!placed[i])
+				{
+					auto defaultValue = i < classType->MemberDefaults.size() ? classType->MemberDefaults[i] : nullptr;
+					placed[i] = defaultValue ? defaultValue : std::make_shared<ASTZero>(classType->GetMemberValueByIndex(i).value()->GetType());
+				}
+			}
+
+			structExpr->Values = placed;
+			structExpr->NamedValues.clear();
+		}
 
 		if (structExpr->Values.size() > members.size())
 		{
@@ -5695,6 +5782,14 @@ namespace clear
 			if (!funcCall->KeywordArguments.empty())
 			{
 				auto& members = classType->GetMemberValues();
+
+				// the positional values start after the hidden vtable field (indexes below count it)
+				if (classType->HasVTable)
+					structExpr->Values.insert(structExpr->Values.begin(), classType->MemberDefaults[0]);
+
+				if (structExpr->Values.size() > members.size())
+					return CompleteStructValues(structExpr); // reports the extra values
+
 				structExpr->Values.resize(members.size());
 
 				for (auto& [name, value] : funcCall->KeywordArguments)
@@ -6598,7 +6693,11 @@ namespace clear
 		auto adapt = [&](std::shared_ptr<ASTNodeBase>& literal, const std::shared_ptr<Type>& target)
 		{
 			if (auto value = EvaluateInteger(literal); value && target->IsIntegral())
-				literal = std::make_shared<ASTConstantValue>(*value, target);
+			{
+				auto constant = std::make_shared<ASTConstantValue>(*value, target);
+				constant->Location = GetNodeLocation(literal); // diagnostics about it still point at what was written
+				literal = constant;
+			}
 			else
 				literal = Coerce(literal, target);
 		};

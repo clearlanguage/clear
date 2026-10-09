@@ -415,7 +415,8 @@ namespace clear
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Values;
-		std::shared_ptr<ASTNodeBase> TargetType; 
+		std::shared_ptr<ASTNodeBase> TargetType;
+		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> NamedValues; // P { y = 2 }: put in place by semantic analysis
 
 	private:
 		llvm::Constant* GetDefaultValue(llvm::Type* type);

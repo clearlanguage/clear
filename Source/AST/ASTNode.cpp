@@ -525,6 +525,36 @@ namespace clear
 		return Symbol();
     }
 
+	// value << amount, value >> amount, in the type of the value. An amount outside 0..bits-1 stops the program
+	// when checks are on; otherwise only its low bits count (amount % bits, what x86 and ARM do), so the result
+	// is the same at every optimization level (LLVM would make it undefined)
+	static Symbol EmitShift(CodegenContext& ctx, Symbol& value, Symbol& amount, bool left, const Token& location)
+	{
+		auto& builder = ctx.Builder;
+		auto [lhs, valueType] = value.GetValue();
+		auto [rhs, amountType] = amount.GetValue();
+
+		if (!lhs->getType()->isIntegerTy() || !rhs->getType()->isIntegerTy())
+			return left ? SymbolOps::Shl(value, amount, builder) : SymbolOps::Shr(value, amount, builder);
+
+		unsigned bits = lhs->getType()->getIntegerBitWidth();
+
+		// a negative amount reads as a huge unsigned one, so one comparison covers both ends
+		if (ctx.RuntimeChecks)
+		{
+			llvm::Value* inRange = builder.CreateICmpULT(rhs, llvm::ConstantInt::get(rhs->getType(), bits));
+			EmitCheck(ctx, inRange, std::format("shift amount out of range for a {} bit value (valid: 0 to {})", bits, bits - 1), location);
+		}
+
+		llvm::Value* count = builder.CreateZExtOrTrunc(rhs, lhs->getType());
+		count = builder.CreateAnd(count, llvm::ConstantInt::get(lhs->getType(), bits - 1));
+
+		llvm::Value* result = left ? builder.CreateShl(lhs, count, "shl")
+								   : (valueType && valueType->IsSigned() ? builder.CreateAShr(lhs, count, "shr") : builder.CreateLShr(lhs, count, "shr"));
+
+		return Symbol::CreateValue(result, valueType);
+	}
+
     Symbol ASTBinaryExpression::HandleBitwiseExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 
@@ -541,8 +571,8 @@ namespace clear
     		case OperatorType::BitwiseAnd: return SymbolOps::BitAnd(lhs, rhs, ctx.Builder);
     		case OperatorType::BitwiseOr:  return SymbolOps::BitOr(lhs, rhs, ctx.Builder);
     		case OperatorType::BitwiseXor: return SymbolOps::BitXor(lhs, rhs, ctx.Builder);
-    		case OperatorType::LeftShift:  return SymbolOps::Shl(lhs, rhs, ctx.Builder);
-    		case OperatorType::RightShift: return SymbolOps::Shr(lhs, rhs, ctx.Builder);
+    		case OperatorType::LeftShift:  return EmitShift(ctx, lhs, rhs, true, Location.GetSourceFile().empty() ? GetNodeLocation(right) : Location);
+    		case OperatorType::RightShift: return EmitShift(ctx, lhs, rhs, false, Location.GetSourceFile().empty() ? GetNodeLocation(right) : Location);
     		case OperatorType::BitwiseNot: return SymbolOps::Not(lhs, ctx.Builder);
     		default: return {};
     	}
@@ -945,8 +975,8 @@ namespace clear
 		else if (m_Type == AssignmentOperatorType::BitAnd) tmp = SymbolOps::BitAnd(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitOr)  tmp = SymbolOps::BitOr(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitXor) tmp = SymbolOps::BitXor(loadedValue, data, ctx.Builder);
-		else if (m_Type == AssignmentOperatorType::Shl)    tmp = SymbolOps::Shl(loadedValue, data, ctx.Builder);
-		else if (m_Type == AssignmentOperatorType::Shr)    tmp = SymbolOps::Shr(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shl)    tmp = EmitShift(ctx, loadedValue, data, true, Location.GetSourceFile().empty() ? GetNodeLocation(Value) : Location);
+		else if (m_Type == AssignmentOperatorType::Shr)    tmp = EmitShift(ctx, loadedValue, data, false, Location.GetSourceFile().empty() ? GetNodeLocation(Value) : Location);
 		else 
 		{
 			CLEAR_UNREACHABLE("invalid assignment type");
