@@ -65,6 +65,11 @@ namespace clear
 
 		bool RuntimeChecks = false;
 
+		// generating a function written in Standard/: a failed check names the program's own call instead
+		// (the thread-local __clear_caller_location, set around every call from the program into the library)
+		bool InStandardLibrary = false;
+		Token StatementLocation; // the statement being generated, for calls that carry no location themselves
+
 		// inside a generator or async function: where suspending and destroying lead
 		struct CoroutineState
 		{
@@ -1179,6 +1184,9 @@ namespace clear
 	// branches to a panic when `ok` is false, code generation continues on the success path
 	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
 	llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx); // the function, declared in this module
+
+	// a file of the standard library (Standard/)
+	bool IsStandardLibraryFile(const std::filesystem::path& file);
 
 	// stops the program: prints "panic: <message>" with the source location to stderr and aborts
 	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail = nullptr);

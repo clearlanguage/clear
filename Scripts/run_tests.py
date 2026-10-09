@@ -13,6 +13,7 @@ is written in comments inside the test itself:
     // expect-error: E094    (... with this text in the compiler's output, e.g. an error code)
     // expect-warning: E099  (compilation must succeed and print this text)
     // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
+    // expect-stderr: text   (the program's stderr must contain this text, e.g. a panic message)
 
 Files inside a folder named `lib`, and files whose first line is `// test-helper`,
 are helpers that tests import, not tests.
@@ -38,6 +39,7 @@ def parse_expectations(path):
     expect_error = False
     error_text = None
     warning_text = None
+    stderr_text = None
     flags = []
 
     with open(path, encoding="utf-8") as f:
@@ -73,6 +75,11 @@ def parse_expectations(path):
             in_block = False
             continue
 
+        if stripped.startswith("// expect-stderr:"):
+            stderr_text = stripped.split(":", 1)[1].strip()
+            in_block = False
+            continue
+
         if stripped.startswith("// expect-warning:"):
             warning_text = stripped.split(":", 1)[1].strip()
             in_block = False
@@ -86,11 +93,11 @@ def parse_expectations(path):
             else:
                 in_block = False
 
-    return expected_lines, expected_exit, expect_error, error_text, warning_text, flags
+    return expected_lines, expected_exit, expect_error, error_text, warning_text, stderr_text, flags
 
 
 def run_test(clearc, path, workdir):
-    expected_lines, expected_exit, expect_error, error_text, warning_text, test_flags = parse_expectations(path)
+    expected_lines, expected_exit, expect_error, error_text, warning_text, stderr_text, test_flags = parse_expectations(path)
     output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
 
     extra_flags = os.environ.get("CLEAR_TEST_FLAGS", "").split()
@@ -137,6 +144,9 @@ def run_test(clearc, path, workdir):
 
     if run_result.returncode != expected_exit:
         problems.append(f"exit code {run_result.returncode}, expected {expected_exit}")
+
+    if stderr_text and stderr_text not in run_result.stderr:
+        problems.append(f"expected stderr to contain '{stderr_text}', got:\n" + run_result.stderr)
 
     if expected_lines is not None:
         actual_lines = run_result.stdout.splitlines()

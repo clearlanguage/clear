@@ -24,6 +24,7 @@
 #include <llvm/MC/MCInstrDesc.h>
 #include <llvm/Support/Casting.h>
 
+#include <functional>
 #include <memory>
 #include <stack>
 #include <utility>
@@ -54,6 +55,9 @@ namespace clear
 	};
 
 	static std::stack<llvm::IRBuilderBase::InsertPoint>  s_InsertPoints;
+
+	static bool TracksCaller(CodegenContext& ctx, const std::shared_ptr<ASTFunctionDefinition>& callee);
+	static llvm::Value* EmitCallTracked(CodegenContext& ctx, const Token& location, const std::function<llvm::Value*()>& emitCall);
 
 	static Symbol CreateAlloca(std::shared_ptr<Type> type, CodegenContext& ctx)
 	{
@@ -145,6 +149,10 @@ namespace clear
 				break;
 
 			NoteProgress("generating code for", child->Location.GetSourceFile(), child->Location.LineNumber, child->Location.ColumnNumber);
+
+			if (!child->Location.GetSourceFile().empty())
+				ctx.StatementLocation = child->Location;
+
 			Symbol result = child->Codegen(ctx);
 
 			// `make_list()` on its own line: the value it made is cleaned up straight away
@@ -1214,6 +1222,8 @@ namespace clear
 		ValueRestoreGuard guard2(ctx.ReturnBlock,  returnBlock);
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.FunctionDeferBase, ctx.Defers->size());
+		ValueRestoreGuard guardLibrary(ctx.InStandardLibrary, IsStandardLibraryFile(m_NameToken.GetSourceFile()));
+		ValueRestoreGuard guardStatement(ctx.StatementLocation, Token());
 
 		// parameters taken by value are this function's to clean up: they get a scope of their own
 		ctx.Defers->emplace_back();
@@ -1409,7 +1419,8 @@ namespace clear
 			llvm::Value* table = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), receiver, "vtable");
 			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot, "vslot");
 			llvm::Value* target = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), slot, "vfunc");
-			llvm::Value* result = ctx.Builder.CreateCall(functionType, target, args);
+			auto emitCall = [&]() -> llvm::Value* { return ctx.Builder.CreateCall(functionType, target, args); };
+			llvm::Value* result = TracksCaller(ctx, functionSymbol.FunctionNode) ? EmitCallTracked(ctx, GetNodeLocation(shared_from_this()), emitCall) : emitCall();
 
 			if (!functionSymbol.FunctionNode->ReturnTypeVal)
 				return Symbol();
@@ -1432,7 +1443,8 @@ namespace clear
 		}
 		}
 
-		llvm::Value* returnValue = ctx.Builder.CreateCall(functionPtr, args);
+		auto emitCall = [&]() -> llvm::Value* { return ctx.Builder.CreateCall(functionPtr, args); };
+		llvm::Value* returnValue = TracksCaller(ctx, functionSymbol.FunctionNode) ? EmitCallTracked(ctx, GetNodeLocation(shared_from_this()), emitCall) : emitCall();
 
 		if (!functionSymbol.FunctionNode->ReturnTypeVal)
 			return Symbol();
@@ -2624,18 +2636,85 @@ namespace clear
 		return SymbolOps::Load(storage, ctx.Builder);
 	}
 
+	bool IsStandardLibraryFile(const std::filesystem::path& file)
+	{
+		static const std::string standard = std::filesystem::weakly_canonical(std::filesystem::path(CLEAR_STANDARD_DIR)).string();
+		static const std::string fromEnvironment = std::getenv("CLEAR_STANDARD_DIR") ? std::filesystem::weakly_canonical(std::getenv("CLEAR_STANDARD_DIR")).string() : std::string();
+
+		if (file.empty())
+			return false;
+
+		const std::string text = file.string();
+		return text.starts_with(standard) || (!fromEnvironment.empty() && text.starts_with(fromEnvironment));
+	}
+
+	static std::string FormatLocation(const Token& location)
+	{
+		return location.GetSourceFile().empty() ? std::string("unknown location")
+			: std::format("{}:{}:{}", location.GetSourceFile().filename().string(), location.LineNumber + 1, location.ColumnNumber + 1);
+	}
+
+	// "file:line:column" of the program's call that is running the standard library right now (null: none).
+	// One per thread; every module refers to the same one.
+	static llvm::GlobalVariable* CallerLocationSlot(CodegenContext& ctx)
+	{
+		static const char* name = "__clear_caller_location";
+
+		if (llvm::GlobalVariable* existing = ctx.Module.getNamedGlobal(name))
+			return existing;
+
+		auto pointerType = ctx.Builder.getPtrTy();
+		auto slot = new llvm::GlobalVariable(ctx.Module, pointerType, false, llvm::GlobalValue::LinkOnceODRLinkage,
+											 llvm::ConstantPointerNull::get(pointerType), name);
+		slot->setThreadLocal(true);
+		return slot;
+	}
+
+	// a call from the program into a function of the standard library: while it runs, its failed checks
+	// (List index out of range...) report this call's location, like Rust's #[track_caller]
+	static bool TracksCaller(CodegenContext& ctx, const std::shared_ptr<ASTFunctionDefinition>& callee)
+	{
+		return ctx.RuntimeChecks && !ctx.InStandardLibrary && callee && IsStandardLibraryFile(callee->GetNameToken().GetSourceFile());
+	}
+
+	static llvm::Value* EmitCallTracked(CodegenContext& ctx, const Token& location, const std::function<llvm::Value*()>& emitCall)
+	{
+		Token where = location.GetSourceFile().empty() ? ctx.StatementLocation : location;
+
+		if (where.GetSourceFile().empty())
+			return emitCall();
+
+		llvm::GlobalVariable* slot = CallerLocationSlot(ctx);
+		llvm::Value* address = ctx.Builder.CreateThreadLocalAddress(slot);
+		llvm::Value* previous = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), address, "caller.saved");
+		ctx.Builder.CreateStore(ctx.Builder.CreateGlobalStringPtr(FormatLocation(where)), address);
+
+		llvm::Value* result = emitCall();
+
+		// a library function that calls back into the program (a lambda) may have changed it
+		address = ctx.Builder.CreateThreadLocalAddress(slot);
+		ctx.Builder.CreateStore(previous, address);
+		return result;
+	}
+
 	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail)
 	{
 		auto& builder = ctx.Builder;
 		llvm::FunctionCallee dprintf = ctx.Module.getOrInsertFunction("dprintf", llvm::FunctionType::get(builder.getInt32Ty(), { builder.getInt32Ty(), builder.getPtrTy() }, true));
 		llvm::FunctionCallee abort = ctx.Module.getOrInsertFunction("abort", llvm::FunctionType::get(builder.getVoidTy(), false));
 
-		std::string where = location.GetSourceFile().empty() ? std::string("unknown location") 
-			: std::format("{}:{}:{}", location.GetSourceFile().filename().string(), location.LineNumber + 1, location.ColumnNumber + 1);
+		llvm::Value* where = builder.CreateGlobalStringPtr(FormatLocation(location));
+
+		// inside the standard library: the program's line that called it, when known
+		if (ctx.InStandardLibrary)
+		{
+			llvm::Value* caller = builder.CreateLoad(builder.getPtrTy(), builder.CreateThreadLocalAddress(CallerLocationSlot(ctx)), "caller.location");
+			where = builder.CreateSelect(builder.CreateIsNull(caller), where, caller);
+		}
 
 		std::string format = detail ? "panic: %s (%s): %s\n" : "panic: %s (%s)\n";
-		llvm::SmallVector<llvm::Value*> args = { builder.getInt32(2), builder.CreateGlobalStringPtr(format), 
-												 builder.CreateGlobalStringPtr(message), builder.CreateGlobalStringPtr(where) };
+		llvm::SmallVector<llvm::Value*> args = { builder.getInt32(2), builder.CreateGlobalStringPtr(format),
+												 builder.CreateGlobalStringPtr(message), where };
 
 		if (detail)
 			args.push_back(detail);

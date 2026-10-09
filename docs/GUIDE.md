@@ -159,6 +159,7 @@ Other markers:
 | `// expect-warning: text` | the program must compile and the compiler must print `text` |
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
+| `// expect-stderr: text` | the program's stderr must contain `text` (e.g. a `panic:` message) |
 
 Files inside a folder named `lib`, and files whose first line is `// test-helper`, are helper modules, not tests (see `Tests/modules/lib` and `Tests/modules/shadow`).
 
@@ -645,6 +646,12 @@ A failed check stops the program with the source location:
 
 ```
 panic: index out of range for an array of 3 (18_safety_checks.cl:15:18)
+```
+
+A check that fails inside the standard library names your line, the call that led there, not the library's:
+
+```
+panic: assertion failed (main.cl:7:11): List index out of range
 ```
 
 ### 3.19 Strings · [`examples/19_strings.cl`](../examples/19_strings.cl)
