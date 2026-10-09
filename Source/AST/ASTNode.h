@@ -71,6 +71,7 @@ namespace clear
 		// set while generating a condition or the right side of `and` / `or`: its temporaries are cleaned up as
 		// soon as its value (a bool) is known, on the path that made them (not at the end of the block)
 		std::vector<std::shared_ptr<ASTNodeBase>>* TemporaryCleanups = nullptr;
+		size_t DeferEmission = 0; // which emission of a deferred expression is being generated (0: none)
 
 		// inside a generator or async function: where suspending and destroying lead
 		struct CoroutineState
@@ -947,6 +948,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Operand;
 		Symbol Computed;
 		llvm::Function* ComputedIn = nullptr; // a generic body is generated once per function it is in
+		size_t ComputedEmission = 0;          // a deferred expression is generated again at each exit
 	};
 
 	// reading an owning value out of a local variable: the variable is left empty (all zero), so

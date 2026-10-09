@@ -3314,10 +3314,11 @@ namespace clear
 	{
 		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
 
-		if (ComputedIn != function)
+		if (ComputedIn != function || ComputedEmission != ctx.DeferEmission)
 		{
 			Computed = Operand->Codegen(ctx);
 			ComputedIn = function;
+			ComputedEmission = ctx.DeferEmission;
 		}
 
 		return Computed;
@@ -3495,7 +3496,16 @@ namespace clear
 			auto pending = defers[scope];
 
 			for (auto it = pending.rbegin(); it != pending.rend(); it++)
+			{
+				// defer print("done " + name): the temporaries it makes are cleaned up right after it. Each exit
+				// generates the expression again, so what it computes once (ASTOnce) is computed again there
+				static size_t s_Emissions = 0;
+				size_t outerEmission = std::exchange(ctx.DeferEmission, ++s_Emissions);
+				ImmediateTemporaries temporaries(ctx);
 				(*it)->Codegen(ctx);
+				temporaries.End();
+				ctx.DeferEmission = outerEmission;
+			}
 		}
 	}
 
