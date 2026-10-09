@@ -1322,24 +1322,66 @@ namespace clear
 		return Symbol::CreateValue(GetFunctionHere(Function, ctx), FunctionTy);
 	}
 
-	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	// void <Class>.destroy(ptr): the whole cleanup of a value of exactly this class (slot 0 of its vtable)
+	static llvm::Function* GetDestroyFunction(CodegenContext& ctx, const std::shared_ptr<ClassType>& classType)
 	{
-		// one constant table per class and module: [n x ptr] holding the class's version of each virtual method
-		std::string name = std::format("{}.vtable", ClassTy->GetHash());
+		std::string name = std::format("{}.destroy", classType->GetHash());
+
+		if (llvm::Function* existing = ctx.Module.getFunction(name))
+			return existing;
+
+		auto& builder = ctx.Builder;
+		auto function = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), { builder.getPtrTy() }, false),
+											   llvm::Function::LinkOnceODRLinkage, name, ctx.Module);
+
+		llvm::IRBuilderBase::InsertPointGuard guard(builder);
+		builder.SetInsertPoint(llvm::BasicBlock::Create(ctx.Context, "entry", function));
+		EmitDestroy(ctx, classType, function->getArg(0));
+		builder.CreateRetVoid();
+		return function;
+	}
+
+	// one constant table per class and module: [n + 1 x ptr], first the class's cleanup (so destroying through a
+	// *Base cleans up the whole object), then the class's version of each virtual method
+	static llvm::GlobalVariable* GetVTable(CodegenContext& ctx, const std::shared_ptr<ClassType>& classType)
+	{
+		std::string name = std::format("{}.vtable", classType->GetHash());
 		llvm::GlobalVariable* table = ctx.Module.getNamedGlobal(name);
 
 		if (!table)
 		{
 			llvm::SmallVector<llvm::Constant*> slots;
+			slots.push_back(GetDestroyFunction(ctx, classType));
 
-			for (auto& function : ClassTy->VTable)
+			for (auto& function : classType->VTable)
 				slots.push_back(GetFunctionHere(function, ctx));
 
 			auto arrayType = llvm::ArrayType::get(ctx.Builder.getPtrTy(), slots.size());
 			table = new llvm::GlobalVariable(ctx.Module, arrayType, true, llvm::GlobalValue::LinkOnceODRLinkage, llvm::ConstantArray::get(arrayType, slots), name);
 		}
 
-		return Symbol::CreateValue(table, PointerTy);
+		return table;
+	}
+
+	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(GetVTable(ctx, ClassTy), PointerTy);
+	}
+
+	// *p read as a value, with p: *Base pointing at a Derived: the value is a Base (only the Base part is copied),
+	// so it gets Base's table, and its methods and cleanup are Base's
+	static Symbol LoadThroughPointer(CodegenContext& ctx, Symbol& pointer)
+	{
+		Symbol value = SymbolOps::Load(pointer, ctx.Builder);
+		auto type = value.GetType();
+
+		if (value.Kind == SymbolKind::Value && type && type->IsClass() && type->As<ClassType>()->HasVTable && type->Get()->isStructTy())
+		{
+			llvm::Value* exact = ctx.Builder.CreateInsertValue(value.GetLLVMValue(), GetVTable(ctx, type->As<ClassType>()), { 0u });
+			return Symbol::CreateValue(exact, type);
+		}
+
+		return value;
 	}
 
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
@@ -1402,12 +1444,12 @@ namespace clear
 
 		ConvertArguments(ctx, functionType, args, types);
 
-		// virtual: receiver->__vtable[slot](receiver, ...)
-		if (VirtualSlot >= 0 && calleeSymbol.Receiver)
+		// virtual: receiver->__vtable[slot](receiver, ...) (an operator or a property called by name gets the object as its first argument)
+		if (VirtualSlot >= 0 && (calleeSymbol.Receiver || !args.empty()))
 		{
-			llvm::Value* receiver = calleeSymbol.Receiver->GetLLVMValue();
+			llvm::Value* receiver = calleeSymbol.Receiver ? calleeSymbol.Receiver->GetLLVMValue() : args[0];
 			llvm::Value* table = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), receiver, "vtable");
-			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot, "vslot");
+			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot + 1, "vslot"); // slot 0 is the cleanup
 			llvm::Value* target = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), slot, "vfunc");
 			llvm::Value* result = ctx.Builder.CreateCall(functionType, target, args);
 
@@ -1998,7 +2040,7 @@ namespace clear
 			auto [resultValue, resultType] = result.GetValue();
 
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
-			return SymbolOps::Load(result, ctx.Builder);
+			return LoadThroughPointer(ctx, result);
 		}	
 
 		if(m_Type == OperatorType::Address)
@@ -2125,6 +2167,10 @@ namespace clear
 	Symbol ASTLoad::Codegen(CodegenContext& ctx)
 	{
 		Symbol operand = Operand->Codegen(ctx);
+
+		if (auto deref = std::dynamic_pointer_cast<ASTUnaryExpression>(Operand); deref && deref->GetOperatorType() == OperatorType::Dereference && !deref->IsElement)
+			return LoadThroughPointer(ctx, operand);
+
 		return SymbolOps::Load(operand, ctx.Builder);
 	}
 
@@ -3304,6 +3350,33 @@ namespace clear
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)
 	{
 		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();
+
+		// destroy(p) with p: *Base may point at a Derived: the object's own cleanup comes from its vtable
+		// (an object that was never built, all zero, has no table: then the cleanup of the type written)
+		if (!Address && ValueType && ValueType->IsClass() && ValueType->As<ClassType>()->HasVTable)
+		{
+			auto& builder = ctx.Builder;
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock* dynamic = llvm::BasicBlock::Create(ctx.Context, "destroy.dynamic", function);
+			llvm::BasicBlock* fallback = llvm::BasicBlock::Create(ctx.Context, "destroy.static", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "destroy.done", function);
+
+			llvm::Value* table = builder.CreateLoad(builder.getPtrTy(), address, "vtable");
+			builder.CreateCondBr(builder.CreateIsNotNull(table), dynamic, fallback);
+
+			builder.SetInsertPoint(dynamic);
+			llvm::Value* cleanup = builder.CreateLoad(builder.getPtrTy(), table, "vdestroy");
+			builder.CreateCall(llvm::FunctionType::get(builder.getVoidTy(), { builder.getPtrTy() }, false), cleanup, { address });
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(fallback);
+			EmitDestroy(ctx, ValueType, address);
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(done);
+			return Symbol();
+		}
+
 		EmitDestroy(ctx, ValueType, address);
 		return Symbol();
 	}
@@ -3380,9 +3453,18 @@ namespace clear
 			return;
 		}
 
-		// operator destruct first, then the fields that own something (last field first)
-		if (auto destruct = classType->MemberFunctions.find("__destruct__"); destruct != classType->MemberFunctions.end())
+		// operator destruct first: the class's own, then its base's (and so on up), each once; then the fields that
+		// own something (last field first)
+		std::shared_ptr<ASTFunctionDefinition> lastDestruct;
+
+		for (auto level = classType; level; level = level->Base)
 		{
+			auto destruct = level->MemberFunctions.find("__destruct__");
+
+			if (destruct == level->MemberFunctions.end() || destruct->second->GetFunctionSymbol().FunctionNode == lastDestruct)
+				continue;
+
+			lastDestruct = destruct->second->GetFunctionSymbol().FunctionNode;
 			llvm::Function* callee = GetFunctionHere(destruct->second, ctx);
 			builder.CreateCall(callee, { address });
 		}

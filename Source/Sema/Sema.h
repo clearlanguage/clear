@@ -152,6 +152,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
 		void EnsureDefined(std::shared_ptr<ASTFunctionDefinition> function);
+		void EnsurePrintable(const std::shared_ptr<Type>& type, std::unordered_set<Type*>& seen); // operator str of everything print(x) reaches
 		bool AlwaysReturns(const std::shared_ptr<ASTNodeBase>& node);
 
 		// converts `node` to `target` if that is implicitly allowed, reporting an error otherwise

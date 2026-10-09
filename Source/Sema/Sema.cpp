@@ -35,6 +35,7 @@ namespace clear
 	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
 								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
+	static void DispatchOnObject(const std::shared_ptr<ASTNodeBase>& node, const std::shared_ptr<ClassType>& classType);
 
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
 		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule), 
@@ -1142,6 +1143,8 @@ namespace clear
 
 					// a class with __str__ prints as whatever that returns
 					auto type = m_TypeInferEngine.InferTypeFromNode(arg);
+					std::unordered_set<Type*> printed;
+					EnsurePrintable(type, printed);
 
 					// print(make_name()): the new value lives until the end of the block, then is cleaned up
 					if (IsOwning(type) && IsFreshValue(arg))
@@ -2007,8 +2010,34 @@ namespace clear
 
 			assignmentOp->DestroyOld = !raw && assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
 
+			// a += b on a class is a = a + b with its operator add (the target is worked out once)
+			bool overloaded = false;
+
+			if (storageType && storageType->IsClass() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal &&
+				assignmentOp->GetAssignType() != AssignmentOperatorType::Initialize)
+			{
+				auto target = std::make_shared<ASTOnce>();
+				target->Operand = assignmentOp->Storage;
+				target->Location = assignmentOp->Storage->Location;
+
+				auto current = std::make_shared<ASTLoad>();
+				current->Operand = target;
+				current->Location = target->Location;
+
+				auto value = CompoundValue(assignmentOp->GetAssignType(), current, assignmentOp->Value);
+
+				if (!value)
+					return nullptr;
+
+				assignmentOp->Storage = target;
+				assignmentOp->Value = value;
+				assignmentOp->SetAssignType(AssignmentOperatorType::Normal);
+				assignmentOp->DestroyOld = !raw && IsOwning(storageType);
+				overloaded = true;
+			}
+
 			// pointer += n is pointer arithmetic, not a conversion
-			if (storageType && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
+			if (storageType && !overloaded && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
 				assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
 
 			if (reinitialised && reinitialised->Variable && !m_Unreachable)
@@ -2070,6 +2099,8 @@ namespace clear
 				if (!current)
 					return nullptr;
 
+				DispatchOnObject(current, clsType);
+
 				// a get that returns a reference: the current value is what it points at
 				if (auto pointer = m_TypeInferEngine.InferTypeFromNode(current); pointer && pointer->IsPointer())
 				{
@@ -2094,7 +2125,10 @@ namespace clear
     		var->Variable = setFunc;
 
     		funcCall->Callee = var;
-    		return CheckCall(funcCall);
+
+			auto checked = CheckCall(funcCall);
+			DispatchOnObject(checked, clsType);
+			return checked;
 
 
     	}
@@ -2167,7 +2201,10 @@ namespace clear
 		call->Location = getter->Location;
 		call->Callee = callee;
 		call->Arguments = { self, value };
-		return CheckCall(call);
+
+		auto checked = CheckCall(call);
+		DispatchOnObject(checked, classType->As<ClassType>());
+		return checked;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTUnaryExpression> unaryExpr, SemaContext context)
@@ -2370,6 +2407,54 @@ namespace clear
 
 		m_ScopeStack = std::move(callerScopes);
 		m_LookupModule = previousLookup;
+	}
+
+	void Sema::EnsurePrintable(const std::shared_ptr<Type>& type, std::unordered_set<Type*>& seen)
+	{
+		// print(list) prints each item with its operator str: the methods of a generic class are only
+		// analysed when used, so these count as used
+		if (!type || !seen.insert(type.get()).second)
+			return;
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+			return EnsurePrintable(array->GetBaseType(), seen);
+
+		if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+			return EnsurePrintable(slice->GetBaseType(), seen);
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (auto& element : tuple->GetElements())
+				EnsurePrintable(element, seen);
+			return;
+		}
+
+		if (!type->IsClass())
+			return;
+
+		auto classType = type->As<ClassType>();
+
+		if (auto str = classType->MemberFunctions.find("__str__"); str != classType->MemberFunctions.end())
+		{
+			auto function = str->second->GetFunctionSymbol().FunctionNode;
+			EnsureDefined(function);
+
+			if (function)
+				EnsurePrintable(function->ReturnTypeVal, seen);
+			return;
+		}
+
+		for (auto& argument : classType->GenericArguments)
+			EnsurePrintable(argument, seen);
+
+		for (auto& variantCase : classType->Cases)
+		{
+			for (auto& field : variantCase.Fields)
+				EnsurePrintable(field.second, seen);
+		}
+
+		for (const auto& [name, field] : classType->GetMemberValues())
+			EnsurePrintable(field, seen);
 	}
 
 	bool Sema::DeclareClassType(std::shared_ptr<ASTClass> classExpr)
@@ -3407,7 +3492,39 @@ namespace clear
 		return load;
 	}
 
-	std::shared_ptr<ASTNodeBase> Sema::CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name, 
+	// a method (an operator, a property) called with the object as its first argument runs the object's own
+	// version, like obj.method() does: the call goes through the vtable slot the method has in classType
+	static void DispatchOnObject(const std::shared_ptr<ASTNodeBase>& node, const std::shared_ptr<ClassType>& classType)
+	{
+		auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+
+		if (!call || !classType || call->VirtualSlot >= 0 || call->Arguments.empty())
+			return;
+
+		auto callee = std::dynamic_pointer_cast<ASTVariable>(call->Callee);
+
+		if (!callee || !callee->Variable || callee->Variable->Kind != SymbolKind::Function)
+			return;
+
+		auto function = callee->Variable->GetFunctionSymbol().FunctionNode;
+
+		// (a method taking self by value gets a copy of the object, which is of the type it was called on)
+		if (!function || !function->IsVirtual || function->Arguments.empty() || !function->Arguments[0]->ResolvedType || !function->Arguments[0]->ResolvedType->IsPointer())
+			return;
+
+		for (size_t i = 0; i < classType->VTable.size(); i++)
+		{
+			auto& entry = classType->VTable[i];
+
+			if (entry == callee->Variable || (entry && entry->Kind == SymbolKind::Function && entry->GetFunctionSymbol().FunctionNode == function))
+			{
+				call->VirtualSlot = (int64_t)i;
+				return;
+			}
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name,
 												   std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location)
 	{
 		// object is storage (analysed as an lvalue): pass its address, or the pointer it holds
@@ -3454,7 +3571,9 @@ namespace clear
 		call->Arguments.push_back(self);
 		call->Arguments.append(arguments.begin(), arguments.end());
 
-		return CheckCall(call);
+		auto checked = CheckCall(call);
+		DispatchOnObject(checked, classType);
+		return checked;
 	}
 
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type)
@@ -5909,6 +6028,8 @@ namespace clear
 					if (!call)
 						return nullptr;
 
+					DispatchOnObject(call, clsType);
+
 					auto element = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
 					element->Location = funcCall->Location;
 					element->Operand = call;
@@ -5917,7 +6038,9 @@ namespace clear
 					return element;
 				}
 
-				return CheckCall(funcCall);
+				auto checked = CheckCall(funcCall);
+				DispatchOnObject(checked, clsType);
+				return checked;
 			}
 
 			// tuple[i]: the index must be a constant
@@ -7824,6 +7947,13 @@ namespace clear
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node))
 			return load->Operand;
 
+		// *p: the object p points at (its own operators run on it, not on a copy of its Base part)
+		if (auto deref = std::dynamic_pointer_cast<ASTUnaryExpression>(node); deref && deref->GetOperatorType() == OperatorType::Dereference)
+		{
+			if (auto pointer = m_TypeInferEngine.InferTypeFromNode(deref->Operand); pointer && pointer->IsPointer())
+				return deref->Operand;
+		}
+
 		auto temporary = std::make_shared<ASTTemporary>();
 		temporary->Operand = node;
 		temporary->ValueType = m_TypeInferEngine.InferTypeFromNode(node);
@@ -7913,6 +8043,8 @@ namespace clear
 		}
 		else
 			call->Arguments.push_back(Coerce(expr->RightSide, otherType));
+
+		DispatchOnObject(call, classType);
 
 		if (!negate)
 			return std::shared_ptr<ASTNodeBase>(call);
