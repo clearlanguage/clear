@@ -1061,6 +1061,33 @@ namespace clear
 			return SliceIntrinsic("make_slice", slice, { pointer, Coerce(length, m_Module->Lookup("int64").value()->GetType()) }, callee->GetName());
 		}
 
+		// place(p, v): put v into raw memory that holds no value yet (unlike *p = v, nothing is cleaned up first)
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "place" &&
+			!LookupSymbol("place").first)
+		{
+			if (funcCall->Arguments.size() != 2)
+			{
+				Report(DiagnosticCode_WrongArgumentCount, callee->GetName());
+				return nullptr;
+			}
+
+			auto target = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			target->Location = callee->GetName();
+			target->Operand = funcCall->Arguments[0];
+
+			auto assignment = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+			assignment->Location = callee->GetName();
+			assignment->Storage = target;
+			assignment->Value = funcCall->Arguments[1];
+
+			auto result = Visit(assignment, context);
+
+			if (auto placed = std::dynamic_pointer_cast<ASTAssignmentOperator>(result))
+				placed->DestroyOld = false;
+
+			return result;
+		}
+
 		// destroy(p): clean up *p now;  take(p): hand over the value at p (raw memory a container manages)
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && 
 			(callee->GetName().GetData() == "destroy" || callee->GetName().GetData() == "take" || callee->GetName().GetData() == "clone") && 
@@ -1997,17 +2024,9 @@ namespace clear
 				}
 			}
 
-			// replacing an owning value cleans up the old one (raw memory, *p = v, is left to the programmer)
-			auto rawTarget = std::dynamic_pointer_cast<ASTUnaryExpression>(assignmentOp->Storage);
-			bool raw = rawTarget && rawTarget->GetOperatorType() == OperatorType::Dereference && !rawTarget->IsElement;
-
-			if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(assignmentOp->Storage); subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
-			{
-				auto targetType = m_TypeInferEngine.InferTypeFromNode(subscript->Target);
-				raw = raw || (targetType && targetType->IsPointer());
-			}
-
-			assignmentOp->DestroyOld = !raw && assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
+			// replacing an owning value cleans up the old one, wherever it is (*p = v and p[i] = v too: raw memory
+			// that holds no value yet is filled with place(p, v) instead)
+			assignmentOp->DestroyOld = assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
 
 			// pointer += n is pointer arithmetic, not a conversion
 			if (storageType && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))

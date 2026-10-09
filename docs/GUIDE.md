@@ -745,7 +745,7 @@ class Session:                 // no destruct needed: its String and Connection 
 | `let x = list[0]`, `let b = a`, `f(a)`, `list.push(a)`, `return self.name`, `let s = maybe.value` | **reading**: a separate copy with its own memory; the original is untouched |
 | `list[0].append("!")`, `list[0] = s`, `list[0].qty += 1`, `for item in list`, `case some(s):` | **in place**: works on the element itself, no copy |
 | `return s` (a local) | handed over without a copy (s ends here anyway) |
-| `x = new_value` | the old value of `x` is cleaned up first |
+| `x = new_value`, `*p = new_value`, `list[0] = new_value` | the old value is cleaned up first |
 | `make().qty = 5`, or `bag[0].qty = 5` when `get` returns a copy | compile error: the change would go to a temporary and be lost |
 
 A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
@@ -771,7 +771,7 @@ print(*p)        // warning: ‘p’ points into ‘xs’, which was changed by 
 
 It can't see every case (the pointer passed to another function, for example), so the rule to follow is: take the pointer again after changing the collection, or keep an index instead.
 
-`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, `take(p)` to hand a value out of raw memory without copying it, and `clone(p)` to copy it.
+`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, `take(p)` to hand a value out of raw memory without copying it, and `clone(p)` to copy it. Because `*p = v` cleans up the value `*p` held, memory that holds no value yet (just allocated, grown with `reallocate`, or emptied by `destroy` or `take`) is filled with `place(p, v)`, which puts `v` there without cleaning anything up.
 
 The cost is visible and predictable: a copy where you read an owning value, a cleanup call where a scope ends, and nothing running in the background.
 

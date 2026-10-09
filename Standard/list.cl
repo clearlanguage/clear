@@ -18,7 +18,7 @@ class List[T]:
             let grown = when self.capacity == 0 use 8 otherwise self.capacity * 2
             self.data = reallocate(self.data, grown)
             self.capacity = grown
-        *(self.data + self.length) = value
+        place(self.data + self.length, value)      // the memory past the end holds no item yet
         self.length += 1
 
     function pop(self: *List[T]) -> T:
