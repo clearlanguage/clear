@@ -958,10 +958,29 @@ namespace clear
 			}
 		}
 		
-		for (auto& arg : funcCall->Arguments)
+		// generic f(x: T, g: F): the type parameters plain arguments go to (an untyped lambda passed as an F is a type of its own)
+		std::vector<bool> toTypeParameter(funcCall->Arguments.size(), false);
+
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable)
 		{
+			auto [entry, scope] = LookupSymbol(callee->GetName().GetData());
+			auto generic = entry && entry->Symbol->Kind == SymbolKind::GenericTemplate ? std::dynamic_pointer_cast<ASTGenericTemplate>(entry->Symbol->GetGenericTemplate().GenericTemplate) : nullptr;
+			auto function = generic ? std::dynamic_pointer_cast<ASTFunctionDefinition>(generic->TemplateNode) : nullptr;
+
+			for (size_t i = 0; function && i < funcCall->Arguments.size() && i < function->Arguments.size(); i++)
+			{
+				auto typeName = std::dynamic_pointer_cast<ASTVariable>(function->Arguments[i]->TypeResolver);
+				toTypeParameter[i] = typeName && std::find(generic->GenericTypeNames.begin(), generic->GenericTypeNames.end(), typeName->GetName().GetData()) != generic->GenericTypeNames.end();
+			}
+		}
+
+		for (size_t i = 0; i < funcCall->Arguments.size(); i++)
+		{
+			auto& arg = funcCall->Arguments[i];
+
 			// a lambda without parameter types is analysed once the parameter it goes to is known (in CheckCall)
-			if (auto lambda = std::dynamic_pointer_cast<ASTLambda>(arg); lambda && std::any_of(lambda->Parameters.begin(), lambda->Parameters.end(), [](auto& p) { return !p->TypeResolver; }))
+			if (auto lambda = std::dynamic_pointer_cast<ASTLambda>(arg); lambda && !toTypeParameter[i] && 
+				std::any_of(lambda->Parameters.begin(), lambda->Parameters.end(), [](auto& p) { return !p->TypeResolver; }))
 			{
 				context.CallsiteArgs.push_back(nullptr);
 				continue;
@@ -1142,6 +1161,9 @@ namespace clear
 					funcCall->IndirectType = calleeType;
 					return CheckIndirectCall(funcCall);
 				}
+
+				if (auto classType = ClassOf(calleeType); classType && m_LambdaTemplates.contains(classType.get()))
+					return CallLambdaTemplate(funcCall, calleeType, classType->As<ClassType>());
 
 				if (auto classType = ClassOf(calleeType); classType && classType->As<ClassType>()->MemberFunctions.contains("__call__"))
 				{
@@ -3388,7 +3410,9 @@ namespace clear
 				type = expected->GetParameters()[i];
 			}
 
-			if (!type)
+			// a function type that does not fit says what the parameters must be; with nothing to go on, the
+			// types come from the calls (see CallLambdaTemplate)
+			if (!type && expected)
 			{
 				Report(DiagnosticCode_LambdaNeedsTypes, parameter->GetName());
 				return nullptr;
@@ -3437,8 +3461,15 @@ namespace clear
 			}
 		}
 
-		auto makeParameters = [&](std::shared_ptr<ASTFunctionDefinition> function)
+		bool untyped = std::find(parameterTypes.begin(), parameterTypes.end(), nullptr) != parameterTypes.end();
+
+		if (captures.empty() && !untyped)
 		{
+			// nothing captured: an ordinary function, used through its address
+			auto function = std::make_shared<ASTFunctionDefinition>(std::format("__lambda_{}", id));
+			function->SetNameToken(token(function->GetName()));
+			function->Location = location;
+
 			for (size_t i = 0; i < lambda->Parameters.size(); i++)
 			{
 				auto parameter = std::make_shared<ASTVariableDeclaration>(lambda->Parameters[i]->GetName());
@@ -3450,20 +3481,12 @@ namespace clear
 				function->ReturnType = std::make_shared<ASTTypeLiteral>(declaredReturn);
 			else
 				function->InferReturnType = true;
-		};
 
-		auto body = std::make_shared<ASTBlock>();
-		auto returnStatement = std::make_shared<ASTReturn>();
-		returnStatement->Location = location;
-		returnStatement->ReturnValue = lambda->Body;
+			auto returnStatement = std::make_shared<ASTReturn>();
+			returnStatement->Location = location;
+			returnStatement->ReturnValue = lambda->Body;
 
-		if (captures.empty())
-		{
-			// nothing captured: an ordinary function, used through its address
-			auto function = std::make_shared<ASTFunctionDefinition>(std::format("__lambda_{}", id));
-			function->SetNameToken(token(function->GetName()));
-			function->Location = location;
-			makeParameters(function);
+			auto body = std::make_shared<ASTBlock>();
 			body->Children.push_back(returnStatement);
 			function->CodeBlock = body;
 
@@ -3509,45 +3532,11 @@ namespace clear
 		if (!success)
 			return nullptr;
 
-		auto call = std::make_shared<ASTFunctionDefinition>("__call__");
-		call->SetNameToken(token("__call__"));
-		call->Location = location;
-
-		auto self = std::make_shared<ASTVariableDeclaration>(token("self"));
-		self->TypeResolver = std::make_shared<ASTTypeLiteral>(m_Module->GetTypeRegistry()->GetPointerTo(closure->ClassTy));
-		call->Arguments.push_back(self);
-		makeParameters(call);
-
-		// inside __call__ each captured name is a local copied from the closure (an owning value is used in place)
-		for (auto& [name, type] : captures)
-		{
-			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
-			access->Location = name;
-			access->LeftSide = std::make_shared<ASTVariable>(token("self"));
-			access->RightSide = std::make_shared<ASTVariable>(name);
-
-			auto local = std::make_shared<ASTVariableDeclaration>(name);
-			local->Initializer = access;
-
-			if (IsOwning(type))
-			{
-				local->IsAlias = true;
-
-				if (!borrowed(type))
-				{
-					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
-					address->Location = name;
-					address->Operand = access;
-					local->Initializer = address;
-				}
-			}
-
-			body->Children.push_back(local);
-		}
-
-		body->Children.push_back(returnStatement);
-		call->CodeBlock = body;
-		closure->MemberFunctions.push_back(call);
+		// lambda x: x * 2 with nothing saying what x is: __call__ is made for each set of argument types it is called with
+		if (untyped)
+			m_LambdaTemplates[closure->ClassTy.get()] = LambdaTemplate { lambda, captures, parameterTypes, declaredReturn, {} };
+		else
+			closure->MemberFunctions.push_back(BuildClosureCall("__call__", lambda, lambda->Body, closure->ClassTy, captures, parameterTypes, declaredReturn));
 
 		DeclareInGlobalScope([&]()
 		{
@@ -3589,6 +3578,142 @@ namespace clear
 		valueContext.ValueReq = ValueRequired::RValue;
 		valueContext.ExpectedType = nullptr;
 		return Visit(value, valueContext);
+	}
+
+	std::shared_ptr<ASTFunctionDefinition> Sema::BuildClosureCall(const std::string& name, const std::shared_ptr<ASTLambda>& lambda, std::shared_ptr<ASTNodeBase> body,
+																  std::shared_ptr<Type> closureType, const std::vector<std::pair<Token, std::shared_ptr<Type>>>& captures,
+																  const std::vector<std::shared_ptr<Type>>& parameterTypes, std::shared_ptr<Type> declaredReturn)
+	{
+		Token location = lambda->Location;
+		auto token = [&](const std::string& text) { return Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+
+		auto call = std::make_shared<ASTFunctionDefinition>(name);
+		call->SetNameToken(token(name));
+		call->Location = location;
+
+		auto self = std::make_shared<ASTVariableDeclaration>(token("self"));
+		self->TypeResolver = std::make_shared<ASTTypeLiteral>(m_Module->GetTypeRegistry()->GetPointerTo(closureType));
+		call->Arguments.push_back(self);
+
+		for (size_t i = 0; i < lambda->Parameters.size(); i++)
+		{
+			auto parameter = std::make_shared<ASTVariableDeclaration>(lambda->Parameters[i]->GetName());
+			parameter->TypeResolver = std::make_shared<ASTTypeLiteral>(parameterTypes[i]);
+			call->Arguments.push_back(parameter);
+		}
+
+		if (declaredReturn)
+			call->ReturnType = std::make_shared<ASTTypeLiteral>(declaredReturn);
+		else
+			call->InferReturnType = true;
+
+		auto block = std::make_shared<ASTBlock>();
+
+		// inside __call__ each captured name is a local copied from the closure (an owning value is used in place:
+		// the closure holds a pointer to it when borrowed, or the value itself when it was moved in)
+		for (auto& [captured, type] : captures)
+		{
+			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
+			access->Location = captured;
+			access->LeftSide = std::make_shared<ASTVariable>(token("self"));
+			access->RightSide = std::make_shared<ASTVariable>(captured);
+
+			auto local = std::make_shared<ASTVariableDeclaration>(captured);
+			local->Initializer = access;
+
+			if (IsOwning(type))
+			{
+				local->IsAlias = true;
+
+				if (lambda->MovesCaptures)
+				{
+					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+					address->Location = captured;
+					address->Operand = access;
+					local->Initializer = address;
+				}
+			}
+
+			block->Children.push_back(local);
+		}
+
+		auto returnStatement = std::make_shared<ASTReturn>();
+		returnStatement->Location = location;
+		returnStatement->ReturnValue = body;
+		block->Children.push_back(returnStatement);
+		call->CodeBlock = block;
+		return call;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType)
+	{
+		auto& lambdaTemplate = m_LambdaTemplates.at(closureType.get());
+		auto& lambda = lambdaTemplate.Lambda;
+		Token location = GetNodeLocation(funcCall->Callee);
+
+		if (funcCall->Arguments.size() != lambda->Parameters.size())
+		{
+			location.SetData(std::format("lambda’ expects {} argument{}, but {} {} given", lambda->Parameters.size(), lambda->Parameters.size() == 1 ? "" : "s",
+										 funcCall->Arguments.size(), funcCall->Arguments.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_WrongArgumentCount, 1);
+			return nullptr;
+		}
+
+		// the parameter types are those of the arguments (or what the lambda wrote out)
+		std::vector<std::shared_ptr<Type>> parameterTypes = lambdaTemplate.ParameterTypes;
+		std::string key;
+
+		for (size_t i = 0; i < parameterTypes.size(); i++)
+		{
+			// the arguments are already analysed by the time a call reaches here
+			if (!parameterTypes[i])
+			{
+				parameterTypes[i] = funcCall->Arguments[i] ? m_TypeInferEngine.InferTypeFromNode(funcCall->Arguments[i]) : nullptr;
+
+				if (!parameterTypes[i])
+				{
+					Report(DiagnosticCode_LambdaNeedsTypes, lambda->Parameters[i]->GetName());
+					return nullptr;
+				}
+			}
+
+			key += parameterTypes[i]->GetHash() + ";";
+		}
+
+		std::string name;
+
+		if (auto existing = lambdaTemplate.Instances.find(key); existing != lambdaTemplate.Instances.end())
+		{
+			name = existing->second;
+		}
+		else
+		{
+			name = std::format("__call_{}__", lambdaTemplate.Instances.size());
+			lambdaTemplate.Instances[key] = name;
+
+			Cloner cloner;
+			cloner.DestinationModule = m_Module;
+			auto call = BuildClosureCall(name, lambda, cloner.Clone(lambda->Body), closureType, lambdaTemplate.Captures, parameterTypes, lambdaTemplate.DeclaredReturn);
+
+			bool success = false;
+			DeclareInGlobalScope([&]()
+			{
+				SemaContext methodContext { .TypeHint = closureType, .GlobalState = false };
+				success = DeclareFunction(call, methodContext);
+
+				if (success)
+				{
+					closureType->MemberFunctions[name] = call->FunctionSymbol;
+					DefineFunction(call, methodContext);
+				}
+			});
+
+			if (!success)
+				return nullptr;
+		}
+
+		std::vector<std::shared_ptr<ASTNodeBase>> arguments(funcCall->Arguments.begin(), funcCall->Arguments.end());
+		return CallMethod(funcCall->Callee, calleeType, name, arguments, location);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)

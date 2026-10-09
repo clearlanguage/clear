@@ -160,7 +160,7 @@ Other markers:
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
 
-Files inside a folder named `lib` are helper modules, not tests (see `Tests/modules/lib`).
+Files inside a folder named `lib`, and files whose first line is `// test-helper`, are helper modules, not tests (see `Tests/modules/lib` and `Tests/modules/shadow`).
 
 The test runner gives programs an empty stdin. Tests run in a temporary directory, but imports are resolved relative to the test file.
 
@@ -264,6 +264,8 @@ let shifted = lambda (x: int): x + offset   // captures a *copy* of offset
 ```
 
 A lambda that uses outside variables becomes a small object that holds copies of them. To pass such a lambda to your own function, give the parameter a generic type (`function run[F](f: F)`). A plain `function(...)` parameter only accepts lambdas that use no outside variables.
+
+When nothing says what a parameter's type is (no type written, and not passed to a `function(...)` parameter), it comes from each call, like a template: `let add = lambda a, b: a + b` works for `add(1, 2)` and `add(1.5, 2.5)`, and `run(lambda x: x * 2)` with `function run[F](f: F)` gets `x`'s type from the `f(...)` call inside `run`. Each different set of argument types makes its own copy of the code, so there is no cost at run time.
 
 Values that own memory (a `String`, a `List`...) are not copied into a lambda. They are **borrowed**: the lambda uses the variable itself, so `lambda: names.push(x)` changes the real list. Because of that, a borrowing lambda cannot be returned out of the function whose variables it uses (compile error). Write `move lambda` to move the values into the lambda instead; the variables are then empty, and using them afterwards is a compile error:
 
@@ -666,7 +668,7 @@ A module is just a `.cl` file, and everything at its top level can be imported. 
 2. installed packages
 3. the standard library
 
-So a file of yours named `math.cl` hides the standard `math`, as in Python.
+So a file of yours named `math.cl` hides the standard `math`, as in Python. The compiler warns when that happens, and `import "std/math"` always means the standard one.
 
 Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`.
 

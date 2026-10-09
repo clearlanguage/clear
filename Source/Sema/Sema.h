@@ -188,6 +188,21 @@ namespace clear
 		std::unordered_map<Symbol*, size_t> m_LocalOrder; // declaration order, to tell variables from outside a loop
 		size_t m_LocalCounter = 0;
 		std::unordered_set<Type*> m_BorrowingClosures; // lambdas holding pointers to local variables
+
+		// lambda x: ... with no types to go on: analysed again for each set of argument types it is called with
+		struct LambdaTemplate
+		{
+			std::shared_ptr<ASTLambda> Lambda;
+			std::vector<std::pair<Token, std::shared_ptr<Type>>> Captures;
+			std::vector<std::shared_ptr<Type>> ParameterTypes; // null where the lambda did not write one
+			std::shared_ptr<Type> DeclaredReturn;
+			std::unordered_map<std::string, std::string> Instances; // argument types -> the __call_N__ made for them
+		};
+		std::unordered_map<Type*, LambdaTemplate> m_LambdaTemplates;
+		std::shared_ptr<ASTFunctionDefinition> BuildClosureCall(const std::string& name, const std::shared_ptr<ASTLambda>& lambda, std::shared_ptr<ASTNodeBase> body,
+																std::shared_ptr<Type> closureType, const std::vector<std::pair<Token, std::shared_ptr<Type>>>& captures,
+																const std::vector<std::shared_ptr<Type>>& parameterTypes, std::shared_ptr<Type> declaredReturn);
+		std::shared_ptr<ASTNodeBase> CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType);
 		ASTVariable* m_Reinitialised = nullptr;         // `x = v`: x is given a new value, not read
 
 		void RecordMove(const std::shared_ptr<ASTVariable>& variable);

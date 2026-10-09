@@ -169,13 +169,18 @@ function max[T](a: T, b: T) -> T:                            // generic, T is in
     return when a > b use a otherwise b
 ```
 
-Functions are values. Lambdas take their parameter types from where they are used. A lambda that uses outside variables keeps its own copies of them, made when the lambda is created:
+Functions are values. Lambdas take their parameter types from where they are used: from a `function(...)` parameter, or, when nothing says, from each call (so one lambda can be used with different types). A lambda that uses outside variables keeps its own copies of them, made when the lambda is created; values that own memory are borrowed instead, or moved in with `move lambda`:
 
 ```clear
 function apply(f: function(int) -> int, x: int) -> int:
     return f(x)
 
+function apply_any[F](f: F, x: int) -> int:
+    return f(x)
+
 apply(lambda x: x + 100, 1)
+apply_any(lambda x: x * 2, 21)              // x is an int because f is called with one
+let add = lambda a, b: a + b                // add(1, 2) and add(1.5, 2.5) both work
 let offset = 10
 let shifted = lambda (x: int): x + offset
 ```

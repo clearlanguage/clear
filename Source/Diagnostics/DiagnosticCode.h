@@ -103,6 +103,7 @@ namespace clear
 		DiagnosticCode_AssignToTemporary,
 		DiagnosticCode_BorrowingLambdaEscapes,
 		DiagnosticCode_StaleElementPointer,
+		DiagnosticCode_ImportShadowsStandard,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -206,6 +207,7 @@ namespace clear
 		"This changes a temporary value, so the change is lost.",
 		"This lambda borrows local variables, so it cannot be returned.",
 		"This pointer may point at memory that has been moved or freed.",
+		"This import finds a file next to this one, not the standard module of the same name.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -308,5 +310,6 @@ namespace clear
 		"This ‘{}’ is a new value that is thrown away at the end of the statement. Store it in a variable first and change that, or make the method return a pointer (*T) to change the original.",
 		"It holds pointers to values that are cleaned up when this function ends. Write ‘move lambda’ to move them into the lambda instead.",
 		"{}. Adding or removing items can move all of them. Take the pointer again after the change, or store an index instead.",
+		"{}.",
 	};
 }

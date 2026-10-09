@@ -14,7 +14,8 @@ is written in comments inside the test itself:
     // expect-warning: E099  (compilation must succeed and print this text)
     // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
 
-Files inside a folder named `lib` are helpers that tests import, not tests.
+Files inside a folder named `lib`, and files whose first line is `// test-helper`,
+are helpers that tests import, not tests.
 
 usage: run_tests.py <path to clearc> <tests directory> [name filter]
 
@@ -147,6 +148,9 @@ def main():
         for name in files:
             if name.endswith(".cl"):
                 path = os.path.join(root, name)
+                with open(path, encoding="utf-8") as f:
+                    if f.readline().strip() == "// test-helper":
+                        continue
                 if name_filter in path:
                     tests.append(path)
     tests.sort()

@@ -396,3 +396,7 @@ Advice  = "It holds pointers to values that are cleaned up when this function en
 [StaleElementPointer]
 Message = "This pointer may point at memory that has been moved or freed."
 Advice  = "{}. Adding or removing items can move all of them. Take the pointer again after the change, or store an index instead."
+
+[ImportShadowsStandard]
+Message = "This import finds a file next to this one, not the standard module of the same name."
+Advice  = "{}."
