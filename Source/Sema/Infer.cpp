@@ -26,6 +26,7 @@ namespace clear
 			case ASTNodeType::Await:		return std::dynamic_pointer_cast<ASTAwait>(node)->ValueType;
 			case ASTNodeType::Yield:		return nullptr;
 			case ASTNodeType::Move:			return std::dynamic_pointer_cast<ASTMove>(node)->ValueType;
+			case ASTNodeType::Copy:			return std::dynamic_pointer_cast<ASTCopy>(node)->ValueType;
 			case ASTNodeType::Destroy:		return nullptr;
 			case ASTNodeType::VariantConstruct: return std::dynamic_pointer_cast<ASTVariantConstruct>(node)->VariantTy;
 			case ASTNodeType::VariantTag:	return std::dynamic_pointer_cast<ASTVariantTag>(node)->TagType;
@@ -136,6 +137,11 @@ namespace clear
 			case ASTNodeType::Load:
 			{
 				auto load = std::dynamic_pointer_cast<ASTLoad>(node);
+
+				// reading a temporary gives the value it holds
+				if (auto temporary = std::dynamic_pointer_cast<ASTTemporary>(load->Operand))
+					return temporary->ValueType;
+
 				return InferTypeFromNode(load->Operand);
 			}
 			case ASTNodeType::Subscript:

@@ -2,6 +2,7 @@
 #include "Compilation/CompilationManager.h"
 #include "CommandLine/CommandLineParsing.h"
 #include "Packages/PackageManager.h"
+#include "Core/CrashHandler.h"
 
 #include <llvm/Config/llvm-config.h>
 #include <llvm/Support/Program.h>
@@ -148,6 +149,8 @@ static int RunFile(const CommandLine::ParsingResult& options)
 
 int main(int argc, char* argv[])
 {
+    InstallCrashHandler();
+
     CommandLine::ParsingResult result = CommandLine::Parse(argc, argv);
 
     if (!result.Successful)

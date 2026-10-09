@@ -52,7 +52,8 @@ namespace clear
         void CodegenModule(const std::filesystem::path& path);
 
 		void LoadImports(std::shared_ptr<Module> module);
-		std::optional<std::filesystem::path> ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name);
+		std::optional<std::filesystem::path> ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name, std::filesystem::path* shadowedStandard = nullptr);
+		std::vector<std::filesystem::path> StandardCandidates(const std::filesystem::path& name);
 		
 
     private:

@@ -97,6 +97,13 @@ namespace clear
 		DiagnosticCode_NotInVariant,
 		DiagnosticCode_CannotCopyOwning,
 		DiagnosticCode_OwningOperatorArgument,
+		DiagnosticCode_UseAfterMove,
+		DiagnosticCode_MovedInLoop,
+		DiagnosticCode_UnionOwningField,
+		DiagnosticCode_AssignToTemporary,
+		DiagnosticCode_BorrowingLambdaEscapes,
+		DiagnosticCode_StaleElementPointer,
+		DiagnosticCode_ImportShadowsStandard,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -192,8 +199,15 @@ namespace clear
 		"Special methods are written with ‘operator’.",
 		"‘virtual’ is not needed.",
 		"This type is not one of the variant's types.",
-		"This value owns memory, so it is not copied implicitly.",
+		"This value cannot be copied.",
 		"An operator cannot take an owning value as a copy.",
+		"This variable was moved, so it is empty here.",
+		"This moves a variable that the next time round the loop uses again.",
+		"A union cannot hold a value that needs cleaning up.",
+		"This changes a temporary value, so the change is lost.",
+		"This lambda borrows local variables, so it cannot be returned.",
+		"This pointer may point at memory that has been moved or freed.",
+		"This import finds a file next to this one, not the standard module of the same name.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -288,7 +302,14 @@ namespace clear
 		"‘{}’.",
 		"Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’.",
 		"‘{}.",
-		"Two owners of one ‘{}’ would free it twice. Make a separate copy with .copy(), or use it in place (a pointer, or the element itself). Only a local variable is moved, and it is left empty.",
+		"‘{}’ cleans up after itself (operator destruct) and has no ‘operator copy’, so a copy would free the same thing twice. Use it in place, move it out of a local variable, or give the class an operator copy.",
 		"Declare the parameter as a pointer, e.g. ‘other: *{}’, so the operand is not moved or copied.",
+		"{}. A value that can't be copied moves when it is assigned or passed. Lend it with a pointer (&x) instead, or give the variable a new value before using it again.",
+		"{} is declared outside the loop, so after the first time round it would be empty. Lend it with a pointer (&x), break right after moving it, or declare it inside the loop.",
+		"A union does not know which of its fields is in use, so a ‘{}’ in it would never be cleaned up. Use a variant, which remembers which type it holds.",
+		"This ‘{}’ is a new value that is thrown away at the end of the statement. Store it in a variable first and change that, or make the method return a pointer (*T) to change the original.",
+		"It holds pointers to values that are cleaned up when this function ends. Write ‘move lambda’ to move them into the lambda instead.",
+		"{}. Adding or removing items can move all of them. Take the pointer again after the change, or store an index instead.",
+		"{}.",
 	};
 }

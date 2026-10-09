@@ -10,9 +10,12 @@ is written in comments inside the test itself:
 
     // expect-exit: 3        (optional, default 0)
     // expect-error          (compilation must fail)
+    // expect-error: E094    (... with this text in the compiler's output, e.g. an error code)
+    // expect-warning: E099  (compilation must succeed and print this text)
     // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
 
-Files inside a folder named `lib` are helpers that tests import, not tests.
+Files inside a folder named `lib`, and files whose first line is `// test-helper`,
+are helpers that tests import, not tests.
 
 usage: run_tests.py <path to clearc> <tests directory> [name filter]
 
@@ -29,6 +32,8 @@ def parse_expectations(path):
     expected_lines = None
     expected_exit = 0
     expect_error = False
+    error_text = None
+    warning_text = None
     flags = []
 
     with open(path, encoding="utf-8") as f:
@@ -58,6 +63,17 @@ def parse_expectations(path):
             in_block = False
             continue
 
+        if stripped.startswith("// expect-error:"):
+            expect_error = True
+            error_text = stripped.split(":", 1)[1].strip()
+            in_block = False
+            continue
+
+        if stripped.startswith("// expect-warning:"):
+            warning_text = stripped.split(":", 1)[1].strip()
+            in_block = False
+            continue
+
         if in_block:
             if stripped.startswith("//"):
                 # keep everything after "// " exactly, so leading spaces in output are testable
@@ -66,11 +82,11 @@ def parse_expectations(path):
             else:
                 in_block = False
 
-    return expected_lines, expected_exit, expect_error, flags
+    return expected_lines, expected_exit, expect_error, error_text, warning_text, flags
 
 
 def run_test(clearc, path, workdir):
-    expected_lines, expected_exit, expect_error, test_flags = parse_expectations(path)
+    expected_lines, expected_exit, expect_error, error_text, warning_text, test_flags = parse_expectations(path)
     output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
 
     extra_flags = os.environ.get("CLEAR_TEST_FLAGS", "").split()
@@ -83,13 +99,20 @@ def run_test(clearc, path, workdir):
     if compile_result.returncode < 0:
         return False, f"compiler crashed (signal {-compile_result.returncode}):\n" + compile_result.stdout + compile_result.stderr
 
+    compiler_output = compile_result.stdout + compile_result.stderr
+
     if expect_error:
         if compile_result.returncode == 0:
             return False, "expected a compile error but compilation succeeded"
+        if error_text and error_text not in compiler_output:
+            return False, f"expected an error mentioning '{error_text}', got:\n" + compiler_output
         return True, ""
 
     if compile_result.returncode != 0:
-        return False, "compilation failed:\n" + compile_result.stdout + compile_result.stderr
+        return False, "compilation failed:\n" + compiler_output
+
+    if warning_text and warning_text not in compiler_output:
+        return False, f"expected a warning mentioning '{warning_text}', got:\n" + compiler_output
 
     run_result = subprocess.run([output], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
 
@@ -125,6 +148,9 @@ def main():
         for name in files:
             if name.endswith(".cl"):
                 path = os.path.join(root, name)
+                with open(path, encoding="utf-8") as f:
+                    if f.readline().strip() == "// test-helper":
+                        continue
                 if name_filter in path:
                     tests.append(path)
     tests.sort()

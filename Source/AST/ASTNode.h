@@ -36,7 +36,7 @@ namespace clear
 		Subscript, ArrayType, WhenExpr, CastExpr, SizeofExpr, IsExpr,
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
-		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy,
+		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy, Copy,
 		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
 	};
 
@@ -874,6 +874,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Parameters; // TypeResolver is null when the type comes from context
 		std::shared_ptr<ASTNodeBase> ReturnType;
 		std::shared_ptr<ASTNodeBase> Body;
+		bool MovesCaptures = false; // `move lambda`: owning values it uses are moved in, otherwise they are borrowed
 	};
 
 	// function(int, int) -> int in a type position
@@ -920,6 +921,24 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Value;   // what is read from it
 		std::shared_ptr<Type> ValueType;
 	};
+
+	// reading an owning value out of a place (a field, an element, another variable): a separate copy
+	// with its own memory (operator copy, or field by field), so each has one owner
+	class ASTCopy : public ASTNodeBase
+	{
+	public:
+		ASTCopy() = default;
+		virtual ~ASTCopy() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Copy; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Value; // the value as it is (sharing memory with the original)
+		std::shared_ptr<Type> ValueType;
+	};
+
+	// a deep copy of `value` (which shares memory with the original)
+	llvm::Value* EmitCopy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* value);
 
 	// destroy(p): run the cleanup of *p now (used by containers for their elements); nothing for plain types
 	class ASTDestroy : public ASTNodeBase

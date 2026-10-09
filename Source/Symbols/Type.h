@@ -346,6 +346,10 @@ namespace clear
     // their scope and moved (never silently copied).
     bool IsOwning(const std::shared_ptr<Type>& type);
 
+    // an owning type the compiler knows how to copy: it has `operator copy`, or it has no
+    // `operator destruct` of its own and all its owning fields are copyable (copied field by field)
+    bool IsCopyable(const std::shared_ptr<Type>& type);
+
     // a type as it is written in Clear source (*int8, [4; float64]), for diagnostics
     std::string GetDisplayName(const std::shared_ptr<Type>& type);
 

@@ -155,10 +155,12 @@ Other markers:
 | marker | meaning |
 | --- | --- |
 | `// expect-error` | the program must **fail** to compile (for testing diagnostics) |
+| `// expect-error: text` | ...and the compiler's output must contain `text` (part of the message, so the test fails if a *different* error happens) |
+| `// expect-warning: text` | the program must compile and the compiler must print `text` |
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
 
-Files inside a folder named `lib` are helper modules, not tests (see `Tests/modules/lib`).
+Files inside a folder named `lib`, and files whose first line is `// test-helper`, are helper modules, not tests (see `Tests/modules/lib` and `Tests/modules/shadow`).
 
 The test runner gives programs an empty stdin. Tests run in a temporary directory, but imports are resolved relative to the test file.
 
@@ -167,6 +169,17 @@ The test runner gives programs an empty stdin. Tests run in a temporary director
 ```
 python3 Scripts/bench.py build/clearc Benchmarks 5     # 5 runs each, Clear vs the same program in C
 ```
+
+### 2.5 Fuzzing
+
+```
+python3 Scripts/fuzz.py build/clearc --count 300            # random seeds
+python3 Scripts/fuzz.py build/clearc --count 50 --seed 71   # the same programs again
+```
+
+The fuzzer writes random programs that are valid by construction and mix features (classes with `operator destruct`, lists, strings and moves, generators stopped with `break`, typed and untyped lambdas, enums, optionals, `when`). Each one is built and run at `-O0` and `-O3`. Any of these is a bug: the compiler crashed, it rejected the program, the program crashed, or the two builds printed different things. Failing programs land in `fuzz-failures/` with what went wrong; turn each into a test once it is fixed.
+
+If the compiler itself crashes, it prints `internal compiler error` with the file and line it was working on, and a stack trace.
 
 ---
 
@@ -263,6 +276,16 @@ let shifted = lambda (x: int): x + offset   // captures a *copy* of offset
 
 A lambda that uses outside variables becomes a small object that holds copies of them. To pass such a lambda to your own function, give the parameter a generic type (`function run[F](f: F)`). A plain `function(...)` parameter only accepts lambdas that use no outside variables.
 
+When nothing says what a parameter's type is (no type written, and not passed to a `function(...)` parameter), it comes from each call, like a template: `let add = lambda a, b: a + b` works for `add(1, 2)` and `add(1.5, 2.5)`, and `run(lambda x: x * 2)` with `function run[F](f: F)` gets `x`'s type from the `f(...)` call inside `run`. Each different set of argument types makes its own copy of the code, so there is no cost at run time.
+
+Values that own memory (a `String`, a `List`...) are not copied into a lambda. They are **borrowed**: the lambda uses the variable itself, so `lambda: names.push(x)` changes the real list. Because of that, a borrowing lambda cannot be returned out of the function whose variables it uses (compile error). Write `move lambda` to move the values into the lambda instead; the variables are then empty, and using them afterwards is a compile error:
+
+```clear
+let name = String("ada")
+let greet = lambda: print("hi", name)        // borrows name
+let keep = move lambda: print("hi", name)    // takes name over; name can't be used after this
+```
+
 ### 3.6 Classes · [`examples/07_classes.cl`](../examples/07_classes.cl)
 
 ```clear
@@ -313,6 +336,7 @@ class Vec2:
 | `str` | what `print(obj)` shows |
 | `hash` | `hash(obj)`, so it can be a `Map` key |
 | `destruct` | cleanup when the object's scope ends (see automatic cleanup below) |
+| `copy` | what `let b = a` makes when the object owns memory (see automatic cleanup below) |
 
 Python-style names like `__add__` are a compile error that tells you the Clear spelling.
 
@@ -439,6 +463,8 @@ union Bits:                  // fields share memory
 let b = Bits(f = 1.0)
 ```
 
+A union can't have a field that needs cleaning up (a `String`, a `List`, a class with `operator destruct`...), because it doesn't know which field it holds. That is a compile error that suggests a variant.
+
 `none` can only go into a `?T`. Writing `let n: int = none` is a compile error.
 
 ### 3.14 Variants · [`examples/24_variants.cl`](../examples/24_variants.cl)
@@ -477,8 +503,9 @@ for i in count_up(3, 6):     // 3 4 5
 ```
 
 - Values are produced only when the loop asks, so a generator can be endless (`fibonacci()` in the example).
-- `break` cleans the generator up.
-- By hand: `g.advance()` (true when a new value is ready), `g.value()`, `g.done()`, `g.free()`.
+- A generator is cleaned up like any other value: `for x in gen():` cleans it up when the loop ends (also on `break`), and `let g = gen()` when `g`'s scope ends. Values the generator was holding while paused are cleaned up too.
+- `for x in g:` on a variable steps through `g` in place, so a second loop carries on where a `break` left off.
+- By hand: `g.advance()` (true when a new value is ready), `g.value()`, `g.done()`, `g.free()` (frees it early).
 
 ### 3.16 Async / await · [`examples/16_async_await.cl`](../examples/16_async_await.cl)
 
@@ -499,6 +526,7 @@ There is no hidden event loop or thread. A task runs only when something resumes
 - `task.run()` runs it to the end.
 - `await other` (inside an async function) runs `other`. Each time `other` pauses, this task pauses too.
 - `task.resume()`, `task.done()`, `task.result()` and `task.free()` let you write your own scheduler. The example interleaves two workers round-robin.
+- A task is cleaned up when the variable holding it goes out of scope, even if it never finished. `await t` takes the task over, so `t` can't be used after it.
 
 Generators and tasks are compiled to LLVM coroutines.
 
@@ -598,19 +626,35 @@ class Session:                 // no destruct needed: its String and Connection 
     link: Connection
 ```
 
-**One owner at a time.** A value that owns memory is never silently copied, because two copies would free the same memory twice:
+**Reading copies, writing goes in place.** Each value that owns memory has exactly one owner, so nothing is ever freed twice:
 
 | you write | what happens |
 | --- | --- |
-| `let b = a`, `f(a)`, `return a`, `list.push(a)` (a is a local variable) | the value **moves**: `a` is left empty (all zero), so nothing is freed twice |
-| `let x = list[0]`, `return self.name` (a field or element) | compile error: use `.copy()` for a separate copy, or use it in place |
-| `let s = maybe.value` (a local optional) | moves the value out; `maybe` becomes `none` |
+| `let x = list[0]`, `let b = a`, `f(a)`, `list.push(a)`, `return self.name`, `let s = maybe.value` | **reading**: a separate copy with its own memory; the original is untouched |
+| `list[0].append("!")`, `list[0] = s`, `list[0].qty += 1`, `for item in list`, `case some(s):` | **in place**: works on the element itself, no copy |
+| `return s` (a local) | handed over without a copy (s ends here anyway) |
 | `x = new_value` | the old value of `x` is cleaned up first |
-| `list[0].append("!")`, `for item in list`, `case some(s):` | work on the value in place, no copy |
+| `make().qty = 5`, or `bag[0].qty = 5` when `get` returns a copy | compile error: the change would go to a temporary and be lost |
 
-`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, and `take(p)` to hand a value out of raw memory without copying it.
+Copies allocate, so in hot loops prefer working in place (`for w in words`, `words[i].method()`). A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
 
-The cost is visible and predictable: one cleanup call where a scope ends, and nothing running in the background.
+**Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
+
+Using a variable after it was moved is a compile error, until it is given a new value. The compiler follows this through the function: a move in one branch of an `if` counts, moving a variable from outside a loop inside the loop is an error (the second time round it would be empty), and so is passing the same variable twice in one call. Generators and tasks can't be copied either: `let h = g`, passing one to a function and `await t` move them.
+
+**Pointers into a collection.** `let p = &list[0]` points at the item inside the list. Adding or removing items (`push`, `insert`, `remove`, `pop`, `clear`, `m[k] = v` on a map...) can move every item to new memory, so `p` must not be used after that. The compiler warns when it sees this in one function:
+
+```clear
+let p = &xs[0]
+xs.push(4)
+print(*p)        // warning: ‘p’ points into ‘xs’, which was changed by ‘push’
+```
+
+It can't see every case (the pointer passed to another function, for example), so the rule to follow is: take the pointer again after changing the collection, or keep an index instead.
+
+`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, `take(p)` to hand a value out of raw memory without copying it, and `clone(p)` to copy it.
+
+The cost is visible and predictable: a copy where you read an owning value, a cleanup call where a scope ends, and nothing running in the background.
 
 ### 3.22 Files and input · [`examples/21_files.cl`](../examples/21_files.cl)
 
@@ -639,7 +683,7 @@ A module is just a `.cl` file, and everything at its top level can be imported. 
 2. installed packages
 3. the standard library
 
-So a file of yours named `math.cl` hides the standard `math`, as in Python.
+So a file of yours named `math.cl` hides the standard `math`, as in Python. The compiler warns when that happens, and `import "std/math"` always means the standard one.
 
 Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`.
 

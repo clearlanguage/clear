@@ -1233,6 +1233,20 @@ namespace clear
 					break;
 				}
 
+				// move lambda: ...  the lambda takes over the values it uses instead of borrowing them
+				if (token.GetData() == "move" && m_Position + 1 < m_Tokens.size() && m_Tokens[m_Position + 1].GetData() == "lambda")
+				{
+					Consume(); // move
+					auto lambda = std::dynamic_pointer_cast<ASTLambda>(ParseLambda());
+
+					if (!lambda)
+						return nullptr;
+
+					lambda->MovesCaptures = true;
+					lhs = lambda;
+					break;
+				}
+
 				// name!(a, b): a macro use
 				if (m_Position + 2 < m_Tokens.size() && m_Tokens[m_Position + 1].IsType(TokenType::Bang) && m_Tokens[m_Position + 2].IsType(TokenType::LeftParen))
 				{
@@ -1843,7 +1857,7 @@ namespace clear
 		{ "greater", "__gt__" }, { "greater_equal", "__ge__" },
 		{ "get", "__getitem__" }, { "set", "__setitem__" }, { "len", "__len__" }, { "contains", "__contains__" },
 		{ "iterate", "__iter__" }, { "call", "__call__" }, { "str", "__str__" }, { "hash", "__hash__" },
-		{ "destruct", "__destruct__" },
+		{ "destruct", "__destruct__" }, { "copy", "__copy__" },
 	};
 
 	bool Parser::NameSpecialMethod(std::shared_ptr<ASTFunctionDefinition> method, const Token& nameToken, bool isOperator)

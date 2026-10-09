@@ -169,13 +169,18 @@ function max[T](a: T, b: T) -> T:                            // generic, T is in
     return when a > b use a otherwise b
 ```
 
-Functions are values. Lambdas take their parameter types from where they are used. A lambda that uses outside variables keeps its own copies of them, made when the lambda is created:
+Functions are values. Lambdas take their parameter types from where they are used: from a `function(...)` parameter, or, when nothing says, from each call (so one lambda can be used with different types). A lambda that uses outside variables keeps its own copies of them, made when the lambda is created; values that own memory are borrowed instead, or moved in with `move lambda`:
 
 ```clear
 function apply(f: function(int) -> int, x: int) -> int:
     return f(x)
 
+function apply_any[F](f: F, x: int) -> int:
+    return f(x)
+
 apply(lambda x: x + 100, 1)
+apply_any(lambda x: x * 2, 21)              // x is an int because f is called with one
+let add = lambda a, b: a + b                // add(1, 2) and add(1.5, 2.5) both work
 let offset = 10
 let shifted = lambda (x: int): x + offset
 ```
@@ -216,7 +221,7 @@ class Grid:
         ...
 ```
 
-The operators are `add subtract multiply divide modulo power equals not_equals less less_equal greater greater_equal get set len contains iterate call str hash destruct`. When `get` returns a pointer, `grid[i]` is the element itself: `cart[0].qty = 10` changes the item in the list, and `for item in cart` visits each object in place (numbers are still copied, as in Python). Classes can be generic: `class Box[T]`, used as `Box(7)` or `Box[int64](7)`.
+The operators are `add subtract multiply divide modulo power equals not_equals less less_equal greater greater_equal get set len contains iterate call str hash destruct copy`. When `get` returns a pointer, `grid[i]` is the element itself: `cart[0].qty = 10` changes the item in the list, and `for item in cart` visits each object in place (numbers are still copied, as in Python). Classes can be generic: `class Box[T]`, used as `Box(7)` or `Box[int64](7)`.
 
 **Inheritance** puts the base's fields first, so a `*Dog` can be passed wherever a `*Animal` is expected. A method always runs the object's own version; there is no `virtual` keyword. Only classes that inherit or are inherited from pay for this (one hidden pointer), every other class is unchanged:
 
@@ -336,13 +341,16 @@ class Connection:
         print("closing", self.name)
 
 let words = List[String]()             // no free(), no defer
-let w = String("world")
-words.push(w)                          // moved into the list: w is left empty
-let first = words[0].copy()            // copies are explicit
-let bad = words[0]                     // compile error: would give the text two owners
+words.push(String("hello"))
+let first = words[0]                   // reading copies: first has its own text
+words[0].append(" world")              // writing changes the element itself
 ```
 
-Assigning from a local variable *moves* the value and leaves the variable empty, so there is always exactly one owner and nothing is freed twice. Copying out of a field or element is a compile error that suggests `.copy()`. The cost is visible: one cleanup call where a scope ends, nothing running in the background.
+**Reading copies, writing goes in place.** `let x = words[0]`, `let b = a` and passing a value to a function each give a separate copy with its own memory, so every value has exactly one owner and nothing is freed twice. `words[0].append(...)`, `words[0] = s` and `for w in words` work on the element itself. `return s` hands a local over without copying. Copies allocate, so in hot code prefer working in place.
+
+A class that cleans up something itself (`operator destruct`) can only be copied if it also has `operator copy`. Without one (a file, a connection), assigning it moves it and leaves the old variable empty, and copying it out of a field or list is a compile error. The cost of all this is visible: a copy where you read an owning value, a cleanup call where a scope ends, and nothing running in the background.
+
+Using a variable after such a move is a compile error (also when only one branch of an `if` moved it, or a loop would move it twice). Generators and tasks are cleaned up the same way and move rather than copy. Lambdas borrow owning values instead of copying them; `move lambda` moves them in.
 
 ### Generators and async
 

@@ -25,3 +25,4 @@ cmake-build-release/
 *.o
 .cache/
 cmake_build.sh
+fuzz-failures/

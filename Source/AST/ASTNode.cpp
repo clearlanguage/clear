@@ -1,3 +1,4 @@
+#include "Core/CrashHandler.h"
 #include "ASTNode.h"
 
 #include "Core/Log.h"
@@ -143,13 +144,14 @@ namespace clear
 			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
 				break;
 
+			NoteProgress("generating code for", child->Location.GetSourceFile(), child->Location.LineNumber, child->Location.ColumnNumber);
 			Symbol result = child->Codegen(ctx);
 
 			// `make_list()` on its own line: the value it made is cleaned up straight away
 			bool fresh = child->GetType() == ASTNodeType::FunctionCall || child->GetType() == ASTNodeType::Construct || child->GetType() == ASTNodeType::StructExpr;
 
 			if (fresh && result.Kind == SymbolKind::Value && result.GetType() && IsOwning(result.GetType()) && result.GetLLVMValue() && 
-				!result.GetLLVMValue()->getType()->isPointerTy())
+				(!result.GetLLVMValue()->getType()->isPointerTy() || std::dynamic_pointer_cast<CoroutineType>(result.GetType())))
 			{
 				Symbol slot = CreateAlloca(result.GetType(), ctx);
 				ctx.Builder.CreateStore(result.GetLLVMValue(), slot.GetLLVMValue());
@@ -947,13 +949,30 @@ namespace clear
 	// generators and async functions are LLVM coroutines (switch-resumed). The call allocates the frame
 	// (LLVM removes the allocation when the coroutine does not outlive its caller), runs up to the first
 	// suspension and returns the handle; resuming continues from the last suspension.
+	// destroyed while suspended (a loop over a generator ends with break): clean up what is alive at this point,
+	// as a return from here would, before the frame is freed
+	static llvm::BasicBlock* AbandonBlock(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		auto saved = builder.saveIP();
+
+		llvm::BasicBlock* abandon = llvm::BasicBlock::Create(ctx.Context, "coro.abandon", builder.GetInsertBlock()->getParent());
+		builder.SetInsertPoint(abandon);
+		EmitDefers(ctx, ctx.FunctionDeferBase);
+		builder.CreateBr(ctx.Coroutine->Cleanup);
+
+		builder.restoreIP(saved);
+		return abandon;
+	}
+
 	static llvm::Value* CoroutineSuspend(CodegenContext& ctx, bool final, llvm::BasicBlock* resume)
 	{
 		auto& builder = ctx.Builder;
+		llvm::BasicBlock* destroyed = final ? ctx.Coroutine->Cleanup : AbandonBlock(ctx);
 		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(final) });
 		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
 		branch->addCase(builder.getInt8(0), resume);
-		branch->addCase(builder.getInt8(1), ctx.Coroutine->Cleanup);
+		branch->addCase(builder.getInt8(1), destroyed);
 		return state;
 	}
 
@@ -1071,7 +1090,7 @@ namespace clear
 		// destroyed while waiting: the awaited task goes too
 		builder.SetInsertPoint(abandon);
 		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
-		builder.CreateBr(ctx.Coroutine->Cleanup);
+		builder.CreateBr(AbandonBlock(ctx));
 
 		builder.SetInsertPoint(wait);
 		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(false) });
@@ -2671,12 +2690,15 @@ namespace clear
 				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
 				builder.CreateBr(check);
 
+				// the frame is freed by whoever owns the task (a variable, or the temporary when it ends)
 				builder.SetInsertPoint(after);
 				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
-				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
 				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}
+
+		if (Name == "clone")
+			return Symbol::CreateValue(EmitCopy(ctx, ResultType, builder.CreateLoad(ResultType->Get(), args[0], "original")), ResultType);
 
 		if (Name == "take")
 			return Symbol::CreateValue(builder.CreateLoad(ResultType->Get(), args[0], "taken"), ResultType);
@@ -2935,6 +2957,92 @@ namespace clear
 		return value;
 	}
 
+	Symbol ASTCopy::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Value->Codegen(ctx);
+		return Symbol::CreateValue(EmitCopy(ctx, ValueType, value.GetLLVMValue()), ValueType);
+	}
+
+	llvm::Value* EmitCopy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* value)
+	{
+		if (!IsOwning(type))
+			return value;
+
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+		{
+			for (unsigned i = 0; i < array->GetArraySize(); i++)
+				value = builder.CreateInsertValue(value, EmitCopy(ctx, array->GetBaseType(), builder.CreateExtractValue(value, { i })), { i });
+			return value;
+		}
+
+		auto classType = type->As<ClassType>();
+		Symbol result = CreateAlloca(type, ctx);
+		builder.CreateStore(value, result.GetLLVMValue());
+
+		// operator copy decides
+		if (auto copy = classType->MemberFunctions.find("__copy__"); copy != classType->MemberFunctions.end())
+		{
+			llvm::Function* callee = GetFunctionHere(copy->second, ctx);
+			return builder.CreateCall(callee, { result.GetLLVMValue() }, "copy");
+		}
+
+		// variants and optionals: copy what the case they hold owns
+		if (classType->IsVariant)
+		{
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "copy.done", function);
+			llvm::Value* tag = builder.CreateExtractValue(value, { 0u }, "tag");
+			llvm::SwitchInst* branch = builder.CreateSwitch(tag, done);
+
+			for (size_t i = 0; i < classType->Cases.size(); i++)
+			{
+				auto& variantCase = classType->Cases[i];
+
+				if (std::none_of(variantCase.Fields.begin(), variantCase.Fields.end(), [](auto& field) { return IsOwning(field.second); }))
+					continue;
+
+				llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "copy.case", function);
+				branch->addCase(builder.getInt32((uint32_t)i), block);
+				builder.SetInsertPoint(block);
+
+				llvm::Value* payload = builder.CreateStructGEP(classType->Get(), result.GetLLVMValue(), 1);
+
+				for (size_t f = 0; f < variantCase.Fields.size(); f++)
+				{
+					auto fieldType = variantCase.Fields[f].second;
+
+					if (!IsOwning(fieldType))
+						continue;
+
+					llvm::Value* address = builder.CreateStructGEP(variantCase.Payload, payload, (unsigned)f);
+					builder.CreateStore(EmitCopy(ctx, fieldType, builder.CreateLoad(fieldType->Get(), address)), address);
+				}
+
+				builder.CreateBr(done);
+			}
+
+			builder.SetInsertPoint(done);
+			return builder.CreateLoad(type->Get(), result.GetLLVMValue());
+		}
+
+		// field by field: plain fields as they are, owning fields copied
+		unsigned index = 0;
+		for (const auto& [name, fieldType] : classType->GetMemberValues())
+		{
+			if (IsOwning(fieldType))
+			{
+				llvm::Value* address = builder.CreateStructGEP(classType->Get(), result.GetLLVMValue(), index);
+				builder.CreateStore(EmitCopy(ctx, fieldType, builder.CreateLoad(fieldType->Get(), address)), address);
+			}
+
+			index++;
+		}
+
+		return builder.CreateLoad(type->Get(), result.GetLLVMValue());
+	}
+
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)
 	{
 		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();
@@ -2954,6 +3062,23 @@ namespace clear
 		{
 			for (size_t i = 0; i < array->GetArraySize(); i++)
 				EmitDestroy(ctx, array->GetBaseType(), builder.CreateConstInBoundsGEP2_64(array->Get(), address, 0, i));
+			return;
+		}
+
+		// a generator or task: free its frame (if it still has one) and forget it, so a second cleanup does nothing
+		if (std::dynamic_pointer_cast<CoroutineType>(type))
+		{
+			llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "coro.destroy", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "coro.destroyed", function);
+			llvm::Value* handle = builder.CreateLoad(builder.getPtrTy(), address, "handle");
+			builder.CreateCondBr(builder.CreateIsNotNull(handle), destroy, done);
+
+			builder.SetInsertPoint(destroy);
+			builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+			builder.CreateStore(llvm::ConstantPointerNull::get(builder.getPtrTy()), address);
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(done);
 			return;
 		}
 

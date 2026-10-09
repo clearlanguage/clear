@@ -25,19 +25,24 @@ function main() -> int32:
 
     let words = List[String]()         // no free(), no defer
     words.push(String("hello"))
-    let w = String("world")
-    words.push(w)                      // moved into the list: w is now empty
-    print(len(words), len(w))
 
-    let first = words[0].copy()        // copying is explicit
+    // reading copies: first has its own text
+    let first = words[0]
     first.append("!")
-    print(first, words[0])
 
+    // writing goes to the element itself
+    words[0].append(" world")
+    print(first, "|", words[0])
+
+    let w = String("tail")
+    words.push(w)                      // the list gets a copy, w stays usable
+    print(len(words), w)
+
+    // a Connection cleans up something itself and has no operator copy, so it can't be
+    // copied: assigning it (or a Session holding one) moves it and leaves the old variable empty
     let s = open_session("ada")
-    print("session for", s.user)
-
-    let moved = s                      // moving hands everything over, nothing is copied
-    print("still one session:", moved.user, len(s.user))
+    let moved = s                      // moving hands everything over: s.user here would not compile
+    print("one session:", moved.user)
     print("end of main")
     return 0
     // here: moved (its String and Connection), first, w, words... are all cleaned up
@@ -45,9 +50,8 @@ function main() -> int32:
 // expect:
 // using temporary
 // closing temporary
-// 2 0
-// hello! hello
-// session for ada
-// still one session: ada 0
+// hello! | hello world
+// 2 tail
+// one session: ada
 // end of main
 // closing db

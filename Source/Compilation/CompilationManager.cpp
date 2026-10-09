@@ -240,12 +240,55 @@ namespace clear
 		LoadImports(newModule);
     }
 
-	std::optional<std::filesystem::path> CompilationManager::ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name)
+	std::vector<std::filesystem::path> CompilationManager::StandardCandidates(const std::filesystem::path& name)
+	{
+		std::vector<std::filesystem::path> candidates;
+
+		if (!m_Config.StandardLibrary.empty())
+			candidates.push_back(m_Config.StandardLibrary / name);
+
+		if (const char* fromEnvironment = std::getenv("CLEAR_STANDARD_DIR"))
+			candidates.push_back(std::filesystem::path(fromEnvironment) / name);
+
+#ifdef CLEAR_STANDARD_DIR
+		candidates.push_back(std::filesystem::path(CLEAR_STANDARD_DIR) / name);
+#endif
+
+		return candidates;
+	}
+
+	std::optional<std::filesystem::path> CompilationManager::ResolveImport(const std::filesystem::path& importingFile, std::filesystem::path name, std::filesystem::path* shadowedStandard)
 	{
 		std::filesystem::path written = name;
 
 		if (!name.has_extension())
 			name += m_Config.TargetExtension;
+
+		auto existing = [](const std::filesystem::path& candidate) -> std::optional<std::filesystem::path>
+		{
+			std::error_code ec;
+			if (!std::filesystem::is_regular_file(candidate, ec))
+				return std::nullopt;
+
+			return std::filesystem::weakly_canonical(std::filesystem::absolute(candidate));
+		};
+
+		// import "std/list" always means the standard library, whatever is next to the importing file
+		if (written.begin() != written.end() && written.begin()->string() == "std" && std::next(written.begin()) != written.end())
+		{
+			std::filesystem::path inside;
+			for (auto part = std::next(written.begin()); part != written.end(); part++)
+				inside /= *part;
+
+			if (!inside.has_extension())
+				inside += m_Config.TargetExtension;
+
+			for (const auto& candidate : StandardCandidates(inside))
+				if (auto resolved = existing(candidate))
+					return resolved;
+
+			return std::nullopt;
+		}
 
 		std::vector<std::filesystem::path> candidates = { importingFile.parent_path() / name };
 
@@ -272,17 +315,27 @@ namespace clear
 			}
 		}
 
-		if (!m_Config.StandardLibrary.empty())
-			candidates.push_back(m_Config.StandardLibrary / name);
-
-		if (const char* fromEnvironment = std::getenv("CLEAR_STANDARD_DIR"))
-			candidates.push_back(std::filesystem::path(fromEnvironment) / name);
-
-#ifdef CLEAR_STANDARD_DIR
-		candidates.push_back(std::filesystem::path(CLEAR_STANDARD_DIR) / name);
-#endif
+		auto standard = StandardCandidates(name);
+		candidates.insert(candidates.end(), standard.begin(), standard.end());
 
 		std::filesystem::path self = std::filesystem::weakly_canonical(std::filesystem::absolute(importingFile));
+
+		// a file next to the importer with the name of a standard module hides that module: worth saying so
+		if (shadowedStandard)
+		{
+			auto local = existing(candidates[0]);
+
+			for (const auto& candidate : standard)
+			{
+				auto resolved = existing(candidate);
+
+				if (local && resolved && *local != *resolved && *local != self)
+				{
+					*shadowedStandard = *resolved;
+					break;
+				}
+			}
+		}
 
 		for (const auto& candidate : candidates)
 		{
@@ -317,7 +370,8 @@ namespace clear
 			auto importNode = std::dynamic_pointer_cast<ASTImport>(node);
 			if (!importNode) continue;
 
-			auto resolved = ResolveImport(module->GetPath(), importNode->Filepath);
+			std::filesystem::path shadowed;
+			auto resolved = ResolveImport(module->GetPath(), importNode->Filepath, &shadowed);
 
 			if (!resolved)
 			{
@@ -325,6 +379,15 @@ namespace clear
 				location.SetData(importNode->Filepath.string());
 				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, DiagnosticCode_ImportNotFound);
 				continue;
+			}
+
+			if (!shadowed.empty())
+			{
+				Token location = importNode->Location;
+				std::string written = importNode->Filepath.string();
+				location.SetData(std::format("‘{}’ is {} in this folder, which hides the standard ‘{}’. Write import \"std/{}\" for the standard one, or rename the file",
+											 written, resolved->filename().string(), written, written));
+				m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::Low, location, DiagnosticCode_ImportShadowsStandard, written.size() + 2);
 			}
 
 			// from here on the import refers to the file by its absolute path
