@@ -432,3 +432,7 @@ Advice  = "{}."
 [UsedHere]
 Message = "The standard library code above is used from this line of the program."
 Advice  = "The problem comes from how ‘{}’ is used here."
+
+[NotAPointer]
+Message = "Only a pointer can be dereferenced."
+Advice  = "‘{}’, not a pointer, so ‘*’ cannot read through it. Use the value as it is, or take its address with ‘&’."

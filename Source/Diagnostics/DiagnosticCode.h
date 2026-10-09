@@ -112,6 +112,7 @@ namespace clear
 		DiagnosticCode_MacroHasNoValue,
 		DiagnosticCode_NoConversion,
 		DiagnosticCode_UsedHere,
+		DiagnosticCode_NotAPointer,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -224,6 +225,7 @@ namespace clear
 		"This macro is a list of statements, so it has no value.",
 		"These types do not convert to each other.",
 		"The standard library code above is used from this line of the program.",
+		"Only a pointer can be dereferenced.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -335,5 +337,6 @@ namespace clear
 		"‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2).",
 		"{}.",
 		"The problem comes from how ‘{}’ is used here.",
+		"‘{}’, not a pointer, so ‘*’ cannot read through it. Use the value as it is, or take its address with ‘&’.",
 	};
 }

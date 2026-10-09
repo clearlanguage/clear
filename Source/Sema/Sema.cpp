@@ -2207,6 +2207,34 @@ namespace clear
 		return checked;
 	}
 
+	bool Sema::CheckDereference(std::shared_ptr<ASTUnaryExpression> deref)
+	{
+		// *n with n an int: only a pointer can be read through (a type, *int, is fine)
+		auto operand = deref->Operand;
+
+		if (!operand)
+			return false;
+
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(operand); variable && !variable->Variable)
+			return true;
+
+		if (!IsNodeValue(operand))
+			return true;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(operand);
+
+		if (!type || type->IsPointer() || type->Get()->isPointerTy())
+			return true;
+
+		Token location = GetNodeLocation(operand);
+		size_t width = std::max<size_t>(location.GetData().size(), 1);
+		auto load = std::dynamic_pointer_cast<ASTLoad>(operand);
+		bool named = operand->GetType() == ASTNodeType::Variable || (load && load->Operand->GetType() == ASTNodeType::Variable);
+		location.SetData(std::format("{}’ is a ‘{}", named ? location.GetData() : "the value", GetDisplayName(type)));
+		Report(DiagnosticCode_NotAPointer, location, width);
+		return false;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTUnaryExpression> unaryExpr, SemaContext context)
 	{
 		switch (unaryExpr->GetOperatorType())
@@ -2262,15 +2290,65 @@ namespace clear
 					valueContext.ValueReq = ValueRequired::RValue;
 					unaryExpr->Operand = Visit(unaryExpr->Operand, valueContext);
 					unaryExpr->IsStorage = true;
-					return unaryExpr;
+					return CheckDereference(unaryExpr) ? unaryExpr : nullptr;
 				}
 
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+
+				if (!CheckDereference(unaryExpr))
+					return nullptr;
+
 				break;
 			}
 			default:
 			{
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+
+				// -v on a class: its operator negate
+				if (unaryExpr->GetOperatorType() == OperatorType::Negation && unaryExpr->Operand)
+				{
+					auto type = m_TypeInferEngine.InferTypeFromNode(unaryExpr->Operand);
+
+					if (type && type->IsClass())
+					{
+						auto classType = type->As<ClassType>();
+						Token location = unaryExpr->Location.GetData().empty() ? GetNodeLocation(unaryExpr->Operand) : unaryExpr->Location;
+						auto method = classType->MemberFunctions.find("__neg__");
+
+						if (method == classType->MemberFunctions.end())
+						{
+							if (classType->IsOptional)
+								location.SetData(std::format("‘{}’ is optional, so it may hold no value: use its value with `x ?? fallback`, `if x:` or `.value` first",
+															 GetDisplayName(classType)));
+							else
+								location.SetData(std::format("‘{}’ has no ‘operator negate’ for ‘-’. Define it in the class: operator negate(self) -> {}",
+															 GetDisplayName(classType), GetDisplayName(classType)));
+
+							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
+							return nullptr;
+						}
+
+						auto function = method->second->GetFunctionSymbol().FunctionNode;
+						EnsureDefined(function);
+
+						if (!function || function->Arguments.size() != 1)
+						{
+							location.SetData(std::format("operator negate’ of ‘{}", GetDisplayName(classType)));
+							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_BadOperatorSignature, 1);
+							return nullptr;
+						}
+
+						return CallMethod(unaryExpr->Operand, type, "__neg__", {}, location);
+					}
+
+					if (type && !(type->IsIntegral() || type->IsFloatingPoint()) || (type && (type->IsEnum() || type->Get()->isIntegerTy(1))))
+					{
+						Token location = unaryExpr->Location.GetData().empty() ? GetNodeLocation(unaryExpr->Operand) : unaryExpr->Location;
+						location.SetData(std::format("-{}", GetDisplayName(type)));
+						m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_InvalidOperands, 1);
+						return nullptr;
+					}
+				}
 
 				// not x with x optional: x holds no value
 				if (unaryExpr->GetOperatorType() == OperatorType::Not && unaryExpr->Operand)
