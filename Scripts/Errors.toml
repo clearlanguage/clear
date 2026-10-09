@@ -440,3 +440,7 @@ Advice  = "‘{}’, not a pointer, so ‘*’ cannot read through it. Use the v
 [IntegerLiteralTooLarge]
 Message = "Integer literal is too large."
 Advice  = "‘{}’ does not fit in 64 bits (the largest integer is 18446744073709551615, 0xFFFF_FFFF_FFFF_FFFF). Write it as a float, with a ‘.’ or an exponent, if an approximate value is enough."
+
+[OverrideMismatch]
+Message = "An override does not match the method it replaces."
+Advice  = "{}."

@@ -2333,8 +2333,9 @@ namespace clear
 
 						if (!function || function->Arguments.size() != 1)
 						{
-							location.SetData(std::format("operator negate’ of ‘{}", GetDisplayName(classType)));
-							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_BadOperatorSignature, 1);
+							location.SetData(std::format("‘operator negate’ of ‘{}’ must take only self: operator negate(self) -> {}",
+														 GetDisplayName(classType), GetDisplayName(classType)));
+							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
 							return nullptr;
 						}
 
@@ -2793,6 +2794,11 @@ namespace clear
 		for (auto node : classExpr->MemberFunctions)
 			DeclareFunction(node, context);
 
+		// an override is called through the base's slot (obj.speak(), print(*p), destroy(p)...), so it must
+		// take and give the same types as the version it replaces
+		if (base && !CheckOverrides(classExpr, base))
+			return false;
+
 		for (auto& trait : classTy->Traits)
 		{
 			if (!CheckTrait(classTy, trait, location))
@@ -2806,6 +2812,73 @@ namespace clear
 			generic->HomeModule = generic->HomeModule ? generic->HomeModule : m_Module;
 			m_GenericMethods[classTy.get()][method->GetName()] = GenericMethod { generic, LazyBody { m_ScopeStack, m_LookupModule, classTy }, {} };
 			m_GenericMethodNames.insert(method->GetName());
+		}
+
+		return true;
+	}
+
+	bool Sema::CheckOverrides(std::shared_ptr<ASTClass> classExpr, std::shared_ptr<ClassType> base)
+	{
+		auto same = [](const std::shared_ptr<Type>& a, const std::shared_ptr<Type>& b)
+		{
+			return (!a && !b) || (a && b && (a == b || a->GetHash() == b->GetHash()));
+		};
+
+		auto describe = [&](const std::shared_ptr<ASTFunctionDefinition>& function)
+		{
+			std::string text = "(self";
+
+			for (size_t i = 1; i < function->Arguments.size(); i++)
+				text += ", " + GetDisplayName(function->Arguments[i]->ResolvedType);
+
+			return text + ")" + (function->ReturnTypeVal ? " -> " + GetDisplayName(function->ReturnTypeVal) : "");
+		};
+
+		// (by the names the class knows them by: a declared function's own name is its mangled one)
+		for (auto& [name, symbol] : classExpr->ClassTy->As<ClassType>()->MemberFunctions)
+		{
+			if (symbol->Kind != SymbolKind::Function)
+				continue;
+
+			auto node = symbol->GetFunctionSymbol().FunctionNode;
+
+			// operator copy gives a value of its own class: it is never called through a base's slot
+			if (!node || !node->IsVirtual || name == "__copy__" || !node->SignatureResolved)
+				continue;
+
+			auto inherited = base->MemberFunctions.find(name);
+
+			if (inherited == base->MemberFunctions.end() || inherited->second->Kind != SymbolKind::Function)
+				continue;
+
+			auto original = inherited->second->GetFunctionSymbol().FunctionNode;
+
+			if (!original || !original->SignatureResolved || original == node)
+				continue;
+
+			bool matches = original->Arguments.size() == node->Arguments.size() && same(original->ReturnTypeVal, node->ReturnTypeVal);
+
+			for (size_t i = 0; matches && i < node->Arguments.size(); i++)
+			{
+				auto mine = node->Arguments[i]->ResolvedType, theirs = original->Arguments[i]->ResolvedType;
+
+				// self: a pointer to each one's own class, or each one's own value
+				if (i == 0)
+					matches = mine && theirs && mine->IsPointer() == theirs->IsPointer();
+				else
+					matches = same(mine, theirs);
+			}
+
+			if (!matches)
+			{
+				Token location = node->GetNameToken().GetData().empty() ? classExpr->Location : node->GetNameToken();
+				size_t width = std::max<size_t>(location.GetData().size(), 1);
+				location.SetData(std::format("‘{}’ in ‘{}’ is {}, but in ‘{}’ it is {}. An override must take and give the same types, because it is "
+											 "called wherever the base's version is", location.GetData(), classExpr->GetName(), describe(node),
+											 GetDisplayName(base), describe(original)));
+				Report(DiagnosticCode_OverrideMismatch, location, width);
+				return false;
+			}
 		}
 
 		return true;

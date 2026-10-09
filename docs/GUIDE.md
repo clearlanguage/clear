@@ -435,6 +435,7 @@ function introduce(a: *Animal):     // a *Dog converts to *Animal automatically
 - The same goes for operators (`print(*a)` uses the Dog's `operator str`, `*a == *b` its `operator equals`), properties, and calls inside the base class's own methods (`self.sound()` in `speak`).
 - Cleanup too: when a Dog is cleaned up (its scope ends, or `destroy(p)` with `p: *Animal` pointing at it), the Dog's `operator destruct` runs first, then Animal's, then the fields of both are cleaned up.
 - `let copy = *a` copies only the Animal part of the object, so `copy` is an Animal and runs Animal's methods.
+- Because it runs wherever the base's version would, an override must take and give the same types as the method it replaces (`operator str(self) -> String` can't replace one that gives a `str`): a compile error otherwise.
 - Only classes that inherit or are inherited from pay for this: they carry one hidden pointer to a method table. Every other class is laid out exactly as its fields.
 - A class has one base class. Traits are listed in the same parentheses.
 
