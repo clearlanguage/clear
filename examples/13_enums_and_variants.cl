@@ -10,7 +10,7 @@ enum Shape:                        // cases can carry data
     Rect(width: float64, height: float64)
     Empty
 
-    function area(self: *Shape) -> float64:
+    function area(self) -> float64:
         switch *self:              // every case must be handled
             case Circle(r):
                 return PI * r * r

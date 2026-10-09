@@ -2,26 +2,26 @@ class Vec2:
     x: float64
     y: float64
 
-    operator add(self: *Vec2, other: Vec2) -> Vec2:
+    operator add(self, other: Vec2) -> Vec2:
         return Vec2(self.x + other.x, self.y + other.y)
 
-    operator multiply(self: *Vec2, k: float64) -> Vec2:
+    operator multiply(self, k: float64) -> Vec2:
         return Vec2(self.x * k, self.y * k)
 
-    operator equals(self: *Vec2, other: Vec2) -> bool:
+    operator equals(self, other: Vec2) -> bool:
         return self.x == other.x and self.y == other.y
 
-    operator str(self: *Vec2) -> str:     // how print shows it
+    operator str(self) -> str:     // how print shows it
         return "<vector>"
 
 class Squares:
-    operator get(self: *Squares, i: int64) -> int64:
+    operator get(self, i: int64) -> int64:
         return i * i
 
-    operator len(self: *Squares) -> int64:
+    operator len(self) -> int64:
         return 4
 
-    operator call(self: *Squares, x: int) -> int:
+    operator call(self, x: int) -> int:
         return x * x * x
 
 function main() -> int32:
@@ -31,7 +31,7 @@ function main() -> int32:
 
     let s = Squares()
     print(s[5], len(s), s(2))
-    for v in s:                               // __len__ + __getitem__ make it iterable
+    for v in s:                               // len + get make it iterable
         print(v)
     return 0
 

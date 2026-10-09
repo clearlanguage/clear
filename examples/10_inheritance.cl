@@ -3,24 +3,24 @@ class Animal:
     legs: int = 4
 
     // a subclass can replace a method; calls always run the object's own version
-    function sound(self: *Animal) -> str:
+    function sound(self) -> str:
         return "..."
 
-    function speak(self: *Animal):
+    function speak(self):
         print(self.name, "says", self.sound())
 
 class Dog(Animal):
     tricks: int = 0                        // added after Animal's fields
 
-    function sound(self: *Dog) -> str:     // replaces Animal's sound
+    function sound(self) -> str:     // replaces Animal's sound
         return "woof"
 
-    function speak(self: *Dog):
+    function speak(self):
         print("(wags tail)")
         super.speak()                      // Animal's version
 
 class Bird(Animal):
-    function sound(self: *Bird) -> str:
+    function sound(self) -> str:
         return "tweet"
 
 function introduce(a: *Animal):            // accepts any kind of Animal

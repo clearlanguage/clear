@@ -1,9 +1,12 @@
 import "list"
 import "map"
 
+class Item:
+    name: str
+    qty: int
+
 function main() -> int32:
-    let numbers = List[int]()
-    defer numbers.free()
+    let numbers = List[int]()             // cleaned up automatically when main ends
     for i in 0..5:
         numbers.push(i * i)
     numbers[0] = 100
@@ -13,7 +16,6 @@ function main() -> int32:
     print(numbers.pop(), len(numbers))
 
     let ages = Map[str, int]()
-    defer ages.free()
     ages["ada"] = 36
     ages["alan"] = 41
     ages["ada"] += 1
@@ -23,6 +25,15 @@ function main() -> int32:
 
     for name in ages:                  // keys
         print(name, ages[name])
+
+    // list[i] is the item itself, so it can be changed in place
+    let cart = List[Item]()
+    cart.push(Item("pen", 1))
+    cart.push(Item("book", 2))
+    cart[0].qty = 10
+    for item in cart:                  // objects are visited in place too
+        item.qty += 1
+    print(cart[0].qty, cart[1].qty)
     return 0
 
 // expect:
@@ -36,3 +47,4 @@ function main() -> int32:
 // 2 37 true false
 // none 0
 // ada 37
+// 11 3

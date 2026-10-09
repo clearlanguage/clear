@@ -35,6 +35,39 @@ class Dog(Animal):
     function speak(self: *Dog):
         super.speak()
 
+class Grid:
+    cells: [9; int]
+
+    operator get(self, i: int64) -> *int:
+        return &self.cells[i]
+
+    operator len(self) -> int64:
+        return 9
+
+class Account:
+    owner: str
+    balance: float64 = 0.0
+
+    function init(self, owner: str):
+        self.owner = owner
+
+    function deposit(self, amount: float64):
+        self.balance += amount
+
+    function snapshot(self: Account) -> float64:
+        self.balance = -1.0
+        return self.balance
+
+variant Number:
+    int
+    float64
+
+class Connection:
+    name: str
+
+    operator destruct(self):
+        print("closing", self.name)
+
 function greet(name: str, greeting: str = "hello") -> str:
     return greeting
 
@@ -99,6 +132,30 @@ function main() -> int32:
     let y = 20
     swap!(x, y)
     print(x, y, square!(7))
+
+    let grid = Grid()
+    grid[4] = 7
+    grid[4] += 1
+    let total = 0
+    for cell in grid:
+        total += cell
+    print(grid[4], total)
+
+    let account = Account("ada")
+    account.deposit(5.0)
+    print(account.snapshot(), account.balance)
+
+    let n: Number = 2.5
+    print(n is float64, n as float64)
+    n = 7
+    switch n:
+        case int(i):
+            print("int", i)
+        case float64(f):
+            print("float", f)
+
+    if true:
+        let c = Connection("db")
     return 0
 
 // expect:
@@ -119,3 +176,8 @@ function main() -> int32:
 // 13
 // 4
 // 20 10 49
+// 8 8
+// -1.0 5.0
+// true 2.5
+// int 7
+// closing db

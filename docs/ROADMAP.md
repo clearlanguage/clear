@@ -13,8 +13,10 @@ Clear is **"read like Python, run like C"**. Concretely:
    better (`and`, `or`, `not`, `when … use … otherwise`, `as`, `is`).
    A newcomer should be able to guess what a line does.
 2. **No hidden cost.** Every construct maps to obvious machine code. No
-   garbage collector, no hidden allocations, no implicit virtual dispatch,
-   no exceptions. If something allocates, you can see it in the source.
+   garbage collector, no hidden allocations, no exceptions. If something
+   allocates, you can see it in the source; cleanup happens at the end of a
+   scope, where you can see it too. Dynamic dispatch exists only for classes
+   in a hierarchy; every other class is exactly its fields.
 3. **Control when you ask for it.** Pointers, explicit layout, `sizeof`,
    casts and C interop (`declare`) are first class, never "unsafe" escape
    hatches bolted on later.
@@ -23,8 +25,8 @@ Clear is **"read like Python, run like C"**. Concretely:
    cost something (bounds, null) are on in debug builds and can be turned
    off for release.
 5. **One obvious way.** Prefer one well-designed feature over two
-   overlapping ones. Python-style dunder methods (`__add__`, `__getitem__`)
-   are *the* way to customise operators.
+   overlapping ones. `operator add`, `operator get` … are *the* way to
+   customise operators.
 
 ## Phase 0: Foundation (make the compiler trustworthy)
 
@@ -120,8 +122,7 @@ print("total:", total, "avg:", total / count)   // built-in, type-aware
 - [x] Generic functions (`function max[T](a: T, b: T) -> T`), with type
       arguments inferred through pointers, arrays and generic classes.
 - [x] Methods of generic classes are only analysed when used.
-- [ ] Destructors (`__del__`) called at scope exit. Needs move semantics
-      first, or copies would free twice.
+- [x] Destructors (`operator destruct`) called at scope exit, with moves.
 - [ ] Slices `[]T` (pointer + length) for passing arrays of any length;
       bounds-checked in debug builds.
 - [x] Optionals `?T`: `none`, `x is none`, `x.value`, `x.value_or(d)`, `case some(v)`.
@@ -169,13 +170,16 @@ Clear's promise is C-level speed, so this is measured, not assumed.
 Everything here follows the same rules: visible cost, opt-in dynamism, checked at compile time where possible.
 
 - [x] Inheritance (`class Dog(Animal)`, base fields first, `*Dog` → `*Animal`), `super.method()`.
-- [x] `virtual` methods: opt-in dynamic dispatch through a per-class table; everything else stays static.
+- [x] Dynamic dispatch for classes in a hierarchy, automatically (no `virtual`); other classes stay static.
 - [x] Properties: `property name(self)` getters and `property name(self, value)` setters.
 - [x] Hygienic macros: `macro name(args):`, used as `name!(...)`.
 - [x] Generators (`Generator[T]`, `yield`) and `async` / `await` / `Task[T]` on LLVM coroutines, no hidden runtime.
 - [x] Tuples, multiple return values, destructuring, default and keyword arguments, `...` unpacking.
 - [x] `in`, `len`, `assert`, `**`, `else if`, `str` with value comparison, `hash()`, `__str__`.
-- [ ] Destructors (`__del__`) with moves, so `List`/`String`/`Map` free themselves.
+- [x] Automatic cleanup: `operator destruct`, moves out of locals, no implicit copies of owning values; `List`/`String`/`Map`/`File` clean up themselves.
+- [x] `operator add`, `operator get` … instead of Python's dunder methods; `function init` constructors; bare `self`.
+- [x] `operator get` returning a reference: `list[i].field = v` edits in place; loops visit objects in place.
+- [x] Type variants: `variant Number: int, float64`, checked reads with `as`, `is`, `switch case int(x)`.
 - [ ] Slices `[]T` (pointer + length).
 - [ ] Generic methods (type parameters on a method).
 - [ ] Debug info for gdb/lldb; `clearc fmt`; a language server.

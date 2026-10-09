@@ -270,34 +270,53 @@ class Account:
     owner: str
     balance: float64 = 0.0            // field default
 
-    function __init__(self: *Account, owner: str):   // optional constructor
+    function init(self, owner: str):  // optional constructor
         self.owner = owner
 
-    function deposit(self: *Account, amount: float64):
+    function deposit(self, amount: float64):
         self.balance += amount
 
-let account = Account("ada")          // runs __init__
-let p = Point(3, 4)                   // no __init__: fields in order
+let account = Account("ada")          // runs init
+let p = Point(3, 4)                   // no init: fields in order
 let q = Point(y = 1, x = 2)           // or by name
 let r = Point { 5 }                   // struct literal; missing fields use defaults / zero
 ```
 
-Methods take `self: *ClassName` (a pointer, so they can change the object). Objects live on the stack unless you allocate them yourself.
+Methods take `self`, a pointer to the object, so they can change it. Writing `self: *Account` means the same thing. To work on a copy instead, write `self: Account`. Objects live on the stack unless you allocate them yourself.
 
 ### 3.7 Operator overloading · [`examples/08_operator_overloading.cl`](../examples/08_operator_overloading.cl)
 
-Define Python's "dunder" methods:
+Operators are methods written with `operator` instead of `function`:
 
-| method | enables |
+```clear
+class Vec2:
+    x: float64
+    y: float64
+
+    operator add(self, other: Vec2) -> Vec2:
+        return Vec2(self.x + other.x, self.y + other.y)
+
+    operator str(self) -> str:
+        return "<vector>"
+```
+
+| operator | enables |
 | --- | --- |
-| `__add__ __sub__ __mul__ __div__ __mod__ __pow__` | `a + b` … `a ** b` |
-| `__eq__ __ne__ __lt__ __le__ __gt__ __ge__` | comparisons (`!=` falls back to `not __eq__`) |
-| `__getitem__ __setitem__` | `obj[i]`, `obj[i] = v`, `obj[i] += v` |
-| `__len__` | `len(obj)`; with `__getitem__`, also `for x in obj` |
-| `__contains__` | `x in obj` |
-| `__call__` | `obj(args)` |
-| `__str__` | what `print(obj)` shows |
-| `__hash__` | `hash(obj)`, so it can be a `Map` key |
+| `add subtract multiply divide modulo power` | `a + b`, `a - b`, `a * b`, `a / b`, `a % b`, `a ** b` |
+| `equals not_equals less less_equal greater greater_equal` | `==` `!=` `<` `<=` `>` `>=` (`!=` falls back to `not equals`) |
+| `get` | `obj[i]`. If it returns a pointer (`-> *T`), `obj[i]` *is* the element: `obj[i] = v`, `obj[i] += 1` and `obj[i].field = v` change it in place |
+| `set` | `obj[k] = v` when you need custom insertion (`Map` uses it to add new keys) |
+| `len` | `len(obj)`; with `get`, also `for x in obj` |
+| `iterate` | `for x in obj`, written as a generator: `operator iterate(self) -> Generator[T]` |
+| `contains` | `x in obj` |
+| `call` | `obj(args)` |
+| `str` | what `print(obj)` shows |
+| `hash` | `hash(obj)`, so it can be a `Map` key |
+| `destruct` | cleanup when the object's scope ends (see automatic cleanup below) |
+
+Python-style names like `__add__` are a compile error that tells you the Clear spelling.
+
+**Looping over objects.** `for item in cart` visits each object *in place*: `item.qty = 0` changes the item in the list or array. Numbers and other plain values are copied, as in Python. `let x = cart[0]` always makes a copy.
 
 ### 3.8 Generics · [`examples/09_generics.cl`](../examples/09_generics.cl)
 
@@ -316,31 +335,31 @@ let s = Box[str]("text")
 
 Each set of type arguments produces its own specialised copy (like C++ templates, so there is no run-time cost). Methods of generic classes are only checked when they are used.
 
-### 3.9 Inheritance and virtual methods · [`examples/10_inheritance.cl`](../examples/10_inheritance.cl)
+### 3.9 Inheritance · [`examples/10_inheritance.cl`](../examples/10_inheritance.cl)
 
 ```clear
 class Animal:
     name: str
 
-    virtual function sound(self: *Animal) -> str:
+    function sound(self) -> str:
         return "..."
 
-    function speak(self: *Animal):
+    function speak(self):
         print(self.name, "says", self.sound())
 
 class Dog(Animal):                  // Dog has all of Animal's fields and methods
-    function sound(self: *Dog) -> str:
+    function sound(self) -> str:    // replaces Animal's sound
         return "woof"
 
-    function speak(self: *Dog):
+    function speak(self):
         super.speak()               // Animal's version
 
 function introduce(a: *Animal):     // a *Dog converts to *Animal automatically
-    a.speak()
+    a.speak()                       // prints "rex says woof" for a Dog
 ```
 
-- Calls are **static by default**: the method is chosen from the type you call it on, at compile time.
-- `virtual` opts a method into run-time choice. A class with virtual methods gets one hidden pointer to its method table, filled in by every way of creating the object. A method that overrides a virtual method is virtual too.
+- A method call always runs **the object's own version**, even through a `*Animal`. There is no `virtual` keyword (writing it is an error that explains this).
+- Only classes that inherit or are inherited from pay for this: they carry one hidden pointer to a method table. Every other class is laid out exactly as its fields.
 - A class has one base class. Traits are listed in the same parentheses.
 
 ### 3.10 Properties · [`examples/11_properties.cl`](../examples/11_properties.cl)
@@ -368,9 +387,9 @@ function report[T: Shape](shape: *T):   // only types that satisfy Shape
     print(shape.area())
 ```
 
-Traits work at compile time (static dispatch). For run-time polymorphism, use a base class with `virtual` methods.
+Traits work at compile time (static dispatch). For run-time polymorphism, use a base class.
 
-### 3.12 Enums and variants · [`examples/13_enums_and_variants.cl`](../examples/13_enums_and_variants.cl)
+### 3.12 Enums (with data) · [`examples/13_enums_and_variants.cl`](../examples/13_enums_and_variants.cl)
 
 ```clear
 enum Color:                  // plain enum; never mixes with ints without `as`
@@ -422,7 +441,29 @@ let b = Bits(f = 1.0)
 
 `none` can only go into a `?T`. Writing `let n: int = none` is a compile error.
 
-### 3.14 Generators · [`examples/15_generators.cl`](../examples/15_generators.cl)
+### 3.14 Variants · [`examples/24_variants.cl`](../examples/24_variants.cl)
+
+A `variant` holds a value of one of its types and remembers which one, like a union that knows what it holds:
+
+```clear
+variant Number:
+    int
+    float64
+
+let n: Number = 2.5            // holds a float64
+n is float64                   // true
+n as float64                   // 2.5
+n = 7                          // now holds an int
+switch n:                      // every type must be handled
+    case int(i):
+        ...
+    case float64(f):
+        ...
+```
+
+`n as float64` when `n` holds an int stops the program with `panic: reading float64 from a Number that holds another type`. This check is always on, because the alternative would be reading garbage. A value that isn't one of the types (`let n: Number = "text"`) is a compile error. Plain `union` stays available when you want the raw shared bytes.
+
+### 3.15 Generators · [`examples/15_generators.cl`](../examples/15_generators.cl)
 
 ```clear
 function count_up(start: int, stop: int) -> Generator[int]:
@@ -439,7 +480,7 @@ for i in count_up(3, 6):     // 3 4 5
 - `break` cleans the generator up.
 - By hand: `g.advance()` (true when a new value is ready), `g.value()`, `g.done()`, `g.free()`.
 
-### 3.15 Async / await · [`examples/16_async_await.cl`](../examples/16_async_await.cl)
+### 3.16 Async / await · [`examples/16_async_await.cl`](../examples/16_async_await.cl)
 
 ```clear
 async function add(a: int, b: int) -> int:        // returns a Task[int]
@@ -461,7 +502,7 @@ There is no hidden event loop or thread. A task runs only when something resumes
 
 Generators and tasks are compiled to LLVM coroutines.
 
-### 3.16 Macros · [`examples/17_macros.cl`](../examples/17_macros.cl)
+### 3.17 Macros · [`examples/17_macros.cl`](../examples/17_macros.cl)
 
 ```clear
 macro square(x):                 // a single expression: usable as a value
@@ -481,7 +522,7 @@ swap!(x, y)
 - Variables the macro declares get private names, so `tmp` above never clashes with a `tmp` of yours.
 - Macros can be imported like functions.
 
-### 3.17 Safety checks · [`examples/18_safety_checks.cl`](../examples/18_safety_checks.cl)
+### 3.18 Safety checks · [`examples/18_safety_checks.cl`](../examples/18_safety_checks.cl)
 
 **Compile time** (always on; these mistakes are errors):
 
@@ -509,34 +550,69 @@ A failed check stops the program with the source location:
 panic: index out of range for an array of 3 (18_safety_checks.cl:15:18)
 ```
 
-### 3.18 Strings · [`examples/19_strings.cl`](../examples/19_strings.cl)
+### 3.19 Strings · [`examples/19_strings.cl`](../examples/19_strings.cl)
 
 There are two string types:
 
 | | `str` | `String` (`import "string"`) |
 | --- | --- | --- |
 | what | a C string, the type of `"literals"` | an owned, growable string on the heap |
-| cost | free | allocates; call `free()` |
+| cost | free | allocates; freed automatically at the end of its scope |
 | `==`, `in`, `len`, print | yes | yes, plus `+`, `<`, `find`, `slice`, `strip`, `upper`, `lower`, `starts_with`, `ends_with`, `to_int`, `to_float`, `append`, `push`, `from_int` … |
 
-### 3.19 Collections · [`examples/20_collections.cl`](../examples/20_collections.cl)
+### 3.20 Collections · [`examples/20_collections.cl`](../examples/20_collections.cl)
 
 ```clear
 import "list"
 import "map"
 
-let numbers = List[int]()
-defer numbers.free()
+let numbers = List[int]()    // freed automatically at the end of the scope
 numbers.push(4)              // also: pop, last, contains, clear, is_empty, numbers[i], len, for
+numbers[0] += 1              // numbers[i] is the element itself
 
 let ages = Map[str, int]()
-defer ages.free()
 ages["ada"] = 36             // also: m[k] += 1, get (-> ?V), get_or, `in`, remove, len, for key in m
 ```
 
-Map keys can be numbers, enums, pointers, `str`, `String`, or any class with `__hash__` and `__eq__`.
+Map keys can be numbers, enums, pointers, `str`, `String`, or any class with `operator hash` and `operator equals`.
 
-### 3.20 Files and input · [`examples/21_files.cl`](../examples/21_files.cl)
+### 3.21 Automatic cleanup · [`examples/25_automatic_cleanup.cl`](../examples/25_automatic_cleanup.cl)
+
+Clear has no garbage collector and you never have to call `free()`. A value that owns memory is cleaned up when its scope ends:
+
+- at the end of the block it was declared in, and on `return`, `break` and `continue`;
+- for a parameter taken by value, when the function returns;
+- for a value that is made and never stored (`make_list()` on its own line, `print(make_name())`), straight away or at the end of the block.
+
+`String`, `List`, `Map` (and their elements) and `File` (it closes) already do this. A class gets it by defining `operator destruct`, or automatically when its fields need it:
+
+```clear
+class Connection:
+    name: str
+
+    operator destruct(self):
+        print("closing", self.name)
+
+class Session:                 // no destruct needed: its String and Connection are cleaned up
+    user: String
+    link: Connection
+```
+
+**One owner at a time.** A value that owns memory is never silently copied, because two copies would free the same memory twice:
+
+| you write | what happens |
+| --- | --- |
+| `let b = a`, `f(a)`, `return a`, `list.push(a)` (a is a local variable) | the value **moves**: `a` is left empty (all zero), so nothing is freed twice |
+| `let x = list[0]`, `return self.name` (a field or element) | compile error: use `.copy()` for a separate copy, or use it in place |
+| `let s = maybe.value` (a local optional) | moves the value out; `maybe` becomes `none` |
+| `x = new_value` | the old value of `x` is cleaned up first |
+| `list[0].append("!")`, `for item in list`, `case some(s):` | work on the value in place, no copy |
+
+`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, and `take(p)` to hand a value out of raw memory without copying it.
+
+The cost is visible and predictable: one cleanup call where a scope ends, and nothing running in the background.
+
+### 3.22 Files and input · [`examples/21_files.cl`](../examples/21_files.cl)
 
 ```clear
 import "io"
@@ -549,7 +625,7 @@ let name = input("name? ")           // a line from the keyboard
 file_exists(path) / delete_file(path)
 ```
 
-### 3.21 Modules · [`examples/22_modules.cl`](../examples/22_modules.cl)
+### 3.23 Modules · [`examples/22_modules.cl`](../examples/22_modules.cl)
 
 ```clear
 import "math"                    // standard library: Standard/math.cl
@@ -567,7 +643,7 @@ So a file of yours named `math.cl` hides the standard `math`, as in Python.
 
 Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`.
 
-### 3.22 Calling C · [`examples/23_c_interop.cl`](../examples/23_c_interop.cl)
+### 3.24 Calling C · [`examples/23_c_interop.cl`](../examples/23_c_interop.cl)
 
 ```clear
 declare printf(format: *int8, args: ...) -> int32
