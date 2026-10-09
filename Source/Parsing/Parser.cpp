@@ -251,21 +251,21 @@ namespace clear
         if(Match(tokenType)) return;
 
         //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
     void Parser::Expect(const std::string& data)
     {
         if(Match(data)) return;
 
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
     void Parser::ExpectAny(TokenSet tokenSet)
     {
         if(MatchAny(tokenSet)) return;
 
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
 	std::shared_ptr<ASTBlock> Parser::ParseCodeBlock()
@@ -1493,6 +1493,16 @@ namespace clear
 		unary->Operand = ParseExpr(info.RightBindingPower);
 			
 		VERIFY_WITH_RETURN(unary->Operand, DiagnosticCode_None, nullptr);
+
+		// ** read as two stars
+		if (token.IsType(TokenType::StarStar))
+		{
+			auto outer = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			outer->Location = token;
+			outer->Operand = unary;
+			return outer;
+		}
+
 		return unary;
 	}
 
@@ -2334,6 +2344,7 @@ namespace clear
 			case TokenType::Bang:               return OperatorType::Not;
 			case TokenType::Minus:				return OperatorType::Negation;
 			case TokenType::Star:				return OperatorType::Dereference;
+			case TokenType::StarStar:			return OperatorType::Dereference; // **p, **int8: two of them
 			case TokenType::Decrement:			return OperatorType::Decrement;
 			case TokenType::Increment:			return OperatorType::Increment;
 			case TokenType::LeftBrace:			return OperatorType::ListInitializer;

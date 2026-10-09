@@ -22,7 +22,7 @@ namespace clear
         
         ~Token() = default;
 
-        int64_t   AsInt()    const { return std::stoll(m_Data); }
+        int64_t   AsInt()    const { return (int64_t)std::stoull(m_Data); } // the bits of literals up to 2^64 - 1
         uint64_t  AsUInt()   const { return std::stoull(m_Data); }
         bool      AsBool()   const { return m_Data == "true"; }
         double    AsFloat()  const { return std::stod(m_Data); }

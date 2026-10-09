@@ -421,10 +421,35 @@ namespace clear
 		factor->addIncoming(base, before);
 		remaining->addIncoming(start, before);
 
+		// signed and checked: a multiplication that overflows (and is used) stops the program, like a * b does
+		bool checked = ctx.RuntimeChecks && type->IsSigned();
+		llvm::PHINode* overflowed = checked ? ctx.Builder.CreatePHI(ctx.Builder.getInt1Ty(), 2, "pow.overflow") : nullptr;
+
 		llvm::Value* isOdd = ctx.Builder.CreateTrunc(remaining, ctx.Builder.getInt1Ty());
-		llvm::Value* nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
-		llvm::Value* nextFactor = ctx.Builder.CreateMul(factor, factor);
 		llvm::Value* nextRemaining = ctx.Builder.CreateLShr(remaining, 1);
+		llvm::Value* nextResult = nullptr;
+		llvm::Value* nextFactor = nullptr;
+
+		if (checked)
+		{
+			overflowed->addIncoming(ctx.Builder.getFalse(), before);
+
+			llvm::Value* product = ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::smul_with_overflow, result, factor);
+			llvm::Value* square = ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::smul_with_overflow, factor, factor);
+			nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateExtractValue(product, 0), result);
+			nextFactor = ctx.Builder.CreateExtractValue(square, 0);
+
+			llvm::Value* resultOverflow = ctx.Builder.CreateAnd(isOdd, ctx.Builder.CreateExtractValue(product, 1));
+			llvm::Value* squareUsed = ctx.Builder.CreateICmpNE(nextRemaining, llvm::ConstantInt::get(intType, 0));
+			llvm::Value* squareOverflow = ctx.Builder.CreateAnd(squareUsed, ctx.Builder.CreateExtractValue(square, 1));
+			llvm::Value* any = ctx.Builder.CreateOr(overflowed, ctx.Builder.CreateOr(resultOverflow, squareOverflow));
+			overflowed->addIncoming(any, ctx.Builder.GetInsertBlock());
+		}
+		else
+		{
+			nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
+			nextFactor = ctx.Builder.CreateMul(factor, factor);
+		}
 
 		llvm::BasicBlock* loopEnd = ctx.Builder.GetInsertBlock();
 		result->addIncoming(nextResult, loopEnd);
@@ -437,6 +462,13 @@ namespace clear
 		ctx.Builder.SetInsertPoint(done);
 		llvm::PHINode* value = ctx.Builder.CreatePHI(intType, 1);
 		value->addIncoming(nextResult, loopEnd);
+
+		if (checked)
+		{
+			llvm::PHINode* failed = ctx.Builder.CreatePHI(ctx.Builder.getInt1Ty(), 1);
+			failed->addIncoming(overflowed->getIncomingValue(1), loopEnd);
+			EmitCheck(ctx, ctx.Builder.CreateNot(failed), "integer overflow in **", Location.GetSourceFile().empty() ? GetNodeLocation(left) : Location);
+		}
 
 		// a negative exponent skips straight to 0
 		llvm::Value* finalValue = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), value);
@@ -1973,6 +2005,15 @@ namespace clear
 		{			
 			Symbol result = Operand->Codegen(ctx);
 
+			// -x where x is the smallest value of its type has no positive counterpart
+			if (ctx.RuntimeChecks && result.GetType()->IsIntegral() && result.GetType()->IsSigned() && result.GetLLVMValue()->getType()->isIntegerTy() &&
+				!result.GetLLVMValue()->getType()->isIntegerTy(1))
+			{
+				unsigned bits = result.GetLLVMValue()->getType()->getIntegerBitWidth();
+				llvm::Value* smallest = llvm::ConstantInt::get(result.GetLLVMValue()->getType(), llvm::APInt::getSignedMinValue(bits));
+				EmitCheck(ctx, ctx.Builder.CreateICmpNE(result.GetLLVMValue(), smallest), "integer overflow in negation", Location.GetSourceFile().empty() ? GetNodeLocation(Operand) : Location);
+			}
+
 			auto signedType = result.GetType();
 
 			if(!signedType->IsSigned()) // uint... -> int...
@@ -3385,6 +3426,24 @@ namespace clear
 	{
 		Symbol result = Object->Codegen(ctx);
 		Symbol type = Symbol::CreateType(TargetType);
+
+		// 1e20 as int64, -1.0 as uint8, NaN as int32: checked (the value must fit, whole part only)
+		llvm::Value* value = result.GetLLVMValue();
+
+		if (ctx.RuntimeChecks && value->getType()->isFloatingPointTy() && TargetType->Get()->isIntegerTy() && !TargetType->Get()->isIntegerTy(1))
+		{
+			unsigned bits = TargetType->Get()->getIntegerBitWidth();
+			bool isSigned = TargetType->IsSigned();
+			double low = isSigned ? -std::ldexp(1.0, bits - 1) : 0.0;
+			double high = isSigned ? std::ldexp(1.0, bits - 1) : std::ldexp(1.0, bits);   // exclusive
+
+			llvm::Value* asDouble = value->getType()->isDoubleTy() ? value : ctx.Builder.CreateFPExt(value, ctx.Builder.getDoubleTy());
+			llvm::Value* aboveLow = ctx.Builder.CreateFCmpOGT(asDouble, llvm::ConstantFP::get(ctx.Builder.getDoubleTy(), low - 1.0));
+			llvm::Value* belowHigh = ctx.Builder.CreateFCmpOLT(asDouble, llvm::ConstantFP::get(ctx.Builder.getDoubleTy(), high));
+			EmitCheck(ctx, ctx.Builder.CreateAnd(aboveLow, belowHigh), std::format("value out of range for {}", TargetType->GetHash()), 
+					  Location.GetSourceFile().empty() ? GetNodeLocation(Object) : Location);
+		}
+
 		return SymbolOps::Cast(result, type, ctx.Builder);
 	}
 

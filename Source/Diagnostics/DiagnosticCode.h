@@ -109,6 +109,8 @@ namespace clear
 		DiagnosticCode_CopyMade,
 		DiagnosticCode_InfiniteType,
 		DiagnosticCode_TopLevelStatement,
+		DiagnosticCode_MacroHasNoValue,
+		DiagnosticCode_NoConversion,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -218,6 +220,8 @@ namespace clear
 		"A copy is made here.",
 		"This type contains itself, so it would be infinitely big.",
 		"Only declarations can be at the top level of a file.",
+		"This macro is a list of statements, so it has no value.",
+		"These types do not convert to each other.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -326,5 +330,7 @@ namespace clear
 		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
 		"‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’.",
 		"Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro.",
+		"‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2).",
+		"{}.",
 	};
 }

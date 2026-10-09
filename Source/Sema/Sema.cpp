@@ -1473,6 +1473,15 @@ namespace clear
 		{
 			result = Visit(body->Children[0], context);
 		}
+		else if (context.ValueReq == ValueRequired::RValue)
+		{
+			// let r = twice!("ab") with a macro made of statements: it has no value to give
+			Token where = call->Name;
+			size_t width = where.GetData().size() + 1;
+			where.SetData(call->Name.GetData());
+			Report(DiagnosticCode_MacroHasNoValue, where, width);
+			result = nullptr;
+		}
 		else
 		{
 			auto sequence = std::make_shared<ASTSequence>();
@@ -1900,6 +1909,19 @@ namespace clear
 		if (assignmentOp->Storage && assignmentOp->Storage->GetType() != ASTNodeType::FunctionCall)
 			context.ExpectedType = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
 
+		// ops["inc"] = lambda x: x + 1: the value takes the type operator set takes (that gives the lambda its types)
+		if (auto setter = std::dynamic_pointer_cast<ASTFunctionCall>(assignmentOp->Storage); setter && setter->ClassType)
+		{
+			if (auto set = setter->ClassType->MemberFunctions.find("__setitem__"); set != setter->ClassType->MemberFunctions.end())
+			{
+				auto node = set->second->GetFunctionSymbol().FunctionNode;
+				EnsureDefined(node);
+
+				if (node && !node->Arguments.empty() && node->Arguments.back())
+					context.ExpectedType = node->Arguments.back()->ResolvedType;
+			}
+		}
+
 		assignmentOp->Value = Visit(assignmentOp->Value, context);
 
 		if (!assignmentOp->Storage || !assignmentOp->Value)
@@ -2123,6 +2145,15 @@ namespace clear
 
 				if (!modifies)
 					NeverMove(unaryExpr->Operand); // a pointer to it may be used after its last mention
+
+				// &seven(), &(a + b): the value is kept in a temporary (until the end of the block) and that is pointed at
+				if (!modifies && !IsStorageNode(unaryExpr->Operand) && !std::dynamic_pointer_cast<ASTTemporary>(unaryExpr->Operand))
+				{
+					auto type = m_TypeInferEngine.InferTypeFromNode(unaryExpr->Operand);
+
+					if (type && !type->IsPointer() && unaryExpr->Operand->GetType() != ASTNodeType::Variable)
+						return AddressOf(unaryExpr->Operand);
+				}
 
 				if (auto var = std::dynamic_pointer_cast<ASTVariable>(unaryExpr->Operand); modifies && var && m_ConstSymbols.contains(var->Variable.get()))
 				{
@@ -3702,11 +3733,26 @@ namespace clear
 			{
 				auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
 				CollectNames(binary->LeftSide, names);
-				if (binary->GetExpression() != OperatorType::Dot)
+				if (binary->GetExpression() != OperatorType::Dot && binary->GetExpression() != OperatorType::OptionalDot)
 					CollectNames(binary->RightSide, names);
 				break;
 			}
 			case ASTNodeType::UnaryExpression: CollectNames(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand, names); break;
+			case ASTNodeType::MacroCall:
+			{
+				// twice!(a + k): what is passed in is pasted into the lambda's body
+				for (auto& arg : std::dynamic_pointer_cast<ASTMacroCall>(node)->Arguments) CollectNames(arg, names);
+				break;
+			}
+			case ASTNodeType::IsExpr: CollectNames(std::dynamic_pointer_cast<ASTIsExpr>(node)->Object, names); break;
+			case ASTNodeType::SliceExpr:
+			{
+				auto slice = std::dynamic_pointer_cast<ASTSliceExpr>(node);
+				CollectNames(slice->Target, names);
+				CollectNames(slice->Start, names);
+				CollectNames(slice->End, names);
+				break;
+			}
 			case ASTNodeType::FunctionCall:
 			{
 				auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
@@ -4629,7 +4675,57 @@ namespace clear
 			return unwrap;
 		}
 
+		// K.A as String, 5 as str: there is no such conversion
+		if (sourceType && sourceType != castExpr->TargetType && !CastAllowed(sourceType, castExpr->TargetType))
+		{
+			Token location = castExpr->Location.GetData().empty() ? GetNodeLocation(castExpr->Object) : castExpr->Location;
+			size_t width = std::max<size_t>(location.GetData().size(), 1);
+			location.SetData(ConversionAdvice(sourceType, castExpr->TargetType));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_NoConversion, width);
+			return nullptr;
+		}
+
 		return castExpr;
+	}
+
+	bool Sema::CastAllowed(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to)
+	{
+		// what `as` can do: numbers (and bools, chars, enums) to numbers, pointers to pointers or integers and back
+		if (!from || !to)
+			return false;
+
+		if (from == to || from->GetHash() == to->GetHash())
+			return true;
+
+		auto scalar = [](const std::shared_ptr<Type>& type) { return type->IsIntegral() || type->IsFloatingPoint() || type->IsEnum(); };
+
+		if (scalar(from) && scalar(to))
+			return true;
+
+		if ((from->IsPointer() && (to->IsPointer() || to->IsIntegral())) || (to->IsPointer() && from->IsIntegral()))
+			return true;
+
+		return IsImplicitlyConvertible(from, to, false);
+	}
+
+	std::string Sema::ConversionAdvice(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to)
+	{
+		std::string fromName = GetDisplayName(from), toName = GetDisplayName(to);
+		bool toText = to->GetHash() == "String" || to->GetHash() == "str";
+
+		if (toText && (from->IsIntegral() || from->IsFloatingPoint()) && !from->IsEnum())
+			return std::format("A {} is not text: use from_int(x) or from_float(x) to make a String of it", fromName);
+
+		if (toText && from->IsEnum())
+			return std::format("A {} is not text: switch over it and give each case its text", fromName);
+
+		if (to->IsPointer() && to->As<PointerType>()->GetBaseType() == from)
+			return std::format("A {} is expected here, not a {}: pass its address with &", toName, fromName);
+
+		if (from->IsPointer() && from->As<PointerType>()->GetBaseType() == to)
+			return std::format("A {} is expected here, not a pointer to one: use *pointer for the value", toName);
+
+		return std::format("There is no conversion from ‘{}’ to ‘{}’, not even with ‘as’", fromName, toName);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSizeofExpr> sizeofExpr, SemaContext context)
@@ -4651,6 +4747,17 @@ namespace clear
 
 		// `shape is Shape.Circle`, `x is none`: compare which case the value holds
 		auto objectType = m_TypeInferEngine.InferTypeFromNode(isExpr->Object);
+
+		// p is Shape.Circle with p a pointer: the value it points at
+		if (objectType && objectType->IsPointer() && objectType->As<PointerType>()->GetBaseType() && 
+			objectType->As<PointerType>()->GetBaseType()->IsClass() && objectType->As<PointerType>()->GetBaseType()->As<ClassType>()->IsVariant)
+		{
+			auto deref = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			deref->Location = isExpr->Object->Location;
+			deref->Operand = isExpr->Object;
+			isExpr->Object = deref;
+			objectType = objectType->As<PointerType>()->GetBaseType();
+		}
 
 		if (objectType && objectType->IsClass() && objectType->As<ClassType>()->IsVariant)
 		{
@@ -5865,8 +5972,12 @@ namespace clear
 			if (dstBits == 1)
 				return srcBits == 1;
 
-			if (srcBits == 1 || srcBits == dstBits)
-				return true; // bool -> int, or the same width with different signedness
+			if (srcBits == 1)
+				return true; // bool -> int
+
+			// int8 -1 as uint8 is 255: a change of sign is written out with `as` (a literal that fits still adapts)
+			if (srcBits == dstBits)
+				return from->IsSigned() == to->IsSigned();
 
 			if (dstBits > srcBits)
 				return from->IsSigned() == to->IsSigned() || !from->IsSigned(); // uint8 -> int16 is fine, int8 -> uint16 is not
@@ -5917,6 +6028,10 @@ namespace clear
 			return false;
 
 		unsigned bits = target->Get()->getIntegerBitWidth();
+
+		// a literal above the int64 range (0xFFFFFFFFFFFFFFFF): its bits only fit 64 unsigned bits
+		if (!source->IsSigned() && source->Get()->getIntegerBitWidth() == 64 && *value < 0)
+			return !target->IsSigned() && bits == 64;
 
 		if (target->IsSigned())
 		{
@@ -6908,6 +7023,14 @@ namespace clear
 		{
 			Token location = GetNodeLocation(node);
 			size_t width = std::max<size_t>(location.GetData().size(), 1);
+
+			// only suggest `as` where `as` can do it
+			if (!CastAllowed(source, target))
+			{
+				location.SetData(ConversionAdvice(source, target));
+				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_NoConversion, width);
+				return node;
+			}
 
 			location.SetData(std::format("{}’ to ‘{}", GetDisplayName(source), GetDisplayName(target)));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_ImplicitConversion, width);

@@ -33,6 +33,10 @@ namespace clear
             Eat();
         }
 
+        // the last line ends too (a line ends when the next one starts, and there is none)
+        if (!m_Tokens.empty() && !m_Tokens.back().IsType(TokenType::EndLine))
+            EmplaceBack(TokenType::EndLine, " ");
+
         while(m_Indents-- != 0) 
             EmplaceBack(TokenType::EndScope, "EndScope");
 
@@ -478,7 +482,7 @@ namespace clear
                 digit = std::tolower(*it) - 'a' + 10;
             }
 
-            num += digit * std::pow(16, k++);
+            num |= digit << (4 * k++); // exact: a double would round 64 bit values
         }
 
         EmplaceBack(TokenType::Number, std::to_string(num));
@@ -501,7 +505,7 @@ namespace clear
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
             uint64_t digit = *it - '0';
-            num += digit * std::pow(2, k++);
+            num |= digit << k++;
         }
 
         EmplaceBack(TokenType::Number, std::to_string(num));

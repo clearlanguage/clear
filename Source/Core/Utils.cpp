@@ -1,4 +1,5 @@
 #include "Utils.h"
+#include <charconv>
 
 #include <fast_float/fast_float.h>
 
@@ -133,6 +134,22 @@ namespace clear {
         bool isFloatingPoint = str.find_first_of(".eE") != std::string_view::npos;
 
         NumberInfo info;
+
+        // whole numbers are measured exactly (through a double, 2^63 would round and pass for an int64)
+        if (!isFloatingPoint)
+        {
+            uint64_t whole = 0;
+            auto [end, error] = std::from_chars(str.data(), str.data() + str.size(), whole);
+
+            if (error != std::errc() || end != str.data() + str.size())
+                return info;
+
+            info.Valid = true;
+            info.IsFloatingPoint = false;
+            info.IsSigned = whole <= (uint64_t)std::numeric_limits<int64_t>::max();
+            info.BitsNeeded = whole <= (uint64_t)std::numeric_limits<int32_t>::max() ? 32 : 64;
+            return info;
+        }
 
         double result;
         auto [ptr, ec] = fast_float::from_chars(str.data(), str.data() + str.size(), result);

@@ -123,6 +123,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+		bool CastAllowed(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to);
+		std::string ConversionAdvice(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to);
 		void AdaptLiterals(std::shared_ptr<ASTBinaryExpression> expr, const SemaContext& context);
 		static bool ContainsByValue(const std::shared_ptr<Type>& type, const std::shared_ptr<Type>& target);
 

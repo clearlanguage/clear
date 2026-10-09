@@ -420,3 +420,11 @@ Advice  = "‘{}’ holds a value of its own type. Hold it through a pointer, a 
 [TopLevelStatement]
 Message = "Only declarations can be at the top level of a file."
 Advice  = "Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro."
+
+[MacroHasNoValue]
+Message = "This macro is a list of statements, so it has no value."
+Advice  = "‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2)."
+
+[NoConversion]
+Message = "These types do not convert to each other."
+Advice  = "{}."
