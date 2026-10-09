@@ -1051,6 +1051,7 @@ namespace clear
 	public:
 		Token Name;
 		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
+		std::shared_ptr<Symbol> ResolvedMacro; // m.twice!(x): the macro found through an import alias
 	};
 
 	// the address of a class's table of virtual methods (stored in the hidden __vtable field)

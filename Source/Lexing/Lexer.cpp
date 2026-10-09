@@ -39,8 +39,63 @@ namespace clear
         EmplaceBack(TokenType::EndOfFile, "EOF");
     }
 
+    bool Lexer::ContinuesLine() const
+    {
+        // like Python: inside ( [ { a line break is just space; we also go on after an operator that needs a
+        // right side (`total = a +` / `"x" +`), a comma, or `=`
+        if (m_Brackets > 0)
+            return true;
+
+        if (m_Tokens.empty())
+            return false;
+
+        const Token& last = m_Tokens.back();
+
+        switch (last.GetType())
+        {
+            case TokenType::Plus: case TokenType::Minus: case TokenType::Star: case TokenType::ForwardSlash:
+            case TokenType::Percent: case TokenType::StarStar: case TokenType::EqualsEquals: case TokenType::BangEquals:
+            case TokenType::LessThan: case TokenType::GreaterThan: case TokenType::LessThanEquals: case TokenType::GreaterThanEquals:
+            case TokenType::Ampersand: case TokenType::Pipe: case TokenType::Hat: case TokenType::LeftShift: case TokenType::RightShift:
+            case TokenType::Comma: case TokenType::Equals: case TokenType::QuestionQuestion:
+            case TokenType::PlusEquals: case TokenType::MinusEquals: case TokenType::StarEquals: case TokenType::SlashEquals:
+                return true;
+            default:
+                break;
+        }
+
+        const std::string& word = last.GetData();
+        return (last.IsType(TokenType::Keyword) || last.IsType(TokenType::Identifier)) &&
+               (word == "and" || word == "or" || word == "not" || word == "use" || word == "otherwise");
+    }
+
     void Lexer::Eat()
     {
+        // a line starting with `otherwise`, `and` or `or` (or `.`) carries on the one before: no statement starts that way
+        auto startsWithJoiner = [&]()
+        {
+            size_t pos = m_Position;
+            while (pos < m_Contents.size() && std::isspace(m_Contents[pos]))
+                pos++;
+
+            size_t end = pos;
+            while (end < m_Contents.size() && std::isalpha(m_Contents[end]))
+                end++;
+
+            std::string word = m_Contents.substr(pos, end - pos);
+            bool joiner = word == "otherwise" || word == "and" || word == "or";
+            return joiner && (end >= m_Contents.size() || !IsAllowedCharacter(m_Contents[end]));
+        };
+
+        // a continued line: the break and the next line's indentation are only space
+        if (Prev() == "\n" && (ContinuesLine() || startsWithJoiner()))
+        {
+            while (m_Position < m_Contents.size() && std::isspace(m_Contents[m_Position]))
+                Increment();
+
+            goto token;
+        }
+
         if (Prev() == "\n")
         {
             //TODO: fix EndScope for chained statements
@@ -58,6 +113,7 @@ namespace clear
             FlushScopes();
         }
 
+    token:
         if(m_Position >= m_Contents.size())
             return;
 
@@ -216,6 +272,11 @@ namespace clear
 
         std::string word(1, m_Contents[m_Position]);
         Increment();
+
+        if (word == "(" || word == "[" || word == "{")
+            m_Brackets++;
+        else if ((word == ")" || word == "]" || word == "}") && m_Brackets > 0)
+            m_Brackets--;
 
         if(g_PunctuatorMappings.contains(word))
         {

@@ -416,3 +416,7 @@ Advice  = "This ‘{}’ is copied (it allocates). If you only read it, work on 
 [InfiniteType]
 Message = "This type contains itself, so it would be infinitely big."
 Advice  = "‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’."
+
+[TopLevelStatement]
+Message = "Only declarations can be at the top level of a file."
+Advice  = "Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro."

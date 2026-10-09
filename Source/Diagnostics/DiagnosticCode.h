@@ -108,6 +108,7 @@ namespace clear
 		DiagnosticCode_OptionalBoolCondition,
 		DiagnosticCode_CopyMade,
 		DiagnosticCode_InfiniteType,
+		DiagnosticCode_TopLevelStatement,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -216,6 +217,7 @@ namespace clear
 		"An optional bool is ambiguous as a condition.",
 		"A copy is made here.",
 		"This type contains itself, so it would be infinitely big.",
+		"Only declarations can be at the top level of a file.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -323,5 +325,6 @@ namespace clear
 		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
 		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
 		"‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’.",
+		"Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro.",
 	};
 }

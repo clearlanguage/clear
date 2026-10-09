@@ -1930,6 +1930,32 @@ namespace clear
 		}
 
 		arrayType->SizeNode = ParseExpr();
+
+		// [a, b, c]: an array literal, like {a, b, c} (a type is [N; T], with a semicolon)
+		if (arrayType->SizeNode && (Match(TokenType::Comma) || Match(TokenType::RightBracket)))
+		{
+			auto list = std::make_shared<ASTListExpr>();
+			list->Values.push_back(arrayType->SizeNode);
+
+			while (Match(TokenType::Comma))
+			{
+				Consume();
+
+				if (Match(TokenType::RightBracket))
+					break;
+
+				auto value = ParseExpr();
+
+				if (!value)
+					return nullptr;
+
+				list->Values.push_back(value);
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_UnmatchedBracket, nullptr);
+			Consume();
+			return list;
+		}
 		
 		EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_ExpectedColon, nullptr);
 		Consume();

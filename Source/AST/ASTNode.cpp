@@ -2228,6 +2228,15 @@ namespace clear
 		if (Iterable)
 		{
 			iterable = Iterable->Codegen(ctx);
+
+			// for x in {1, 2, 3}: a computed array is kept in a slot so its items can be addressed
+			if (!iterable.GetLLVMValue()->getType()->isPointerTy())
+			{
+				Symbol slot = CreateAlloca(IterableType, ctx);
+				ctx.Builder.CreateStore(iterable.GetLLVMValue(), slot.GetLLVMValue());
+				iterable = slot;
+			}
+
 			counter = CreateAlloca(ctx.ClearModule->Lookup("uint64").value()->GetType(), ctx);
 			ctx.Builder.CreateStore(ctx.Builder.getInt64(0), counter.GetLLVMValue());
 			limit = ctx.Builder.getInt64(IterableType->As<ArrayType>()->GetArraySize());

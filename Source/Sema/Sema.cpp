@@ -97,6 +97,41 @@ namespace clear
 				node = Visit(node, context);
 		}
 
+		// const N = 8 (a number worked out from literals and other names): known before any type uses it,
+		// so [N; int] works in fields and parameters
+		std::function<bool(const std::shared_ptr<ASTNodeBase>&)> simple = [&](const std::shared_ptr<ASTNodeBase>& value) -> bool
+		{
+			if (!value)
+				return false;
+
+			switch (value->GetType())
+			{
+				case ASTNodeType::Literal:
+				case ASTNodeType::Variable:
+					return true;
+				case ASTNodeType::BinaryExpression:
+				{
+					auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(value);
+					return binary->GetExpression() != OperatorType::Dot && simple(binary->LeftSide) && simple(binary->RightSide);
+				}
+				case ASTNodeType::UnaryExpression:
+					return simple(std::dynamic_pointer_cast<ASTUnaryExpression>(value)->Operand);
+				default:
+					return false;
+			}
+		};
+
+		std::unordered_set<ASTNodeBase*> early;
+
+		for (auto& node : children)
+		{
+			if (auto decl = std::dynamic_pointer_cast<ASTVariableDeclaration>(node); decl && decl->IsConst && simple(decl->Initializer))
+			{
+				node = Visit(node, context);
+				early.insert(node.get());
+			}
+		}
+
 		for (auto& node : children)
 		{
 			if (auto classNode = std::dynamic_pointer_cast<ASTClass>(node); classNode && !DeclareClassType(classNode))
@@ -122,6 +157,9 @@ namespace clear
 
 		for (auto& node : children)
 		{
+			if (early.contains(node.get()))
+				continue;
+
 			switch (kindOf(node))
 			{
 				case ASTNodeType::Import:
@@ -133,8 +171,16 @@ namespace clear
 				case ASTNodeType::Macro:
 				case ASTNodeType::Base:
 					break;
-				default:
+				case ASTNodeType::VariableDecleration:
+				case ASTNodeType::Destructure:
+				case ASTNodeType::Block:     // declarations the parser grouped together
+				case ASTNodeType::Sequence:
 					node = Visit(node, context);
+					break;
+				default:
+					// print("hi") at the top of a file: there is nowhere for it to run
+					Report(DiagnosticCode_TopLevelStatement, GetNodeLocation(node));
+					node = nullptr;
 					break;
 			}
 		}
@@ -809,6 +855,35 @@ namespace clear
 		if (auto chain = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); chain && chain->GetExpression() == OperatorType::OptionalDot)
 			return VisitOptionalChain(chain, context, funcCall);
 
+		// m.Pt(1, 2), m.make(): a class or function of a module imported `as m` is called like one written here
+		if (auto access = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); access && access->GetExpression() == OperatorType::Dot)
+		{
+			if (auto member = std::dynamic_pointer_cast<ASTVariable>(ModuleMember(access)))
+			{
+				// a generic function: made for these arguments, like max(3, 9)
+				if (member->Variable->Kind == SymbolKind::GenericTemplate)
+				{
+					auto generic = std::dynamic_pointer_cast<ASTGenericTemplate>(member->Variable->GetGenericTemplate().GenericTemplate);
+
+					if (generic && generic->TemplateNode->GetType() == ASTNodeType::FunctionDefinition)
+					{
+						for (auto& argument : funcCall->Arguments)
+						{
+							if (!(argument = Visit(argument, context)))
+								return nullptr;
+						}
+
+						member->Variable = InstantiateFromValues(member, member->Variable, 0, funcCall->Arguments);
+
+						if (!member->Variable)
+							return nullptr;
+					}
+				}
+
+				funcCall->Callee = member;
+			}
+		}
+
 		// xs.push(v), xs.remove(i) ...: these can move or free the items, so pointers into xs go stale
 		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
 		{
@@ -1355,14 +1430,15 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context)
 	{
 		auto [entry, scopeIndex] = LookupSymbol(call->Name.GetData());
+		auto macroSymbol = call->ResolvedMacro ? call->ResolvedMacro : (entry ? entry->Symbol : nullptr);
 
-		if (!entry || entry->Symbol->Kind != SymbolKind::Macro)
+		if (!macroSymbol || macroSymbol->Kind != SymbolKind::Macro)
 		{
 			Report(DiagnosticCode_UndeclaredIdentifier, call->Name);
 			return nullptr;
 		}
 
-		auto macro = std::dynamic_pointer_cast<ASTMacro>(entry->Symbol->GetGenericTemplate().GenericTemplate);
+		auto macro = std::dynamic_pointer_cast<ASTMacro>(macroSymbol->GetGenericTemplate().GenericTemplate);
 
 		if (call->Arguments.size() != macro->Parameters.size())
 		{
@@ -5406,6 +5482,13 @@ namespace clear
 			return literal;
 		}
 
+		// m.Box[int]: a generic class of a module imported `as m`
+		if (auto access = std::dynamic_pointer_cast<ASTBinaryExpression>(subscript->Target); access && access->GetExpression() == OperatorType::Dot)
+		{
+			if (auto member = std::dynamic_pointer_cast<ASTVariable>(ModuleMember(access)); member && member->Variable->Kind == SymbolKind::GenericTemplate)
+				subscript->Target = member;
+		}
+
 		subscript->Target = Visit(subscript->Target, { .ValueReq = ValueRequired::LValue, .TypeHint = context.TypeHint, .AllowGenericInferenceFromArgs = false });
 		subscript->Meaning = SubscriptSemantic::Generic;
 
@@ -5622,6 +5705,13 @@ namespace clear
 					scopeIndex = i; 
 					break;
 				}
+			}
+
+			// m.Box[int]: not a name here, the template was found through an import alias
+			if (!genericSym && var->Variable && var->Variable->Kind == SymbolKind::GenericTemplate)
+			{
+				genericSym = var->Variable;
+				scopeIndex = 0;
 			}
 
 			if (!genericSym)
@@ -7509,9 +7599,82 @@ namespace clear
 		return valid;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::ModuleMember(std::shared_ptr<ASTBinaryExpression> access)
+	{
+		// m.name where m is a module imported `as m`: the name as that module exposes it (null if m is not a module)
+		auto left = std::dynamic_pointer_cast<ASTVariable>(access->LeftSide);
+
+		if (!left)
+			return nullptr;
+
+		std::shared_ptr<Symbol> module = left->Variable;
+
+		if (!module)
+		{
+			auto [entry, scope] = LookupSymbol(left->GetName().GetData());
+			module = entry ? entry->Symbol : nullptr;
+		}
+
+		if (!module || module->Kind != SymbolKind::Module)
+			return nullptr;
+
+		auto& exposed = module->GetModule()->GetExposedSymbols();
+
+		// m.twice!(x)
+		if (auto macro = std::dynamic_pointer_cast<ASTMacroCall>(access->RightSide))
+		{
+			auto found = exposed.find(macro->Name.GetData());
+
+			if (found == exposed.end() || found->second->Kind != SymbolKind::Macro)
+			{
+				Report(DiagnosticCode_UndeclaredIdentifier, macro->Name);
+				return nullptr;
+			}
+
+			macro->ResolvedMacro = found->second;
+			return macro;
+		}
+
+		auto name = std::dynamic_pointer_cast<ASTVariable>(access->RightSide);
+
+		if (!name)
+			return nullptr;
+
+		auto found = exposed.find(name->GetName().GetData());
+
+		if (found == exposed.end())
+		{
+			Token where = name->GetName();
+			Report(DiagnosticCode_UndeclaredIdentifier, where);
+			return nullptr;
+		}
+
+		auto member = std::make_shared<ASTVariable>(name->GetName());
+		member->Variable = found->second;
+		return member;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
 	{
 		bool insertLoad = context.ValueReq == ValueRequired::RValue;
+
+		// m.NAME, m.N, m.twice!(x) through an import alias
+		if (auto member = ModuleMember(binaryExpr))
+		{
+			if (member->GetType() == ASTNodeType::MacroCall)
+				return Visit(member, context);
+
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(member);
+
+			if (insertLoad && variable->Variable->Kind == SymbolKind::Value)
+			{
+				auto load = std::make_shared<ASTLoad>();
+				load->Operand = variable;
+				return load;
+			}
+
+			return variable;
+		}
 
 		// obj.field read as a value only reads obj (a method call or a write does not come through here as a value)
 		context.ValueReq = ValueRequired::LValue;
@@ -7789,6 +7952,8 @@ namespace clear
 					std::shared_ptr<Type> base = GetTypeFromNode(unary->Operand);
 					return base ? GetOptionalType(base) : nullptr;
 				}
+
+				return nullptr; // -x, not x: a value, not a type
 			}
 			case ASTNodeType::Subscript:
 			{
