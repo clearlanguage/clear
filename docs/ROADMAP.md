@@ -145,12 +145,15 @@ Clear's promise is C-level speed, so this is measured, not assumed.
 - [x] `--native` / `--cpu=<name>` targets; `clearc run` uses the host CPU.
 - [x] Benchmarks in `Benchmarks/` comparing against equivalent C, reported
       in CI.
-- [ ] Struct/array literals built in registers instead of `memcpy` from a
-      global constant (only matters at -O0).
+- [x] Struct/array literals up to 256 bytes built in registers instead of `memcpy`
+      from a global constant (about 15% faster struct-heavy code at -O0).
 - [ ] Debug info (`DebugInfo = true`) so gdb/lldb work.
 - [x] Run-time checks (bounds, division, overflow, null, `none`) in debug builds; `--checks` / `--no-checks`.
-- [ ] Compiler speed: parse files in parallel; reduce `shared_ptr` churn
-      in the AST.
+- [ ] Compiler speed. Measured (Oct 2026): 20k lines in 0.33 s, 100k lines in 2 s,
+      linear. About half the time is LLVM optimisation and about a quarter is
+      instruction selection; parsing barely shows up, so parallel parsing would
+      not help yet. Next step when it matters: per-function caching, and
+      less `shared_ptr` churn in Sema.
 
 ## Phase 5: Standard library and tooling
 

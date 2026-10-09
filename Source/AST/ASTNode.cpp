@@ -1664,6 +1664,20 @@ namespace clear
 
 		llvm::Constant* initializer = llvm::ConstantArray::get(llvmArrayType, constantValues);
 
+		// a small literal is built as a value: its constant part, with the computed items put in (no memory involved)
+		if (ctx.Module.getDataLayout().getTypeAllocSize(llvmArrayType) <= 256)
+		{
+			llvm::Value* aggregate = initializer;
+
+			for (size_t i = 0; i < values.size(); i++)
+			{
+				if (!llvm::isa<llvm::Constant>(values[i]))
+					aggregate = ctx.Builder.CreateInsertValue(aggregate, values[i], { (unsigned)i });
+			}
+
+			return Symbol::CreateValue(aggregate, arrayType);
+		}
+
 		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
 		    ctx.Module,
 		    llvmArrayType,
@@ -1780,6 +1794,20 @@ namespace clear
 		llvm::StructType* llvmStructTy = llvm::dyn_cast<llvm::StructType>(structTy->Get());
 
 		llvm::Constant* initializer = llvm::ConstantStruct::get(llvmStructTy, constantValues);
+
+		// a small literal is built as a value: its constant part, with the computed fields put in (no memory involved)
+		if (ctx.Module.getDataLayout().getTypeAllocSize(llvmStructTy) <= 256)
+		{
+			llvm::Value* aggregate = initializer;
+
+			for (size_t i = 0; i < values.size(); i++)
+			{
+				if (!llvm::isa<llvm::Constant>(values[i]))
+					aggregate = ctx.Builder.CreateInsertValue(aggregate, values[i], { (unsigned)i });
+			}
+
+			return Symbol::CreateValue(aggregate, structTy);
+		}
 
 		llvm::GlobalVariable* staticGlobal = new llvm::GlobalVariable(
 		    ctx.Module,
