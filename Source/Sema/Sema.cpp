@@ -7614,6 +7614,14 @@ namespace clear
 		if (!decl->Initializer || !decl->ResolvedType || (!decl->ResolvedType->IsPointer() && !view))
 			return;
 
+		// let best = xs[0] with xs: List[*Order]: the pointer stored in the item is read out (a load), it points
+		// wherever it pointed before, not into xs (unlike &xs[0] or xs.slot(0))
+		auto top = decl->Initializer;
+		auto unaryTop = std::dynamic_pointer_cast<ASTUnaryExpression>(top);
+
+		if (top->GetType() == ASTNodeType::Load || (unaryTop && unaryTop->GetOperatorType() == OperatorType::Dereference))
+			return;
+
 		bool throughCall = false;
 		auto root = RootVariable(decl->Initializer, &throughCall);
 

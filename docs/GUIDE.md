@@ -157,6 +157,7 @@ Other markers:
 | `// expect-error` | the program must **fail** to compile (for testing diagnostics) |
 | `// expect-error: text` | ...and the compiler's output must contain `text` (part of the message, so the test fails if a *different* error happens) |
 | `// expect-warning: text` | the program must compile and the compiler must print `text` |
+| `// expect-no-warning: text` | the compiler must **not** print `text` (a warning that must not fire) |
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
 | `// expect-stderr: text` | the program's stderr must contain `text` (e.g. a `panic:` message) |
