@@ -45,6 +45,7 @@ namespace clear
 
         Token Consume();
         Token ErrorLocation();
+        bool ReportExpected(TokenType type, DiagnosticCode code); // a missing token; true: recovered (a keyword where a name goes)
         Token Peak();
         Token Next();
         Token Prev();

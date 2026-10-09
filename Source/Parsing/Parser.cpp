@@ -18,16 +18,12 @@
 namespace clear 
 {
     #define EXPECT_TOKEN(type, code) \
-    if (!Match(type)) { \
-    auto location = ErrorLocation(); \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
+    if (!Match(type) && !ReportExpected(type, code)) { \
     m_Tokens.insert(m_Tokens.begin() + m_Position, Token(type, "")); \
     }
 
     #define EXPECT_TOKEN_RETURN(type, code, returnValue) \
-    if (!Match(type)) { \
-    auto location = ErrorLocation(); \
-    m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, location, code, GetExpectedLength(type)); \
+    if (!Match(type) && !ReportExpected(type, code)) { \
     SkipUntil(TokenType::EndLine); \
     return returnValue; \
     }
@@ -175,6 +171,22 @@ namespace clear
         });
 
         rootModule->GetRoot()->Children.push_back(ParseCodeBlock());
+    }
+
+    bool Parser::ReportExpected(TokenType type, DiagnosticCode code)
+    {
+        // `function union(self)`, `let class = 3`: a name was expected and a keyword was written. Said once,
+        // then parsing goes on as if it were a name (so the rest of the function doesn't cause more errors)
+        if (type == TokenType::Identifier && Peak().IsType(TokenType::Keyword) && m_Position < m_Tokens.size())
+        {
+            Token keyword = Peak();
+            m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, keyword, DiagnosticCode_KeywordAsName, keyword.GetData().size());
+            m_Tokens[m_Position] = Token(TokenType::Identifier, keyword.GetData(), keyword.GetSourceFile(), keyword.LineNumber, keyword.ColumnNumber);
+            return true;
+        }
+
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), code, GetExpectedLength(type));
+        return false;
     }
 
     Token Parser::ErrorLocation()
@@ -465,8 +477,8 @@ namespace clear
 
 		branches.push_back({ test, ParseCodeBlock() });
 		
-		// `elseif` and `else if` mean the same
-		while (Match("elseif") || (Match("else") && Next().GetData() == "if"))		
+		// `elseif`, `elif` (as in Python) and `else if` mean the same
+		while (Match("elseif") || Match("elif") || (Match("else") && Next().GetData() == "if"))		
 		{
 			if (Consume().GetData() == "else")
 				Consume(); // if
@@ -787,6 +799,29 @@ namespace clear
 
 		EXPECT_TOKEN_RETURN(TokenType::Identifier, DiagnosticCode_ExpectedIdentifier, nullptr);
 		enumNode->Name = Consume();
+
+		// enum Result[T]: not supported; say so, and skip its body so its cases don't cause more errors
+		if (Match(TokenType::LeftBracket))
+		{
+			m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, enumNode->Name, DiagnosticCode_GenericEnum, enumNode->Name.GetData().size());
+
+			bool hasBody = false;
+
+			while (!Match(TokenType::EndLine) && !Match(TokenType::EndOfFile))
+				hasBody = Consume().IsType(TokenType::Colon);
+
+			for (int depth = hasBody ? 1 : 0; depth > 0 && !Match(TokenType::EndOfFile); )
+			{
+				if (Match(TokenType::Colon) && Next().IsType(TokenType::EndLine))
+					depth++;
+				else if (Match(TokenType::EndScope))
+					depth--;
+
+				Consume();
+			}
+
+			return nullptr;
+		}
 
 		EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedColon, nullptr);
 		Consume();

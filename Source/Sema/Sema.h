@@ -132,6 +132,7 @@ namespace clear
 		struct Narrowing { std::shared_ptr<Symbol> Variable; Token Name; std::shared_ptr<Type> Optional; };
 		std::optional<Narrowing> NarrowableOptional(const std::shared_ptr<ASTNodeBase>& node);
 		std::shared_ptr<ASTVariableDeclaration> NarrowedDeclaration(const Narrowing& narrowing);
+		void ReportMissingMember(const Token& name, const std::shared_ptr<Type>& type); // E035, or: the value is optional
 		void CollectNarrowings(const std::shared_ptr<ASTNodeBase>& test, bool whenTrue, std::vector<Narrowing>& narrowings);
 		bool EndNarrowing(const std::shared_ptr<ASTAssignmentOperator>& assignment);
 		std::unordered_map<ASTVariableDeclaration*, Narrowing> m_NarrowingDeclarations; // the `let r = <value in r>` made for narrowing

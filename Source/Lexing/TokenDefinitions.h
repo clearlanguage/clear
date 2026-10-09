@@ -110,7 +110,7 @@ namespace clear
         "float",
 
         "if", "else", "while", "return", "break", "continue",
-        "true", "false", "null", "in", "and", "or", "elseif", "defer",
+        "true", "false", "null", "in", "and", "or", "elseif", "elif", "defer",
         "switch", "case", "default", "import", "as",  
         "pass",
 

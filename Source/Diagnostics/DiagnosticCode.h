@@ -113,6 +113,10 @@ namespace clear
 		DiagnosticCode_NoConversion,
 		DiagnosticCode_UsedHere,
 		DiagnosticCode_AmbiguousImport,
+		DiagnosticCode_KeywordAsName,
+		DiagnosticCode_GenericEnum,
+		DiagnosticCode_NoValue,
+		DiagnosticCode_OptionalMember,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -226,6 +230,10 @@ namespace clear
 		"These types do not convert to each other.",
 		"The standard library code above is used from this line of the program.",
 		"This name is defined by more than one imported file.",
+		"A keyword cannot be used as a name.",
+		"An enum cannot have type parameters.",
+		"This call returns nothing, so there is no value to store.",
+		"This value is optional, so its members can't be used directly.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -338,5 +346,9 @@ namespace clear
 		"{}.",
 		"The problem comes from how ‘{}’ is used here.",
 		"‘{}’. Say which one: import one of them with a name (import \"mb\" as b, then b.name), or define it in this file.",
+		"‘{}’ is a keyword of the language, so it can't name a function, method, variable, field or parameter. Choose another name, e.g. with a _ at the end.",
+		"‘{}[...]’: generic enums aren't supported. Write the enum for the type you need (enum IntResult: Ok(value: int), Err), or use a generic class, e.g. class Result[T] with a field value: ?T.",
+		"‘{}’ doesn't return a value. Call it on a line of its own, and read what you need before or after it (e.g. let r = xs[0] before xs.remove(0)).",
+		"‘{}’. Use ?. to reach it only when there is a value (x?.name, a?.b?.c), or check first (if x: ...).",
 	};
 }

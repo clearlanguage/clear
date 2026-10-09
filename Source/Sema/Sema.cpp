@@ -290,12 +290,26 @@ namespace clear
 			}
 			
 			context.ValueReq = ValueRequired::RValue;
+			auto written = decl->Initializer;
 			decl->Initializer = Visit(decl->Initializer, context);
 
 			if (!decl->Initializer)
 				return nullptr; // already reported
 
 			decl->ResolvedType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
+
+			// let r = xs.remove(0): a call that returns nothing
+			if (auto call = std::dynamic_pointer_cast<ASTFunctionCall>(written); call && (!decl->ResolvedType || decl->ResolvedType->Get()->isVoidTy()))
+			{
+				auto callee = std::dynamic_pointer_cast<ASTVariable>(call->Callee);
+
+				if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(call->Callee); member && !callee)
+					callee = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+				Token where = callee ? callee->GetName() : GetNodeLocation(written);
+				Report(DiagnosticCode_NoValue, where);
+				return nullptr;
+			}
 
 			// an alias names the place a pointer points at, it holds no value of its own
 			if (decl->IsAlias && decl->ResolvedType && decl->ResolvedType->IsPointer())
@@ -1160,7 +1174,8 @@ namespace clear
 				{
 					auto& [name, value] = funcCall->KeywordArguments[0];
 					Token where = name;
-					where.SetData(std::format("{}’ (print takes values only: it puts spaces between them and a line break after", name.GetData()));
+					where.SetData(std::format("{}’ is not something print takes: it prints its values with spaces between them and a line break after. "
+											  "Without the line break: print_text(text), after import ‘io", name.GetData()));
 					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
 					return nullptr;
 				}
@@ -8290,6 +8305,24 @@ namespace clear
 		return member;
 	}
 
+	void Sema::ReportMissingMember(const Token& name, const std::shared_ptr<Type>& type)
+	{
+		// x.items with x: ?Box: the member is there, but only when x holds a value
+		auto optional = ClassOf(type);
+		auto valueType = optional && optional->As<ClassType>()->IsOptional ? OptionalValueType(optional) : nullptr;
+		auto valueClass = valueType ? ClassOf(valueType) : nullptr;
+
+		if (valueClass && (valueClass->As<ClassType>()->GetMember(name.GetData()) || valueClass->As<ClassType>()->MemberFunctions.contains(name.GetData())))
+		{
+			Token where = name;
+			where.SetData(std::format("{}’ belongs to ‘{}’, but this is a ‘{}", name.GetData(), GetDisplayName(valueType), GetDisplayName(optional)));
+			Report(DiagnosticCode_OptionalMember, where, name.GetData().size());
+			return;
+		}
+
+		Report(DiagnosticCode_UnknownMember, name);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprMemberAccess(std::shared_ptr<ASTBinaryExpression> binaryExpr, SemaContext context)
 	{
 		bool insertLoad = context.ValueReq == ValueRequired::RValue;
@@ -8440,7 +8473,7 @@ namespace clear
 
 			if (!member || member->GetName().GetData() != "value")
 			{
-				Report(DiagnosticCode_UnknownMember, member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide));
+				ReportMissingMember(member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide), lhsType);
 				return nullptr;
 			}
 
@@ -8467,7 +8500,7 @@ namespace clear
 
 		if (!memberSymbol)
 		{
-			Report(DiagnosticCode_UnknownMember, member->GetName());
+			ReportMissingMember(member->GetName(), lhsType);
 			return nullptr;
 		}
 
