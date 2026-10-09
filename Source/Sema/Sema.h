@@ -234,6 +234,9 @@ namespace clear
 		FunctionCopies m_Copies;
 		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
 		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+	public:
+		void KeepLentArguments(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, size_t firstCandidate);
+	private:
 		void FinishCopies();
 
 		// lambda x: ... with no types to go on: analysed again for each set of argument types it is called with

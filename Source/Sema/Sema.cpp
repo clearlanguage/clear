@@ -1600,6 +1600,9 @@ namespace clear
 			return nullptr;
 		}
 
+		size_t firstCandidate = m_Copies.Candidates.size();
+		struct Lent { Sema* S; std::shared_ptr<ASTFunctionCall> Call; size_t First; ~Lent() { S->KeepLentArguments(Call->Arguments, First); } } lent { this, funcCall, firstCandidate };
+
 		for (size_t i = 0; i < expected; i++)
 		{
 			auto parameterType = function->Arguments[i + offset] ? function->Arguments[i + offset]->ResolvedType : nullptr;
@@ -2787,7 +2790,7 @@ namespace clear
 				element->Location = forExpr->VariableName;
 				auto address = intrinsic("slice_at", m_Module->GetTypeRegistry()->GetPointerTo(slice->GetBaseType()), { name(sliceName), name(indexName) });
 
-				if (slice->GetBaseType()->IsClass())
+				if (slice->GetBaseType()->IsClass() || IsOwning(slice->GetBaseType()))
 				{
 					element->Initializer = address;
 					element->IsAlias = true;
@@ -2966,8 +2969,10 @@ namespace clear
 
 		// a get that returns a reference to an object: the loop variable *is* that object (x.qty = 1 changes the item);
 		// numbers and other plain values are copied, like in Python
+		// (and anything else that owns something, a Task or a Generator: a copy would be cleaned up each time round)
 		if (auto getter = classType->MemberFunctions.at("__getitem__")->GetFunctionSymbol().FunctionNode; 
-			getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer() && getter->ReturnTypeVal->As<PointerType>()->GetBaseType()->IsClass())
+			getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer() && 
+			(getter->ReturnTypeVal->As<PointerType>()->GetBaseType()->IsClass() || IsOwning(getter->ReturnTypeVal->As<PointerType>()->GetBaseType())))
 			elementDecl->IsAlias = true;
 		else if (getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer())
 		{
@@ -3807,7 +3812,9 @@ namespace clear
 		auto closure = std::make_shared<ASTClass>(std::format("__closure_{}", id));
 		closure->Location = location;
 
-		auto borrowed = [&](const std::shared_ptr<Type>& type) { return IsOwning(type) && !lambda->MovesCaptures; };
+		// captured values are copied when the lambda is made, like ints; one that cannot be copied (a File) is
+		// borrowed instead (or moved in with `move lambda`)
+		auto borrowed = [&](const std::shared_ptr<Type>& type) { return IsOwning(type) && !lambda->MovesCaptures && !IsCopyable(type); };
 		bool borrows = false;
 
 		for (auto& [name, type] : captures)
@@ -3923,7 +3930,8 @@ namespace clear
 			{
 				local->IsAlias = true;
 
-				if (lambda->MovesCaptures)
+				// the closure holds the value itself (copied or moved in), or a pointer to it (borrowed)
+				if (lambda->MovesCaptures || IsCopyable(type))
 				{
 					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
 					address->Location = captured;
@@ -6408,7 +6416,7 @@ namespace clear
 		auto isStr = [](const std::shared_ptr<Type>& type) { return type && type->GetHash() == "str"; };
 		auto isString = [](const std::shared_ptr<Type>& type) { return type && ClassOf(type) && ClassOf(type)->GetHash() == "String"; };
 
-		if ((isStr(leftType) || isStr(rightType)) && (isStr(leftType) || isString(leftType)) && (isStr(rightType) || isString(rightType)))
+		if ((isStr(leftType) || isString(leftType)) && (isStr(rightType) || isString(rightType)))
 			return CallLibraryFunction("concat_text", { left, right }, location);
 
 		return nullptr;
@@ -6573,18 +6581,19 @@ namespace clear
 			}
 		}
 
-		// raw memory (*p, p[i]) is the programmer's business: reading it hands the value over as it is
-		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node); unary && unary->GetOperatorType() == OperatorType::Dereference && !unary->IsElement)
+		// reading through a pointer (*p, p[i]) copies like any other read; only a value that cannot be copied is
+		// handed over as it is (code managing raw memory, like List, uses take(p) to move instead)
+		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node); !copyable && unary && unary->GetOperatorType() == OperatorType::Dereference && !unary->IsElement)
 			return node;
 
-		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node); subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node); !copyable && subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
 		{
 			auto targetType = m_TypeInferEngine.InferTypeFromNode(subscript->Target);
 			if (targetType && targetType->IsPointer())
 				return node;
 		}
 
-		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node))
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && !copyable)
 		{
 			if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(load->Operand); subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
 			{
@@ -7037,6 +7046,31 @@ namespace clear
 		return nullptr;
 	}
 
+	void Sema::KeepLentArguments(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, size_t firstCandidate)
+	{
+		// a + a, x.combine(x): self (or another argument) points at a variable this same call also gets a copy
+		// of. That copy must stay a copy: moving would empty the variable self still looks at.
+		std::unordered_set<Symbol*> lent;
+
+		for (auto& argument : arguments)
+		{
+			auto type = argument ? m_TypeInferEngine.InferTypeFromNode(argument) : nullptr;
+
+			// a pointer or slice into a variable, or the variable's storage itself (self is passed that way)
+			if (type && (type->IsPointer() || std::dynamic_pointer_cast<SliceType>(type) || IsStorageNode(argument)))
+			{
+				if (auto root = RootVariable(argument, nullptr); root && root->Variable)
+					lent.insert(root->Variable.get());
+			}
+		}
+
+		for (size_t i = firstCandidate; i < m_Copies.Candidates.size(); i++)
+		{
+			if (lent.contains(m_Copies.Candidates[i].Variable))
+				m_Copies.Candidates[i].Valid = false;
+		}
+	}
+
 	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		if (auto root = RootVariable(node, nullptr); root && root->Variable)
@@ -7312,6 +7346,8 @@ namespace clear
 		call->Location = location;
 		call->Callee = callee;
 		call->Arguments.push_back(AddressOf(expr->LeftSide));
+		size_t firstCandidate = m_Copies.Candidates.size();
+		struct Lent { Sema* S; std::shared_ptr<ASTFunctionCall> Call; size_t First; ~Lent() { S->KeepLentArguments(Call->Arguments, First); } } lent { this, call, firstCandidate };
 
 		// the other operand is passed the way the method declares it: by value or by pointer
 		auto otherType = function->Arguments[1]->ResolvedType;
@@ -7632,6 +7668,20 @@ namespace clear
 			SemaContext comparison = context;
 			comparison.ExpectedType = nullptr; // a comparison's operands are not the bool it produces
 			AdaptLiterals(binaryExpr, comparison);
+
+			// name == "ada", "ada" < name: compared as text (a String becomes a str view, nothing is copied)
+			auto left = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);
+			auto right = m_TypeInferEngine.InferTypeFromNode(binaryExpr->RightSide);
+			bool leftText = left && left->GetHash() == "str", rightText = right && right->GetHash() == "str";
+
+			if (leftText != rightText && left && right && !left->IsPointer() && !right->IsPointer())
+			{
+				auto& other = leftText ? binaryExpr->RightSide : binaryExpr->LeftSide;
+				auto text = leftText ? left : right;
+
+				if (auto converted = Coerce(other, text); converted && m_TypeInferEngine.InferTypeFromNode(converted) == text)
+					other = converted;
+			}
 		}
 
 		if (auto overload = TryOperatorOverload(binaryExpr))
