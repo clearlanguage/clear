@@ -3393,6 +3393,12 @@ namespace clear
 				return std::dynamic_pointer_cast<ASTBinaryExpression>(node)->GetExpression() == OperatorType::Dot;
 			case ASTNodeType::UnaryExpression:
 				return std::dynamic_pointer_cast<ASTUnaryExpression>(node)->IsStorage;
+			case ASTNodeType::TupleGet:
+			{
+				// t[0] analysed as an lvalue gives the element's address
+				auto get = std::dynamic_pointer_cast<ASTTupleGet>(node);
+				return get->WantAddress && get->TupleIsStorage;
+			}
 			default:
 				return false;
 		}
@@ -6919,6 +6925,13 @@ namespace clear
 
 		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
 			return EnsureCopyDefined(array->GetBaseType());
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (auto& element : tuple->GetElements())
+				EnsureCopyDefined(element);
+			return;
+		}
 
 		if (!type->IsClass())
 			return;
