@@ -24,7 +24,7 @@ class Owner(Plain):           // the base owns nothing, the derived class does
 
 function make(id: int) -> *Base:
     let p = allocate[Derived](1)
-    *p = Derived(id, String("heap"))
+    place(p, Derived(id, String("heap")))
     return p
 
 function main() -> int32:
@@ -43,7 +43,7 @@ function main() -> int32:
     let all = List[*Base]()
     all.push(make(3))
     let q = allocate[Quiet](1)
-    *q = Quiet(4, String("quiet"))
+    place(q, Quiet(4, String("quiet")))
     all.push(q)
     for item in all:
         destroy(item)
@@ -52,7 +52,7 @@ function main() -> int32:
 
     // a base that owns nothing: the derived fields are still freed
     let o = allocate[Owner](1)
-    *o = Owner(5, List[String]())
+    place(o, Owner(5, List[String]()))
     o.items.push(String("x"))
     let asPlain: *Plain = o
     destroy(asPlain)

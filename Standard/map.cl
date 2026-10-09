@@ -71,8 +71,7 @@ class Map[K, V]:
 
         while self.states[slot] != 0:
             if self.states[slot] == 1 and *(self.keys + slot) == key:
-                destroy(self.values + slot)            // the value it replaces
-                *(self.values + slot) = value
+                *(self.values + slot) = value          // the value it replaces is cleaned up
                 return
             if self.states[slot] == 2 and reuse < 0:
                 reuse = slot
@@ -82,8 +81,8 @@ class Map[K, V]:
             slot = reuse
             self.removed -= 1
 
-        *(self.keys + slot) = key
-        *(self.values + slot) = value
+        place(self.keys + slot, key)              // an empty slot: nothing there to clean up
+        place(self.values + slot, value)
         self.states[slot] = 1
         self.length += 1
 

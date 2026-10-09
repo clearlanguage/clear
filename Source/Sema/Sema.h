@@ -230,7 +230,12 @@ namespace clear
 		std::unordered_set<Type*> m_BorrowingClosures; // lambdas holding pointers to local variables
 
 		// copies out of local variables become moves where the variable is not used again (the last use)
-		struct CopyCandidate { Symbol* Variable = nullptr; size_t Use = 0; std::shared_ptr<ASTCopy> Copy; std::shared_ptr<ASTNodeBase> Storage; bool Valid = true; };
+		struct CopyCandidate
+		{
+			Symbol* Variable = nullptr; size_t Use = 0; std::shared_ptr<ASTCopy> Copy; std::shared_ptr<ASTNodeBase> Storage; bool Valid = true;
+			bool Final = false; // a return follows it in its block, with no other use of the variable in between
+		};
+		std::vector<size_t> m_BlockCandidates; // per open block: the first copy candidate made in it
 		struct FunctionCopies
 		{
 			std::vector<CopyCandidate> Candidates;
@@ -253,6 +258,14 @@ namespace clear
 		FunctionCopies m_Copies;
 		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
 		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+		void MarkMovedFrom(const std::shared_ptr<ASTNodeBase>& storage);
+		std::shared_ptr<ASTNodeBase> VisitSwap(std::shared_ptr<ASTDestructure> destructure, SemaContext context, bool& isSwap);
+		// inside `if q:`, q names the value inside the optional q: using it is using the optional (moving it out
+		// empties the optional)
+		std::unordered_map<Symbol*, std::shared_ptr<ASTVariable>> m_NarrowedAliases;
+		Symbol* MoveRoot(Symbol* symbol);
+		std::unordered_map<Symbol*, ASTVariableDeclaration*> m_LocalDeclarations; // for the drop flags of moved variables
+		void CheckStatementUses(const std::shared_ptr<ASTNodeBase>& statement, size_t firstCandidate);
 	public:
 		void KeepLentArguments(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, size_t firstCandidate);
 	private:

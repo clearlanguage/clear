@@ -53,9 +53,14 @@ namespace clear
 		}
 		else 
 		{
+			m_BlockCandidates.push_back(m_Copies.Candidates.size());
+			struct PopBlock { std::vector<size_t>& Stack; ~PopBlock() { Stack.pop_back(); } } popBlock { m_BlockCandidates };
+
 			for (size_t i = 0; i < ast->Children.size(); i++)
 			{
+				size_t firstCandidate = m_Copies.Candidates.size();
 				ast->Children[i] = Visit(ast->Children[i], context);
+				CheckStatementUses(ast->Children[i], firstCandidate);
 
 				// `if not r: return` above: the rest of the block sees r as its value, in a scope of its own (r is
 				// already declared in this one)
@@ -341,6 +346,7 @@ namespace clear
 			if (!context.GlobalState && !decl->IsAlias)
 			{
 				m_LocalVariables.insert(decl->Variable.get());
+				m_LocalDeclarations[decl->Variable.get()] = decl.get();
 				m_LocalOrder[decl->Variable.get()] = m_LocalCounter++;
 				m_Moved.erase(decl->Variable.get());
 				NoteElementPointer(decl);
@@ -358,6 +364,16 @@ namespace clear
 					if (root && root->Variable && m_LocalVariables.contains(root->Variable.get()) && rootType && !rootType->IsPointer() && AddressOfRead(copy->Value))
 						m_Copies.Views.push_back({ decl, copy, decl->Variable.get(), root->Variable.get(), m_Copies.Clock });
 				}
+			}
+
+			// `if q:` names the value inside the optional q (see NarrowedDeclaration)
+			if (auto field = std::dynamic_pointer_cast<ASTVariantField>(decl->Initializer); field && decl->IsAlias && !context.GlobalState)
+			{
+				auto subject = std::dynamic_pointer_cast<ASTVariable>(field->Subject);
+
+				if (subject && subject->Variable && m_LocalVariables.contains(subject->Variable.get()) && field->VariantTy && field->VariantTy->IsClass() &&
+					field->VariantTy->As<ClassType>()->IsOptional)
+					m_NarrowedAliases[decl->Variable.get()] = subject;
 			}
 
 			if (decl->IsConst)
@@ -1104,6 +1120,33 @@ namespace clear
 
 			auto slice = m_Module->GetTypeRegistry()->GetSliceOf(pointerType->As<PointerType>()->GetBaseType());
 			return SliceIntrinsic("make_slice", slice, { pointer, Coerce(length, m_Module->Lookup("int64").value()->GetType()) }, callee->GetName());
+		}
+
+		// place(p, v): put v into raw memory that holds no value yet (unlike *p = v, nothing is cleaned up first)
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && callee->GetName().GetData() == "place" &&
+			!LookupSymbol("place").first)
+		{
+			if (funcCall->Arguments.size() != 2)
+			{
+				Report(DiagnosticCode_WrongArgumentCount, callee->GetName());
+				return nullptr;
+			}
+
+			auto target = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			target->Location = callee->GetName();
+			target->Operand = funcCall->Arguments[0];
+
+			auto assignment = std::make_shared<ASTAssignmentOperator>(AssignmentOperatorType::Normal);
+			assignment->Location = callee->GetName();
+			assignment->Storage = target;
+			assignment->Value = funcCall->Arguments[1];
+
+			auto result = Visit(assignment, context);
+
+			if (auto placed = std::dynamic_pointer_cast<ASTAssignmentOperator>(result))
+				placed->DestroyOld = false;
+
+			return result;
 		}
 
 		// destroy(p): clean up *p now;  take(p): hand over the value at p (raw memory a container manages)
@@ -1929,6 +1972,19 @@ namespace clear
 			m_Returning = false;
 		}
 
+		// a copy made earlier in this block whose variable is not used between it and here is the last use on
+		// this path, even if the variable is used again further down (another path) or the block is in a loop
+		if (!m_BlockCandidates.empty())
+		{
+			for (size_t i = m_BlockCandidates.back(); i < m_Copies.Candidates.size(); i++)
+			{
+				auto& candidate = m_Copies.Candidates[i];
+
+				if (candidate.Valid && m_Copies.Uses[candidate.Variable] == candidate.Use)
+					candidate.Final = true;
+			}
+		}
+
 		m_Unreachable = true;
 		return returnStatement;
 	}
@@ -2059,17 +2115,9 @@ namespace clear
 				}
 			}
 
-			// replacing an owning value cleans up the old one (raw memory, *p = v, is left to the programmer)
-			auto rawTarget = std::dynamic_pointer_cast<ASTUnaryExpression>(assignmentOp->Storage);
-			bool raw = rawTarget && rawTarget->GetOperatorType() == OperatorType::Dereference && !rawTarget->IsElement;
-
-			if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(assignmentOp->Storage); subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
-			{
-				auto targetType = m_TypeInferEngine.InferTypeFromNode(subscript->Target);
-				raw = raw || (targetType && targetType->IsPointer());
-			}
-
-			assignmentOp->DestroyOld = !raw && assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
+			// replacing an owning value cleans up the old one, wherever it is (*p = v and p[i] = v too: raw memory
+			// that holds no value yet is filled with place(p, v) instead)
+			assignmentOp->DestroyOld = assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
 
 			// a += b on a class is a = a + b with its operator add (the target is worked out once: the value
 			// reads it through a slot the assignment fills with the target's address)
@@ -2093,7 +2141,7 @@ namespace clear
 				assignmentOp->CompoundTarget = target;
 				assignmentOp->Value = value;
 				assignmentOp->SetAssignType(AssignmentOperatorType::Normal);
-				assignmentOp->DestroyOld = !raw && IsOwning(storageType);
+				assignmentOp->DestroyOld = IsOwning(storageType);
 				overloaded = true;
 			}
 
@@ -3309,6 +3357,14 @@ namespace clear
 
 			forExpr->VariableType = forExpr->IterableType->As<ArrayType>()->GetBaseType();
 			forExpr->IterableIsTemporary = !IsStorageNode(forExpr->Iterable);
+
+			// for s in [String("a"), String("b")]: the new array is kept (and cleaned up) until the end of the block,
+			// its items are visited in place like those of a variable
+			if (forExpr->IterableIsTemporary && IsOwning(forExpr->IterableType) && IsFreshValue(forExpr->Iterable))
+			{
+				forExpr->Iterable = AddressOf(forExpr->Iterable);
+				forExpr->IterableIsTemporary = false;
+			}
 		}
 		else
 		{
@@ -3683,6 +3739,12 @@ namespace clear
 				return std::dynamic_pointer_cast<ASTBinaryExpression>(node)->GetExpression() == OperatorType::Dot;
 			case ASTNodeType::UnaryExpression:
 				return std::dynamic_pointer_cast<ASTUnaryExpression>(node)->IsStorage;
+			case ASTNodeType::TupleGet:
+			{
+				// t[0] analysed as an lvalue gives the element's address
+				auto get = std::dynamic_pointer_cast<ASTTupleGet>(node);
+				return get->WantAddress && get->TupleIsStorage;
+			}
 			default:
 				return false;
 		}
@@ -4354,7 +4416,7 @@ namespace clear
 					type = type->As<PointerType>()->GetBaseType();
 
 				captures.push_back({ name, type });
-				m_Copies.NeverMove.insert(entry->Symbol.get()); // the lambda may run after the variable's last mention
+				m_Copies.NeverMove.insert(MoveRoot(entry->Symbol.get())); // the lambda may run after the variable's last mention
 			}
 		}
 
@@ -4829,8 +4891,153 @@ namespace clear
 		return CallMethod(member->LeftSide, objectType, instanceName, values, location);
 	}
 
+	// a place written without calls (xs[i + 1].name), as text: two places with the same text are the same place
+	static std::optional<std::string> PlaceText(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (!node)
+			return std::nullopt;
+
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(node); variable && !variable->Variable)
+			return variable->GetName().GetData();
+
+		if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node); literal && literal->GetData().IsType(TokenType::Number))
+			return literal->GetData().GetData();
+
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node))
+		{
+			auto text = PlaceText(subscript->Target);
+
+			if (!text || subscript->SubscriptArgs.empty())
+				return std::nullopt;
+
+			*text += "[";
+
+			for (auto& argument : subscript->SubscriptArgs)
+			{
+				auto index = PlaceText(argument);
+
+				if (!index)
+					return std::nullopt;
+
+				*text += *index + ",";
+			}
+
+			return *text + "]";
+		}
+
+		if (auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node))
+		{
+			auto op = binary->GetExpression();
+
+			if (op != OperatorType::Dot && op != OperatorType::Add && op != OperatorType::Sub && op != OperatorType::Mul)
+				return std::nullopt;
+
+			auto left = PlaceText(binary->LeftSide);
+			auto right = PlaceText(binary->RightSide);
+
+			if (!left || !right)
+				return std::nullopt;
+
+			return std::format("({}{}{})", *left, (int)op, *right);
+		}
+
+		return std::nullopt;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitSwap(std::shared_ptr<ASTDestructure> destructure, SemaContext context, bool& isSwap)
+	{
+		// xs[i], xs[j] = xs[j], xs[i]: the same places on both sides, so the values only change places. Each is taken
+		// out as it is (no copy), then put into its new place (nothing to clean up: its old value was taken out)
+		auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(destructure->Value);
+
+		if (destructure->IsDeclaration || !tuple || tuple->Values.size() != destructure->Targets.size() || tuple->Values.size() < 2)
+			return nullptr;
+
+		std::vector<std::string> targets, values;
+
+		for (size_t i = 0; i < tuple->Values.size(); i++)
+		{
+			auto target = PlaceText(destructure->Targets[i]);
+			auto value = PlaceText(tuple->Values[i]);
+
+			if (!target || !value)
+				return nullptr;
+
+			targets.push_back(*target);
+			values.push_back(*value);
+		}
+
+		std::sort(targets.begin(), targets.end());
+		std::sort(values.begin(), values.end());
+
+		if (targets != values || std::adjacent_find(targets.begin(), targets.end()) != targets.end())
+			return nullptr;
+
+		isSwap = true;
+
+		static size_t s_Counter = 0;
+		Token location = destructure->Location;
+		auto token = [&](const std::string& text) { return Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+
+		auto call = [&](const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments)
+		{
+			auto node = std::make_shared<ASTFunctionCall>();
+			node->Location = location;
+			node->Callee = std::make_shared<ASTVariable>(token(name));
+			node->Arguments.append(arguments.begin(), arguments.end());
+			return node;
+		};
+
+		auto address = [&](std::shared_ptr<ASTNodeBase> place)
+		{
+			auto node = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+			node->Location = location;
+			node->Operand = place;
+			return node;
+		};
+
+		std::vector<std::shared_ptr<ASTNodeBase>> statements;
+		std::vector<std::string> names;
+
+		for (auto& value : tuple->Values)
+		{
+			names.push_back(std::format("__swap_{}", s_Counter++));
+			auto held = std::make_shared<ASTVariableDeclaration>(token(names.back()));
+			held->Location = location;
+			held->Initializer = call("take", { address(value) });
+			statements.push_back(held);
+		}
+
+		for (size_t i = 0; i < destructure->Targets.size(); i++)
+			statements.push_back(call("place", { address(destructure->Targets[i]), std::make_shared<ASTVariable>(token(names[i])) }));
+
+		// the pointers made here are used right away: they do not keep the places from being moved out later
+		auto neverMove = m_Copies.NeverMove;
+		auto sequence = std::make_shared<ASTSequence>();
+		sequence->Location = location;
+
+		for (auto& statement : statements)
+		{
+			auto visited = Visit(statement, context);
+
+			if (!visited)
+				return nullptr;
+
+			sequence->Children.push_back(visited);
+		}
+
+		m_Copies.NeverMove = std::move(neverMove);
+		return sequence;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)
 	{
+		bool isSwap = false;
+		auto swap = VisitSwap(destructure, context, isSwap);
+
+		if (isSwap)
+			return swap;
+
 		// evaluate the right side once into a hidden tuple, then hand out its elements:
 		//     let __destructure = value
 		//     target0 = __destructure[0]   (or `let name0 = ...`)
@@ -5106,6 +5313,16 @@ namespace clear
 			ternaryExpr->Falsy = Coerce(ternaryExpr->Falsy, common);
 		}
 
+		// when c use s otherwise String("x"): one side is new and the other is not. Each side then gives a value of
+		// its own (s is copied, or moved at its last use), so the result is new either way and has one owner
+		auto resultType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr);
+
+		if (IsOwning(resultType) && IsFreshValue(ternaryExpr->Truthy) != IsFreshValue(ternaryExpr->Falsy))
+		{
+			ternaryExpr->Truthy = TakeOwnership(ternaryExpr->Truthy, resultType);
+			ternaryExpr->Falsy = TakeOwnership(ternaryExpr->Falsy, resultType);
+		}
+
 		return ternaryExpr;
 	}
 
@@ -5298,6 +5515,15 @@ namespace clear
 				location.SetData(std::format("{}’ is not a case of ‘{}", caseName, GetDisplayName(objectType)));
 				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_UnknownCase, std::max<size_t>(caseName.size(), 1));
 				return nullptr;
+			}
+
+			// find(1) is not none: a new value is only looked at, it is kept (and cleaned up) at the end of the block
+			if (IsOwning(objectType) && IsFreshValue(isExpr->Object))
+			{
+				auto load = std::make_shared<ASTLoad>();
+				load->Location = isExpr->Object->Location;
+				load->Operand = AddressOf(isExpr->Object);
+				isExpr->Object = load;
 			}
 
 			auto int32Type = m_Module->Lookup("int32").value()->GetType();
@@ -6599,6 +6825,14 @@ namespace clear
 		}
 
 		listExpr->ListType = m_Module->GetTypeRegistry()->GetArrayFrom(targetBaseType, listExpr->Values.size());
+
+		// [a, String("y")]: the array owns its items, each one is a value of its own (a is copied, or moved)
+		if (IsOwning(targetBaseType))
+		{
+			for (auto& value : listExpr->Values)
+				value = TakeOwnership(value, targetBaseType);
+		}
+
 		return listExpr;
 	}
 
@@ -6790,6 +7024,7 @@ namespace clear
 			case ASTNodeType::VariantConstruct:
 			case ASTNodeType::UnionConstruct:
 			case ASTNodeType::TupleExpr:
+			case ASTNodeType::ListExpr:
 			case ASTNodeType::Zero:
 			case ASTNodeType::Move:
 			case ASTNodeType::Copy:
@@ -7488,6 +7723,13 @@ namespace clear
 		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
 			return EnsureCopyDefined(array->GetBaseType());
 
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (auto& element : tuple->GetElements())
+				EnsureCopyDefined(element);
+			return;
+		}
+
 		if (!type->IsClass())
 			return;
 
@@ -7549,6 +7791,23 @@ namespace clear
 			return result;
 		}
 
+		// let u = q inside `if q:` (q the value in the optional q): at its last use the optional is emptied instead
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && copyable && !m_Returning)
+		{
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(load->Operand);
+			auto alias = variable && variable->Variable ? m_NarrowedAliases.find(variable->Variable.get()) : m_NarrowedAliases.end();
+
+			if (alias != m_NarrowedAliases.end())
+			{
+				auto result = copy();
+
+				if (auto use = m_Copies.UseOf.find(variable.get()); use != m_Copies.UseOf.end())
+					m_Copies.Candidates.push_back(CopyCandidate { alias->second->Variable.get(), use->second, result, alias->second, true });
+
+				return result;
+			}
+		}
+
 		// a value that cannot be copied (a File, a class with its own destruct) moves out of a local, which is left empty
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand))
 		{
@@ -7556,6 +7815,7 @@ namespace clear
 				m_Copies.NotViewable.insert(variable->Variable.get());
 
 			RecordMove(std::dynamic_pointer_cast<ASTVariable>(load->Operand));
+			MarkMovedFrom(load->Operand);
 
 			auto move = std::make_shared<ASTMove>();
 			move->Location = node->Location;
@@ -7586,6 +7846,7 @@ namespace clear
 		{
 			if (auto load = std::dynamic_pointer_cast<ASTLoad>(unwrap->Subject); load && isLocal(load->Operand))
 			{
+				MarkMovedFrom(load->Operand);
 				auto move = std::make_shared<ASTMove>();
 				move->Location = node->Location;
 				move->Storage = load->Operand;
@@ -8114,9 +8375,15 @@ namespace clear
 		m_ElementPointers.erase(variable->Variable.get());
 	}
 
+	Symbol* Sema::MoveRoot(Symbol* symbol)
+	{
+		auto alias = m_NarrowedAliases.find(symbol);
+		return alias != m_NarrowedAliases.end() ? alias->second->Variable.get() : symbol;
+	}
+
 	void Sema::NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired)
 	{
-		Symbol* symbol = variable->Variable.get();
+		Symbol* symbol = MoveRoot(variable->Variable.get());
 
 		if (!symbol || !m_LocalVariables.contains(symbol))
 			return;
@@ -8173,7 +8440,7 @@ namespace clear
 			if (type && (type->IsPointer() || std::dynamic_pointer_cast<SliceType>(type) || IsStorageNode(argument)))
 			{
 				if (auto root = RootVariable(argument, nullptr); root && root->Variable)
-					lent.insert(root->Variable.get());
+					lent.insert(MoveRoot(root->Variable.get()));
 			}
 		}
 
@@ -8184,10 +8451,311 @@ namespace clear
 		}
 	}
 
+	// the nodes a statement evaluates, as code generation reaches them (a node shared by two places counts twice).
+	// Nested blocks are statements of their own, and lambdas are separate functions
+	template <typename F>
+	static void ForEachEvaluated(const std::shared_ptr<ASTNodeBase>& node, std::unordered_set<ASTNodeBase*>& once, F&& visit)
+	{
+		if (!node)
+			return;
+
+		auto recurse = [&](const std::shared_ptr<ASTNodeBase>& child) { ForEachEvaluated(child, once, visit); };
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Block:
+			case ASTNodeType::Lambda:
+			case ASTNodeType::Defer:
+			case ASTNodeType::FunctionDefinition:
+			case ASTNodeType::Class:
+			case ASTNodeType::GenericTemplate:
+				return;
+			case ASTNodeType::Once:
+				// computed the first time it is reached, later places reuse the value
+				if (!once.insert(node.get()).second)
+					return;
+				break;
+			default:
+				break;
+		}
+
+		if (!visit(node))
+			return;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::BinaryExpression:
+			{
+				auto n = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				recurse(n->LeftSide); recurse(n->RightSide);
+				break;
+			}
+			case ASTNodeType::VariableDecleration:
+				recurse(std::dynamic_pointer_cast<ASTVariableDeclaration>(node)->Initializer);
+				break;
+			case ASTNodeType::AssignmentOperator:
+			{
+				auto n = std::dynamic_pointer_cast<ASTAssignmentOperator>(node);
+				recurse(n->Value);
+
+				// x = v only writes x once v is made, x += v reads it (on a class too: a = a + b, reading a through a slot)
+				if (n->GetAssignType() != AssignmentOperatorType::Normal || n->CompoundTarget || n->Storage->GetType() != ASTNodeType::Variable)
+					recurse(n->Storage);
+				break;
+			}
+			case ASTNodeType::FunctionCall:
+			{
+				auto n = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+				recurse(n->Callee);
+				for (auto& argument : n->Arguments) recurse(argument);
+				for (auto& [name, argument] : n->KeywordArguments) recurse(argument);
+				break;
+			}
+			case ASTNodeType::Subscript:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSubscript>(node);
+				recurse(n->Target);
+				for (auto& argument : n->SubscriptArgs) recurse(argument);
+				break;
+			}
+			case ASTNodeType::SliceExpr:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSliceExpr>(node);
+				recurse(n->Target); recurse(n->Start); recurse(n->End);
+				break;
+			}
+			case ASTNodeType::ListExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTListExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::StructExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTStructExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::ReturnStatement:
+				recurse(std::dynamic_pointer_cast<ASTReturn>(node)->ReturnValue);
+				break;
+			case ASTNodeType::UnaryExpression:
+				recurse(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand);
+				break;
+			case ASTNodeType::Load:
+				recurse(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+				break;
+			case ASTNodeType::IfExpression:
+				for (auto& block : std::dynamic_pointer_cast<ASTIfExpression>(node)->ConditionalBlocks) recurse(block.Condition);
+				break;
+			case ASTNodeType::WhileLoop:
+				recurse(std::dynamic_pointer_cast<ASTWhileExpression>(node)->WhileBlock.Condition);
+				break;
+			case ASTNodeType::ForLoop:
+			{
+				auto n = std::dynamic_pointer_cast<ASTForExpression>(node);
+				recurse(n->Start); recurse(n->End); recurse(n->Iterable);
+				break;
+			}
+			case ASTNodeType::TernaryExpression:
+			{
+				auto n = std::dynamic_pointer_cast<ASTTernaryExpression>(node);
+				recurse(n->Condition); recurse(n->Truthy); recurse(n->Falsy);
+				break;
+			}
+			case ASTNodeType::DefaultArgument:
+				recurse(std::dynamic_pointer_cast<ASTDefaultArgument>(node)->Value);
+				break;
+			case ASTNodeType::Switch:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSwitch>(node);
+				recurse(n->Value);
+				for (auto& switchCase : n->Cases) for (auto& value : switchCase.Values) recurse(value);
+				break;
+			}
+			case ASTNodeType::Temporary:
+				recurse(std::dynamic_pointer_cast<ASTTemporary>(node)->Operand);
+				break;
+			case ASTNodeType::Construct:
+			{
+				auto n = std::dynamic_pointer_cast<ASTConstruct>(node);
+				recurse(n->Initial); recurse(n->InitCall);
+				break;
+			}
+			case ASTNodeType::Assert:
+			{
+				auto n = std::dynamic_pointer_cast<ASTAssert>(node);
+				recurse(n->Condition); recurse(n->Message);
+				break;
+			}
+			case ASTNodeType::Contains:
+			{
+				auto n = std::dynamic_pointer_cast<ASTContains>(node);
+				recurse(n->Needle); recurse(n->Haystack);
+				break;
+			}
+			case ASTNodeType::Intrinsic:
+				for (auto& argument : std::dynamic_pointer_cast<ASTIntrinsic>(node)->Arguments) recurse(argument);
+				break;
+			case ASTNodeType::TupleExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTTupleExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::TupleGet:
+				recurse(std::dynamic_pointer_cast<ASTTupleGet>(node)->Tuple);
+				break;
+			case ASTNodeType::Sequence:
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children) recurse(child);
+				break;
+			case ASTNodeType::Destructure:
+			{
+				auto n = std::dynamic_pointer_cast<ASTDestructure>(node);
+				recurse(n->Value);
+				for (auto& target : n->Targets) recurse(target);
+				break;
+			}
+			case ASTNodeType::Once:
+				recurse(std::dynamic_pointer_cast<ASTOnce>(node)->Operand);
+				break;
+			case ASTNodeType::Move:
+				recurse(std::dynamic_pointer_cast<ASTMove>(node)->Value);
+				break;
+			case ASTNodeType::Copy:
+				recurse(std::dynamic_pointer_cast<ASTCopy>(node)->Value);
+				break;
+			case ASTNodeType::Destroy:
+				recurse(std::dynamic_pointer_cast<ASTDestroy>(node)->Pointer);
+				break;
+			case ASTNodeType::Yield:
+				recurse(std::dynamic_pointer_cast<ASTYield>(node)->Value);
+				break;
+			case ASTNodeType::Await:
+				recurse(std::dynamic_pointer_cast<ASTAwait>(node)->Operand);
+				break;
+			case ASTNodeType::VariantConstruct:
+				for (auto& value : std::dynamic_pointer_cast<ASTVariantConstruct>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::VariantField:
+				recurse(std::dynamic_pointer_cast<ASTVariantField>(node)->Subject);
+				break;
+			case ASTNodeType::VariantTag:
+				recurse(std::dynamic_pointer_cast<ASTVariantTag>(node)->Subject);
+				break;
+			case ASTNodeType::OptionalUnwrap:
+				recurse(std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->Subject);
+				break;
+			case ASTNodeType::OptionalValueOr:
+			{
+				auto n = std::dynamic_pointer_cast<ASTOptionalValueOr>(node);
+				recurse(n->Subject); recurse(n->Default);
+				break;
+			}
+			case ASTNodeType::UnionConstruct:
+				recurse(std::dynamic_pointer_cast<ASTUnionConstruct>(node)->Value);
+				break;
+			case ASTNodeType::CastExpr:
+				recurse(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object);
+				break;
+			case ASTNodeType::IsExpr:
+				recurse(std::dynamic_pointer_cast<ASTIsExpr>(node)->Object);
+				break;
+			default:
+				break;
+		}
+	}
+
+	void Sema::CheckStatementUses(const std::shared_ptr<ASTNodeBase>& statement, size_t firstCandidate)
+	{
+		// print(k, size(k)), m[k] += 1, a * grow(a): the last use of k may not take it while another use in the
+		// same statement still reads it (before or after, the order arguments are evaluated in does not matter)
+		if (firstCandidate >= m_Copies.Candidates.size() || !statement)
+			return;
+
+		// each place a local is reached, in the order the code runs: through a copy (finished before anything
+		// later runs) or anything else (a read or a pointer that may still be in use when a later part runs)
+		struct Use { Symbol* Variable; ASTCopy* Copy; };
+		std::vector<Use> order;
+		std::unordered_map<ASTCopy*, size_t> reached;
+		std::unordered_set<ASTNodeBase*> once;
+
+		auto localOf = [&](std::shared_ptr<ASTNodeBase> node) -> Symbol*
+		{
+			if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node))
+				node = unwrap->Subject;
+
+			auto load = std::dynamic_pointer_cast<ASTLoad>(node);
+			auto variable = load ? std::dynamic_pointer_cast<ASTVariable>(load->Operand) : nullptr;
+			Symbol* symbol = variable && variable->Variable ? MoveRoot(variable->Variable.get()) : nullptr;
+			return symbol && m_LocalVariables.contains(symbol) ? symbol : nullptr;
+		};
+
+		ForEachEvaluated(statement, once, [&](const std::shared_ptr<ASTNodeBase>& node)
+		{
+			if (node->GetType() == ASTNodeType::Variable)
+			{
+				auto variable = std::static_pointer_cast<ASTVariable>(node);
+				Symbol* symbol = variable->Variable ? MoveRoot(variable->Variable.get()) : nullptr;
+
+				if (symbol && m_LocalVariables.contains(symbol))
+					order.push_back(Use { symbol, nullptr });
+			}
+			else if (node->GetType() == ASTNodeType::Copy)
+			{
+				auto copy = static_cast<ASTCopy*>(node.get());
+				reached[copy]++;
+
+				if (Symbol* local = localOf(copy->Value))
+				{
+					order.push_back(Use { local, copy });
+					return false;
+				}
+			}
+
+			return true;
+		});
+
+		for (size_t i = firstCandidate; i < m_Copies.Candidates.size(); i++)
+		{
+			auto& candidate = m_Copies.Candidates[i];
+			auto copy = reached.find(candidate.Copy.get());
+
+			if (copy == reached.end())
+				continue;
+
+			// the same copy reached twice (m[k] += 1 passes k to get and to set): the first would empty k for the second
+			if (copy->second > 1)
+			{
+				candidate.Valid = false;
+				continue;
+			}
+
+			// (e, e): copies of e made before this one are finished, any other use of e is not
+			bool before = true;
+
+			for (auto& use : order)
+			{
+				if (use.Copy == candidate.Copy.get())
+				{
+					before = false;
+					continue;
+				}
+
+				if (use.Variable == candidate.Variable && (!use.Copy || !before))
+				{
+					candidate.Valid = false;
+					break;
+				}
+			}
+		}
+	}
+
+	void Sema::MarkMovedFrom(const std::shared_ptr<ASTNodeBase>& storage)
+	{
+		// the variable gets a drop flag: once its value is moved out, it is not cleaned up (nor its destruct run)
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(storage); variable && variable->Variable)
+		{
+			if (auto decl = m_LocalDeclarations.find(variable->Variable.get()); decl != m_LocalDeclarations.end())
+				decl->second->MovedFrom = true;
+		}
+	}
+
 	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		if (auto root = RootVariable(node, nullptr); root && root->Variable)
-			m_Copies.NeverMove.insert(root->Variable.get());
+			m_Copies.NeverMove.insert(MoveRoot(root->Variable.get()));
 	}
 
 	void Sema::FinishCopies()
@@ -8223,10 +8791,12 @@ namespace clear
 		// can take the value instead: nobody would see the difference, and nothing is allocated
 		for (auto& candidate : m_Copies.Candidates)
 		{
-			if (!candidate.Valid || candidate.Copy->Elided || m_Copies.NeverMove.contains(candidate.Variable) || m_Copies.Uses[candidate.Variable] != candidate.Use)
+			if (!candidate.Valid || candidate.Copy->Elided || m_Copies.NeverMove.contains(candidate.Variable) || 
+				(m_Copies.Uses[candidate.Variable] != candidate.Use && !candidate.Final))
 				continue;
 
 			candidate.Copy->MoveFrom = candidate.Storage;
+			MarkMovedFrom(candidate.Storage);
 		}
 
 		// clearc --copies: say where the rest are (in the program, not the standard library)
@@ -8304,7 +8874,7 @@ namespace clear
 		{
 			auto order = m_LocalOrder.find(m_Copies.Candidates[i].Variable);
 
-			if (order == m_LocalOrder.end() || order->second < loop.FirstLocal)
+			if ((order == m_LocalOrder.end() || order->second < loop.FirstLocal) && !m_Copies.Candidates[i].Final)
 				m_Copies.Candidates[i].Valid = false;
 		}
 
@@ -8820,6 +9390,7 @@ namespace clear
 
 		// obj.field read as a value only reads obj (a method call or a write does not come through here as a value)
 		context.ValueReq = ValueRequired::LValue;
+		context.AssignmentTarget = false; // m[k].n = v changes the element m[k] gives, it does not call operator set
 		bool wasReading = std::exchange(m_ReadingUse, insertLoad || m_ReadingUse);
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
 		m_ReadingUse = wasReading;

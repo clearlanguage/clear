@@ -71,6 +71,17 @@ namespace clear
 		bool InStandardLibrary = false;
 		Token StatementLocation; // the statement being generated, for calls that carry no location themselves
 
+		// inside the part of `a and b`, `a or b` or `when` that may not run: temporaries made there get a flag
+		// saying they were made, so the cleanup at the end of the block only runs for those that were
+		std::vector<llvm::AllocaInst*>* ConditionalFlags = nullptr;
+		// set while generating a condition or the right side of `and` / `or`: its temporaries are cleaned up as
+		// soon as its value (a bool) is known, on the path that made them (not at the end of the block)
+		std::vector<std::shared_ptr<ASTNodeBase>>* TemporaryCleanups = nullptr;
+		size_t DeferEmission = 0; // which emission of a deferred expression is being generated (0: none)
+
+		// variables a value may be moved out of -> their drop flag (an i1: whether they hold a value to clean up)
+		std::shared_ptr<std::unordered_map<llvm::Value*, llvm::AllocaInst*>> DropFlags = std::make_shared<std::unordered_map<llvm::Value*, llvm::AllocaInst*>>();
+
 		// inside a generator or async function: where suspending and destroying lead
 		struct CoroutineState
 		{
@@ -210,6 +221,7 @@ namespace clear
 		bool IsConst = false;
 		bool IsParameter = false;
 		bool IsAlias = false; // the initializer is a pointer and the variable *is* what it points at (for loops over references)
+		bool MovedFrom = false; // some use moves the value out: a flag says whether the variable still holds one
 		std::shared_ptr<ASTNodeBase> DefaultValue; // parameters: used when a call leaves the argument out
 
 	private:
@@ -949,6 +961,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Operand;
 		Symbol Computed;
 		llvm::Function* ComputedIn = nullptr; // a generic body is generated once per function it is in
+		size_t ComputedEmission = 0;          // a deferred expression is generated again at each exit
 	};
 
 	// reading an owning value out of a local variable: the variable is left empty (all zero), so
@@ -999,11 +1012,40 @@ namespace clear
 	public:
 		std::shared_ptr<ASTNodeBase> Pointer;  // an expression giving the address (or null when Address is set)
 		llvm::Value* Address = nullptr;        // set by the compiler for variables it destroys at scope exit
+		llvm::Value* Flag = nullptr;           // an i1: destroy only when it is set (the value may not have been made)
 		std::shared_ptr<Type> ValueType;
 	};
 
 	// runs the cleanup of the value at `address` (operator destruct, then the fields that need it)
 	void EmitDestroy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* address);
+
+	// while alive, temporaries made by the code generated are only cleaned up if that code ran (see ConditionalFlags);
+	// Finish is given the branch that decides whether it runs
+	class ConditionalTemporaries
+	{
+	public:
+		ConditionalTemporaries(CodegenContext& ctx);
+		void Finish(llvm::Instruction* branch);
+
+	private:
+		CodegenContext& m_Context;
+		std::vector<llvm::AllocaInst*>* m_Outer;
+		std::vector<llvm::AllocaInst*> m_Flags;
+	};
+
+	// while alive, temporaries made by the code generated are cleaned up by End (see TemporaryCleanups)
+	class ImmediateTemporaries
+	{
+	public:
+		ImmediateTemporaries(CodegenContext& ctx);
+		void End();
+
+	private:
+		CodegenContext& m_Context;
+		std::vector<llvm::AllocaInst*>* m_OuterFlags;
+		std::vector<std::shared_ptr<ASTNodeBase>>* m_OuterCleanups;
+		std::vector<std::shared_ptr<ASTNodeBase>> m_Cleanups;
+	};
 
 	// yield value: hands a value to the loop that resumed this generator, then waits to be resumed
 	class ASTYield : public ASTNodeBase
