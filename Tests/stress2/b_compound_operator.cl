@@ -32,6 +32,13 @@ function convolve[T](a: List[T], b: List[T], zero: T) -> List[T]:
             r[i + j] += a[i] * b[j]
     return r
 
+// the same statement emitted at every exit of the function
+function bump(n: int, total: *V) -> int:
+    defer *total += V(1)
+    if n > 0:
+        return 1
+    return 2
+
 function main() -> int32:
     let a = V(1)
     a += V(2)
@@ -62,6 +69,11 @@ function main() -> int32:
     qs.push(V(3))
     qs.push(V(4))
     print(convolve(ps, qs, V(0)))
+
+    let count = V(0)
+    bump(1, &count)
+    bump(0, &count)
+    print(count.x)
     return 0
 
 // expect:
@@ -70,3 +82,4 @@ function main() -> int32:
 // 16
 // abcd!
 // [3, 10, 8]
+// 2

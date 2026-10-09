@@ -948,6 +948,9 @@ namespace clear
 		Symbol storage;
 		storage = Storage->Codegen(ctx);
 
+		if (CompoundTarget)
+			CompoundTarget->Value = storage;
+
 		Symbol data;
 		data    = Value->Codegen(ctx);
 

@@ -41,6 +41,7 @@ namespace clear
 	};
 
 	class ASTNodeBase;
+	class ASTSlot;
 	class Module;
 
 	struct CodegenContext 
@@ -252,6 +253,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> Storage;
 		std::shared_ptr<ASTNodeBase> Value;
 		bool DestroyOld = false; // the target holds an owning value: clean it up before it is overwritten
+		std::shared_ptr<ASTSlot> CompoundTarget; // a += b on a class: Value reads the target through this (given the address)
 
 	private:
 		void HandleDifferentTypes(Symbol& storage, Symbol& data, CodegenContext& ctx);

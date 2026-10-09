@@ -2010,17 +2010,17 @@ namespace clear
 
 			assignmentOp->DestroyOld = !raw && assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
 
-			// a += b on a class is a = a + b with its operator add (the target is worked out once)
+			// a += b on a class is a = a + b with its operator add (the target is worked out once: the value
+			// reads it through a slot the assignment fills with the target's address)
 			bool overloaded = false;
 
 			if (storageType && storageType->IsClass() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal &&
 				assignmentOp->GetAssignType() != AssignmentOperatorType::Initialize)
 			{
-				auto target = std::make_shared<ASTOnce>();
-				target->Operand = assignmentOp->Storage;
-				target->Location = assignmentOp->Storage->Location;
+				auto target = std::make_shared<ASTSlot>(m_Module->GetTypeRegistry()->GetPointerTo(storageType));
+				target->Location = GetNodeLocation(assignmentOp->Storage);
 
-				auto current = std::make_shared<ASTLoad>();
+				auto current = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
 				current->Operand = target;
 				current->Location = target->Location;
 
@@ -2029,7 +2029,7 @@ namespace clear
 				if (!value)
 					return nullptr;
 
-				assignmentOp->Storage = target;
+				assignmentOp->CompoundTarget = target;
 				assignmentOp->Value = value;
 				assignmentOp->SetAssignType(AssignmentOperatorType::Normal);
 				assignmentOp->DestroyOld = !raw && IsOwning(storageType);
