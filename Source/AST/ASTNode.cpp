@@ -3154,6 +3154,13 @@ namespace clear
 			return value;
 		}
 
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (unsigned i = 0; i < tuple->GetElements().size(); i++)
+				value = builder.CreateInsertValue(value, EmitCopy(ctx, tuple->GetElements()[i], builder.CreateExtractValue(value, { i })), { i });
+			return value;
+		}
+
 		auto classType = type->As<ClassType>();
 		Symbol result = CreateAlloca(type, ctx);
 		builder.CreateStore(value, result.GetLLVMValue());
@@ -3251,6 +3258,13 @@ namespace clear
 		{
 			for (size_t i = 0; i < array->GetArraySize(); i++)
 				EmitDestroy(ctx, array->GetBaseType(), builder.CreateConstInBoundsGEP2_64(array->Get(), address, 0, i));
+			return;
+		}
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (unsigned i = 0; i < tuple->GetElements().size(); i++)
+				EmitDestroy(ctx, tuple->GetElements()[i], builder.CreateStructGEP(tuple->Get(), address, i));
 			return;
 		}
 

@@ -377,6 +377,10 @@ namespace clear
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return IsOwning(array->GetBaseType());
 
+        // a tuple owns what its elements own
+        if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+            return std::any_of(tuple->GetElements().begin(), tuple->GetElements().end(), [](auto& element) { return IsOwning(element); });
+
         // a generator or task owns its frame
         if (std::dynamic_pointer_cast<CoroutineType>(type))
             return true;
@@ -423,6 +427,9 @@ namespace clear
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return IsCopyable(array->GetBaseType());
+
+        if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+            return std::all_of(tuple->GetElements().begin(), tuple->GetElements().end(), [](auto& element) { return IsCopyable(element); });
 
         // a generator or task is one running computation: it can be moved, not duplicated
         if (std::dynamic_pointer_cast<CoroutineType>(type))

@@ -3538,6 +3538,13 @@ namespace clear
 			return nullptr;
 		}
 
+		// the tuple owns its values: a variable's value is copied in (or moved, at its last use)
+		if (!tuple->IsType)
+		{
+			for (size_t i = 0; i < tuple->Values.size(); i++)
+				tuple->Values[i] = TakeOwnership(tuple->Values[i], types[i]);
+		}
+
 		return tuple;
 	}
 
@@ -5547,10 +5554,16 @@ namespace clear
 					return nullptr;
 				}
 
+				// split(s)[0]: the new tuple is kept (and cleaned up) at the end of the block, the element is read from it
+				bool kept = !IsStorageNode(subscript->Target) && IsFreshValue(subscript->Target) && IsOwning(tupleType);
+
+				if (kept)
+					subscript->Target = AddressOf(subscript->Target);
+
 				auto get = std::make_shared<ASTTupleGet>();
 				get->Location = GetNodeLocation(subscript->Target);
 				get->Tuple = subscript->Target;
-				get->TupleIsStorage = IsStorageNode(subscript->Target);
+				get->TupleIsStorage = kept || IsStorageNode(subscript->Target);
 				get->WantAddress = context.ValueReq == ValueRequired::LValue;
 				get->Index = (size_t)*value;
 				get->TupleTy = tupleType;
@@ -5891,6 +5904,7 @@ namespace clear
 			case ASTNodeType::StructExpr:
 			case ASTNodeType::VariantConstruct:
 			case ASTNodeType::UnionConstruct:
+			case ASTNodeType::TupleExpr:
 			case ASTNodeType::Zero:
 			case ASTNodeType::Move:
 			case ASTNodeType::Copy:
