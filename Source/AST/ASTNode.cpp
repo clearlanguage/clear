@@ -3001,6 +3001,16 @@ namespace clear
 			return Symbol::CreateValue(found, ResultType);
 		}
 
+		if (Name == "str_contains_byte")
+		{
+			// c in "+-" with c a byte (int8/uint8, 'x'): memchr over the bytes
+			llvm::FunctionCallee memchr = ctx.Module.getOrInsertFunction("memchr", llvm::FunctionType::get(builder.getPtrTy(),
+				{ builder.getPtrTy(), builder.getInt32Ty(), builder.getInt64Ty() }, false));
+			llvm::Value* byte = builder.CreateZExt(args[0], builder.getInt32Ty());
+			llvm::Value* position = builder.CreateCall(memchr, { builder.CreateExtractValue(args[1], 0), byte, builder.CreateExtractValue(args[1], 1) });
+			return Symbol::CreateValue(builder.CreateIsNotNull(position), ResultType);
+		}
+
 		// Generator[T] / Task[T] handles
 		if (Name.starts_with("coro_") || Name == "task_run")
 		{

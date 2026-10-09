@@ -12,7 +12,7 @@ is written in comments inside the test itself:
     // expect-error          (compilation must fail)
     // expect-error: E094    (... with this text in the compiler's output, e.g. an error code)
     // expect-warning: E099  (compilation must succeed and print this text)
-    // expect-no-warning: E099  (compilation must not print this text, e.g. a warning that must not fire)
+    // expect-no-warning: E099  (the compiler must not print this text: a warning that must not fire, a follow-up error)
     // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
     // expect-stderr: text   (the program's stderr must contain this text, e.g. a panic message)
 
@@ -124,6 +124,8 @@ def run_test(clearc, path, workdir):
             return False, "expected a compile error but compilation succeeded"
         if error_text and error_text not in compiler_output:
             return False, f"expected an error mentioning '{error_text}', got:\n" + compiler_output
+        if absent_text and absent_text in compiler_output:
+            return False, f"expected no '{absent_text}' from the compiler, got:\n" + compiler_output
         return True, ""
 
     if compile_result.returncode != 0:

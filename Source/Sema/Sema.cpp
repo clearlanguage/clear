@@ -2826,6 +2826,7 @@ namespace clear
 			size_t width = location.GetData().size();
 			location.SetData(GetDisplayName(classTy));
 			Report(DiagnosticCode_InfiniteType, location, width);
+			m_BrokenClasses.insert(classTy.get()); // its uses would only repeat the problem
 			return false;
 		}
 
@@ -4037,7 +4038,17 @@ namespace clear
 			return contains;
 		}
 
-		if (type && type->GetHash() == "str")
+		auto needleType = m_TypeInferEngine.InferTypeFromNode(needle);
+
+		if (type && type->GetHash() == "str" && needleType && needleType->IsIntegral() && !needleType->IsEnum() && needleType->Get()->isIntegerTy(8))
+		{
+			// c in "+-" with c a byte (int8, uint8, a 'x' literal): one of those bytes
+			auto intrinsic = std::make_shared<ASTIntrinsic>("str_contains_byte", boolType);
+			intrinsic->Location = expr->Location;
+			intrinsic->Arguments = { needle, AsValue(haystack) };
+			result = intrinsic;
+		}
+		else if (type && type->GetHash() == "str")
 		{
 			// "lo" in "hello" looks for a substring
 			auto intrinsic = std::make_shared<ASTIntrinsic>("str_contains", boolType);
@@ -5386,6 +5397,7 @@ namespace clear
 					size_t width = location.GetData().size();
 					location.SetData(GetDisplayName(classType));
 					Report(DiagnosticCode_InfiniteType, location, width);
+					m_BrokenClasses.insert(classType.get()); // its uses would only repeat the problem
 					return false;
 				}
 
@@ -5775,6 +5787,10 @@ namespace clear
 			auto var = std::dynamic_pointer_cast<ASTVariable>(structExpr->TargetType);
 			type = var->Variable && var->Variable->Kind == SymbolKind::Type ? var->Variable->GetType() : nullptr;
 		}
+
+		// Node(1, none, none) when Node itself was already reported (E104): no second error about its fields
+		if (type && m_BrokenClasses.contains(type.get()))
+			return nullptr;
 
 		if (!type || !type->IsClass())
 		{
@@ -8419,12 +8435,42 @@ namespace clear
 	std::optional<std::shared_ptr<ASTNodeBase>> Sema::TryOperatorOverload(std::shared_ptr<ASTBinaryExpression> expr)
 	{
 		auto lhsType = m_TypeInferEngine.InferTypeFromNode(expr->LeftSide);
+		const char* name = GetDunderName(expr->GetExpression());
+
+		// self + self in a method (self is a *V): the V it points at, when V defines the operator and a pointer
+		// has no such operator itself (p + 1 and p == q stay pointer arithmetic and comparison)
+		if (lhsType && lhsType->IsPointer() && name)
+		{
+			auto pointee = lhsType->As<PointerType>()->GetBaseType();
+			auto rhsType = m_TypeInferEngine.InferTypeFromNode(expr->RightSide);
+			auto op = expr->GetExpression();
+			bool pointerOperation = op == OperatorType::IsEqual || op == OperatorType::NotEqual || op == OperatorType::LessThan ||
+									op == OperatorType::LessThanEqual || op == OperatorType::GreaterThan || op == OperatorType::GreaterThanEqual ||
+									((op == OperatorType::Add || op == OperatorType::Sub) && rhsType && rhsType->IsIntegral());
+
+			if (!pointerOperation && pointee && pointee->IsClass() && pointee->As<ClassType>()->MemberFunctions.contains(name))
+			{
+				auto dereference = [&](std::shared_ptr<ASTNodeBase> pointer)
+				{
+					auto value = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+					value->Location = GetNodeLocation(pointer);
+					value->Operand = pointer;
+					return value;
+				};
+
+				expr->LeftSide = dereference(expr->LeftSide);
+
+				if (rhsType && rhsType->IsPointer() && rhsType->As<PointerType>()->GetBaseType() == pointee)
+					expr->RightSide = dereference(expr->RightSide);
+
+				lhsType = pointee;
+			}
+		}
 
 		if (!lhsType || !lhsType->IsClass())
 			return std::nullopt;
 
 		auto classType = lhsType->As<ClassType>();
-		const char* name = GetDunderName(expr->GetExpression());
 		bool negate = false;
 
 		auto findMethod = [&](const char* methodName) -> std::shared_ptr<Symbol>
@@ -8688,6 +8734,9 @@ namespace clear
 
 	void Sema::ReportMissingMember(const Token& name, const std::shared_ptr<Type>& type)
 	{
+		if (auto classType = ClassOf(type); classType && m_BrokenClasses.contains(classType.get()))
+			return; // the class itself was reported already
+
 		// x.items with x: ?Box: the member is there, but only when x holds a value
 		auto optional = ClassOf(type);
 		auto valueType = optional && optional->As<ClassType>()->IsOptional ? OptionalValueType(optional) : nullptr;

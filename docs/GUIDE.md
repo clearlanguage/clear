@@ -157,7 +157,7 @@ Other markers:
 | `// expect-error` | the program must **fail** to compile (for testing diagnostics) |
 | `// expect-error: text` | ...and the compiler's output must contain `text` (part of the message, so the test fails if a *different* error happens) |
 | `// expect-warning: text` | the program must compile and the compiler must print `text` |
-| `// expect-no-warning: text` | the compiler must **not** print `text` (a warning that must not fire) |
+| `// expect-no-warning: text` | the compiler must **not** print `text` (a warning that must not fire, or a follow-up error) |
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
 | `// expect-stderr: text` | the program's stderr must contain `text` (e.g. a `panic:` message) |
@@ -378,6 +378,8 @@ class Vec2:
 | `copy` | what `let b = a` makes when the object owns memory (see automatic cleanup below) |
 
 Python-style names like `__add__` are a compile error that tells you the Clear spelling.
+
+Inside a method `self` is a pointer, and `self + self` (or `p + q`, `self * 3` with pointers to the class) uses the operator of the object it points at. A pointer's own `p + 1` and `p == q` keep their pointer meaning.
 
 **Looping over objects.** `for item in cart` visits each object *in place*: `item.qty = 0` changes the item in the list or array. Numbers and other plain values are copied, as in Python. `let x = cart[0]` always makes a copy.
 
@@ -694,6 +696,7 @@ let number = from_float(2.0)       // "2.0": the same text print shows (from_int
 let mine = String(first)           // a str variable -> String is written out, because it allocates
 let greeting: String = "hello"     // a literal becomes a String where String is the written type
 let both = "hello " + name         // + on text: a new String holding both (also str + str, and +=)
+c in "+-"                          // with c a byte (int8, uint8, 'x'): is it one of these bytes; "lo" in s finds text
 
 function greet(who: str):          // take str unless you need to keep or change the text
     print("hi", who)
