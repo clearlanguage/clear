@@ -2077,10 +2077,20 @@ namespace clear
 						method = nullptr;
 				}
 
+				// function map[U](self, f: function(T) -> U) -> List[U]: a template, made for each use
 				if (m_PendingGeneric)
 				{
-					m_PendingGeneric = nullptr;
-					m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, methodToken, DiagnosticCode_GenericMethodUnsupported);
+					auto generic = std::exchange(m_PendingGeneric, nullptr);
+
+					if (isTrait)
+						m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, methodToken, DiagnosticCode_GenericMethodUnsupported);
+					else if (method)
+					{
+						generic->TemplateNode = method;
+						classNode->GenericMethods.push_back(generic);
+					}
+
+					continue;
 				}
 
 				if (method)

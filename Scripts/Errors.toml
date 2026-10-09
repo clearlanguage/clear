@@ -234,8 +234,8 @@ Message = "Too many values for this class."
 Advice  = "‘{}."
 
 [GenericMethodUnsupported]
-Message = "Methods cannot have their own type parameters yet."
-Advice  = "Make ‘{}’ a generic function outside the class, or make the class itself generic."
+Message = "A trait method cannot have its own type parameters."
+Advice  = "Give ‘{}’ concrete types, or make the trait's classes generic."
 
 [IndexNotInteger]
 Message = "Array index must be an integer."

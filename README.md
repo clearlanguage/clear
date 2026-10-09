@@ -181,6 +181,7 @@ function apply_any[F](f: F, x: int) -> int:
 apply(lambda x: x + 100, 1)
 apply_any(lambda x: x * 2, 21)              // x is an int because f is called with one
 let add = lambda a, b: a + b                // add(1, 2) and add(1.5, 2.5) both work
+let squares = numbers.map(lambda n: n * n)  // also .filter(...), .sort(), .sort_by(key)
 let offset = 10
 let shifted = lambda (x: int): x + offset
 ```

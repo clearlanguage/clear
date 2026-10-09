@@ -216,6 +216,13 @@ namespace clear
 																std::shared_ptr<Type> closureType, const std::vector<std::pair<Token, std::shared_ptr<Type>>>& captures,
 																const std::vector<std::shared_ptr<Type>>& parameterTypes, std::shared_ptr<Type> declaredReturn);
 		std::shared_ptr<ASTNodeBase> CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType);
+		std::string InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location);
+
+		std::unordered_set<std::string> m_GenericMethodNames;
+		std::shared_ptr<ASTNodeBase> CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
+													   std::shared_ptr<ClassType> classType, const std::string& name);
+		bool BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
+						  std::unordered_map<std::string, std::shared_ptr<Type>>& bindings, const Token& location);
 		ASTVariable* m_Reinitialised = nullptr;         // `x = v`: x is given a new value, not read
 
 		void RecordMove(const std::shared_ptr<ASTVariable>& variable);
@@ -244,6 +251,14 @@ namespace clear
 			std::shared_ptr<Type> ClassTy;
 		};
 
+		// generic methods: one template per class and name, a method made for each set of type arguments
+		struct GenericMethod
+		{
+			std::shared_ptr<ASTGenericTemplate> Template;
+			LazyBody Context;
+			std::unordered_map<std::string, std::string> Instances; // type arguments -> the method made for them
+		};
+		std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
 		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;

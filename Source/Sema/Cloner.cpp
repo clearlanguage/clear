@@ -236,6 +236,17 @@ namespace clear {
 		for (auto base : node->Bases)
 			newClass->Bases.push_back(Clone(base));
 
+		// a generic method of a generic class: the class's type arguments go in now, the method's own later
+		for (auto& method : node->GenericMethods)
+		{
+			auto generic = std::make_shared<ASTGenericTemplate>();
+			generic->GenericTypeNames = method->GenericTypeNames;
+			generic->Constraints = method->Constraints;
+			generic->HomeModule = method->HomeModule;
+			generic->TemplateNode = CloneFunction(std::dynamic_pointer_cast<ASTFunctionDefinition>(method->TemplateNode));
+			newClass->GenericMethods.push_back(generic);
+		}
+
 		newClass->IsUnion = node->IsUnion;
 		newClass->IsTrait = node->IsTrait;
 		return newClass;
@@ -311,6 +322,8 @@ namespace clear {
 		auto it = SubstitutionMap.find(node->GetName().GetData());
 		if (it != SubstitutionMap.end())
 			newNode->Variable = std::make_shared<Symbol>(it->second);
+		else if (node->Variable && node->Variable->Kind == SymbolKind::Type)
+			newNode->Variable = node->Variable; // a type argument put in by an earlier clone (T of List[T] in a generic method)
 		
 		return newNode;
 	}

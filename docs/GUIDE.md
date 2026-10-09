@@ -359,6 +359,20 @@ let s = Box[str]("text")
 
 Each set of type arguments produces its own specialised copy (like C++ templates, so there is no run-time cost). Methods of generic classes are only checked when they are used.
 
+Methods can have type parameters of their own, inferred from the arguments at each call:
+
+```clear
+class Stack[T]:
+    items: List[T]
+
+    function convert[U](self, f: function(T) -> U) -> Stack[U]:   // U: whatever f returns
+        ...
+
+let halves = stack.convert(lambda x: x as float64 / 2.0)          // Stack[float64]
+```
+
+A `function(T) -> U` parameter of a generic method accepts plain functions, and lambdas that capture variables too. `U` comes from the lambda's result. A type parameter that no argument determines is an error (trait methods can't have their own type parameters).
+
 ### 3.9 Inheritance · [`examples/10_inheritance.cl`](../examples/10_inheritance.cl)
 
 ```clear
@@ -619,6 +633,11 @@ import "map"
 let numbers = List[int]()    // freed automatically at the end of the scope
 numbers.push(4)              // also: pop, last, contains, clear, is_empty, numbers[i], len, for
 numbers[0] += 1              // numbers[i] is the element itself
+
+let doubled = numbers.map(lambda n: n * 2)          // a new List (here List[int])
+let evens = numbers.filter(lambda n: n % 2 == 0)    // a new List with the items that pass
+numbers.sort()                                       // in place, smallest first (items need <)
+words.sort_by(lambda w: len(w))                      // in place, by a key; equal keys keep their order
 
 let ages = Map[str, int]()
 ages["ada"] = 36             // also: m[k] += 1, get (-> ?V), get_or, `in`, remove, len, for key in m

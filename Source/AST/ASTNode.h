@@ -542,6 +542,8 @@ namespace clear
 	};
 
 
+	class ASTGenericTemplate;
+
 	class ASTClass : public ASTNodeBase
 	{
 	public:
@@ -558,6 +560,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTTypeSpecifier>> Members;
 		std::vector<std::shared_ptr<ASTNodeBase>> DefaultValues;
 		std::vector<std::shared_ptr<ASTFunctionDefinition>> MemberFunctions;
+		std::vector<std::shared_ptr<ASTGenericTemplate>> GenericMethods; // function map[U](self, ...): made per use
 		std::shared_ptr<Type> ClassTy;
 		bool BodyDeclared = false;
 		bool LazyMethods = false; // generic instance: methods are analysed on first use

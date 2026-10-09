@@ -73,3 +73,67 @@ class List[T]:
 
     function copy(self) -> List[T]:
         return clone(self)
+
+    // a new list with f applied to every item: words.map(lambda w: len(w))
+    function map[U](self, f: function(T) -> U) -> List[U]:
+        let result = List[U]()
+        for i in 0..self.length:
+            result.push(f(self[i]))
+        return result
+
+    // a new list with the items keep says yes to: numbers.filter(lambda n: n % 2 == 0)
+    function filter[F](self, keep: F) -> List[T]:
+        let result = List[T]()
+        for i in 0..self.length:
+            if keep(self[i]):
+                result.push(self[i])
+        return result
+
+    // smallest first (the items need <); equal items keep their order
+    function sort(self):
+        let order = self.sorted_order(lambda a, b: *(self.data + a) < *(self.data + b))
+        self.reorder(&order)
+
+    // by what key gives for each item, smallest first: names.sort_by(lambda n: len(n))
+    function sort_by[K](self, key: function(T) -> K):
+        let keys = self.map(key)
+        let order = self.sorted_order(lambda a, b: keys[a] < keys[b])
+        self.reorder(&order)
+
+    // the positions of the items in sorted order (a stable merge sort); before(a, b): item a goes before item b
+    function sorted_order[F](self, before: F) -> List[int64]:
+        let order = List[int64]()
+        let spare = List[int64]()
+        for i in 0..self.length:
+            order.push(i)
+            spare.push(i)
+        let width: int64 = 1
+        while width < self.length:
+            let start: int64 = 0
+            while start < self.length:
+                let middle = when start + width < self.length use start + width otherwise self.length
+                let end = when start + 2 * width < self.length use start + 2 * width otherwise self.length
+                let left = start
+                let right = middle
+                for out in start..end:
+                    if left < middle and (right >= end or not before(order[right], order[left])):
+                        spare[out] = order[left]
+                        left += 1
+                    else:
+                        spare[out] = order[right]
+                        right += 1
+                start += 2 * width
+            for i in 0..self.length:
+                order[i] = spare[i]
+            width *= 2
+        return order
+
+    // puts the items in the given order by moving their bytes (nothing is copied or cleaned up)
+    function reorder(self, order: *List[int64]):
+        if self.length == 0:
+            return
+        let moved = allocate[T](self.capacity)
+        for i in 0..self.length:
+            copy(moved + i, self.data + order[i], 1)
+        release(self.data)
+        self.data = moved

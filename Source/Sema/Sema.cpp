@@ -29,6 +29,8 @@ namespace clear
 	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
 	static std::optional<size_t> FindTypeCase(const std::shared_ptr<ClassType>& variant, const std::shared_ptr<Type>& type);
 	static bool IsFreshValue(const std::shared_ptr<ASTNodeBase>& node);
+	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
+								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
 
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
@@ -1124,6 +1126,28 @@ namespace clear
 				return VisitSuperCall(funcCall, context);
 		}
 
+		// xs.map(lambda x: x * 2): a generic method is made for these arguments (it is not a member yet)
+		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			auto name = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
+
+			if (name && m_GenericMethodNames.contains(name->GetName().GetData()))
+			{
+				member->LeftSide = Visit(member->LeftSide, calleeContext);
+
+				if (!member->LeftSide)
+					return nullptr;
+
+				auto objectType = m_TypeInferEngine.InferTypeFromNode(member->LeftSide);
+				auto classType = ClassOf(objectType);
+				auto methods = classType ? m_GenericMethods.find(classType.get()) : m_GenericMethods.end();
+
+				if (methods != m_GenericMethods.end() && methods->second.contains(name->GetName().GetData()) &&
+					!classType->As<ClassType>()->MemberFunctions.contains(name->GetName().GetData()))
+					return CallGenericMethod(funcCall, member, objectType, classType->As<ClassType>(), name->GetName().GetData());
+			}
+		}
+
 		funcCall->Callee = Visit(funcCall->Callee, calleeContext);
 
 		if (!funcCall->Callee)
@@ -1159,6 +1183,7 @@ namespace clear
 
 			if (objectType && std::dynamic_pointer_cast<CoroutineType>(objectType) && name)
 				return CoroutineMethod(funcCall, member->LeftSide, objectType, name->GetName());
+
 		}
 
 		// calling a value: a function pointer, or an object with __call__ (closures are such objects)
@@ -2307,6 +2332,15 @@ namespace clear
 		{
 			if (!CheckTrait(classTy, trait, location))
 				return false;
+		}
+
+		// function map[U](self, ...): kept as a template with what it needs to be analysed later, made per use
+		for (auto& generic : classExpr->GenericMethods)
+		{
+			auto method = std::dynamic_pointer_cast<ASTFunctionDefinition>(generic->TemplateNode);
+			generic->HomeModule = generic->HomeModule ? generic->HomeModule : m_Module;
+			m_GenericMethods[classTy.get()][method->GetName()] = GenericMethod { generic, LazyBody { m_ScopeStack, m_LookupModule, classTy }, {} };
+			m_GenericMethodNames.insert(method->GetName());
 		}
 
 		return true;
@@ -3763,40 +3797,248 @@ namespace clear
 			key += parameterTypes[i]->GetHash() + ";";
 		}
 
-		std::string name;
+		std::string name = InstantiateLambdaCall(closureType, parameterTypes, location);
 
-		if (auto existing = lambdaTemplate.Instances.find(key); existing != lambdaTemplate.Instances.end())
-		{
-			name = existing->second;
-		}
-		else
-		{
-			name = std::format("__call_{}__", lambdaTemplate.Instances.size());
-			lambdaTemplate.Instances[key] = name;
-
-			Cloner cloner;
-			cloner.DestinationModule = m_Module;
-			auto call = BuildClosureCall(name, lambda, cloner.Clone(lambda->Body), closureType, lambdaTemplate.Captures, parameterTypes, lambdaTemplate.DeclaredReturn);
-
-			bool success = false;
-			DeclareInGlobalScope([&]()
-			{
-				SemaContext methodContext { .TypeHint = closureType, .GlobalState = false };
-				success = DeclareFunction(call, methodContext);
-
-				if (success)
-				{
-					closureType->MemberFunctions[name] = call->FunctionSymbol;
-					DefineFunction(call, methodContext);
-				}
-			});
-
-			if (!success)
-				return nullptr;
-		}
+		if (name.empty())
+			return nullptr;
 
 		std::vector<std::shared_ptr<ASTNodeBase>> arguments(funcCall->Arguments.begin(), funcCall->Arguments.end());
 		return CallMethod(funcCall->Callee, calleeType, name, arguments, location);
+	}
+
+	std::string Sema::InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location)
+	{
+		// the __call__ of an untyped lambda for these argument types (made once per set of types)
+		auto& lambdaTemplate = m_LambdaTemplates.at(closureType.get());
+		auto& lambda = lambdaTemplate.Lambda;
+
+		if (argumentTypes.size() != lambda->Parameters.size())
+		{
+			Token where = location;
+			where.SetData(std::format("lambda’ expects {} argument{}, but {} {} given", lambda->Parameters.size(), lambda->Parameters.size() == 1 ? "" : "s",
+									  argumentTypes.size(), argumentTypes.size() == 1 ? "was" : "were"));
+			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, 1);
+			return "";
+		}
+
+		// a type the lambda wrote out wins over the argument's
+		std::vector<std::shared_ptr<Type>> parameterTypes = lambdaTemplate.ParameterTypes;
+		std::string key;
+
+		for (size_t i = 0; i < parameterTypes.size(); i++)
+		{
+			if (!parameterTypes[i])
+				parameterTypes[i] = argumentTypes[i];
+
+			if (!parameterTypes[i])
+				return "";
+
+			key += parameterTypes[i]->GetHash() + ";";
+		}
+
+		if (auto existing = lambdaTemplate.Instances.find(key); existing != lambdaTemplate.Instances.end())
+			return existing->second;
+
+		std::string name = std::format("__call_{}__", lambdaTemplate.Instances.size());
+		lambdaTemplate.Instances[key] = name;
+
+		Cloner cloner;
+		cloner.DestinationModule = m_Module;
+		auto call = BuildClosureCall(name, lambda, cloner.Clone(lambda->Body), closureType, lambdaTemplate.Captures, parameterTypes, lambdaTemplate.DeclaredReturn);
+
+		bool success = false;
+		DeclareInGlobalScope([&]()
+		{
+			SemaContext methodContext { .TypeHint = closureType, .GlobalState = false };
+			success = DeclareFunction(call, methodContext);
+
+			if (success)
+			{
+				closureType->MemberFunctions[name] = call->FunctionSymbol;
+				DefineFunction(call, methodContext);
+			}
+		});
+
+		return success ? name : "";
+	}
+
+	bool Sema::BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
+							std::unordered_map<std::string, std::shared_ptr<Type>>& bindings, const Token& location)
+	{
+		// `f: function(T) -> U` given a function, a lambda or a closure: its parameter and return types bind T and U
+		std::vector<std::shared_ptr<Type>> parameters;
+		std::shared_ptr<Type> result;
+
+		if (actual && actual->IsFunction())
+		{
+			auto function = actual->As<FunctionPointerType>();
+			parameters.assign(function->GetParameters().begin(), function->GetParameters().end());
+			result = function->GetReturnType();
+		}
+		else if (auto classType = ClassOf(actual) ? ClassOf(actual)->As<ClassType>() : nullptr)
+		{
+			std::string callName = "__call__";
+
+			// an untyped lambda: made for the parameter types the pattern gives (T is known by now)
+			if (m_LambdaTemplates.contains(classType.get()))
+			{
+				std::vector<std::shared_ptr<Type>> wanted;
+
+				for (auto& parameter : pattern->Parameters)
+				{
+					auto variable = std::dynamic_pointer_cast<ASTVariable>(parameter);
+					auto bound = variable ? bindings.find(variable->GetName().GetData()) : bindings.end();
+					wanted.push_back(bound != bindings.end() ? bound->second : GetTypeFromNode(parameter));
+				}
+
+				callName = InstantiateLambdaCall(classType, wanted, location);
+			}
+
+			auto call = classType->MemberFunctions.find(callName);
+
+			if (callName.empty() || call == classType->MemberFunctions.end())
+				return false;
+
+			auto node = call->second->GetFunctionSymbol().FunctionNode;
+			EnsureDefined(node);
+
+			for (size_t i = 1; i < node->Arguments.size(); i++)
+				parameters.push_back(node->Arguments[i]->ResolvedType);
+
+			result = node->ReturnTypeVal;
+		}
+		else
+		{
+			return false;
+		}
+
+		for (size_t i = 0; i < pattern->Parameters.size() && i < parameters.size(); i++)
+			BindGenericType(pattern->Parameters[i], parameters[i], names, bindings);
+
+		if (pattern->ReturnType && result)
+			BindGenericType(pattern->ReturnType, result, names, bindings);
+
+		return true;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
+														  std::shared_ptr<ClassType> classType, const std::string& name)
+	{
+		auto& generic = m_GenericMethods.at(classType.get()).at(name);
+		auto method = std::dynamic_pointer_cast<ASTFunctionDefinition>(generic.Template->TemplateNode);
+		Token location = GetNodeLocation(member->RightSide);
+
+		size_t offset = !method->Arguments.empty() && method->Arguments[0]->GetName().GetData() == "self" ? 1 : 0;
+		auto& arguments = funcCall->Arguments;
+
+		if (arguments.size() + offset != method->Arguments.size())
+		{
+			location.SetData(name);
+			Report(DiagnosticCode_WrongArgumentCount, location);
+			return nullptr;
+		}
+
+		// lambdas without types were left for the parameter they go to: here they are their own type
+		for (auto& argument : arguments)
+		{
+			if (argument && argument->GetType() == ASTNodeType::Lambda)
+			{
+				argument = Visit(argument, SemaContext { .ValueReq = ValueRequired::RValue, .GlobalState = false });
+
+				if (!argument)
+					return nullptr;
+			}
+		}
+
+		// the method's own type parameters, from the arguments (plain types first, then functions, whose types may need them)
+		std::unordered_map<std::string, std::shared_ptr<Type>> bindings;
+		const auto& names = generic.Template->GenericTypeNames;
+
+		for (size_t i = 0; i < arguments.size(); i++)
+		{
+			auto pattern = method->Arguments[i + offset]->TypeResolver;
+
+			if (pattern && pattern->GetType() != ASTNodeType::FunctionTypeExpr)
+				BindGenericType(pattern, m_TypeInferEngine.InferTypeFromNode(arguments[i]), names, bindings);
+		}
+
+		std::vector<size_t> callableArguments; // passed to `function(...)` parameters: the method takes them as they are
+
+		for (size_t i = 0; i < arguments.size(); i++)
+		{
+			if (auto pattern = std::dynamic_pointer_cast<ASTFunctionTypeExpr>(method->Arguments[i + offset]->TypeResolver))
+			{
+				if (BindCallable(pattern, m_TypeInferEngine.InferTypeFromNode(arguments[i]), names, bindings, location))
+					callableArguments.push_back(i);
+			}
+		}
+
+		llvm::SmallVector<Symbol> typeArguments;
+		std::string key;
+
+		for (const auto& typeName : names)
+		{
+			auto bound = bindings.find(typeName);
+
+			if (bound == bindings.end() || !bound->second)
+			{
+				location.SetData(name);
+				Report(DiagnosticCode_CannotInferGeneric, location);
+				return nullptr;
+			}
+
+			typeArguments.push_back(Symbol::CreateType(bound->second));
+			key += bound->second->GetHash() + ";";
+		}
+
+		for (size_t i : callableArguments)
+			key += "@" + m_TypeInferEngine.InferTypeFromNode(arguments[i])->GetHash();
+
+		std::string instanceName;
+
+		if (auto existing = generic.Instances.find(key); existing != generic.Instances.end())
+		{
+			instanceName = existing->second;
+		}
+		else
+		{
+			instanceName = std::format("{}__{}", name, generic.Instances.size());
+			generic.Instances[key] = instanceName;
+
+			Cloner cloner;
+			cloner.DestinationModule = m_Module;
+
+			for (size_t i = 0; i < names.size(); i++)
+				cloner.SubstitutionMap[names[i]] = typeArguments[i];
+
+			auto instance = cloner.CloneFunction(method);
+			instance->SetName(instanceName);
+
+			// a lambda or closure passed to `f: function(T) -> U` is taken as it is (it may hold captured values)
+			for (size_t i : callableArguments)
+				instance->Arguments[i + offset]->TypeResolver = std::make_shared<ASTTypeLiteral>(m_TypeInferEngine.InferTypeFromNode(arguments[i]));
+
+			// declared and analysed where the class was, like its other methods
+			std::vector<SymbolTable> callerScopes = std::exchange(m_ScopeStack, generic.Context.Scopes);
+			auto callerLookup = std::exchange(m_LookupModule, generic.Context.LookupModule);
+			m_ScopeStack.emplace_back();
+
+			bool declared = DeclareFunction(instance, SemaContext { .TypeHint = classType, .GlobalState = false });
+
+			m_ScopeStack = std::move(callerScopes);
+			m_LookupModule = callerLookup;
+
+			if (!declared)
+				return nullptr;
+
+			classType->MemberFunctions[instanceName] = instance->FunctionSymbol;
+			m_LazyBodies[instance.get()] = generic.Context;
+			EnsureDefined(instance);
+		}
+
+		EnsureDefined(classType->MemberFunctions.at(instanceName)->GetFunctionSymbol().FunctionNode);
+		std::vector<std::shared_ptr<ASTNodeBase>> values(arguments.begin(), arguments.end());
+		return CallMethod(member->LeftSide, objectType, instanceName, values, location);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)
