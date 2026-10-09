@@ -217,6 +217,9 @@ Implicit conversions only happen when no information can be lost. Everything els
 - Changing between signed and unsigned of the same size (`int32` and `uint32`) needs `as`, because the value can change meaning.
 - When an unsigned and a signed value of the same size meet in arithmetic, the result is unsigned, as in C. A literal takes the type of the other side when it fits, so `x * 6364136223846793005` works with a `uint64` x.
 - `T(x)` is the same as `x as T` for number types: `int64(3)`, or `T(0)` inside a generic.
+- An integer literal must fit in 64 bits (`18446744073709551615`, `0xFFFF_FFFF_FFFF_FFFF`); a bigger one is a compile error. Write it with a `.` or an exponent (`1e20`) to get a float.
+- `x << n` and `x >> n` keep the type of `x`, and `>>` on a signed `x` keeps the sign. `n` must be from 0 to the number of bits minus 1: a constant outside that is a compile error, and with checks on (see 3.18) a computed one stops the program. With checks off only the low bits of `n` count (`n % 32` for an int32), the same at every `-O` level.
+- `sizeof T` (or `sizeof value`) is the number of bytes one `T` takes in memory, padding included, which is the distance between two of them in an array: `sizeof ?int64` is 16, `sizeof [3; int8]` is 3.
 - A float converted to an integer is clamped to the integer's range (NaN becomes 0). With `--checks`, a value that doesn't fit stops the program instead.
 - `print` shows floats with the fewest digits that read back as the same number: `0.1`, `2.5`, `3.0`.
 
@@ -333,6 +336,7 @@ let account = Account("ada")          // runs init
 let p = Point(3, 4)                   // no init: fields in order
 let q = Point(y = 1, x = 2)           // or by name
 let r = Point { 5 }                   // struct literal; missing fields use defaults / zero
+let s = Point { y = 2 }               // fields by name (after any positional ones); a name that isn't a field is an error
 ```
 
 Methods take `self`, a pointer to the object, so they can change it. Writing `self: *Account` means the same thing. To work on a copy instead, write `self: Account`. Objects live on the stack unless you allocate them yourself.
@@ -355,7 +359,8 @@ class Vec2:
 
 | operator | enables |
 | --- | --- |
-| `add subtract multiply divide modulo power` | `a + b`, `a - b`, `a * b`, `a / b`, `a % b`, `a ** b` |
+| `add subtract multiply divide modulo power` | `a + b`, `a - b`, `a * b`, `a / b`, `a % b`, `a ** b`, and `a += b`, `a -= b`... (`a = a + b`) |
+| `negate` | `-a`: `operator negate(self) -> Vec2` |
 | `equals not_equals less less_equal greater greater_equal` | `==` `!=` `<` `<=` `>` `>=` (`!=` falls back to `not equals`) |
 | `get` | `obj[i]`. If it returns a pointer (`-> *T`), `obj[i]` *is* the element: `obj[i] = v`, `obj[i] += 1` and `obj[i].field = v` change it in place |
 | `set` | `obj[k] = v` when you need custom insertion (`Map` uses it to add new keys) |
@@ -363,7 +368,7 @@ class Vec2:
 | `iterate` | `for x in obj`, written as a generator: `operator iterate(self) -> Generator[T]` |
 | `contains` | `x in obj` |
 | `call` | `obj(args)` |
-| `str` | what `print(obj)` shows |
+| `str` | what `print(obj)` shows, also inside a list, map, optional or tuple. It returns a `str`, or a `String` that is cleaned up after printing |
 | `hash` | `hash(obj)`, so it can be a `Map` key |
 | `destruct` | cleanup when the object's scope ends (see automatic cleanup below) |
 | `copy` | what `let b = a` makes when the object owns memory (see automatic cleanup below) |
@@ -427,6 +432,9 @@ function introduce(a: *Animal):     // a *Dog converts to *Animal automatically
 ```
 
 - A method call always runs **the object's own version**, even through a `*Animal`. There is no `virtual` keyword (writing it is an error that explains this).
+- The same goes for operators (`print(*a)` uses the Dog's `operator str`, `*a == *b` its `operator equals`), properties, and calls inside the base class's own methods (`self.sound()` in `speak`).
+- Cleanup too: when a Dog is cleaned up (its scope ends, or `destroy(p)` with `p: *Animal` pointing at it), the Dog's `operator destruct` runs first, then Animal's, then the fields of both are cleaned up.
+- `let copy = *a` copies only the Animal part of the object, so `copy` is an Animal and runs Animal's methods.
 - Only classes that inherit or are inherited from pay for this: they carry one hidden pointer to a method table. Every other class is laid out exactly as its fields.
 - A class has one base class. Traits are listed in the same parentheses.
 
@@ -440,7 +448,7 @@ property fahrenheit(self: *Temperature, value: float64):      // setter: t.fahre
     self.celsius = (value - 32.0) * 5.0 / 9.0
 ```
 
-`t.fahrenheit += 18.0` calls the getter and then the setter. A property without a setter can't be assigned to (compile error).
+`t.fahrenheit += 18.0` calls the getter and then the setter. A property without a setter can't be assigned to (compile error). A subclass can override a property like a method: through a pointer to the base class, the object's own version runs.
 
 ### 3.11 Traits · [`examples/12_traits.cl`](../examples/12_traits.cl)
 
@@ -638,6 +646,7 @@ swap!(x, y)
 - array and `List`/`String`/`Map` bounds
 - integer division by zero
 - signed overflow
+- shift amounts (`x << n` with `n` negative or at least the number of bits)
 - null pointers
 - reading `none`
 
@@ -662,7 +671,9 @@ let name = String("ada lovelace")
 let first: str = name[:3]          // "ada", looks at name's bytes: nothing copied
 greet(name)                        // a String goes wherever a str is expected, for free
 greet("literal")
-name == "ada lovelace"             // String and str compare by content
+name == "ada lovelace"             // String and str compare by content (also <, <=, >, >=, alphabetically)
+let blank = String()               // an empty String
+let number = from_float(2.0)       // "2.0": the same text print shows (from_int for integers)
 let mine = String(first)           // a str variable -> String is written out, because it allocates
 let greeting: String = "hello"     // a literal becomes a String where String is the written type
 let both = "hello " + name         // + on text: a new String holding both (also str + str, and +=)
@@ -685,6 +696,7 @@ numbers[0] += 1              // numbers[i] is the element itself
 numbers.insert(0, 9)         // before position 0; the rest move up
 numbers.remove(1)            // takes out the item at position 1
 numbers.index_of(4)          // ?int64: where the first 4 is, or none
+4 in numbers                 // true when an item equals 4 (also `not in`; the same as numbers.contains(4))
 print(numbers)               // [9, 5]  (Maps print as {key: value, ...})
 
 let doubled = numbers.map(lambda n: n * 2)          // a new List (here List[int])
@@ -737,6 +749,8 @@ class Session:                 // no destruct needed: its String and Connection 
     user: String
     link: Connection
 ```
+
+Cleanup runs `operator destruct` first, while the fields are still there, then cleans up the fields (the last one first). In a class that inherits, the class's own `operator destruct` runs, then its base class's (and so on up), then the fields. Cleanup follows the object's real type, so `destroy(p)` with `p: *Animal` pointing at a Dog cleans up the whole Dog, including the fields only Dog has.
 
 **Reading copies, writing goes in place.** Each value that owns memory has exactly one owner, so nothing is ever freed twice:
 
