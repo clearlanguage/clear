@@ -2027,7 +2027,7 @@ namespace clear
 	// operator names, and the hook the compiler looks for under each
 	static const std::vector<std::pair<std::string, std::string>> s_OperatorNames = {
 		{ "add", "__add__" }, { "subtract", "__sub__" }, { "multiply", "__mul__" }, { "divide", "__div__" },
-		{ "modulo", "__mod__" }, { "power", "__pow__" },
+		{ "modulo", "__mod__" }, { "power", "__pow__" }, { "negate", "__neg__" },
 		{ "equals", "__eq__" }, { "not_equals", "__ne__" }, { "less", "__lt__" }, { "less_equal", "__le__" },
 		{ "greater", "__gt__" }, { "greater_equal", "__ge__" },
 		{ "get", "__getitem__" }, { "set", "__setitem__" }, { "len", "__len__" }, { "contains", "__contains__" },

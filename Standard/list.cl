@@ -85,6 +85,13 @@ class List[T]:
                 return true
         return false
 
+    // x in xs: whether an item equals x (also `x not in xs`)
+    operator contains(self: *List[T], value: T) -> bool:
+        for i in 0..self.length:
+            if *(self.data + i) == value:
+                return true
+        return false
+
     // gives the memory back now (it is also given back automatically at the end of the list's scope)
     function free(self):
         self.clear()

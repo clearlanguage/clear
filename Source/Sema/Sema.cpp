@@ -35,6 +35,7 @@ namespace clear
 	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
 								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
+	static void DispatchOnObject(const std::shared_ptr<ASTNodeBase>& node, const std::shared_ptr<ClassType>& classType);
 
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
 		: m_Module(clearModule), m_DiagBuilder(builder), m_ConstantEvaluator(clearModule), m_TypeInferEngine(clearModule), m_NameMangler(clearModule), 
@@ -1189,6 +1190,8 @@ namespace clear
 
 					// a class with __str__ prints as whatever that returns
 					auto type = m_TypeInferEngine.InferTypeFromNode(arg);
+					std::unordered_set<Type*> printed;
+					EnsurePrintable(type, printed);
 
 					// print(make_name()): the new value lives until the end of the block, then is cleaned up
 					if (IsOwning(type) && IsFreshValue(arg))
@@ -2068,8 +2071,34 @@ namespace clear
 
 			assignmentOp->DestroyOld = !raw && assignmentOp->GetAssignType() == AssignmentOperatorType::Normal && IsOwning(storageType);
 
+			// a += b on a class is a = a + b with its operator add (the target is worked out once: the value
+			// reads it through a slot the assignment fills with the target's address)
+			bool overloaded = false;
+
+			if (storageType && storageType->IsClass() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal &&
+				assignmentOp->GetAssignType() != AssignmentOperatorType::Initialize)
+			{
+				auto target = std::make_shared<ASTSlot>(m_Module->GetTypeRegistry()->GetPointerTo(storageType));
+				target->Location = GetNodeLocation(assignmentOp->Storage);
+
+				auto current = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+				current->Operand = target;
+				current->Location = target->Location;
+
+				auto value = CompoundValue(assignmentOp->GetAssignType(), current, assignmentOp->Value);
+
+				if (!value)
+					return nullptr;
+
+				assignmentOp->CompoundTarget = target;
+				assignmentOp->Value = value;
+				assignmentOp->SetAssignType(AssignmentOperatorType::Normal);
+				assignmentOp->DestroyOld = !raw && IsOwning(storageType);
+				overloaded = true;
+			}
+
 			// pointer += n is pointer arithmetic, not a conversion
-			if (storageType && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
+			if (storageType && !overloaded && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
 				assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
 
 			if (reinitialised && reinitialised->Variable && !m_Unreachable)
@@ -2131,6 +2160,8 @@ namespace clear
 				if (!current)
 					return nullptr;
 
+				DispatchOnObject(current, clsType);
+
 				// a get that returns a reference: the current value is what it points at
 				if (auto pointer = m_TypeInferEngine.InferTypeFromNode(current); pointer && pointer->IsPointer())
 				{
@@ -2155,7 +2186,10 @@ namespace clear
     		var->Variable = setFunc;
 
     		funcCall->Callee = var;
-    		return CheckCall(funcCall);
+
+			auto checked = CheckCall(funcCall);
+			DispatchOnObject(checked, clsType);
+			return checked;
 
 
     	}
@@ -2228,7 +2262,38 @@ namespace clear
 		call->Location = getter->Location;
 		call->Callee = callee;
 		call->Arguments = { self, value };
-		return CheckCall(call);
+
+		auto checked = CheckCall(call);
+		DispatchOnObject(checked, classType->As<ClassType>());
+		return checked;
+	}
+
+	bool Sema::CheckDereference(std::shared_ptr<ASTUnaryExpression> deref)
+	{
+		// *n with n an int: only a pointer can be read through (a type, *int, is fine)
+		auto operand = deref->Operand;
+
+		if (!operand)
+			return false;
+
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(operand); variable && !variable->Variable)
+			return true;
+
+		if (!IsNodeValue(operand))
+			return true;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(operand);
+
+		if (!type || type->IsPointer() || type->Get()->isPointerTy())
+			return true;
+
+		Token location = GetNodeLocation(operand);
+		size_t width = std::max<size_t>(location.GetData().size(), 1);
+		auto load = std::dynamic_pointer_cast<ASTLoad>(operand);
+		bool named = operand->GetType() == ASTNodeType::Variable || (load && load->Operand->GetType() == ASTNodeType::Variable);
+		location.SetData(std::format("{}’ is a ‘{}", named ? location.GetData() : "the value", GetDisplayName(type)));
+		Report(DiagnosticCode_NotAPointer, location, width);
+		return false;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTUnaryExpression> unaryExpr, SemaContext context)
@@ -2286,13 +2351,16 @@ namespace clear
 					valueContext.ValueReq = ValueRequired::RValue;
 					unaryExpr->Operand = Visit(unaryExpr->Operand, valueContext);
 					unaryExpr->IsStorage = true;
-					return unaryExpr;
+					return CheckDereference(unaryExpr) ? unaryExpr : nullptr;
 				}
 
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
 
 				if (!unaryExpr->Operand)
 					return nullptr; // already reported (`*Nope`: an unknown type)
+
+				if (!CheckDereference(unaryExpr))
+					return nullptr;
 
 				break;
 			}
@@ -2302,6 +2370,53 @@ namespace clear
 
 				if (!unaryExpr->Operand)
 					return nullptr; // already reported (`?Nope`: an unknown type)
+
+				// -v on a class: its operator negate
+				if (unaryExpr->GetOperatorType() == OperatorType::Negation && unaryExpr->Operand)
+				{
+					auto type = m_TypeInferEngine.InferTypeFromNode(unaryExpr->Operand);
+
+					if (type && type->IsClass())
+					{
+						auto classType = type->As<ClassType>();
+						Token location = unaryExpr->Location.GetData().empty() ? GetNodeLocation(unaryExpr->Operand) : unaryExpr->Location;
+						auto method = classType->MemberFunctions.find("__neg__");
+
+						if (method == classType->MemberFunctions.end())
+						{
+							if (classType->IsOptional)
+								location.SetData(std::format("‘{}’ is optional, so it may hold no value: use its value with `x ?? fallback`, `if x:` or `.value` first",
+															 GetDisplayName(classType)));
+							else
+								location.SetData(std::format("‘{}’ has no ‘operator negate’ for ‘-’. Define it in the class: operator negate(self) -> {}",
+															 GetDisplayName(classType), GetDisplayName(classType)));
+
+							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
+							return nullptr;
+						}
+
+						auto function = method->second->GetFunctionSymbol().FunctionNode;
+						EnsureDefined(function);
+
+						if (!function || function->Arguments.size() != 1)
+						{
+							location.SetData(std::format("‘operator negate’ of ‘{}’ must take only self: operator negate(self) -> {}",
+														 GetDisplayName(classType), GetDisplayName(classType)));
+							m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
+							return nullptr;
+						}
+
+						return CallMethod(unaryExpr->Operand, type, "__neg__", {}, location);
+					}
+
+					if (type && !(type->IsIntegral() || type->IsFloatingPoint()) || (type && (type->IsEnum() || type->Get()->isIntegerTy(1))))
+					{
+						Token location = unaryExpr->Location.GetData().empty() ? GetNodeLocation(unaryExpr->Operand) : unaryExpr->Location;
+						location.SetData(std::format("-{}", GetDisplayName(type)));
+						m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_InvalidOperands, 1);
+						return nullptr;
+					}
+				}
 
 				// not x with x optional: x holds no value
 				if (unaryExpr->GetOperatorType() == OperatorType::Not && unaryExpr->Operand)
@@ -2438,6 +2553,54 @@ namespace clear
 
 		m_ScopeStack = std::move(callerScopes);
 		m_LookupModule = previousLookup;
+	}
+
+	void Sema::EnsurePrintable(const std::shared_ptr<Type>& type, std::unordered_set<Type*>& seen)
+	{
+		// print(list) prints each item with its operator str: the methods of a generic class are only
+		// analysed when used, so these count as used
+		if (!type || !seen.insert(type.get()).second)
+			return;
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+			return EnsurePrintable(array->GetBaseType(), seen);
+
+		if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+			return EnsurePrintable(slice->GetBaseType(), seen);
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (auto& element : tuple->GetElements())
+				EnsurePrintable(element, seen);
+			return;
+		}
+
+		if (!type->IsClass())
+			return;
+
+		auto classType = type->As<ClassType>();
+
+		if (auto str = classType->MemberFunctions.find("__str__"); str != classType->MemberFunctions.end())
+		{
+			auto function = str->second->GetFunctionSymbol().FunctionNode;
+			EnsureDefined(function);
+
+			if (function)
+				EnsurePrintable(function->ReturnTypeVal, seen);
+			return;
+		}
+
+		for (auto& argument : classType->GenericArguments)
+			EnsurePrintable(argument, seen);
+
+		for (auto& variantCase : classType->Cases)
+		{
+			for (auto& field : variantCase.Fields)
+				EnsurePrintable(field.second, seen);
+		}
+
+		for (const auto& [name, field] : classType->GetMemberValues())
+			EnsurePrintable(field, seen);
 	}
 
 	bool Sema::DeclareClassType(std::shared_ptr<ASTClass> classExpr)
@@ -2698,6 +2861,11 @@ namespace clear
 		for (auto node : classExpr->MemberFunctions)
 			DeclareFunction(node, context);
 
+		// an override is called through the base's slot (obj.speak(), print(*p), destroy(p)...), so it must
+		// take and give the same types as the version it replaces
+		if (base && !CheckOverrides(classExpr, base))
+			return false;
+
 		for (auto& trait : classTy->Traits)
 		{
 			if (!CheckTrait(classTy, trait, location))
@@ -2711,6 +2879,73 @@ namespace clear
 			generic->HomeModule = generic->HomeModule ? generic->HomeModule : m_Module;
 			m_GenericMethods[classTy.get()][method->GetName()] = GenericMethod { generic, LazyBody { m_ScopeStack, m_LookupModule, classTy }, {} };
 			m_GenericMethodNames.insert(method->GetName());
+		}
+
+		return true;
+	}
+
+	bool Sema::CheckOverrides(std::shared_ptr<ASTClass> classExpr, std::shared_ptr<ClassType> base)
+	{
+		auto same = [](const std::shared_ptr<Type>& a, const std::shared_ptr<Type>& b)
+		{
+			return (!a && !b) || (a && b && (a == b || a->GetHash() == b->GetHash()));
+		};
+
+		auto describe = [&](const std::shared_ptr<ASTFunctionDefinition>& function)
+		{
+			std::string text = "(self";
+
+			for (size_t i = 1; i < function->Arguments.size(); i++)
+				text += ", " + GetDisplayName(function->Arguments[i]->ResolvedType);
+
+			return text + ")" + (function->ReturnTypeVal ? " -> " + GetDisplayName(function->ReturnTypeVal) : "");
+		};
+
+		// (by the names the class knows them by: a declared function's own name is its mangled one)
+		for (auto& [name, symbol] : classExpr->ClassTy->As<ClassType>()->MemberFunctions)
+		{
+			if (symbol->Kind != SymbolKind::Function)
+				continue;
+
+			auto node = symbol->GetFunctionSymbol().FunctionNode;
+
+			// operator copy gives a value of its own class: it is never called through a base's slot
+			if (!node || !node->IsVirtual || name == "__copy__" || !node->SignatureResolved)
+				continue;
+
+			auto inherited = base->MemberFunctions.find(name);
+
+			if (inherited == base->MemberFunctions.end() || inherited->second->Kind != SymbolKind::Function)
+				continue;
+
+			auto original = inherited->second->GetFunctionSymbol().FunctionNode;
+
+			if (!original || !original->SignatureResolved || original == node)
+				continue;
+
+			bool matches = original->Arguments.size() == node->Arguments.size() && same(original->ReturnTypeVal, node->ReturnTypeVal);
+
+			for (size_t i = 0; matches && i < node->Arguments.size(); i++)
+			{
+				auto mine = node->Arguments[i]->ResolvedType, theirs = original->Arguments[i]->ResolvedType;
+
+				// self: a pointer to each one's own class, or each one's own value
+				if (i == 0)
+					matches = mine && theirs && mine->IsPointer() == theirs->IsPointer();
+				else
+					matches = same(mine, theirs);
+			}
+
+			if (!matches)
+			{
+				Token location = node->GetNameToken().GetData().empty() ? classExpr->Location : node->GetNameToken();
+				size_t width = std::max<size_t>(location.GetData().size(), 1);
+				location.SetData(std::format("‘{}’ in ‘{}’ is {}, but in ‘{}’ it is {}. An override must take and give the same types, because it is "
+											 "called wherever the base's version is", location.GetData(), classExpr->GetName(), describe(node),
+											 GetDisplayName(base), describe(original)));
+				Report(DiagnosticCode_OverrideMismatch, location, width);
+				return false;
+			}
 		}
 
 		return true;
@@ -3463,7 +3698,39 @@ namespace clear
 		return load;
 	}
 
-	std::shared_ptr<ASTNodeBase> Sema::CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name, 
+	// a method (an operator, a property) called with the object as its first argument runs the object's own
+	// version, like obj.method() does: the call goes through the vtable slot the method has in classType
+	static void DispatchOnObject(const std::shared_ptr<ASTNodeBase>& node, const std::shared_ptr<ClassType>& classType)
+	{
+		auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+
+		if (!call || !classType || call->VirtualSlot >= 0 || call->Arguments.empty())
+			return;
+
+		auto callee = std::dynamic_pointer_cast<ASTVariable>(call->Callee);
+
+		if (!callee || !callee->Variable || callee->Variable->Kind != SymbolKind::Function)
+			return;
+
+		auto function = callee->Variable->GetFunctionSymbol().FunctionNode;
+
+		// (a method taking self by value gets a copy of the object, which is of the type it was called on)
+		if (!function || !function->IsVirtual || function->Arguments.empty() || !function->Arguments[0]->ResolvedType || !function->Arguments[0]->ResolvedType->IsPointer())
+			return;
+
+		for (size_t i = 0; i < classType->VTable.size(); i++)
+		{
+			auto& entry = classType->VTable[i];
+
+			if (entry == callee->Variable || (entry && entry->Kind == SymbolKind::Function && entry->GetFunctionSymbol().FunctionNode == function))
+			{
+				call->VirtualSlot = (int64_t)i;
+				return;
+			}
+		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name,
 												   std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location)
 	{
 		// object is storage (analysed as an lvalue): pass its address, or the pointer it holds
@@ -3510,7 +3777,9 @@ namespace clear
 		call->Arguments.push_back(self);
 		call->Arguments.append(arguments.begin(), arguments.end());
 
-		return CheckCall(call);
+		auto checked = CheckCall(call);
+		DispatchOnObject(checked, classType);
+		return checked;
 	}
 
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type)
@@ -4762,8 +5031,8 @@ namespace clear
 					case OperatorType::BitwiseAnd:	return *lhs & *rhs;
 					case OperatorType::BitwiseOr:	return *lhs | *rhs;
 					case OperatorType::BitwiseXor:	return *lhs ^ *rhs;
-					case OperatorType::LeftShift:	return *lhs << *rhs;
-					case OperatorType::RightShift:	return *lhs >> *rhs;
+					case OperatorType::LeftShift:	return *rhs < 0 || *rhs > 63 ? std::nullopt : std::optional((int64_t)((uint64_t)*lhs << *rhs));
+					case OperatorType::RightShift:	return *rhs < 0 || *rhs > 63 ? std::nullopt : std::optional(*lhs >> *rhs);
 					default:						return std::nullopt;
 				}
 			}
@@ -4939,8 +5208,24 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTSizeofExpr> sizeofExpr, SemaContext context)
 	{
 		sizeofExpr->Object = Visit(sizeofExpr->Object, context);
-		sizeofExpr->Size = m_TypeInferEngine.InferTypeFromNode(sizeofExpr->Object)->GetSizeInBytes(*m_Module->GetModule());
-		
+
+		if (!sizeofExpr->Object)
+			return nullptr;
+
+		// sizeof a type (?int64, [3; int8], *T) or of a value's type: the bytes one takes in memory, padding
+		// included (the distance between two of them in an array)
+		auto type = GetTypeFromNode(sizeofExpr->Object);
+
+		if (!type)
+			type = m_TypeInferEngine.InferTypeFromNode(sizeofExpr->Object);
+
+		if (!type || type->GetHash() == "void")
+		{
+			Report(DiagnosticCode_ExpectedType, GetNodeLocation(sizeofExpr->Object));
+			return nullptr;
+		}
+
+		sizeofExpr->Size = type->GetSizeInBytes(*m_Module->GetModule());
 		return sizeofExpr;
 	}
 
@@ -5407,9 +5692,45 @@ namespace clear
 		valueContext.ValueReq = ValueRequired::RValue;
 		valueContext.CallsiteArgs.clear();
 
+		// P { 1, y = 2 }: `name = value` sets that field (after the positional values, like keyword arguments)
+		{
+			std::vector<std::shared_ptr<ASTNodeBase>> positional;
+
+			for (auto& value : structExpr->Values)
+			{
+				auto assignment = std::dynamic_pointer_cast<ASTAssignmentOperator>(value);
+				auto name = assignment ? std::dynamic_pointer_cast<ASTVariable>(assignment->Storage) : nullptr;
+
+				if (assignment && name && assignment->GetAssignType() == AssignmentOperatorType::Normal)
+				{
+					structExpr->NamedValues.push_back({ name->GetName(), assignment->Value });
+					continue;
+				}
+
+				if (!structExpr->NamedValues.empty())
+				{
+					Report(DiagnosticCode_PositionalAfterKeyword, GetNodeLocation(value));
+					return nullptr;
+				}
+
+				positional.push_back(value);
+			}
+
+			structExpr->Values = positional;
+		}
+
 		for (auto& value : structExpr->Values)
 		{
 			// lambdas wait for the field type (see CompleteStructValues)
+			if (value->GetType() != ASTNodeType::Lambda)
+				value = Visit(value, valueContext);
+
+			if (!value)
+				return nullptr;
+		}
+
+		for (auto& [name, value] : structExpr->NamedValues)
+		{
 			if (value->GetType() != ASTNodeType::Lambda)
 				value = Visit(value, valueContext);
 
@@ -5479,6 +5800,41 @@ namespace clear
 		// the hidden vtable field is never written by hand: values start at the first real field
 		if (classType->HasVTable && (structExpr->Values.empty() || structExpr->Values[0]->GetType() != ASTNodeType::VTableRef))
 			structExpr->Values.insert(structExpr->Values.begin(), classType->MemberDefaults[0]);
+
+		if (!structExpr->NamedValues.empty() && structExpr->Values.size() <= members.size())
+		{
+			// named fields go in their place; fields neither given nor named keep their default (below)
+			std::vector<std::shared_ptr<ASTNodeBase>> placed(structExpr->Values.begin(), structExpr->Values.end());
+			placed.resize(members.size());
+			size_t hidden = classType->HasVTable ? 1 : 0;
+
+			for (auto& [name, value] : structExpr->NamedValues)
+			{
+				auto index = classType->GetMemberValueIndex(name.GetData());
+
+				if (!index || *index < hidden || placed[*index])
+				{
+					Token where = name;
+					where.SetData(std::format("{}’ is not a field of ‘{}’ (or is given twice", name.GetData(), GetDisplayName(classType)));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+					return nullptr;
+				}
+
+				placed[*index] = value;
+			}
+
+			for (size_t i = 0; i < placed.size(); i++)
+			{
+				if (!placed[i])
+				{
+					auto defaultValue = i < classType->MemberDefaults.size() ? classType->MemberDefaults[i] : nullptr;
+					placed[i] = defaultValue ? defaultValue : std::make_shared<ASTZero>(classType->GetMemberValueByIndex(i).value()->GetType());
+				}
+			}
+
+			structExpr->Values = placed;
+			structExpr->NamedValues.clear();
+		}
 
 		if (structExpr->Values.size() > members.size())
 		{
@@ -5580,6 +5936,14 @@ namespace clear
 			if (!funcCall->KeywordArguments.empty())
 			{
 				auto& members = classType->GetMemberValues();
+
+				// the positional values start after the hidden vtable field (indexes below count it)
+				if (classType->HasVTable)
+					structExpr->Values.insert(structExpr->Values.begin(), classType->MemberDefaults[0]);
+
+				if (structExpr->Values.size() > members.size())
+					return CompleteStructValues(structExpr); // reports the extra values
+
 				structExpr->Values.resize(members.size());
 
 				for (auto& [name, value] : funcCall->KeywordArguments)
@@ -6002,6 +6366,8 @@ namespace clear
 					if (!call)
 						return nullptr;
 
+					DispatchOnObject(call, clsType);
+
 					auto element = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
 					element->Location = funcCall->Location;
 					element->Operand = call;
@@ -6010,7 +6376,9 @@ namespace clear
 					return element;
 				}
 
-				return CheckCall(funcCall);
+				auto checked = CheckCall(funcCall);
+				DispatchOnObject(checked, clsType);
+				return checked;
 			}
 
 			// tuple[i]: the index must be a constant
@@ -6499,7 +6867,11 @@ namespace clear
 		auto adapt = [&](std::shared_ptr<ASTNodeBase>& literal, const std::shared_ptr<Type>& target)
 		{
 			if (auto value = EvaluateInteger(literal); value && target->IsIntegral())
-				literal = std::make_shared<ASTConstantValue>(*value, target);
+			{
+				auto constant = std::make_shared<ASTConstantValue>(*value, target);
+				constant->Location = GetNodeLocation(literal); // diagnostics about it still point at what was written
+				literal = constant;
+			}
 			else
 				literal = Coerce(literal, target);
 		};
@@ -8029,6 +8401,13 @@ namespace clear
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node))
 			return load->Operand;
 
+		// *p: the object p points at (its own operators run on it, not on a copy of its Base part)
+		if (auto deref = std::dynamic_pointer_cast<ASTUnaryExpression>(node); deref && deref->GetOperatorType() == OperatorType::Dereference)
+		{
+			if (auto pointer = m_TypeInferEngine.InferTypeFromNode(deref->Operand); pointer && pointer->IsPointer())
+				return deref->Operand;
+		}
+
 		auto temporary = std::make_shared<ASTTemporary>();
 		temporary->Operand = node;
 		temporary->ValueType = m_TypeInferEngine.InferTypeFromNode(node);
@@ -8118,6 +8497,8 @@ namespace clear
 		}
 		else
 			call->Arguments.push_back(Coerce(expr->RightSide, otherType));
+
+		DispatchOnObject(call, classType);
 
 		if (!negate)
 			return std::shared_ptr<ASTNodeBase>(call);

@@ -48,7 +48,8 @@ class String:
     length: int64
     capacity: int64
 
-    function init(self: *String, text: str):
+    // String("text"), or String() for an empty one
+    function init(self: *String, text: str = ""):
         self.append(text)
 
     // room for at least `needed` bytes (plus the terminating zero)
@@ -85,9 +86,19 @@ class String:
         let count = snprintf(&buffer[0], 32, "%lld", value)
         self.append_bytes(&buffer[0], count as int64)
 
+    // the same text print shows: the fewest digits that read back as the same number, and whole numbers keep
+    // a ".0" (2.0, 0.1, 123456789.0, 1e+20)
     function append_float(self: *String, value: float64):
         let buffer: [64; int8] = {}
-        let count = snprintf(&buffer[0], 64, "%g", value)
+        let count: int32 = 0
+        if value > -1e16 and value < 1e16 and value == (value as int64) as float64:
+            count = snprintf(&buffer[0], 64, "%.1f", value)
+        else:
+            let digits: int32 = 15
+            count = snprintf(&buffer[0], 64, "%.*g", digits, value)
+            while atof(&buffer[0]) != value and digits < 17:
+                digits += 1
+                count = snprintf(&buffer[0], 64, "%.*g", digits, value)
         self.append_bytes(&buffer[0], count as int64)
 
     // the text as a str (valid until the String changes or is freed); it ends with a zero byte, so C can use it
@@ -128,6 +139,15 @@ class String:
 
     operator less(self: *String, other: *String) -> bool:
         return self.text() < other.text()
+
+    operator less_equal(self: *String, other: *String) -> bool:
+        return self.text() <= other.text()
+
+    operator greater(self: *String, other: *String) -> bool:
+        return self.text() > other.text()
+
+    operator greater_equal(self: *String, other: *String) -> bool:
+        return self.text() >= other.text()
 
     operator hash(self: *String) -> uint64:
         return hash(self.text())
