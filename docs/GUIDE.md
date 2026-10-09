@@ -198,6 +198,8 @@ let back = big as int32        // narrowing needs `as`
 let name: str = "clear"
 let empty: int                 // starts at 0, never garbage
 let grid: [LIMIT; int] = {1, 2}  // arrays: missing elements are 0
+let primes = [2, 3, 5, 7]      // an array literal: [4; int]
+let million = 1_000_000        // _ separates digits (also in 0xFF_FF and 0b1010_0101)
 let p = &count                 // a pointer; *p reads/writes through it
 const LIMIT = 4                // a compile-time constant
 ```
@@ -211,6 +213,21 @@ const LIMIT = 4                // a compile-time constant
 Operators: `+ - * / % **`, comparisons, `and or not`, bitwise `& | ^ ~ << >>`, compound `+= -= …`, `++ --`, `in` / `not in`, `len(x)`.
 
 Implicit conversions only happen when no information can be lost. Everything else needs `as`; this rule exists so that silent precision bugs can't happen.
+
+- Changing between signed and unsigned of the same size (`int32` and `uint32`) needs `as`, because the value can change meaning.
+- When an unsigned and a signed value of the same size meet in arithmetic, the result is unsigned, as in C. A literal takes the type of the other side when it fits, so `x * 6364136223846793005` works with a `uint64` x.
+- `T(x)` is the same as `x as T` for number types: `int64(3)`, or `T(0)` inside a generic.
+- A float converted to an integer is clamped to the integer's range (NaN becomes 0). With `--checks`, a value that doesn't fit stops the program instead.
+- `print` shows floats with the fewest digits that read back as the same number: `0.1`, `2.5`, `3.0`.
+
+A line continues onto the next when it ends inside brackets, after an operator or a comma, or when the next line starts with `and`, `or` or `otherwise`:
+
+```clear
+let total = first +
+    second
+let ok = a > 0
+    and b > 0
+```
 
 ### 3.2 Control flow · [`examples/03_control_flow.cl`](../examples/03_control_flow.cl)
 
@@ -227,7 +244,7 @@ for i in 1..=3:                // 1 to 3
 for v in values:               // arrays, List, Map, generators, your own classes
 while n < 10:                  // with break / continue
 
-switch x:                      // no fallthrough
+switch x:                      // no fallthrough; also works on str and String
     case 1, 2:
         ...
     default:
@@ -251,6 +268,16 @@ describe(height = 2, width = 5)     // any order by name
 
 A function can be called before the line that defines it. Calls are checked for argument count and types.
 
+`main` can take the command-line arguments, as in C. `argv[0]` is the program itself:
+
+```clear
+function main(argc: int32, argv: **int8) -> int32:
+    for i in 1..argc:
+        let arg: str = argv[i]     // a C string becomes a str
+        print(arg)
+    return 0
+```
+
 ### 3.4 Tuples and unpacking · [`examples/05_tuples_and_unpacking.cl`](../examples/05_tuples_and_unpacking.cl)
 
 ```clear
@@ -263,6 +290,8 @@ add3(values...)                // spread an array or tuple into the arguments
 let t = (1, 2.5, "three")      // t[0], t[2]  (the index must be a constant)
 ```
 
+A tuple owns what is in it: `(name, other)` with two Strings holds copies (or takes them over at their last use), and cleans them up.
+
 ### 3.5 Lambdas and function values · [`examples/06_lambdas.cl`](../examples/06_lambdas.cl)
 
 ```clear
@@ -272,17 +301,18 @@ function apply(f: function(int) -> int, x: int) -> int:
 apply(twice, 4)                       // a named function as a value
 apply(lambda x: x + 100, 1)           // parameter types come from `apply`
 let shifted = lambda (x: int): x + offset   // captures a *copy* of offset
+let twice = apply_to(5, double)       // apply_to[T, U](x: T, f: function(T) -> U): T and U come from the call
 ```
 
 A lambda that uses outside variables becomes a small object that holds copies of them. To pass such a lambda to your own function, give the parameter a generic type (`function run[F](f: F)`). A plain `function(...)` parameter only accepts lambdas that use no outside variables.
 
 When nothing says what a parameter's type is (no type written, and not passed to a `function(...)` parameter), it comes from each call, like a template: `let add = lambda a, b: a + b` works for `add(1, 2)` and `add(1.5, 2.5)`, and `run(lambda x: x * 2)` with `function run[F](f: F)` gets `x`'s type from the `f(...)` call inside `run`. Each different set of argument types makes its own copy of the code, so there is no cost at run time.
 
-Values that own memory (a `String`, a `List`...) are not copied into a lambda. They are **borrowed**: the lambda uses the variable itself, so `lambda: names.push(x)` changes the real list. Because of that, a borrowing lambda cannot be returned out of the function whose variables it uses (compile error). Write `move lambda` to move the values into the lambda instead; the variables are then empty, and using them afterwards is a compile error:
+Values that can be copied, including a `String` or a `List`, are copied into the lambda like everything else, so the lambda keeps working after the variable changes or goes away. A value that can't be copied (a class with `operator copy` turned off, such as a `File`) is **borrowed**: the lambda uses the variable itself. Because of that, a borrowing lambda can't be returned from the function whose variables it uses (compile error). Write `move lambda` to move the values into the lambda instead. The variables are then empty, and using them afterwards is a compile error:
 
 ```clear
 let name = String("ada")
-let greet = lambda: print("hi", name)        // borrows name
+let greet = lambda: print("hi", name)        // its own copy of name
 let keep = move lambda: print("hi", name)    // takes name over; name can't be used after this
 ```
 
@@ -483,6 +513,9 @@ print(found * 2)
 
 if index := find(data, 3):   // declare and test in one go (also in `else if`)
     print(index)
+
+if a and b:                  // both are values inside (and `if not a or not b: return` narrows both after)
+    print(a + b)
 while line := read_line():   // keeps going while there is a value
     print(line)
 
@@ -649,6 +682,10 @@ import "map"
 let numbers = List[int]()    // freed automatically at the end of the scope
 numbers.push(4)              // also: pop, last, contains, clear, is_empty, numbers[i], len, for
 numbers[0] += 1              // numbers[i] is the element itself
+numbers.insert(0, 9)         // before position 0; the rest move up
+numbers.remove(1)            // takes out the item at position 1
+numbers.index_of(4)          // ?int64: where the first 4 is, or none
+print(numbers)               // [9, 5]  (Maps print as {key: value, ...})
 
 let doubled = numbers.map(lambda n: n * 2)          // a new List (here List[int])
 let evens = numbers.filter(lambda n: n % 2 == 0)    // a new List with the items that pass
@@ -756,7 +793,7 @@ file_exists(path) / delete_file(path)
 ```clear
 import "math"                    // standard library: Standard/math.cl
 import "lib/geometry"            // examples/lib/geometry.cl (.cl implied)
-import "lib/geometry" as geo     // geo.square(2)
+import "lib/geometry" as geo     // geo.square(2), geo.Point(1, 2), geo.LIMIT, macros too
 ```
 
 A module is just a `.cl` file, and everything at its top level can be imported. Imports are looked up in this order:

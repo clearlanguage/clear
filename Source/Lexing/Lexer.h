@@ -77,6 +77,8 @@ namespace clear
 
         size_t m_Position = 0;
         uint32_t m_Indents = 0;
+        int32_t m_Brackets = 0;        // ( [ { still open: the line goes on
+        bool ContinuesLine() const;    // the next line belongs to this one (open bracket, or a trailing operator)
 
         size_t m_LineNumber   = 0;
         size_t m_ColumnNumber = 0;

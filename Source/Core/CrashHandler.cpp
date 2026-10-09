@@ -28,8 +28,8 @@ namespace clear
 		// only what is needed to point at the cause, then die from the same signal so callers still see a crash
 		std::fprintf(stderr, "\ninternal compiler error: %s while %s", SignalName(signal), g_Progress.Stage);
 
-		if (g_Progress.File)
-			std::fprintf(stderr, " %s:%zu:%zu", g_Progress.File->c_str(), g_Progress.Line + 1, g_Progress.Column + 1);
+		if (g_Progress.File[0])
+			std::fprintf(stderr, " %s:%zu:%zu", g_Progress.File, g_Progress.Line + 1, g_Progress.Column + 1);
 
 		std::fprintf(stderr, "\n  = help: this is a bug in clearc, not in your program. Please report it with the code around that line.\n\n");
 		llvm::sys::PrintStackTrace(llvm::errs());

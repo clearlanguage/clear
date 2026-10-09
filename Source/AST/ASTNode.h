@@ -320,6 +320,7 @@ namespace clear
 		//TODO: Make a different node for this
 		std::shared_ptr<ClassType> ClassType;
 		bool IsBuiltinPrint = false; // print(...) is lowered to printf by the compiler
+		bool IsConstructor = false;  // the init call of P(...): messages name P and do not count self
 		std::vector<std::pair<Token, std::shared_ptr<ASTNodeBase>>> KeywordArguments; // f(name = value)
 		std::shared_ptr<Type> IndirectType; // calling a function value (a FunctionPointerType)
 		int64_t VirtualSlot = -1;           // a virtual method: the function comes from this vtable slot of the receiver
@@ -1051,6 +1052,7 @@ namespace clear
 	public:
 		Token Name;
 		std::vector<std::shared_ptr<ASTNodeBase>> Arguments;
+		std::shared_ptr<Symbol> ResolvedMacro; // m.twice!(x): the macro found through an import alias
 	};
 
 	// the address of a class's table of virtual methods (stored in the hidden __vtable field)

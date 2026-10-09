@@ -308,7 +308,13 @@ namespace clear
 
 		if (type1->IsIntegral() && type2->IsIntegral())
 		{
-			return type1->GetSizeInBytes(*m_Module->GetModule()) > type2->GetSizeInBytes(*m_Module->GetModule()) ? type1 : type2;
+			auto size1 = type1->GetSizeInBytes(*m_Module->GetModule()), size2 = type2->GetSizeInBytes(*m_Module->GetModule());
+
+			// the same width: unsigned wins, as in C (the order the two are written in must not decide it)
+			if (size1 == size2)
+				return !type1->IsSigned() ? type1 : type2;
+
+			return size1 > size2 ? type1 : type2;
 		}
 
 		if (type1->IsIntegral() && type2->IsFloatingPoint())

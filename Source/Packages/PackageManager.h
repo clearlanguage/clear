@@ -57,6 +57,7 @@ namespace clear
 
         int NewProject(const std::filesystem::path& directory);
         int AddDependency(const std::filesystem::path& projectDirectory, const Dependency& dependency);
+        std::string Describe(const Dependency& dependency);
 
         // makes every dependency available locally; update ignores clear.lock and takes the newest matching commits
         std::optional<std::vector<Package>> Fetch(const Manifest& manifest, bool update, bool verbose, std::string& error);

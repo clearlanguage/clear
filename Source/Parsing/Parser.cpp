@@ -251,21 +251,21 @@ namespace clear
         if(Match(tokenType)) return;
 
         //CLEAR_UNREACHABLE("expected ", TokenToString(tokenType), " but got ", TokenToString(Peak().TokenType), " ", Peak().Data);
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
     void Parser::Expect(const std::string& data)
     {
         if(Match(data)) return;
 
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
     void Parser::ExpectAny(TokenSet tokenSet)
     {
         if(MatchAny(tokenSet)) return;
 
-        CLEAR_UNREACHABLE("TODO: add errors here");
+        m_DiagnosticsBuilder.Report(Stage::Parsing, Severity::High, ErrorLocation(), DiagnosticCode_UnexpectedToken);
     }
 
 	std::shared_ptr<ASTBlock> Parser::ParseCodeBlock()
@@ -1493,6 +1493,16 @@ namespace clear
 		unary->Operand = ParseExpr(info.RightBindingPower);
 			
 		VERIFY_WITH_RETURN(unary->Operand, DiagnosticCode_None, nullptr);
+
+		// ** read as two stars
+		if (token.IsType(TokenType::StarStar))
+		{
+			auto outer = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			outer->Location = token;
+			outer->Operand = unary;
+			return outer;
+		}
+
 		return unary;
 	}
 
@@ -1930,6 +1940,32 @@ namespace clear
 		}
 
 		arrayType->SizeNode = ParseExpr();
+
+		// [a, b, c]: an array literal, like {a, b, c} (a type is [N; T], with a semicolon)
+		if (arrayType->SizeNode && (Match(TokenType::Comma) || Match(TokenType::RightBracket)))
+		{
+			auto list = std::make_shared<ASTListExpr>();
+			list->Values.push_back(arrayType->SizeNode);
+
+			while (Match(TokenType::Comma))
+			{
+				Consume();
+
+				if (Match(TokenType::RightBracket))
+					break;
+
+				auto value = ParseExpr();
+
+				if (!value)
+					return nullptr;
+
+				list->Values.push_back(value);
+			}
+
+			EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_UnmatchedBracket, nullptr);
+			Consume();
+			return list;
+		}
 		
 		EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_ExpectedColon, nullptr);
 		Consume();
@@ -2308,6 +2344,7 @@ namespace clear
 			case TokenType::Bang:               return OperatorType::Not;
 			case TokenType::Minus:				return OperatorType::Negation;
 			case TokenType::Star:				return OperatorType::Dereference;
+			case TokenType::StarStar:			return OperatorType::Dereference; // **p, **int8: two of them
 			case TokenType::Decrement:			return OperatorType::Decrement;
 			case TokenType::Increment:			return OperatorType::Increment;
 			case TokenType::LeftBrace:			return OperatorType::ListInitializer;

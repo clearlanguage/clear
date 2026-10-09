@@ -222,8 +222,8 @@ Message = "Switch value must be an integer or an enum."
 Advice  = "‘{}’ cannot be switched on. Use if/elseif for other types."
 
 [MissingOperatorOverload]
-Message = "Operator is not defined for this class."
-Advice  = "‘{}’. Define the dunder method on the class to support the operator."
+Message = "This operator is not defined for this type."
+Advice  = "{}."
 
 [BadOperatorSignature]
 Message = "Operator method has the wrong number of parameters."
@@ -412,3 +412,23 @@ Advice  = "Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not 
 [CopyMade]
 Message = "A copy is made here."
 Advice  = "This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead."
+
+[InfiniteType]
+Message = "This type contains itself, so it would be infinitely big."
+Advice  = "‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’."
+
+[TopLevelStatement]
+Message = "Only declarations can be at the top level of a file."
+Advice  = "Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro."
+
+[MacroHasNoValue]
+Message = "This macro is a list of statements, so it has no value."
+Advice  = "‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2)."
+
+[NoConversion]
+Message = "These types do not convert to each other."
+Advice  = "{}."
+
+[UsedHere]
+Message = "The standard library code above is used from this line of the program."
+Advice  = "The problem comes from how ‘{}’ is used here."

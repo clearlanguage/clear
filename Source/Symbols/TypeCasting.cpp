@@ -48,10 +48,10 @@ namespace clear
         // float -> int
         else if (srcType->isFloatingPointTy() && dstType->isIntegerTy()) 
         {
-            if (dst->IsSigned())
-                castedValue = builder.CreateFPToSI(value, dstType, "cast");
-            else
-                castedValue = builder.CreateFPToUI(value, dstType, "cast");
+            // saturating: out of range gives the nearest limit and NaN gives 0, the same at every optimisation level
+            // (plain fptosi is undefined there); with checks on, the cast is checked before it gets here
+            llvm::Intrinsic::ID id = dst->IsSigned() ? llvm::Intrinsic::fptosi_sat : llvm::Intrinsic::fptoui_sat;
+            castedValue = builder.CreateIntrinsic(id, { dstType, srcType }, { value }, nullptr, "cast");
         } 
         // float -> double
         else if (srcType->isFloatTy() && dstType->isDoubleTy()) 

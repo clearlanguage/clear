@@ -123,6 +123,10 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+		bool CastAllowed(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to);
+		std::string ConversionAdvice(const std::shared_ptr<Type>& from, const std::shared_ptr<Type>& to);
+		void AdaptLiterals(std::shared_ptr<ASTBinaryExpression> expr, const SemaContext& context);
+		static bool ContainsByValue(const std::shared_ptr<Type>& type, const std::shared_ptr<Type>& target);
 
 		// optionals: `a ?? b`, `a?.b`, `if r:` (r is its value inside), `if not r: return` (and after it)
 		struct Narrowing { std::shared_ptr<Symbol> Variable; Token Name; std::shared_ptr<Type> Optional; };
@@ -137,8 +141,9 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> SliceIntrinsic(const std::string& name, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
-		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
 		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> ModuleMember(std::shared_ptr<ASTBinaryExpression> access);
 		std::shared_ptr<ASTNodeBase> TextConcat(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, const Token& location);
 		std::shared_ptr<ASTNodeBase> CallLibraryFunction(const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
@@ -189,7 +194,7 @@ namespace clear
 		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::unordered_set<std::string> m_FailedDeclarations;
 		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
-		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances;
+		static inline std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances; // shared: List[int] is one type in every file
 		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first
 		std::unordered_set<ASTClass*> m_ClassesInProgress;
 		size_t m_MacroCounter = 0;
@@ -198,7 +203,11 @@ namespace clear
 
 		// moves out of locals, followed through the function body so an emptied variable is not used again
 		using MovedSet = std::unordered_map<Symbol*, Token>; // variable -> where it was moved
-		struct BranchMoves { MovedSet Start; MovedSet Out; bool AnyLive = false; };
+		struct BranchMoves
+		{
+			MovedSet Start; MovedSet Out; bool AnyLive = false;
+			std::unordered_map<Symbol*, Token> StaleStart, StaleOut; // pointers made stale, per branch the same way
+		};
 		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; size_t FirstCandidate = 0; };
 
 		MovedSet m_Moved;
@@ -232,6 +241,9 @@ namespace clear
 		FunctionCopies m_Copies;
 		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
 		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+	public:
+		void KeepLentArguments(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, size_t firstCandidate);
+	private:
 		void FinishCopies();
 
 		// lambda x: ... with no types to go on: analysed again for each set of argument types it is called with
@@ -250,7 +262,9 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType);
 		std::string InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location);
 
-		std::unordered_set<std::string> m_GenericMethodNames;
+		static inline std::unordered_set<std::string> m_GenericMethodNames; // shared by every file
+		// generic functions' `function(T) -> U` parameters (each given a type parameter __callable_i of its own)
+		static inline std::unordered_map<ASTGenericTemplate*, std::unordered_map<std::string, std::shared_ptr<ASTFunctionTypeExpr>>> m_CallablePatterns;
 		std::shared_ptr<ASTNodeBase> CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
 													   std::shared_ptr<ClassType> classType, const std::string& name);
 		bool BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
@@ -267,7 +281,7 @@ namespace clear
 		void EndLoop(const MovedSet& beforeLoop);
 
 		// let p = &xs[0] ... xs.push(v) ... p: the push may have moved the items, p would point at freed memory
-		struct ElementPointer { Symbol* Container = nullptr; std::string ContainerName; };
+		struct ElementPointer { Symbol* Container = nullptr; std::string ContainerName; std::string ContainerPath; };
 		std::unordered_map<Symbol*, ElementPointer> m_ElementPointers;
 		std::unordered_map<Symbol*, Token> m_StalePointers; // pointer -> the call that changed its container
 		void NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl);
@@ -290,8 +304,9 @@ namespace clear
 			LazyBody Context;
 			std::unordered_map<std::string, std::string> Instances; // type arguments -> the method made for them
 		};
-		std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
-		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
+		// shared by every file's analysis: a List[int] made in one file has its methods analysed when another uses them
+		static inline std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
+		static inline std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // methods of generic instances not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;

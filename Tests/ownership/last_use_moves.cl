@@ -64,6 +64,7 @@ function main() -> int32:
 //   kept 4
 //   kept 4
 // twice in one call: copy
+//   copy of 5
 // deferred use: copy
 //   copy of 6
 //   kept 6

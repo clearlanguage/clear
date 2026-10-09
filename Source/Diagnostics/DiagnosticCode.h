@@ -107,6 +107,11 @@ namespace clear
 		DiagnosticCode_NotOptional,
 		DiagnosticCode_OptionalBoolCondition,
 		DiagnosticCode_CopyMade,
+		DiagnosticCode_InfiniteType,
+		DiagnosticCode_TopLevelStatement,
+		DiagnosticCode_MacroHasNoValue,
+		DiagnosticCode_NoConversion,
+		DiagnosticCode_UsedHere,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -166,7 +171,7 @@ namespace clear
 		"Enum values must be integer constants.",
 		"‘defer’ can only be used inside a function.",
 		"Switch value must be an integer or an enum.",
-		"Operator is not defined for this class.",
+		"This operator is not defined for this type.",
 		"Operator method has the wrong number of parameters.",
 		"Too many values for this class.",
 		"A trait method cannot have its own type parameters.",
@@ -214,6 +219,11 @@ namespace clear
 		"This is not an optional.",
 		"An optional bool is ambiguous as a condition.",
 		"A copy is made here.",
+		"This type contains itself, so it would be infinitely big.",
+		"Only declarations can be at the top level of a file.",
+		"This macro is a list of statements, so it has no value.",
+		"These types do not convert to each other.",
+		"The standard library code above is used from this line of the program.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -272,7 +282,7 @@ namespace clear
 		"The value of ‘{}’ must be known at compile time.",
 		"Move ‘{}’ into a function body.",
 		"‘{}’ cannot be switched on. Use if/elseif for other types.",
-		"‘{}’. Define the dunder method on the class to support the operator.",
+		"{}.",
 		"‘{}’ must take exactly two parameters: self and the other operand.",
 		"‘{}.",
 		"Give ‘{}’ concrete types, or make the trait's classes generic.",
@@ -320,5 +330,10 @@ namespace clear
 		"‘{}’.",
 		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
 		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
+		"‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’.",
+		"Statements run inside functions: move this line into main (or another function). At the top level go let, const, function, class, enum, import and macro.",
+		"‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2).",
+		"{}.",
+		"The problem comes from how ‘{}’ is used here.",
 	};
 }

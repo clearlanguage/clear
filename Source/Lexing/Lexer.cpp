@@ -33,14 +33,73 @@ namespace clear
             Eat();
         }
 
+        // the last line ends too (a line ends when the next one starts, and there is none)
+        if (!m_Tokens.empty() && !m_Tokens.back().IsType(TokenType::EndLine))
+            EmplaceBack(TokenType::EndLine, " ");
+
         while(m_Indents-- != 0) 
             EmplaceBack(TokenType::EndScope, "EndScope");
 
         EmplaceBack(TokenType::EndOfFile, "EOF");
     }
 
+    bool Lexer::ContinuesLine() const
+    {
+        // like Python: inside ( [ { a line break is just space; we also go on after an operator that needs a
+        // right side (`total = a +` / `"x" +`), a comma, or `=`
+        if (m_Brackets > 0)
+            return true;
+
+        if (m_Tokens.empty())
+            return false;
+
+        const Token& last = m_Tokens.back();
+
+        switch (last.GetType())
+        {
+            case TokenType::Plus: case TokenType::Minus: case TokenType::Star: case TokenType::ForwardSlash:
+            case TokenType::Percent: case TokenType::StarStar: case TokenType::EqualsEquals: case TokenType::BangEquals:
+            case TokenType::LessThan: case TokenType::GreaterThan: case TokenType::LessThanEquals: case TokenType::GreaterThanEquals:
+            case TokenType::Ampersand: case TokenType::Pipe: case TokenType::Hat: case TokenType::LeftShift: case TokenType::RightShift:
+            case TokenType::Comma: case TokenType::Equals: case TokenType::QuestionQuestion:
+            case TokenType::PlusEquals: case TokenType::MinusEquals: case TokenType::StarEquals: case TokenType::SlashEquals:
+                return true;
+            default:
+                break;
+        }
+
+        const std::string& word = last.GetData();
+        return (last.IsType(TokenType::Keyword) || last.IsType(TokenType::Identifier)) &&
+               (word == "and" || word == "or" || word == "not" || word == "use" || word == "otherwise");
+    }
+
     void Lexer::Eat()
     {
+        // a line starting with `otherwise`, `and` or `or` (or `.`) carries on the one before: no statement starts that way
+        auto startsWithJoiner = [&]()
+        {
+            size_t pos = m_Position;
+            while (pos < m_Contents.size() && std::isspace(m_Contents[pos]))
+                pos++;
+
+            size_t end = pos;
+            while (end < m_Contents.size() && std::isalpha(m_Contents[end]))
+                end++;
+
+            std::string word = m_Contents.substr(pos, end - pos);
+            bool joiner = word == "otherwise" || word == "and" || word == "or";
+            return joiner && (end >= m_Contents.size() || !IsAllowedCharacter(m_Contents[end]));
+        };
+
+        // a continued line: the break and the next line's indentation are only space
+        if (Prev() == "\n" && (ContinuesLine() || startsWithJoiner()))
+        {
+            while (m_Position < m_Contents.size() && std::isspace(m_Contents[m_Position]))
+                Increment();
+
+            goto token;
+        }
+
         if (Prev() == "\n")
         {
             //TODO: fix EndScope for chained statements
@@ -58,6 +117,7 @@ namespace clear
             FlushScopes();
         }
 
+    token:
         if(m_Position >= m_Contents.size())
             return;
 
@@ -217,6 +277,11 @@ namespace clear
         std::string word(1, m_Contents[m_Position]);
         Increment();
 
+        if (word == "(" || word == "[" || word == "{")
+            m_Brackets++;
+        else if ((word == ")" || word == "]" || word == "}") && m_Brackets > 0)
+            m_Brackets--;
+
         if(g_PunctuatorMappings.contains(word))
         {
             EmplaceBack(g_PunctuatorMappings.at(word), word);
@@ -317,8 +382,12 @@ namespace clear
 
             bool isRangeDot = m_Contents[m_Position] == '.' && m_Position + 1 < m_Contents.size() && m_Contents[m_Position + 1] == '.';
 
+            // 1_000_000: an underscore between digits is only there to be read easily
+            bool separator = m_Contents[m_Position] == '_' && m_Position > 0 && std::isdigit(m_Contents[m_Position - 1]) &&
+                             m_Position + 1 < m_Contents.size() && std::isdigit(m_Contents[m_Position + 1]);
+
             return
-                   (std::isdigit(m_Contents[m_Position]) ||
+                   (std::isdigit(m_Contents[m_Position]) || separator ||
                     (m_Contents[m_Position] == '.' && !isRangeDot) ||
                     m_Contents[m_Position] == 'e' ||
                     m_Contents[m_Position] == 'E' ||
@@ -328,6 +397,7 @@ namespace clear
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         auto [value, isNumber] = GetNumber(word);
         std::string suffix;
@@ -396,10 +466,11 @@ namespace clear
             bool isValidCap   = m_Contents[m_Position] >= 'A' && m_Contents[m_Position] <= 'F';
             bool isValidLower = m_Contents[m_Position] >= 'a' && m_Contents[m_Position] <= 'f';
 
-            return  m_Position < m_Contents.size() && (isDigit || isValidCap || isValidLower);
+            return  m_Position < m_Contents.size() && (isDigit || isValidCap || isValidLower || m_Contents[m_Position] == '_');
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         size_t k = 0;
         uint64_t num = 0;
@@ -417,7 +488,7 @@ namespace clear
                 digit = std::tolower(*it) - 'a' + 10;
             }
 
-            num += digit * std::pow(16, k++);
+            num |= digit << (4 * k++); // exact: a double would round 64 bit values
         }
 
         EmplaceBack(TokenType::Number, std::to_string(num));
@@ -429,10 +500,11 @@ namespace clear
 
         auto ShouldContinue = [&]()
         {
-            return  m_Position < m_Contents.size() && (m_Contents[m_Position] == '0' || m_Contents[m_Position] == '1');
+            return  m_Position < m_Contents.size() && (m_Contents[m_Position] == '0' || m_Contents[m_Position] == '1' || m_Contents[m_Position] == '_');
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         size_t k = 0;
         uint64_t num = 0;
@@ -440,7 +512,7 @@ namespace clear
         for (auto it = word.rbegin(); it != word.rend(); it++) 
         {
             uint64_t digit = *it - '0';
-            num += digit * std::pow(2, k++);
+            num |= digit << k++;
         }
 
         EmplaceBack(TokenType::Number, std::to_string(num));

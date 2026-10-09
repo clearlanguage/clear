@@ -421,10 +421,35 @@ namespace clear
 		factor->addIncoming(base, before);
 		remaining->addIncoming(start, before);
 
+		// signed and checked: a multiplication that overflows (and is used) stops the program, like a * b does
+		bool checked = ctx.RuntimeChecks && type->IsSigned();
+		llvm::PHINode* overflowed = checked ? ctx.Builder.CreatePHI(ctx.Builder.getInt1Ty(), 2, "pow.overflow") : nullptr;
+
 		llvm::Value* isOdd = ctx.Builder.CreateTrunc(remaining, ctx.Builder.getInt1Ty());
-		llvm::Value* nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
-		llvm::Value* nextFactor = ctx.Builder.CreateMul(factor, factor);
 		llvm::Value* nextRemaining = ctx.Builder.CreateLShr(remaining, 1);
+		llvm::Value* nextResult = nullptr;
+		llvm::Value* nextFactor = nullptr;
+
+		if (checked)
+		{
+			overflowed->addIncoming(ctx.Builder.getFalse(), before);
+
+			llvm::Value* product = ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::smul_with_overflow, result, factor);
+			llvm::Value* square = ctx.Builder.CreateBinaryIntrinsic(llvm::Intrinsic::smul_with_overflow, factor, factor);
+			nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateExtractValue(product, 0), result);
+			nextFactor = ctx.Builder.CreateExtractValue(square, 0);
+
+			llvm::Value* resultOverflow = ctx.Builder.CreateAnd(isOdd, ctx.Builder.CreateExtractValue(product, 1));
+			llvm::Value* squareUsed = ctx.Builder.CreateICmpNE(nextRemaining, llvm::ConstantInt::get(intType, 0));
+			llvm::Value* squareOverflow = ctx.Builder.CreateAnd(squareUsed, ctx.Builder.CreateExtractValue(square, 1));
+			llvm::Value* any = ctx.Builder.CreateOr(overflowed, ctx.Builder.CreateOr(resultOverflow, squareOverflow));
+			overflowed->addIncoming(any, ctx.Builder.GetInsertBlock());
+		}
+		else
+		{
+			nextResult = ctx.Builder.CreateSelect(isOdd, ctx.Builder.CreateMul(result, factor), result);
+			nextFactor = ctx.Builder.CreateMul(factor, factor);
+		}
 
 		llvm::BasicBlock* loopEnd = ctx.Builder.GetInsertBlock();
 		result->addIncoming(nextResult, loopEnd);
@@ -437,6 +462,13 @@ namespace clear
 		ctx.Builder.SetInsertPoint(done);
 		llvm::PHINode* value = ctx.Builder.CreatePHI(intType, 1);
 		value->addIncoming(nextResult, loopEnd);
+
+		if (checked)
+		{
+			llvm::PHINode* failed = ctx.Builder.CreatePHI(ctx.Builder.getInt1Ty(), 1);
+			failed->addIncoming(overflowed->getIncomingValue(1), loopEnd);
+			EmitCheck(ctx, ctx.Builder.CreateNot(failed), "integer overflow in **", Location.GetSourceFile().empty() ? GetNodeLocation(left) : Location);
+		}
 
 		// a negative exponent skips straight to 0
 		llvm::Value* finalValue = ctx.Builder.CreateSelect(negative, llvm::ConstantInt::get(intType, 0), value);
@@ -1017,7 +1049,7 @@ namespace clear
 		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
 
 		// a generator owns the value it yielded last: it starts empty, so replacing or cleaning it up is safe
-		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		if (coroutine.Promise && IsOwning(CoroutineValue)) // a generator's last value, a task's unclaimed result
 			builder.CreateStore(llvm::Constant::getNullValue(CoroutineValue->Get()), coroutine.Promise);
 
 		// destroying the coroutine frees its frame; suspending returns the handle to the caller
@@ -1028,7 +1060,7 @@ namespace clear
 		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
 
 		// the last value a generator yielded is cleaned up with it
-		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		if (coroutine.Promise && IsOwning(CoroutineValue)) // a generator's last value, a task's unclaimed result
 		{
 			llvm::BasicBlock* freeFrame = llvm::BasicBlock::Create(ctx.Context, "coro.free_frame", function);
 			auto saved = builder.saveIP();
@@ -1133,6 +1165,10 @@ namespace clear
 		{
 			llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { task, builder.getInt32(16), builder.getInt1(false) });
 			result = builder.CreateLoad(ValueType->Get(), promise, "await.result");
+
+			// taken over: the awaited task's cleanup must not free it too
+			if (IsOwning(ValueType))
+				builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), promise);
 		}
 
 		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
@@ -1973,6 +2009,15 @@ namespace clear
 		{			
 			Symbol result = Operand->Codegen(ctx);
 
+			// -x where x is the smallest value of its type has no positive counterpart
+			if (ctx.RuntimeChecks && result.GetType()->IsIntegral() && result.GetType()->IsSigned() && result.GetLLVMValue()->getType()->isIntegerTy() &&
+				!result.GetLLVMValue()->getType()->isIntegerTy(1))
+			{
+				unsigned bits = result.GetLLVMValue()->getType()->getIntegerBitWidth();
+				llvm::Value* smallest = llvm::ConstantInt::get(result.GetLLVMValue()->getType(), llvm::APInt::getSignedMinValue(bits));
+				EmitCheck(ctx, ctx.Builder.CreateICmpNE(result.GetLLVMValue(), smallest), "integer overflow in negation", Location.GetSourceFile().empty() ? GetNodeLocation(Operand) : Location);
+			}
+
 			auto signedType = result.GetType();
 
 			if(!signedType->IsSigned()) // uint... -> int...
@@ -2228,6 +2273,15 @@ namespace clear
 		if (Iterable)
 		{
 			iterable = Iterable->Codegen(ctx);
+
+			// for x in {1, 2, 3}: a computed array is kept in a slot so its items can be addressed
+			if (!iterable.GetLLVMValue()->getType()->isPointerTy())
+			{
+				Symbol slot = CreateAlloca(IterableType, ctx);
+				ctx.Builder.CreateStore(iterable.GetLLVMValue(), slot.GetLLVMValue());
+				iterable = slot;
+			}
+
 			counter = CreateAlloca(ctx.ClearModule->Lookup("uint64").value()->GetType(), ctx);
 			ctx.Builder.CreateStore(ctx.Builder.getInt64(0), counter.GetLLVMValue());
 			limit = ctx.Builder.getInt64(IterableType->As<ArrayType>()->GetArraySize());
@@ -2861,6 +2915,11 @@ namespace clear
 				// the frame is freed by whoever owns the task (a variable, or the temporary when it ends)
 				builder.SetInsertPoint(after);
 				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
+
+				// run() takes the result over: the task's own cleanup must not free it again
+				if (ResultType && IsOwning(ResultType))
+					builder.CreateStore(llvm::Constant::getNullValue(ResultType->Get()), 
+										builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { handle, builder.getInt32(16), builder.getInt1(false) }));
 				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}
@@ -3131,8 +3190,10 @@ namespace clear
 		// the variable's last use: take the value and leave the variable empty, as a move does
 		if (MoveFrom)
 		{
+			// (the variable may hold more than the value: maybe.value empties the whole optional, which makes it none)
 			Symbol storage = MoveFrom->Codegen(ctx);
-			ctx.Builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), storage.GetLLVMValue());
+			auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
+			ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
 			return value;
 		}
 
@@ -3151,6 +3212,13 @@ namespace clear
 		{
 			for (unsigned i = 0; i < array->GetArraySize(); i++)
 				value = builder.CreateInsertValue(value, EmitCopy(ctx, array->GetBaseType(), builder.CreateExtractValue(value, { i })), { i });
+			return value;
+		}
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (unsigned i = 0; i < tuple->GetElements().size(); i++)
+				value = builder.CreateInsertValue(value, EmitCopy(ctx, tuple->GetElements()[i], builder.CreateExtractValue(value, { i })), { i });
 			return value;
 		}
 
@@ -3251,6 +3319,13 @@ namespace clear
 		{
 			for (size_t i = 0; i < array->GetArraySize(); i++)
 				EmitDestroy(ctx, array->GetBaseType(), builder.CreateConstInBoundsGEP2_64(array->Get(), address, 0, i));
+			return;
+		}
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (unsigned i = 0; i < tuple->GetElements().size(); i++)
+				EmitDestroy(ctx, tuple->GetElements()[i], builder.CreateStructGEP(tuple->Get(), address, i));
 			return;
 		}
 
@@ -3362,6 +3437,24 @@ namespace clear
 	{
 		Symbol result = Object->Codegen(ctx);
 		Symbol type = Symbol::CreateType(TargetType);
+
+		// 1e20 as int64, -1.0 as uint8, NaN as int32: checked (the value must fit, whole part only)
+		llvm::Value* value = result.GetLLVMValue();
+
+		if (ctx.RuntimeChecks && value->getType()->isFloatingPointTy() && TargetType->Get()->isIntegerTy() && !TargetType->Get()->isIntegerTy(1))
+		{
+			unsigned bits = TargetType->Get()->getIntegerBitWidth();
+			bool isSigned = TargetType->IsSigned();
+			double low = isSigned ? -std::ldexp(1.0, bits - 1) : 0.0;
+			double high = isSigned ? std::ldexp(1.0, bits - 1) : std::ldexp(1.0, bits);   // exclusive
+
+			llvm::Value* asDouble = value->getType()->isDoubleTy() ? value : ctx.Builder.CreateFPExt(value, ctx.Builder.getDoubleTy());
+			llvm::Value* aboveLow = ctx.Builder.CreateFCmpOGT(asDouble, llvm::ConstantFP::get(ctx.Builder.getDoubleTy(), low - 1.0));
+			llvm::Value* belowHigh = ctx.Builder.CreateFCmpOLT(asDouble, llvm::ConstantFP::get(ctx.Builder.getDoubleTy(), high));
+			EmitCheck(ctx, ctx.Builder.CreateAnd(aboveLow, belowHigh), std::format("value out of range for {}", TargetType->GetHash()), 
+					  Location.GetSourceFile().empty() ? GetNodeLocation(Object) : Location);
+		}
+
 		return SymbolOps::Cast(result, type, ctx.Builder);
 	}
 

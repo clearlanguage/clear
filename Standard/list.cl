@@ -41,6 +41,32 @@ class List[T]:
         assert start >= 0 and start <= end and end <= self.length, "List slice out of range"
         return view(self.data + start, end - start)
 
+    // xs.insert(1, v): v goes before the item at that position (at len(xs): at the end); the rest move up
+    function insert(self, index: int64, value: T):
+        assert index >= 0 and index <= self.length, "List insert position out of range"
+        self.push(value)
+        let last = self.length - 1
+        if index < last:
+            let spare = allocate[T](1)           // the new item's bytes, while the others move (nothing is copied)
+            copy(spare, self.data + last, 1)
+            copy(self.data + index + 1, self.data + index, last - index)
+            copy(self.data + index, spare, 1)
+            release(spare)
+
+    // xs.remove(i): the item at that position is cleaned up and taken out; the rest move down
+    function remove(self, index: int64):
+        assert index >= 0 and index < self.length, "List remove position out of range"
+        destroy(self.data + index)
+        copy(self.data + index, self.data + index + 1, self.length - index - 1)
+        self.length -= 1
+
+    // the position of the first item equal to value, or none
+    function index_of(self, value: T) -> ?int64:
+        for i in 0..self.length:
+            if *(self.data + i) == value:
+                return i
+        return none
+
     function last(self: *List[T]) -> T:
         assert self.length > 0, "last of an empty List"
         return self[self.length - 1]
