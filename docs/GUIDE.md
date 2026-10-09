@@ -803,6 +803,8 @@ import "lib/geometry"            // examples/lib/geometry.cl (.cl implied)
 import "lib/geometry" as geo     // geo.square(2), geo.Point(1, 2), geo.LIMIT, macros too
 ```
 
+Through an alias everything works as it does without one: `geo.Box(5)` (a generic class, its type argument inferred), `geo.Shape.Circle(r = 2)`, `let grid: [geo.LIMIT; int]`, `x: geo.Point`. A name the module doesn't have, like `geo.sqaure(2)`, is error E010. An imported `const` is a compile-time constant in the importing file too, so it can be an array size.
+
 A module is just a `.cl` file, and everything at its top level can be imported. Imports are looked up in this order:
 
 1. next to the importing file

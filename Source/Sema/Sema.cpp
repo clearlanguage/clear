@@ -350,6 +350,7 @@ namespace clear
 				if (auto value = EvaluateInteger(decl->Initializer); value && decl->ResolvedType->IsIntegral())
 				{
 					m_ConstantValues[decl->Variable.get()] = *value;
+					m_Module->ConstantValues[decl->Variable.get()] = { *value, decl->ResolvedType };
 					decl->Initializer = std::make_shared<ASTConstantValue>(*value, decl->ResolvedType);
 				}
 			}
@@ -447,9 +448,11 @@ namespace clear
 		// reading a const with a known integer value becomes the value itself
 		if (context.ValueReq == ValueRequired::RValue)
 		{
-			if (auto it = m_ConstantValues.find(variable->Variable.get()); it != m_ConstantValues.end())
+			std::shared_ptr<Type> constantType;
+
+			if (auto known = KnownConstant(variable->Variable.get(), &constantType))
 			{
-				auto constant = std::make_shared<ASTConstantValue>(it->second, variable->Variable->GetType());
+				auto constant = std::make_shared<ASTConstantValue>(*known, constantType ? constantType : variable->Variable->GetType());
 				constant->Location = variable->GetName();
 				return constant;
 			}
@@ -1225,18 +1228,27 @@ namespace clear
 			auto left = std::dynamic_pointer_cast<ASTVariable>(member->LeftSide);
 			auto right = std::dynamic_pointer_cast<ASTVariable>(member->RightSide);
 
+			// the type named on the left: Shape, or sh.Shape through an import alias
+			std::shared_ptr<Symbol> typeSymbol;
+
 			if (left && right && !left->Variable)
 			{
-				auto [entry, scopeIndex] = LookupSymbol(left->GetName().GetData());
+				if (auto [entry, scopeIndex] = LookupSymbol(left->GetName().GetData()); entry)
+					typeSymbol = entry->Symbol;
+			}
+			else if (auto access = std::dynamic_pointer_cast<ASTBinaryExpression>(member->LeftSide); right && access && access->GetExpression() == OperatorType::Dot)
+			{
+				if (auto aliased = std::dynamic_pointer_cast<ASTVariable>(ModuleMember(access)))
+					typeSymbol = aliased->Variable;
+			}
 
-				if (entry && entry->Symbol->Kind == SymbolKind::Type && entry->Symbol->GetType()->IsClass() && entry->Symbol->GetType()->As<ClassType>()->IsVariant)
-				{
-					auto variantType = entry->Symbol->GetType();
-					auto index = variantType->As<ClassType>()->FindCase(right->GetName().GetData());
+			if (typeSymbol && typeSymbol->Kind == SymbolKind::Type && typeSymbol->GetType()->IsClass() && typeSymbol->GetType()->As<ClassType>()->IsVariant)
+			{
+				auto variantType = typeSymbol->GetType();
+				auto index = variantType->As<ClassType>()->FindCase(right->GetName().GetData());
 
-					if (index)
-						return BuildVariantConstruct(variantType, *index, funcCall->Arguments, funcCall->KeywordArguments, right->GetName());
-				}
+				if (index)
+					return BuildVariantConstruct(variantType, *index, funcCall->Arguments, funcCall->KeywordArguments, right->GetName());
 			}
 
 			if (right && right->GetName().GetData() == "value_or")
@@ -1276,9 +1288,12 @@ namespace clear
 		}
 
 		// Box(7) on a generic class: infer the type arguments from the values, like Box { 7 }
-		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); var && !var->Variable)
+		// (m.Box(7) through an import alias: the callee already names the template)
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); var && (!var->Variable || var->Variable->Kind == SymbolKind::GenericTemplate))
 		{
-			auto [entry, scopeIndex] = LookupSymbol(var->GetName().GetData());
+			auto [found, foundScope] = var->Variable ? std::pair<std::optional<SymbolEntry>, size_t>() : LookupSymbol(var->GetName().GetData());
+			std::optional<SymbolEntry> entry = var->Variable ? std::optional(SymbolEntry { SymbolEntryType::None, var->Variable }) : found;
+			size_t scopeIndex = var->Variable ? 0 : foundScope;
 
 			if (entry && entry->Symbol->Kind == SymbolKind::GenericTemplate)
 			{
@@ -4615,6 +4630,29 @@ namespace clear
 		return deferNode->Expr ? deferNode : nullptr;
 	}
 
+	std::optional<int64_t> Sema::KnownConstant(Symbol* symbol, std::shared_ptr<Type>* type)
+	{
+		if (auto it = m_ConstantValues.find(symbol); it != m_ConstantValues.end())
+			return it->second;
+
+		// a const of an imported file (`import "sizes"` or `as m`: m.N)
+		for (const auto& [path, unit] : m_CompilationUnits)
+		{
+			if (!unit.CompilationModule || unit.CompilationModule == m_Module)
+				continue;
+
+			if (auto it = unit.CompilationModule->ConstantValues.find(symbol); it != unit.CompilationModule->ConstantValues.end())
+			{
+				if (type)
+					*type = it->second.second;
+
+				return it->second.first;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	std::optional<int64_t> Sema::EvaluateInteger(std::shared_ptr<ASTNodeBase> node)
 	{
 		if (!node)
@@ -4655,12 +4693,7 @@ namespace clear
 			case ASTNodeType::Variable:
 			{
 				auto var = std::dynamic_pointer_cast<ASTVariable>(node);
-				auto it = var->Variable ? m_ConstantValues.find(var->Variable.get()) : m_ConstantValues.end();
-
-				if (it == m_ConstantValues.end())
-					return std::nullopt;
-
-				return it->second;
+				return var->Variable ? KnownConstant(var->Variable.get()) : std::nullopt;
 			}
 			case ASTNodeType::CastExpr:
 			{
@@ -6086,8 +6119,12 @@ namespace clear
 			return arrayType;
 		}
 
+		auto writtenSize = arrayType->SizeNode;
 		arrayType->SizeNode = Visit(arrayType->SizeNode, context);
 		arrayType->TypeNode = Visit(arrayType->TypeNode, context);
+
+		if (!arrayType->SizeNode)
+			return nullptr; // already reported
 
 		std::shared_ptr<Type> baseTy = GetTypeFromNode(arrayType->TypeNode);
 
@@ -6103,7 +6140,8 @@ namespace clear
 			
 		if (size <= 0)
 		{
-			Report(DiagnosticCode_InvalidArraySize, Token());
+			Token where = GetNodeLocation(writtenSize);
+			Report(DiagnosticCode_InvalidArraySize, where.GetSourceFile().empty() ? arrayType->Location : where);
 			return nullptr;
 		}
 
@@ -8113,8 +8151,10 @@ namespace clear
 
 		if (found == exposed.end())
 		{
+			// g.NOPE: "‘g.NOPE’ is not defined"
 			Token where = name->GetName();
-			Report(DiagnosticCode_UndeclaredIdentifier, where);
+			where.SetData(std::format("{}.{}", left->GetName().GetData(), name->GetName().GetData()));
+			Report(DiagnosticCode_UndeclaredIdentifier, where, name->GetName().GetData().size());
 			return nullptr;
 		}
 
@@ -8154,7 +8194,19 @@ namespace clear
 		if (std::shared_ptr<ASTVariable> var = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide); var && var->Variable->Kind == SymbolKind::Module)
 		{
 			std::shared_ptr<ASTVariable> member = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
-			std::shared_ptr<Symbol> symbol = var->Variable->GetModule()->GetExposedSymbols().at(member->GetName().GetData());
+			auto& exposed = var->Variable->GetModule()->GetExposedSymbols();
+			auto found = member ? exposed.find(member->GetName().GetData()) : exposed.end();
+
+			// g.NOPE: not something the module has (reported once, with its location)
+			if (found == exposed.end())
+			{
+				Token where = member ? member->GetName() : GetNodeLocation(binaryExpr->RightSide);
+				where.SetData(std::format("{}.{}", var->GetName().GetData(), where.GetData()));
+				Report(DiagnosticCode_UndeclaredIdentifier, where, member ? member->GetName().GetData().size() : 1);
+				return nullptr;
+			}
+
+			std::shared_ptr<Symbol> symbol = found->second;
 			binaryExpr->ResultantType = symbol->GetType();
 			
 			return binaryExpr;

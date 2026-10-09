@@ -49,6 +49,9 @@ namespace clear
 		// the file's top-level scopes after semantic analysis, used to analyse its generics from other files
 		std::vector<SymbolTable> GlobalScopes;
 
+		// its consts with a known integer value, so other files can use them as constants too (array sizes...)
+		std::unordered_map<Symbol*, std::pair<int64_t, std::shared_ptr<Type>>> ConstantValues;
+
     private:
         std::string m_ModuleName;
 		std::filesystem::path m_ModulePath;

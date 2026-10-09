@@ -191,6 +191,7 @@ namespace clear
 		std::vector<SymbolTable> m_ScopeStack;
 		std::unordered_map<ASTNodeBase*, std::shared_ptr<Symbol>> m_PendingInstances;
 		std::unordered_map<Symbol*, int64_t> m_ConstantValues; // consts whose value is a known integer
+		std::optional<int64_t> KnownConstant(Symbol* symbol, std::shared_ptr<Type>* type = nullptr); // also the consts of imported files (type: theirs)
 		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::unordered_set<std::string> m_FailedDeclarations;
 		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
