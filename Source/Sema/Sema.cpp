@@ -4746,6 +4746,16 @@ namespace clear
 			ternaryExpr->Falsy = Coerce(ternaryExpr->Falsy, common);
 		}
 
+		// when c use s otherwise String("x"): one side is new and the other is not. Each side then gives a value of
+		// its own (s is copied, or moved at its last use), so the result is new either way and has one owner
+		auto resultType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr);
+
+		if (IsOwning(resultType) && IsFreshValue(ternaryExpr->Truthy) != IsFreshValue(ternaryExpr->Falsy))
+		{
+			ternaryExpr->Truthy = TakeOwnership(ternaryExpr->Truthy, resultType);
+			ternaryExpr->Falsy = TakeOwnership(ternaryExpr->Falsy, resultType);
+		}
+
 		return ternaryExpr;
 	}
 
@@ -4918,6 +4928,15 @@ namespace clear
 				location.SetData(std::format("{}’ is not a case of ‘{}", caseName, GetDisplayName(objectType)));
 				m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_UnknownCase, std::max<size_t>(caseName.size(), 1));
 				return nullptr;
+			}
+
+			// find(1) is not none: a new value is only looked at, it is kept (and cleaned up) at the end of the block
+			if (IsOwning(objectType) && IsFreshValue(isExpr->Object))
+			{
+				auto load = std::make_shared<ASTLoad>();
+				load->Location = isExpr->Object->Location;
+				load->Operand = AddressOf(isExpr->Object);
+				isExpr->Object = load;
 			}
 
 			auto int32Type = m_Module->Lookup("int32").value()->GetType();
