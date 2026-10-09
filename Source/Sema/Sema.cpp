@@ -215,10 +215,11 @@ namespace clear
 			return type;
 		}
 
+		size_t errorsBefore = m_DiagBuilder.ErrorCount();
 		if (auto resolved = Visit(type->TypeResolver, context)) type->TypeResolver = resolved;
 		type->ResolvedType = GetTypeFromNode(type->TypeResolver);
 
-		if (!type->ResolvedType)
+		if (!type->ResolvedType && m_DiagBuilder.ErrorCount() == errorsBefore) // (else already reported: an unknown name)
 			Report(DiagnosticCode_ExpectedType, GetNodeLocation(type->TypeResolver));
 
 		return type;
@@ -238,12 +239,15 @@ namespace clear
 	{
 		if (decl->TypeResolver)
 		{
+			size_t errorsBefore = m_DiagBuilder.ErrorCount();
 			if (auto resolved = Visit(decl->TypeResolver, context)) decl->TypeResolver = resolved;
 			decl->ResolvedType = GetTypeFromNode(decl->TypeResolver);
 			
 			if (!decl->ResolvedType)
 			{
-				Report(DiagnosticCode_ExpectedType, GetNodeLocation(decl->TypeResolver));
+				if (m_DiagBuilder.ErrorCount() == errorsBefore) // (else already reported: an unknown name)
+					Report(DiagnosticCode_ExpectedType, GetNodeLocation(decl->TypeResolver));
+
 				return nullptr;
 			}
 
@@ -616,7 +620,11 @@ namespace clear
 					arg->Initializer = nullptr;
 				}
 
-				Visit(arg, context);
+				if (!Visit(arg, context) && arg->TypeResolver && !arg->ResolvedType)
+				{
+					m_ScopeStack.pop_back(); // its type is unknown (reported): the function can't be declared
+					return false;
+				}
 
 				if (arg->DefaultValue && arg->ResolvedType)
 				{
@@ -635,12 +643,14 @@ namespace clear
 		
 		if (func->ReturnType)
 		{
+			size_t errorsBefore = m_DiagBuilder.ErrorCount();
 			if (auto resolved = Visit(func->ReturnType, context)) func->ReturnType = resolved;
 			func->ReturnTypeVal = GetTypeFromNode(func->ReturnType);
 
 			if (!func->ReturnTypeVal)
 			{
-				Report(DiagnosticCode_ExpectedType, GetNodeLocation(func->ReturnType));
+				if (m_DiagBuilder.ErrorCount() == errorsBefore) // (else already reported: an unknown name)
+					Report(DiagnosticCode_ExpectedType, GetNodeLocation(func->ReturnType));
 				m_ScopeStack.pop_back();
 				return false;
 			}
@@ -2229,11 +2239,18 @@ namespace clear
 				}
 
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+
+				if (!unaryExpr->Operand)
+					return nullptr; // already reported (`*Nope`: an unknown type)
+
 				break;
 			}
 			default:
 			{
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+
+				if (!unaryExpr->Operand)
+					return nullptr; // already reported (`?Nope`: an unknown type)
 
 				// not x with x optional: x holds no value
 				if (unaryExpr->GetOperatorType() == OperatorType::Not && unaryExpr->Operand)
@@ -3821,7 +3838,9 @@ namespace clear
 
 			if (!resolved)
 			{
-				Report(DiagnosticCode_ExpectedType, GetNodeLocation(parameter ? parameter : type));
+				if (parameter) // (else already reported: an unknown name)
+					Report(DiagnosticCode_ExpectedType, GetNodeLocation(parameter));
+
 				return nullptr;
 			}
 
@@ -3837,7 +3856,9 @@ namespace clear
 
 			if (!returnType)
 			{
-				Report(DiagnosticCode_ExpectedType, GetNodeLocation(type));
+				if (type->ReturnType) // (else already reported: an unknown name)
+					Report(DiagnosticCode_ExpectedType, GetNodeLocation(type));
+
 				return nullptr;
 			}
 		}
@@ -6055,7 +6076,9 @@ namespace clear
 
 			if (!baseTy)
 			{
-				Report(DiagnosticCode_ExpectedType, arrayType->TypeNode ? GetNodeLocation(arrayType->TypeNode) : arrayType->Location);
+				if (arrayType->TypeNode) // (else already reported: an unknown name)
+					Report(DiagnosticCode_ExpectedType, GetNodeLocation(arrayType->TypeNode));
+
 				return nullptr;
 			}
 
@@ -6070,7 +6093,9 @@ namespace clear
 
 		if (!baseTy)
 		{
-			Report(DiagnosticCode_ExpectedType, GetNodeLocation(arrayType->TypeNode));
+			if (arrayType->TypeNode) // (else already reported: an unknown name)
+				Report(DiagnosticCode_ExpectedType, GetNodeLocation(arrayType->TypeNode));
+
 			return nullptr;
 		}
 
@@ -8378,6 +8403,9 @@ namespace clear
 
 	std::shared_ptr<Type> Sema::GetTypeFromNode(std::shared_ptr<ASTNodeBase> node)
 	{
+		if (!node)
+			return nullptr; // its error was reported where it failed
+
 		switch (node->GetType())
 		{
 			case ASTNodeType::Variable:
