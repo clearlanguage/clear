@@ -4877,8 +4877,8 @@ namespace clear
 					case OperatorType::BitwiseAnd:	return *lhs & *rhs;
 					case OperatorType::BitwiseOr:	return *lhs | *rhs;
 					case OperatorType::BitwiseXor:	return *lhs ^ *rhs;
-					case OperatorType::LeftShift:	return *lhs << *rhs;
-					case OperatorType::RightShift:	return *lhs >> *rhs;
+					case OperatorType::LeftShift:	return *rhs < 0 || *rhs > 63 ? std::nullopt : std::optional((int64_t)((uint64_t)*lhs << *rhs));
+					case OperatorType::RightShift:	return *rhs < 0 || *rhs > 63 ? std::nullopt : std::optional(*lhs >> *rhs);
 					default:						return std::nullopt;
 				}
 			}
