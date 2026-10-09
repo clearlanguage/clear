@@ -246,6 +246,7 @@ namespace clear
 	
 
 		AssignmentOperatorType GetAssignType() const { return m_Type; }
+		void SetAssignType(AssignmentOperatorType type) { m_Type = type; }
 
 	public:
 		std::shared_ptr<ASTNodeBase> Storage;

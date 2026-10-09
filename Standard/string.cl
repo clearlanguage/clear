@@ -219,6 +219,20 @@ class String:
         self.length = 0
         self.capacity = 0
 
+// "a" + "b", name + "!": a new String holding both (allocates once, the right size)
+function concat_text(a: str, b: str) -> String:
+    let result = String { }
+    result.reserve(len(a) + len(b))
+    result.append(a)
+    result.append(b)
+    return result
+
+// let s: String = "text": a literal becomes a String where one is written as the type
+function string_from_literal(text: str) -> String:
+    let result = String { }
+    result.append(text)
+    return result
+
 function is_space(character: int8) -> bool:
     return character == ' ' or character == '\t' or character == '\n' or character == '\r'
 

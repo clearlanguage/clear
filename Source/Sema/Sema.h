@@ -139,6 +139,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
 		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
 		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> TextConcat(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, const Token& location);
+		std::shared_ptr<ASTNodeBase> CallLibraryFunction(const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);

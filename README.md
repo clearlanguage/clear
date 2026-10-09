@@ -110,6 +110,8 @@ const LIMIT = 64               // folded at compile time
 let buffer: [LIMIT; int] = {}  // fixed size arrays (sizes may use consts), all zero
 let p: *int = &count           // pointers, *p to dereference
 let name: str = "clear"        // str: text you look at (pointer + length); == compares contents, name[1:3] is "le"
+let title: String = "hello"    // String: text you own (always available, no import needed)
+let line = title + ", " + name // + on text makes a new String
 let t = (1, 2.5, "three")      // tuples: t[0], t[2]
 let empty: int                 // never garbage: starts at zero
 ```

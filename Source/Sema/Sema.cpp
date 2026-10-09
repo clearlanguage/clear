@@ -1837,6 +1837,16 @@ namespace clear
 		{
 			std::shared_ptr<Type> storageType = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
 
+			// text += "!":  text = text + "!"  (a new String; the old one is cleaned up)
+			if (assignmentOp->GetAssignType() == AssignmentOperatorType::Add)
+			{
+				if (auto text = TextConcat(AsValue(assignmentOp->Storage), assignmentOp->Value, assignmentOp->Value->Location))
+				{
+					assignmentOp->Value = text;
+					assignmentOp->SetAssignType(AssignmentOperatorType::Normal);
+				}
+			}
+
 			// replacing an owning value cleans up the old one (raw memory, *p = v, is left to the programmer)
 			auto rawTarget = std::dynamic_pointer_cast<ASTUnaryExpression>(assignmentOp->Storage);
 			bool raw = rawTarget && rawTarget->GetOperatorType() == OperatorType::Dereference && !rawTarget->IsElement;
@@ -1958,6 +1968,13 @@ namespace clear
 
 		if (op == compound.end())
 			return value;
+
+		// text += "!"
+		if (op->second == OperatorType::Add)
+		{
+			if (auto text = TextConcat(current, value, value->Location))
+				return text;
+		}
 
 		auto binary = std::make_shared<ASTBinaryExpression>(op->second);
 		binary->LeftSide = current;
@@ -6266,6 +6283,48 @@ namespace clear
 		return ternary;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::TextConcat(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, const Token& location)
+	{
+		// "a" + "b", name + "!", "<" + name: a new String holding both (String + String has its own operator add)
+		auto leftType = m_TypeInferEngine.InferTypeFromNode(left);
+		auto rightType = m_TypeInferEngine.InferTypeFromNode(right);
+		auto isStr = [](const std::shared_ptr<Type>& type) { return type && type->GetHash() == "str"; };
+		auto isString = [](const std::shared_ptr<Type>& type) { return type && ClassOf(type) && ClassOf(type)->GetHash() == "String"; };
+
+		if ((isStr(leftType) || isStr(rightType)) && (isStr(leftType) || isString(leftType)) && (isStr(rightType) || isString(rightType)))
+			return CallLibraryFunction("concat_text", { left, right }, location);
+
+		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::CallLibraryFunction(const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location)
+	{
+		// a function of the standard library the compiler calls on the program's behalf (string is always imported)
+		std::shared_ptr<Symbol> function;
+
+		if (auto [entry, scope] = LookupSymbol(name); entry && entry->Symbol->Kind == SymbolKind::Function)
+			function = entry->Symbol;
+		else if (auto found = LookupInModules(name); found && found.value()->Kind == SymbolKind::Function)
+			function = found.value();
+
+		if (!function)
+		{
+			Token where = location;
+			where.SetData(name);
+			Report(DiagnosticCode_UndeclaredIdentifier, where);
+			return nullptr;
+		}
+
+		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, name, location.GetSourceFile(), location.LineNumber, location.ColumnNumber));
+		callee->Variable = function;
+
+		auto call = std::make_shared<ASTFunctionCall>();
+		call->Location = location;
+		call->Callee = callee;
+		call->Arguments.assign(arguments.begin(), arguments.end());
+		return CheckCall(call);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type)
 	{
 		// a value that will be owned (and cleaned up) by whoever receives it: new values as they are, others copied
@@ -6427,6 +6486,13 @@ namespace clear
 	{
 		if (!node || !target)
 			return node;
+
+		// let s: String = "text", greet("ada") with a String parameter: a literal becomes a String where that is the type
+		if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node); literal && literal->GetData().IsType(TokenType::String) && target->GetHash() == "String")
+		{
+			if (auto made = CallLibraryFunction("string_from_literal", { node }, literal->GetData()))
+				return made;
+		}
 
 		// str <-> C strings and bytes: str -> *int8 is a pointer to its bytes (they must end with a zero),
 		// *int8 -> str measures the C string, []int8 and str are the same thing seen two ways
@@ -6997,6 +7063,12 @@ namespace clear
 
 		if (!binaryExpression->LeftSide || !binaryExpression->RightSide)
 			return nullptr;
+
+		if (binaryExpression->GetExpression() == OperatorType::Add)
+		{
+			if (auto text = TextConcat(binaryExpression->LeftSide, binaryExpression->RightSide, binaryExpression->Location))
+				return text;
+		}
 
 		if (auto overload = TryOperatorOverload(binaryExpression))
 			return overload.value();

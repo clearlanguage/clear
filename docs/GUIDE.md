@@ -630,7 +630,9 @@ let first: str = name[:3]          // "ada", looks at name's bytes: nothing copi
 greet(name)                        // a String goes wherever a str is expected, for free
 greet("literal")
 name == "ada lovelace"             // String and str compare by content
-let mine = String(first)           // str -> String is written out, because it allocates
+let mine = String(first)           // a str variable -> String is written out, because it allocates
+let greeting: String = "hello"     // a literal becomes a String where String is the written type
+let both = "hello " + name         // + on text: a new String holding both (also str + str, and +=)
 
 function greet(who: str):          // take str unless you need to keep or change the text
     print("hi", who)
@@ -765,7 +767,7 @@ A module is just a `.cl` file, and everything at its top level can be imported. 
 
 So a file of yours named `math.cl` hides the standard `math`, as in Python. The compiler warns when that happens, and `import "std/math"` always means the standard one.
 
-Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`.
+Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`. `String` is always available, and `List` and `Map` are too as soon as a file uses them, like Python's built-ins. The compiler adds `import "std/string"` (and `std/list`, `std/map`) itself unless the file defines its own class with that name.
 
 ### 3.24 Calling C · [`examples/23_c_interop.cl`](../examples/23_c_interop.cl)
 
