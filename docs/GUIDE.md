@@ -170,6 +170,17 @@ The test runner gives programs an empty stdin. Tests run in a temporary director
 python3 Scripts/bench.py build/clearc Benchmarks 5     # 5 runs each, Clear vs the same program in C
 ```
 
+### 2.5 Fuzzing
+
+```
+python3 Scripts/fuzz.py build/clearc --count 300            # random seeds
+python3 Scripts/fuzz.py build/clearc --count 50 --seed 71   # the same programs again
+```
+
+The fuzzer writes random programs that are valid by construction and mix features (classes with `operator destruct`, lists, strings and moves, generators stopped with `break`, typed and untyped lambdas, enums, optionals, `when`). Each one is built and run at `-O0` and `-O3`. Any of these is a bug: the compiler crashed, it rejected the program, the program crashed, or the two builds printed different things. Failing programs land in `fuzz-failures/` with what went wrong; turn each into a test once it is fixed.
+
+If the compiler itself crashes, it prints `internal compiler error` with the file and line it was working on, and a stack trace.
+
 ---
 
 ## Part 3: The language, feature by feature

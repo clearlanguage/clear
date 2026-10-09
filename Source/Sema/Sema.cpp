@@ -3934,6 +3934,24 @@ namespace clear
 		auto truthyType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr->Truthy);
 		auto falsyType = m_TypeInferEngine.InferTypeFromNode(ternaryExpr->Falsy);
 
+		// when found use index otherwise none: an optional of the other side (or the optional the value goes into)
+		bool truthyNone = truthyType && truthyType->GetHash() == "none";
+		bool falsyNone = falsyType && falsyType->GetHash() == "none";
+
+		if (truthyType && falsyType && truthyNone != falsyNone)
+		{
+			auto valueType = truthyNone ? falsyType : truthyType;
+			bool expectsOptional = context.ExpectedType && context.ExpectedType->IsClass() && context.ExpectedType->As<ClassType>()->IsOptional;
+			auto optional = expectsOptional ? context.ExpectedType : (ClassOf(valueType) && ClassOf(valueType)->As<ClassType>()->IsOptional ? valueType : GetOptionalType(valueType));
+
+			if (optional)
+			{
+				ternaryExpr->Truthy = Coerce(ternaryExpr->Truthy, optional);
+				ternaryExpr->Falsy = Coerce(ternaryExpr->Falsy, optional);
+				return ternaryExpr;
+			}
+		}
+
 		if (truthyType && falsyType && truthyType != falsyType)
 		{
 			std::shared_ptr<Type> common;
