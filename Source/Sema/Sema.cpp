@@ -1132,6 +1132,14 @@ namespace clear
 						EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__str__")->GetFunctionSymbol().FunctionNode);
 						arg = CallMethod(arg, type, "__str__", {}, GetNodeLocation(arg));
 
+						// operator str giving a String: printed, then cleaned up at the end of the block
+						if (arg && IsOwning(m_TypeInferEngine.InferTypeFromNode(arg)) && IsFreshValue(arg))
+						{
+							auto load = std::make_shared<ASTLoad>();
+							load->Operand = AddressOf(arg);
+							arg = load;
+						}
+
 						if (!arg)
 							return nullptr;
 					}
@@ -3500,7 +3508,7 @@ namespace clear
 		intrinsic->Arguments.push_back(AsValue(object));
 
 		// gen.value(): the generator keeps its value, the caller gets a copy
-		if (!isTask && method == "value" && IsOwning(entry.Result))
+		if ((method == "value" || method == "result") && IsOwning(entry.Result))
 			return OwnedValue(intrinsic, entry.Result);
 
 		return intrinsic;

@@ -1049,7 +1049,7 @@ namespace clear
 		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
 
 		// a generator owns the value it yielded last: it starts empty, so replacing or cleaning it up is safe
-		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		if (coroutine.Promise && IsOwning(CoroutineValue)) // a generator's last value, a task's unclaimed result
 			builder.CreateStore(llvm::Constant::getNullValue(CoroutineValue->Get()), coroutine.Promise);
 
 		// destroying the coroutine frees its frame; suspending returns the handle to the caller
@@ -1060,7 +1060,7 @@ namespace clear
 		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
 
 		// the last value a generator yielded is cleaned up with it
-		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		if (coroutine.Promise && IsOwning(CoroutineValue)) // a generator's last value, a task's unclaimed result
 		{
 			llvm::BasicBlock* freeFrame = llvm::BasicBlock::Create(ctx.Context, "coro.free_frame", function);
 			auto saved = builder.saveIP();
@@ -1165,6 +1165,10 @@ namespace clear
 		{
 			llvm::Value* promise = builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { task, builder.getInt32(16), builder.getInt1(false) });
 			result = builder.CreateLoad(ValueType->Get(), promise, "await.result");
+
+			// taken over: the awaited task's cleanup must not free it too
+			if (IsOwning(ValueType))
+				builder.CreateStore(llvm::Constant::getNullValue(ValueType->Get()), promise);
 		}
 
 		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
@@ -2911,6 +2915,11 @@ namespace clear
 				// the frame is freed by whoever owns the task (a variable, or the temporary when it ends)
 				builder.SetInsertPoint(after);
 				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
+
+				// run() takes the result over: the task's own cleanup must not free it again
+				if (ResultType && IsOwning(ResultType))
+					builder.CreateStore(llvm::Constant::getNullValue(ResultType->Get()), 
+										builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { handle, builder.getInt32(16), builder.getInt1(false) }));
 				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}

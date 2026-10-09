@@ -193,7 +193,8 @@ namespace clear
 				return false;
 
 			auto node = method->second->GetFunctionSymbol().FunctionNode;
-			return node && node->BodyResolved && node->Arguments.size() == 1 && node->ReturnTypeVal;
+			// (only one that gives a str: a String it made would have to be freed after printing)
+			return node && node->BodyResolved && node->Arguments.size() == 1 && node->ReturnTypeVal && node->ReturnTypeVal->GetHash() == "str";
 		}
 
 		void Flush()
