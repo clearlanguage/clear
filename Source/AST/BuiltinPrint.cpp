@@ -3,6 +3,7 @@
 #include "Symbols/Module.h"
 
 #include <llvm/IR/Intrinsics.h>
+#include <optional>
 
 namespace clear
 {
@@ -41,6 +42,20 @@ namespace clear
 				m_Format += "%.*s";
 				m_Args.push_back(builder.CreateTrunc(builder.CreateExtractValue(value, 1), builder.getInt32Ty()));
 				m_Args.push_back(builder.CreateExtractValue(value, 0));
+			}
+			else if (llvmType->isStructTy() && type && type->IsClass() && type->As<ClassType>()->GenericOrigin == "List" && Field(type, "data") && Field(type, "length"))
+			{
+				// [1, 2, 3]
+				auto classType = type->As<ClassType>();
+				Items(builder.CreateExtractValue(value, { *Field(type, "data") }), builder.CreateExtractValue(value, { *Field(type, "length") }), classType->GenericArguments[0]);
+			}
+			else if (llvmType->isStructTy() && type && type->IsClass() && type->As<ClassType>()->GenericOrigin == "Map" && Field(type, "keys") && Field(type, "states"))
+			{
+				// {ada: 36, alan: 41}
+				auto classType = type->As<ClassType>();
+				Entries(builder.CreateExtractValue(value, { *Field(type, "keys") }), builder.CreateExtractValue(value, { *Field(type, "values") }),
+						builder.CreateExtractValue(value, { *Field(type, "states") }), builder.CreateExtractValue(value, { *Field(type, "capacity") }),
+						classType->GenericArguments[0], classType->GenericArguments[1]);
 			}
 			else if (type && type->IsEnum())
 			{
@@ -148,40 +163,98 @@ namespace clear
 			}
 			else if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
 			{
-				// [1, 2, 3]: the length is only known at run time, so a loop printing one item at a time
-				Text("[");
-				Flush();
-
-				llvm::Function* function = builder.GetInsertBlock()->getParent();
-				llvm::Value* data = builder.CreateExtractValue(value, 0);
-				llvm::Value* length = builder.CreateExtractValue(value, 1);
-				llvm::BasicBlock* before = builder.GetInsertBlock();
-				llvm::BasicBlock* check = llvm::BasicBlock::Create(m_Ctx.Context, "print.slice", function);
-				llvm::BasicBlock* body = llvm::BasicBlock::Create(m_Ctx.Context, "print.item", function);
-				llvm::BasicBlock* done = llvm::BasicBlock::Create(m_Ctx.Context, "print.slice_done", function);
-				builder.CreateBr(check);
-
-				builder.SetInsertPoint(check);
-				llvm::PHINode* index = builder.CreatePHI(builder.getInt64Ty(), 2);
-				index->addIncoming(builder.getInt64(0), before);
-				builder.CreateCondBr(builder.CreateICmpULT(index, length), body, done);
-
-				builder.SetInsertPoint(body);
-				m_Format += "%s";
-				m_Args.push_back(builder.CreateSelect(builder.CreateICmpEQ(index, builder.getInt64(0)), String(""), String(", ")));
-				auto element = slice->GetBaseType();
-				Value(builder.CreateLoad(element->Get(), builder.CreateInBoundsGEP(element->Get(), data, { index })), element);
-				Flush();
-				index->addIncoming(builder.CreateAdd(index, builder.getInt64(1)), builder.GetInsertBlock());
-				builder.CreateBr(check);
-
-				builder.SetInsertPoint(done);
-				Text("]");
+				Items(builder.CreateExtractValue(value, 0), builder.CreateExtractValue(value, 1), slice->GetBaseType());
 			}
 			else
 			{
 				Text("<value>");
 			}
+		}
+
+		static std::optional<unsigned> Field(const std::shared_ptr<Type>& type, const char* name)
+		{
+			auto index = type->As<ClassType>()->GetMemberValueIndex(name);
+			return index ? std::optional<unsigned>((unsigned)*index) : std::nullopt;
+		}
+
+		// [a, b, c]: the length is only known at run time, so a loop printing one item at a time
+		void Items(llvm::Value* data, llvm::Value* length, std::shared_ptr<Type> element)
+		{
+			auto& builder = m_Ctx.Builder;
+			Text("[");
+			Flush();
+
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock* before = builder.GetInsertBlock();
+			llvm::BasicBlock* check = llvm::BasicBlock::Create(m_Ctx.Context, "print.items", function);
+			llvm::BasicBlock* body = llvm::BasicBlock::Create(m_Ctx.Context, "print.item", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(m_Ctx.Context, "print.items_done", function);
+			builder.CreateBr(check);
+
+			builder.SetInsertPoint(check);
+			llvm::PHINode* index = builder.CreatePHI(builder.getInt64Ty(), 2);
+			index->addIncoming(builder.getInt64(0), before);
+			builder.CreateCondBr(builder.CreateICmpSLT(index, length), body, done);
+
+			builder.SetInsertPoint(body);
+			m_Format += "%s";
+			m_Args.push_back(builder.CreateSelect(builder.CreateICmpEQ(index, builder.getInt64(0)), String(""), String(", ")));
+			Value(builder.CreateLoad(element->Get(), builder.CreateInBoundsGEP(element->Get(), data, { index })), element);
+			Flush();
+			index->addIncoming(builder.CreateAdd(index, builder.getInt64(1)), builder.GetInsertBlock());
+			builder.CreateBr(check);
+
+			builder.SetInsertPoint(done);
+			Text("]");
+		}
+
+		// {key: value, ...}: the slots in use (state 1) of a Map's table
+		void Entries(llvm::Value* keys, llvm::Value* values, llvm::Value* states, llvm::Value* capacity, std::shared_ptr<Type> keyType, std::shared_ptr<Type> valueType)
+		{
+			auto& builder = m_Ctx.Builder;
+			Text("{");
+			Flush();
+
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock* before = builder.GetInsertBlock();
+			llvm::BasicBlock* check = llvm::BasicBlock::Create(m_Ctx.Context, "print.slots", function);
+			llvm::BasicBlock* slot = llvm::BasicBlock::Create(m_Ctx.Context, "print.slot", function);
+			llvm::BasicBlock* entry = llvm::BasicBlock::Create(m_Ctx.Context, "print.entry", function);
+			llvm::BasicBlock* next = llvm::BasicBlock::Create(m_Ctx.Context, "print.next", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(m_Ctx.Context, "print.slots_done", function);
+			builder.CreateBr(check);
+
+			builder.SetInsertPoint(check);
+			llvm::PHINode* index = builder.CreatePHI(builder.getInt64Ty(), 2);
+			llvm::PHINode* printed = builder.CreatePHI(builder.getInt1Ty(), 2);
+			index->addIncoming(builder.getInt64(0), before);
+			printed->addIncoming(builder.getFalse(), before);
+			builder.CreateCondBr(builder.CreateICmpSLT(index, capacity), slot, done);
+
+			builder.SetInsertPoint(slot);
+			llvm::Value* state = builder.CreateLoad(builder.getInt8Ty(), builder.CreateInBoundsGEP(builder.getInt8Ty(), states, { index }));
+			builder.CreateCondBr(builder.CreateICmpEQ(state, builder.getInt8(1)), entry, next);
+
+			builder.SetInsertPoint(entry);
+			m_Format += "%s";
+			m_Args.push_back(builder.CreateSelect(printed, String(", "), String("")));
+			Value(builder.CreateLoad(keyType->Get(), builder.CreateInBoundsGEP(keyType->Get(), keys, { index })), keyType);
+			Text(": ");
+			Value(builder.CreateLoad(valueType->Get(), builder.CreateInBoundsGEP(valueType->Get(), values, { index })), valueType);
+			Flush();
+			llvm::BasicBlock* entryEnd = builder.GetInsertBlock();
+			builder.CreateBr(next);
+
+			builder.SetInsertPoint(next);
+			llvm::PHINode* nowPrinted = builder.CreatePHI(builder.getInt1Ty(), 2);
+			nowPrinted->addIncoming(printed, slot);
+			nowPrinted->addIncoming(builder.getTrue(), entryEnd);
+			index->addIncoming(builder.CreateAdd(index, builder.getInt64(1)), next);
+			printed->addIncoming(nowPrinted, next);
+			builder.CreateBr(check);
+
+			builder.SetInsertPoint(done);
+			Text("}");
 		}
 
 		// a class with an operator str that has been analysed (and takes just self)
@@ -298,20 +371,73 @@ namespace clear
 		void Float(llvm::Value* value)
 		{
 			auto& builder = m_Ctx.Builder;
+			bool single = value->getType()->isFloatTy();
 
 			if (!value->getType()->isDoubleTy())
 				value = builder.CreateFPExt(value, builder.getDoubleTy());
 
 			Flush();
+			builder.CreateCall(FloatPrinter(), { value, builder.getInt1(single) });
+		}
 
-			// whole numbers keep a ".0" like Python, everything else uses the shortest sensible form
-			llvm::Value* truncated = builder.CreateUnaryIntrinsic(llvm::Intrinsic::trunc, value);
-			llvm::Value* magnitude = builder.CreateUnaryIntrinsic(llvm::Intrinsic::fabs, value);
-			llvm::Value* isWhole = builder.CreateAnd(builder.CreateFCmpOEQ(value, truncated),
-													 builder.CreateFCmpOLT(magnitude, llvm::ConstantFP::get(builder.getDoubleTy(), 1e16)));
+		// like Python's repr: the shortest text that reads back as the same number (0.1 + 0.2 is
+		// 0.30000000000000004, a float32 0.1 is 0.1), and whole numbers keep a ".0"
+		llvm::Function* FloatPrinter()
+		{
+			llvm::Module& module = m_Ctx.Module;
 
-			llvm::Value* format = builder.CreateSelect(isWhole, String("%.1f"), String("%.15g"));
-			builder.CreateCall(m_Printf, { format, value });
+			if (llvm::Function* existing = module.getFunction("clear.print_float"))
+				return existing;
+
+			llvm::LLVMContext& context = m_Ctx.Context;
+			llvm::IRBuilder<> b(context);
+			auto doubleTy = b.getDoubleTy();
+			auto function = llvm::Function::Create(llvm::FunctionType::get(b.getVoidTy(), { doubleTy, b.getInt1Ty() }, false),
+												   llvm::Function::LinkOnceODRLinkage, "clear.print_float", module);
+			llvm::Value* value = function->getArg(0);
+			llvm::Value* single = function->getArg(1);
+
+			auto snprintf = module.getOrInsertFunction("snprintf", llvm::FunctionType::get(b.getInt32Ty(), { b.getPtrTy(), b.getInt64Ty(), b.getPtrTy() }, true));
+			auto strtod = module.getOrInsertFunction("strtod", llvm::FunctionType::get(doubleTy, { b.getPtrTy(), b.getPtrTy() }, false));
+
+			auto entry = llvm::BasicBlock::Create(context, "entry", function);
+			auto whole = llvm::BasicBlock::Create(context, "whole", function);
+			auto tryDigits = llvm::BasicBlock::Create(context, "try", function);
+			auto check = llvm::BasicBlock::Create(context, "check", function);
+			auto done = llvm::BasicBlock::Create(context, "done", function);
+
+			b.SetInsertPoint(entry);
+			llvm::Value* buffer = b.CreateAlloca(llvm::ArrayType::get(b.getInt8Ty(), 48), nullptr, "text");
+			llvm::Value* truncated = b.CreateUnaryIntrinsic(llvm::Intrinsic::trunc, value);
+			llvm::Value* magnitude = b.CreateUnaryIntrinsic(llvm::Intrinsic::fabs, value);
+			llvm::Value* isWhole = b.CreateAnd(b.CreateFCmpOEQ(value, truncated), b.CreateFCmpOLT(magnitude, llvm::ConstantFP::get(doubleTy, 1e16)));
+			llvm::Value* first = b.CreateSelect(single, b.getInt32(6), b.getInt32(15));
+			b.CreateCondBr(isWhole, whole, tryDigits);
+
+			b.SetInsertPoint(whole);
+			b.CreateCall(m_Printf, { b.CreateGlobalStringPtr("%.1f", "print.whole"), value });
+			b.CreateRetVoid();
+
+			// digits = 15, 16, 17 (6..9 for a float32) until the text reads back as the same number
+			b.SetInsertPoint(tryDigits);
+			llvm::PHINode* digits = b.CreatePHI(b.getInt32Ty(), 2, "digits");
+			digits->addIncoming(first, entry);
+			b.CreateCall(snprintf, { buffer, b.getInt64(48), b.CreateGlobalStringPtr("%.*g", "print.digits"), digits, value });
+			llvm::Value* back = b.CreateCall(strtod, { buffer, llvm::ConstantPointerNull::get(b.getPtrTy()) });
+			llvm::Value* backSingle = b.CreateFPExt(b.CreateFPTrunc(back, b.getFloatTy()), doubleTy);
+			llvm::Value* same = b.CreateFCmpOEQ(b.CreateSelect(single, backSingle, back), value);
+			llvm::Value* last = b.CreateSelect(single, b.getInt32(9), b.getInt32(17));
+			b.CreateCondBr(b.CreateOr(same, b.CreateICmpSGE(digits, last)), done, check);
+
+			b.SetInsertPoint(check);
+			digits->addIncoming(b.CreateAdd(digits, b.getInt32(1)), check);
+			b.CreateBr(tryDigits);
+
+			b.SetInsertPoint(done);
+			b.CreateCall(m_Printf, { b.CreateGlobalStringPtr("%s", "print.text"), buffer });
+			b.CreateRetVoid();
+
+			return function;
 		}
 
 		llvm::Value* String(llvm::StringRef text)

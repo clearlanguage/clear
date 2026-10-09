@@ -382,8 +382,12 @@ namespace clear
 
             bool isRangeDot = m_Contents[m_Position] == '.' && m_Position + 1 < m_Contents.size() && m_Contents[m_Position + 1] == '.';
 
+            // 1_000_000: an underscore between digits is only there to be read easily
+            bool separator = m_Contents[m_Position] == '_' && m_Position > 0 && std::isdigit(m_Contents[m_Position - 1]) &&
+                             m_Position + 1 < m_Contents.size() && std::isdigit(m_Contents[m_Position + 1]);
+
             return
-                   (std::isdigit(m_Contents[m_Position]) ||
+                   (std::isdigit(m_Contents[m_Position]) || separator ||
                     (m_Contents[m_Position] == '.' && !isRangeDot) ||
                     m_Contents[m_Position] == 'e' ||
                     m_Contents[m_Position] == 'E' ||
@@ -393,6 +397,7 @@ namespace clear
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         auto [value, isNumber] = GetNumber(word);
         std::string suffix;
@@ -461,10 +466,11 @@ namespace clear
             bool isValidCap   = m_Contents[m_Position] >= 'A' && m_Contents[m_Position] <= 'F';
             bool isValidLower = m_Contents[m_Position] >= 'a' && m_Contents[m_Position] <= 'f';
 
-            return  m_Position < m_Contents.size() && (isDigit || isValidCap || isValidLower);
+            return  m_Position < m_Contents.size() && (isDigit || isValidCap || isValidLower || m_Contents[m_Position] == '_');
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         size_t k = 0;
         uint64_t num = 0;
@@ -494,10 +500,11 @@ namespace clear
 
         auto ShouldContinue = [&]()
         {
-            return  m_Position < m_Contents.size() && (m_Contents[m_Position] == '0' || m_Contents[m_Position] == '1');
+            return  m_Position < m_Contents.size() && (m_Contents[m_Position] == '0' || m_Contents[m_Position] == '1' || m_Contents[m_Position] == '_');
         };
 
         std::string word = GetWord(ShouldContinue);
+        std::erase(word, '_');
 
         size_t k = 0;
         uint64_t num = 0;

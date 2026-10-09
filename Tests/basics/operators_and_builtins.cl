@@ -41,7 +41,7 @@ function main() -> int32:
     return 0
 
 // expect:
-// 1024 1 0 1.4142135623731 200
+// 1024 1 0 1.4142135623730951 200
 // five
 // true false true false
 // true false true true false

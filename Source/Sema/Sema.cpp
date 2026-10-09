@@ -29,6 +29,8 @@ namespace clear
 	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
 	static std::optional<size_t> FindTypeCase(const std::shared_ptr<ClassType>& variant, const std::shared_ptr<Type>& type);
 	static bool IsFreshValue(const std::shared_ptr<ASTNodeBase>& node);
+	static bool IsOptionalType(const std::shared_ptr<Type>& type);
+	static std::shared_ptr<Type> OptionalValueType(const std::shared_ptr<Type>& optional);
 	static std::shared_ptr<ASTVariable> RootVariable(std::shared_ptr<ASTNodeBase> node, bool* throughCall);
 	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
 								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
@@ -56,11 +58,11 @@ namespace clear
 
 				// `if not r: return` above: the rest of the block sees r as its value, in a scope of its own (r is
 				// already declared in this one)
-				if (auto narrowed = std::exchange(m_NarrowAfter, nullptr); narrowed && i + 1 < ast->Children.size())
+				if (auto narrowed = std::exchange(m_NarrowAfter, {}); !narrowed.empty() && i + 1 < ast->Children.size())
 				{
 					auto rest = std::make_shared<ASTBlock>();
-					rest->Location = narrowed->Location;
-					rest->Children.push_back(narrowed);
+					rest->Location = narrowed.front()->Location;
+					rest->Children.insert(rest->Children.end(), narrowed.begin(), narrowed.end());
 					rest->Children.insert(rest->Children.end(), ast->Children.begin() + i + 1, ast->Children.end());
 					ast->Children.resize(i + 1);
 					ast->Children.push_back(rest);
@@ -1417,6 +1419,17 @@ namespace clear
 			return BuildConstruction(funcCall, var);
 		}
 
+		// int64(x), T(0) in a generic: the value converted, like `x as int64`
+		if (auto var = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); 
+			var && var->Variable && var->Variable->Kind == SymbolKind::Type && funcCall->Arguments.size() == 1 && funcCall->KeywordArguments.empty())
+		{
+			auto cast = std::make_shared<ASTCastExpr>();
+			cast->Location = var->GetName();
+			cast->Object = funcCall->Arguments[0];
+			cast->TypeNode = std::make_shared<ASTTypeLiteral>(var->Variable->GetType());
+			return Visit(cast, context);
+		}
+
 		return CheckCall(funcCall);
 	}
 
@@ -2221,6 +2234,23 @@ namespace clear
 			default:
 			{
 				unaryExpr->Operand = Visit(unaryExpr->Operand, context);
+
+				// not x with x optional: x holds no value
+				if (unaryExpr->GetOperatorType() == OperatorType::Not && unaryExpr->Operand)
+				{
+					auto type = m_TypeInferEngine.InferTypeFromNode(unaryExpr->Operand);
+
+					if (IsOptionalType(type))
+					{
+						if (OptionalValueType(type)->GetHash() == "bool")
+						{
+							Report(DiagnosticCode_OptionalBoolCondition, GetNodeLocation(unaryExpr->Operand));
+							return nullptr;
+						}
+
+						return OptionalTest(unaryExpr->Operand, type, false);
+					}
+				}
 				break;
 			}
 		}
@@ -2722,43 +2752,63 @@ namespace clear
 		conditionContext.ValueReq = ValueRequired::RValue;
 
 		auto branches = BeginBranches();
-		std::shared_ptr<ASTVariableDeclaration> narrowAfter;
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> narrowAfter;
 
 		for (size_t index = 0; index < ifExpr->ConditionalBlocks.size(); index++)
 		{
 			auto& conditionalBlock = ifExpr->ConditionalBlocks[index];
 
-			// `if r:` / `if not r:` on an optional local variable: r is its value where it is known to hold one
-			bool negated = false;
-			auto narrowing = NarrowableOptional(conditionalBlock.Condition);
-
-			if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(conditionalBlock.Condition); !narrowing && unary && unary->GetOperatorType() == OperatorType::Not)
+			// optional local variables known to hold a value: inside the block for `if a and b:` (each of a, b),
+			// after it (or in the else) for `if not a or not b:` (each of a, b)
+			std::vector<Narrowing> inside, outside;
+			std::function<void(const std::shared_ptr<ASTNodeBase>&)> holdsInside = [&](const std::shared_ptr<ASTNodeBase>& test)
 			{
-				if ((narrowing = NarrowableOptional(unary->Operand)))
+				if (auto both = std::dynamic_pointer_cast<ASTBinaryExpression>(test); both && both->GetExpression() == OperatorType::And)
 				{
-					negated = true;
-					conditionalBlock.Condition = unary->Operand;
+					holdsInside(both->LeftSide);
+					holdsInside(both->RightSide);
 				}
-			}
+				else if (auto narrowing = NarrowableOptional(test))
+					inside.push_back(*narrowing);
+			};
+			std::function<void(const std::shared_ptr<ASTNodeBase>&)> holdsOutside = [&](const std::shared_ptr<ASTNodeBase>& test)
+			{
+				if (auto either = std::dynamic_pointer_cast<ASTBinaryExpression>(test); either && either->GetExpression() == OperatorType::Or)
+				{
+					holdsOutside(either->LeftSide);
+					holdsOutside(either->RightSide);
+				}
+				else if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(test); unary && unary->GetOperatorType() == OperatorType::Not)
+				{
+					if (auto narrowing = NarrowableOptional(unary->Operand))
+						outside.push_back(*narrowing);
+				}
+			};
+
+			holdsInside(conditionalBlock.Condition);
+			holdsOutside(conditionalBlock.Condition);
 
 			m_Moved = branches.Start;
-			conditionalBlock.Condition = TestCondition(Visit(conditionalBlock.Condition, conditionContext), !negated);
+			conditionalBlock.Condition = TestCondition(Visit(conditionalBlock.Condition, conditionContext), true);
 			branches.Start = m_Moved; // conditions run one after another
 
-			if (narrowing && !negated)
-				conditionalBlock.CodeBlock->Children.insert(conditionalBlock.CodeBlock->Children.begin(), NarrowedDeclaration(*narrowing));
+			for (auto& narrowing : inside)
+				conditionalBlock.CodeBlock->Children.insert(conditionalBlock.CodeBlock->Children.begin(), NarrowedDeclaration(narrowing));
 
 			BeginBranch(branches);
 			Visit(conditionalBlock.CodeBlock, context);
 			EndBranch(branches);
 
-			if (narrowing && negated && index + 1 == ifExpr->ConditionalBlocks.size())
+			if (!outside.empty() && index + 1 == ifExpr->ConditionalBlocks.size())
 			{
 				// if not r: ... else: <r has a value>;   if not r: return  <r has a value from here on>
-				if (ifExpr->ElseBlock)
-					ifExpr->ElseBlock->Children.insert(ifExpr->ElseBlock->Children.begin(), NarrowedDeclaration(*narrowing));
-				else if (ifExpr->ConditionalBlocks.size() == 1 && m_Unreachable)
-					narrowAfter = NarrowedDeclaration(*narrowing);
+				for (auto& narrowing : outside)
+				{
+					if (ifExpr->ElseBlock)
+						ifExpr->ElseBlock->Children.insert(ifExpr->ElseBlock->Children.begin(), NarrowedDeclaration(narrowing));
+					else if (ifExpr->ConditionalBlocks.size() == 1 && m_Unreachable)
+						narrowAfter.push_back(NarrowedDeclaration(narrowing));
+				}
 			}
 		}
 		
@@ -3214,6 +3264,48 @@ namespace clear
 
 		if (valueType && valueType->IsClass() && valueType->As<ClassType>()->IsVariant)
 			return LowerVariantSwitch(switchNode, valueType, context);
+
+		// switch on text:  if s == "one": ... else if s == "two" or s == "2": ... else: <default>   (s computed once)
+		if (valueType && (valueType->GetHash() == "str" || (ClassOf(valueType) && ClassOf(valueType)->GetHash() == "String")))
+		{
+			auto subject = EvaluatedOnce(switchNode->Value, valueType);
+			auto chain = std::make_shared<ASTIfExpression>();
+			chain->Location = switchNode->Location;
+
+			for (auto& switchCase : switchNode->Cases)
+			{
+				std::shared_ptr<ASTNodeBase> condition;
+
+				for (auto& value : switchCase.Values)
+				{
+					auto equal = std::make_shared<ASTBinaryExpression>(OperatorType::IsEqual);
+					equal->Location = GetNodeLocation(value);
+					equal->LeftSide = subject;
+					equal->RightSide = value;
+
+					if (!condition)
+					{
+						condition = equal;
+						continue;
+					}
+
+					auto either = std::make_shared<ASTBinaryExpression>(OperatorType::Or);
+					either->Location = equal->Location;
+					either->LeftSide = condition;
+					either->RightSide = equal;
+					condition = either;
+				}
+
+				if (condition)
+					chain->ConditionalBlocks.push_back({ .Condition = condition, .CodeBlock = switchCase.CodeBlock });
+			}
+
+			if (chain->ConditionalBlocks.empty())
+				return switchNode->DefaultCaseCodeBlock ? Visit(switchNode->DefaultCaseCodeBlock, context) : nullptr;
+
+			chain->ElseBlock = switchNode->DefaultCaseCodeBlock;
+			return Visit(chain, context);
+		}
 
 		if (!valueType || !valueType->IsIntegral())
 		{
@@ -5535,6 +5627,16 @@ namespace clear
 
 			if (actual->IsArray())
 				return BindGenericType(array->TypeNode, actual->As<ArrayType>()->GetBaseType(), names, bindings);
+
+			// a List[String] (anything with operator slice) passed as a []T: T is what its slices hold
+			if (actual->IsClass())
+			{
+				auto slicer = actual->As<ClassType>()->MemberFunctions.find("__slice__");
+				auto node = slicer != actual->As<ClassType>()->MemberFunctions.end() ? slicer->second->GetFunctionSymbol().FunctionNode : nullptr;
+
+				if (auto view = node ? std::dynamic_pointer_cast<SliceType>(node->ReturnTypeVal) : nullptr)
+					return BindGenericType(array->TypeNode, view->GetBaseType(), names, bindings);
+			}
 		}
 
 		// *T matched against a pointer binds T to the pointee
@@ -5564,11 +5666,33 @@ namespace clear
 		}
 
 		std::unordered_map<std::string, std::shared_ptr<Type>> bindings;
+		auto callables = m_CallablePatterns.find(generic.get());
+		auto callableOf = [&](const std::shared_ptr<ASTNodeBase>& pattern) -> std::shared_ptr<ASTFunctionTypeExpr>
+		{
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(pattern);
+
+			if (!variable || callables == m_CallablePatterns.end())
+				return nullptr;
+
+			auto found = callables->second.find(variable->GetName().GetData());
+			return found != callables->second.end() ? found->second : nullptr;
+		};
+
+		// plain parameters first, then functions (an untyped lambda is made for the T the others gave)
+		for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
+		{
+			if (values[i] && !callableOf(patterns[i]))
+				BindGenericType(patterns[i], m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+		}
 
 		for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
 		{
-			if (values[i])
-				BindGenericType(patterns[i], m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+			if (auto callable = callableOf(patterns[i]); callable && values[i])
+			{
+				auto actual = m_TypeInferEngine.InferTypeFromNode(values[i]);
+				BindCallable(callable, actual, generic->GenericTypeNames, bindings, GetNodeLocation(values[i]));
+				bindings[std::dynamic_pointer_cast<ASTVariable>(patterns[i])->GetName().GetData()] = actual;
+			}
 		}
 
 		llvm::SmallVector<Symbol> arguments;
@@ -5593,6 +5717,28 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTGenericTemplate> generic, SemaContext context)
 	{
 		generic->HomeModule = m_Module;
+
+		// function apply_to[T, U](x: T, f: function(T) -> U): f gets a type parameter of its own (whatever is passed:
+		// a function, a lambda, a closure), and T and U come from that value's signature (see InstantiateFromValues)
+		if (auto function = std::dynamic_pointer_cast<ASTFunctionDefinition>(generic->TemplateNode); function && !m_CallablePatterns.contains(generic.get()))
+		{
+			auto& patterns = m_CallablePatterns[generic.get()];
+
+			for (size_t i = 0; i < function->Arguments.size(); i++)
+			{
+				auto& argument = function->Arguments[i];
+				auto pattern = argument ? std::dynamic_pointer_cast<ASTFunctionTypeExpr>(argument->TypeResolver) : nullptr;
+
+				if (!pattern)
+					continue;
+
+				std::string name = std::format("__callable_{}", i);
+				patterns[name] = pattern;
+				argument->TypeResolver = std::make_shared<ASTVariable>(Token(TokenType::Identifier, name, pattern->Location.GetSourceFile(), pattern->Location.LineNumber, pattern->Location.ColumnNumber));
+				generic->GenericTypeNames.push_back(name);
+				generic->Constraints.resize(generic->GenericTypeNames.size());
+			}
+		}
 
 		bool success = m_ScopeStack.back().Insert(generic->GetName(), SymbolEntryType::GenericTemplate, std::make_shared<Symbol>(Symbol::CreateGenericTemplate(generic)));
 			
@@ -8122,6 +8268,16 @@ namespace clear
 		if (!binaryExpr->LeftSide || !binaryExpr->RightSide)
 			return nullptr;
 
+		// a and flag, not x or not y: an optional operand means "holds a value", like in a condition
+		if (binaryExpr->GetExpression() == OperatorType::And || binaryExpr->GetExpression() == OperatorType::Or)
+		{
+			binaryExpr->LeftSide = TestCondition(binaryExpr->LeftSide, true);
+			binaryExpr->RightSide = TestCondition(binaryExpr->RightSide, true);
+
+			if (!binaryExpr->LeftSide || !binaryExpr->RightSide)
+				return nullptr;
+		}
+
 		if (binaryExpr->GetExpression() != OperatorType::And && binaryExpr->GetExpression() != OperatorType::Or)
 		{
 			SemaContext comparison = context;
@@ -8373,9 +8529,33 @@ namespace clear
 		Cloner cloner;
 		cloner.DestinationModule = m_Module;
 		
-		for (size_t i = 0; i < substitutedArgs.size(); i++)
+		for (size_t i = 0; i < substitutedArgs.size() && i < node->GenericTypeNames.size(); i++)
 		{
 			cloner.SubstitutionMap[node->GenericTypeNames[i]] = substitutedArgs[i]; 
+		}
+
+		// apply_to[int, int](...): a `function(T) -> U` parameter's own type follows from the types written
+		if (auto callables = m_CallablePatterns.find(node.get()); callables != m_CallablePatterns.end())
+		{
+			for (size_t i = substitutedArgs.size(); i < node->GenericTypeNames.size(); i++)
+			{
+				auto pattern = callables->second.find(node->GenericTypeNames[i]);
+
+				if (pattern == callables->second.end())
+					continue;
+
+				Cloner patternCloner;
+				patternCloner.DestinationModule = m_Module;
+				patternCloner.SubstitutionMap = cloner.SubstitutionMap;
+
+				auto resolved = Visit(patternCloner.Clone(pattern->second), SemaContext { .ValueReq = ValueRequired::Any });
+				auto type = resolved ? GetTypeFromNode(resolved) : nullptr;
+
+				if (!type)
+					return nullptr;
+
+				cloner.SubstitutionMap[node->GenericTypeNames[i]] = Symbol::CreateType(type);
+			}
 		}
 		
 		std::shared_ptr<ASTNodeBase> clonned = cloner.Clone(node->TemplateNode);

@@ -141,7 +141,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> SliceIntrinsic(const std::string& name, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
-		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
+		std::vector<std::shared_ptr<ASTVariableDeclaration>> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
 		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> ModuleMember(std::shared_ptr<ASTBinaryExpression> access);
 		std::shared_ptr<ASTNodeBase> TextConcat(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, const Token& location);
@@ -263,6 +263,8 @@ namespace clear
 		std::string InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location);
 
 		static inline std::unordered_set<std::string> m_GenericMethodNames; // shared by every file
+		// generic functions' `function(T) -> U` parameters (each given a type parameter __callable_i of its own)
+		static inline std::unordered_map<ASTGenericTemplate*, std::unordered_map<std::string, std::shared_ptr<ASTFunctionTypeExpr>>> m_CallablePatterns;
 		std::shared_ptr<ASTNodeBase> CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
 													   std::shared_ptr<ClassType> classType, const std::string& name);
 		bool BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
