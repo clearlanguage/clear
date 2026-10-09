@@ -35,6 +35,7 @@ namespace clear
 	static bool BindGenericType(std::shared_ptr<ASTNodeBase> pattern, std::shared_ptr<Type> actual, 
 								llvm::ArrayRef<std::string> names, std::unordered_map<std::string, std::shared_ptr<Type>>& bindings);
 	static std::shared_ptr<Type> ClassOf(std::shared_ptr<Type> type);
+	static bool IsNumericLiteral(const std::shared_ptr<ASTNodeBase>& node);
 	static void DispatchOnObject(const std::shared_ptr<ASTNodeBase>& node, const std::shared_ptr<ClassType>& classType);
 
     Sema::Sema(std::shared_ptr<Module> clearModule, DiagnosticsBuilder& builder, const std::unordered_map<std::filesystem::path, CompilationUnit>& compilationUnits)
@@ -3230,6 +3231,7 @@ namespace clear
 				return nullptr;
 
 			forExpr->IterableType = m_TypeInferEngine.InferTypeFromNode(forExpr->Iterable);
+			forExpr->Iterable = ThroughArrayPointer(forExpr->Iterable, forExpr->IterableType);
 
 			bool isClassPointer = forExpr->IterableType && forExpr->IterableType->IsPointer() && forExpr->IterableType->As<PointerType>()->GetBaseType() &&
 								  forExpr->IterableType->As<PointerType>()->GetBaseType()->IsClass();
@@ -4086,6 +4088,7 @@ namespace clear
 			return nullptr;
 
 		auto type = m_TypeInferEngine.InferTypeFromNode(haystack);
+		haystack = ThroughArrayPointer(haystack, type);
 		auto boolType = Symbol::GetBooleanType(m_Module).GetType();
 		std::shared_ptr<ASTNodeBase> result;
 
@@ -6370,11 +6373,15 @@ namespace clear
 			return found != callables->second.end() ? found->second : nullptr;
 		};
 
-		// plain parameters first, then functions (an untyped lambda is made for the T the others gave)
-		for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
+		// plain parameters first, then functions (an untyped lambda is made for the T the others gave);
+		// a number literal only decides T when nothing else does: min(5, len(xs)) is min[int64]
+		for (bool literals : { false, true })
 		{
-			if (values[i] && !callableOf(patterns[i]))
-				BindGenericType(patterns[i], m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+			for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
+			{
+				if (values[i] && !callableOf(patterns[i]) && IsNumericLiteral(values[i]) == literals)
+					BindGenericType(patterns[i], m_TypeInferEngine.InferTypeFromNode(values[i]), generic->GenericTypeNames, bindings);
+			}
 		}
 
 		for (size_t i = 0; i < values.size() && i < patterns.size(); i++)
@@ -6517,15 +6524,7 @@ namespace clear
 			}
 
 			// a[i] with a: *[N; T]: the array a points at, like a *List[T] uses the list's operator get
-			if (targetType->IsPointer() && targetType->As<PointerType>()->GetBaseType() && targetType->As<PointerType>()->GetBaseType()->IsArray())
-			{
-				auto array = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
-				array->Location = GetNodeLocation(subscript->Target);
-				array->Operand = AsValue(subscript->Target);
-				array->IsStorage = true;
-				subscript->Target = array;
-				targetType = targetType->As<PointerType>()->GetBaseType();
-			}
+			subscript->Target = ThroughArrayPointer(subscript->Target, targetType);
 
 			// f()[i]: index the computed pointer (or array) directly
 			if (!IsStorageNode(subscript->Target) && !targetType->IsClass())
@@ -7413,6 +7412,20 @@ namespace clear
 		return nullptr;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::ThroughArrayPointer(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type>& type)
+	{
+		// a: *[N; T] is used like the array it points at (indexing, slicing, for, in), as a *List[T] is
+		if (!type || !type->IsPointer() || !type->As<PointerType>()->GetBaseType() || !type->As<PointerType>()->GetBaseType()->IsArray())
+			return node;
+
+		auto array = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+		array->Location = GetNodeLocation(node);
+		array->Operand = AsValue(node);
+		array->IsStorage = true;
+		type = type->As<PointerType>()->GetBaseType();
+		return array;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::VisitSlice(std::shared_ptr<ASTSliceExpr> slice, SemaContext context)
 	{
 		SemaContext storageContext = context;
@@ -7428,6 +7441,7 @@ namespace clear
 
 		auto int64Type = m_Module->Lookup("int64").value()->GetType();
 		auto type = m_TypeInferEngine.InferTypeFromNode(target);
+		target = ThroughArrayPointer(target, type);
 		Token location = slice->Location;
 
 		std::shared_ptr<ASTNodeBase> start = slice->Start ? Coerce(Visit(slice->Start, valueContext), int64Type) : nullptr;
@@ -7901,6 +7915,26 @@ namespace clear
 		{
 			if (auto made = CallLibraryFunction("string_from_literal", { node }, literal->GetData()))
 				return made;
+		}
+
+		// return when ok use "yes" otherwise "no" with a String result: each side is a literal, so each becomes a String
+		if (auto ternary = std::dynamic_pointer_cast<ASTTernaryExpression>(node); ternary && target->GetHash() == "String")
+		{
+			std::function<bool(const std::shared_ptr<ASTNodeBase>&)> literalText = [&](const std::shared_ptr<ASTNodeBase>& side)
+			{
+				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(side))
+					return literal->GetData().IsType(TokenType::String);
+
+				auto nested = std::dynamic_pointer_cast<ASTTernaryExpression>(side);
+				return nested && literalText(nested->Truthy) && literalText(nested->Falsy);
+			};
+
+			if (literalText(ternary->Truthy) && literalText(ternary->Falsy))
+			{
+				ternary->Truthy = Coerce(ternary->Truthy, target);
+				ternary->Falsy = Coerce(ternary->Falsy, target);
+				return ternary;
+			}
 		}
 
 		// str <-> C strings and bytes: str -> *int8 is a pointer to its bytes (they must end with a zero),

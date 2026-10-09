@@ -82,6 +82,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitLen(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitMembership(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> AsValue(std::shared_ptr<ASTNodeBase> node);
+		std::shared_ptr<ASTNodeBase> ThroughArrayPointer(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type>& type);
 		std::shared_ptr<ASTNodeBase> CallMethod(std::shared_ptr<ASTNodeBase> object, std::shared_ptr<Type> objectType, const std::string& name,
 												std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 
