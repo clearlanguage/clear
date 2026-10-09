@@ -3019,6 +3019,14 @@ namespace clear
 
 			forExpr->VariableType = forExpr->IterableType->As<ArrayType>()->GetBaseType();
 			forExpr->IterableIsTemporary = !IsStorageNode(forExpr->Iterable);
+
+			// for s in [String("a"), String("b")]: the new array is kept (and cleaned up) until the end of the block,
+			// its items are visited in place like those of a variable
+			if (forExpr->IterableIsTemporary && IsOwning(forExpr->IterableType) && IsFreshValue(forExpr->Iterable))
+			{
+				forExpr->Iterable = AddressOf(forExpr->Iterable);
+				forExpr->IterableIsTemporary = false;
+			}
 		}
 		else
 		{
@@ -6136,6 +6144,14 @@ namespace clear
 		}
 
 		listExpr->ListType = m_Module->GetTypeRegistry()->GetArrayFrom(targetBaseType, listExpr->Values.size());
+
+		// [a, String("y")]: the array owns its items, each one is a value of its own (a is copied, or moved)
+		if (IsOwning(targetBaseType))
+		{
+			for (auto& value : listExpr->Values)
+				value = TakeOwnership(value, targetBaseType);
+		}
+
 		return listExpr;
 	}
 
@@ -6327,6 +6343,7 @@ namespace clear
 			case ASTNodeType::VariantConstruct:
 			case ASTNodeType::UnionConstruct:
 			case ASTNodeType::TupleExpr:
+			case ASTNodeType::ListExpr:
 			case ASTNodeType::Zero:
 			case ASTNodeType::Move:
 			case ASTNodeType::Copy:
