@@ -37,7 +37,7 @@ namespace clear
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
 		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy, Copy,
-		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct
+		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct, Once
 	};
 
 	class ASTNodeBase;
@@ -904,6 +904,22 @@ namespace clear
 	public:
 		std::shared_ptr<Symbol> Function;
 		std::shared_ptr<Type> FunctionTy;
+	};
+
+	// a value used in more than one place but computed only once (user?.name reads user twice: to test it, then
+	// to read the field). The first use computes it; that use comes first in the code, so it runs first.
+	class ASTOnce : public ASTNodeBase
+	{
+	public:
+		ASTOnce() = default;
+		virtual ~ASTOnce() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::Once; }
+		virtual Symbol Codegen(CodegenContext&) override;
+
+	public:
+		std::shared_ptr<ASTNodeBase> Operand;
+		Symbol Computed;
+		llvm::Function* ComputedIn = nullptr; // a generic body is generated once per function it is in
 	};
 
 	// reading an owning value out of a local variable: the variable is left empty (all zero), so

@@ -104,6 +104,8 @@ namespace clear
 		DiagnosticCode_BorrowingLambdaEscapes,
 		DiagnosticCode_StaleElementPointer,
 		DiagnosticCode_ImportShadowsStandard,
+		DiagnosticCode_NotOptional,
+		DiagnosticCode_OptionalBoolCondition,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -208,6 +210,8 @@ namespace clear
 		"This lambda borrows local variables, so it cannot be returned.",
 		"This pointer may point at memory that has been moved or freed.",
 		"This import finds a file next to this one, not the standard module of the same name.",
+		"This is not an optional.",
+		"An optional bool is ambiguous as a condition.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -311,5 +315,7 @@ namespace clear
 		"It holds pointers to values that are cleaned up when this function ends. Write ‘move lambda’ to move them into the lambda instead.",
 		"{}. Adding or removing items can move all of them. Take the pointer again after the change, or store an index instead.",
 		"{}.",
+		"‘{}’.",
+		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
 	};
 }

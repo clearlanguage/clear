@@ -3065,6 +3065,19 @@ namespace clear
 		return builder.CreateLoad(type->Get(), result.GetLLVMValue());
 	}
 
+	Symbol ASTOnce::Codegen(CodegenContext& ctx)
+	{
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+
+		if (ComputedIn != function)
+		{
+			Computed = Operand->Codegen(ctx);
+			ComputedIn = function;
+		}
+
+		return Computed;
+	}
+
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)
 	{
 		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();

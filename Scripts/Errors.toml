@@ -400,3 +400,11 @@ Advice  = "{}. Adding or removing items can move all of them. Take the pointer a
 [ImportShadowsStandard]
 Message = "This import finds a file next to this one, not the standard module of the same name."
 Advice  = "{}."
+
+[NotOptional]
+Message = "This is not an optional."
+Advice  = "‘{}’."
+
+[OptionalBoolCondition]
+Message = "An optional bool is ambiguous as a condition."
+Advice  = "Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’."

@@ -300,9 +300,15 @@ function find(values: [4; int], target: int) -> ?int:     // an int, or none
     return none
 
 let found = find(data, 9)
-if found is not none:
-    print(found.value)
-print(found.value_or(-1))
+if found:                         // holds a value? then found *is* that int in here
+    print(found + 1)
+print(found ?? -1)                // the value, or -1
+
+if not found:
+    return                        // from here on, found is an int
+while line := read_line():        // assign and test: line is a String in the loop
+    print(line)
+let city = user?.address?.city    // none as soon as anything on the way is none
 
 union Bits:                       // every field shares the same bytes
     i: int64

@@ -71,8 +71,10 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ParseFunctionOrGeneric();
 		std::shared_ptr<ASTFunctionDeclaration> ParseFunctionDeclaration(const std::string& declareKeyword = "declare");        
 		std::shared_ptr<ASTReturn> ParseReturn();
-		std::shared_ptr<ASTIfExpression> ParseIf();
-		std::shared_ptr<ASTWhileExpression> ParseWhile();
+		struct Condition { std::shared_ptr<ASTVariableDeclaration> Declaration; std::shared_ptr<ASTNodeBase> Value; };
+		Condition ParseCondition();
+		std::shared_ptr<ASTNodeBase> ParseIf();
+		std::shared_ptr<ASTNodeBase> ParseWhile();
 		std::shared_ptr<ASTNodeBase> ParseFor();
 		std::shared_ptr<ASTNodeBase> ParseSwitch();
 		std::shared_ptr<ASTNodeBase> ParseEnum();

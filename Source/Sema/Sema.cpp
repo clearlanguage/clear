@@ -47,8 +47,22 @@ namespace clear
 		}
 		else 
 		{
-			for(auto& node : ast->Children)
-				node = Visit(node, context);
+			for (size_t i = 0; i < ast->Children.size(); i++)
+			{
+				ast->Children[i] = Visit(ast->Children[i], context);
+
+				// `if not r: return` above: the rest of the block sees r as its value, in a scope of its own (r is
+				// already declared in this one)
+				if (auto narrowed = std::exchange(m_NarrowAfter, nullptr); narrowed && i + 1 < ast->Children.size())
+				{
+					auto rest = std::make_shared<ASTBlock>();
+					rest->Location = narrowed->Location;
+					rest->Children.push_back(narrowed);
+					rest->Children.insert(rest->Children.end(), ast->Children.begin() + i + 1, ast->Children.end());
+					ast->Children.resize(i + 1);
+					ast->Children.push_back(rest);
+				}
+			}
 		}
 
 		m_ScopeStack.pop_back();
@@ -441,6 +455,7 @@ namespace clear
 			case ASTNodeType::VTableRef:				return ast;
 			case ASTNodeType::Move:						return ast;
 			case ASTNodeType::Copy:						return ast;
+			case ASTNodeType::Once:						return ast;
 			case ASTNodeType::Destroy:					return ast;
 			case ASTNodeType::VariantConstruct:			return ast;
 			case ASTNodeType::VariantField:				return ast;
@@ -757,6 +772,10 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
+
+		// user?.greet(): only called when user holds a value
+		if (auto chain = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); chain && chain->GetExpression() == OperatorType::OptionalDot)
+			return VisitOptionalChain(chain, context, funcCall);
 
 		// xs.push(v), xs.remove(i) ...: these can move or free the items, so pointers into xs go stale
 		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
@@ -1644,6 +1663,10 @@ namespace clear
 			{
 				return VisitBinaryExprMemberAccess(binaryExpression, context);
 			}
+			case OperatorType::Coalesce:
+				return VisitCoalesce(binaryExpression, context);
+			case OperatorType::OptionalDot:
+				return VisitOptionalChain(binaryExpression, context, nullptr);
 			default:
 			{
 				Report(DiagnosticCode_InvalidOperator, Token());
@@ -1901,7 +1924,7 @@ namespace clear
 			}
 			case OperatorType::Dereference:
 			{
-				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(unaryExpr->Operand); literal && literal->GetData().GetData() == "null")
+				if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(unaryExpr->Operand); literal && literal->GetData().GetData() == "null" && !literal->GetData().IsType(TokenType::String))
 				{
 					Report(DiagnosticCode_NullDereference, literal->GetData());
 					return nullptr;
@@ -2393,16 +2416,44 @@ namespace clear
 		conditionContext.ValueReq = ValueRequired::RValue;
 
 		auto branches = BeginBranches();
+		std::shared_ptr<ASTVariableDeclaration> narrowAfter;
 
-		for (auto& conditionalBlock : ifExpr->ConditionalBlocks)
+		for (size_t index = 0; index < ifExpr->ConditionalBlocks.size(); index++)
 		{
+			auto& conditionalBlock = ifExpr->ConditionalBlocks[index];
+
+			// `if r:` / `if not r:` on an optional local variable: r is its value where it is known to hold one
+			bool negated = false;
+			auto narrowing = NarrowableOptional(conditionalBlock.Condition);
+
+			if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(conditionalBlock.Condition); !narrowing && unary && unary->GetOperatorType() == OperatorType::Not)
+			{
+				if ((narrowing = NarrowableOptional(unary->Operand)))
+				{
+					negated = true;
+					conditionalBlock.Condition = unary->Operand;
+				}
+			}
+
 			m_Moved = branches.Start;
-			conditionalBlock.Condition = Visit(conditionalBlock.Condition, conditionContext);
+			conditionalBlock.Condition = TestCondition(Visit(conditionalBlock.Condition, conditionContext), !negated);
 			branches.Start = m_Moved; // conditions run one after another
+
+			if (narrowing && !negated)
+				conditionalBlock.CodeBlock->Children.insert(conditionalBlock.CodeBlock->Children.begin(), NarrowedDeclaration(*narrowing));
 
 			BeginBranch(branches);
 			Visit(conditionalBlock.CodeBlock, context);
 			EndBranch(branches);
+
+			if (narrowing && negated && index + 1 == ifExpr->ConditionalBlocks.size())
+			{
+				// if not r: ... else: <r has a value>;   if not r: return  <r has a value from here on>
+				if (ifExpr->ElseBlock)
+					ifExpr->ElseBlock->Children.insert(ifExpr->ElseBlock->Children.begin(), NarrowedDeclaration(*narrowing));
+				else if (ifExpr->ConditionalBlocks.size() == 1 && m_Unreachable)
+					narrowAfter = NarrowedDeclaration(*narrowing);
+			}
 		}
 		
 		if (ifExpr->ElseBlock)
@@ -2413,6 +2464,7 @@ namespace clear
 		}
 
 		EndBranches(branches, !ifExpr->ElseBlock);
+		m_NarrowAfter = narrowAfter;
 		return ifExpr;
 	}
 
@@ -2450,7 +2502,7 @@ namespace clear
 		BeginLoop();
 
 		context.ValueReq = ValueRequired::RValue;
-		whileExpr->WhileBlock.Condition = Visit(whileExpr->WhileBlock.Condition, context);
+		whileExpr->WhileBlock.Condition = TestCondition(Visit(whileExpr->WhileBlock.Condition, context), true);
 
 		context.ValueReq = ValueRequired::Any;
 		context.InLoop = true;
@@ -3867,8 +3919,8 @@ namespace clear
 				if (token.IsType(TokenType::Char))
 					return (int64_t)(uint8_t)token.AsChar();
 
-				if (token.GetData() == "true")  return 1;
-				if (token.GetData() == "false") return 0;
+				if (token.IsType(TokenType::Keyword) && token.GetData() == "true")  return 1;
+				if (token.IsType(TokenType::Keyword) && token.GetData() == "false") return 0;
 
 				if (token.IsType(TokenType::Number) && token.GetData().find_first_of(".eE") == std::string::npos)
 				{
@@ -5365,6 +5417,250 @@ namespace clear
 			default:
 				return false;
 		}
+	}
+
+	static bool IsOptionalType(const std::shared_ptr<Type>& type)
+	{
+		return type && type->IsClass() && type->As<ClassType>()->IsOptional;
+	}
+
+	static std::shared_ptr<Type> OptionalValueType(const std::shared_ptr<Type>& optional)
+	{
+		auto classType = optional->As<ClassType>();
+		return classType->Cases[classType->FindCase("some").value()].Fields[0].second;
+	}
+
+	std::optional<Sema::Narrowing> Sema::NarrowableOptional(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		// a plain local variable (a field or global could be changed by any call in the block)
+		auto variable = std::dynamic_pointer_cast<ASTVariable>(node);
+
+		if (!variable)
+			return std::nullopt;
+
+		auto [entry, scope] = LookupSymbol(variable->GetName().GetData());
+
+		if (!entry || entry->Type != SymbolEntryType::Variable || !m_LocalVariables.contains(entry->Symbol.get()))
+			return std::nullopt;
+
+		auto type = entry->Symbol->GetType();
+
+		if (!IsOptionalType(type) || OptionalValueType(type)->GetHash() == "bool")
+			return std::nullopt;
+
+		return Narrowing { entry->Symbol, variable->GetName(), type };
+	}
+
+	std::shared_ptr<ASTVariableDeclaration> Sema::NarrowedDeclaration(const Narrowing& narrowing)
+	{
+		// let r = <the value inside r>, named in place: changing it changes the optional
+		auto subject = std::make_shared<ASTVariable>(narrowing.Name);
+		subject->Variable = narrowing.Variable;
+
+		auto field = std::make_shared<ASTVariantField>();
+		field->Location = narrowing.Name;
+		field->Subject = subject;
+		field->VariantTy = narrowing.Optional;
+		field->CaseIndex = narrowing.Optional->As<ClassType>()->FindCase("some").value();
+		field->FieldIndex = 0;
+		field->AsAddress = true;
+
+		auto declaration = std::make_shared<ASTVariableDeclaration>(narrowing.Name);
+		declaration->Location = narrowing.Name;
+		declaration->Initializer = field;
+		declaration->IsAlias = true;
+		return declaration;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::OptionalTest(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> optional, bool hasValue)
+	{
+		auto int32Type = m_Module->Lookup("int32").value()->GetType();
+
+		auto tag = std::make_shared<ASTVariantTag>();
+		tag->Location = value->Location;
+		tag->Subject = value;
+		tag->TagType = int32Type;
+
+		auto compare = std::make_shared<ASTBinaryExpression>(hasValue ? OperatorType::NotEqual : OperatorType::IsEqual);
+		compare->Location = value->Location;
+		compare->LeftSide = tag;
+		compare->RightSide = std::make_shared<ASTConstantValue>((int64_t)optional->As<ClassType>()->FindCase("none").value(), int32Type);
+		compare->ResultantType = Symbol::GetBooleanType(m_Module).GetType();
+		return compare;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::TestCondition(std::shared_ptr<ASTNodeBase> condition, bool hasValue)
+	{
+		// an optional as a condition means "holds a value" (never "the value is true": ?bool is ambiguous)
+		if (!condition)
+			return nullptr;
+
+		auto type = m_TypeInferEngine.InferTypeFromNode(condition);
+
+		if (!IsOptionalType(type))
+			return condition;
+
+		if (OptionalValueType(type)->GetHash() == "bool")
+		{
+			Report(DiagnosticCode_OptionalBoolCondition, GetNodeLocation(condition));
+			return condition;
+		}
+
+		return OptionalTest(condition, type, hasValue);
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::EvaluatedOnce(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> type)
+	{
+		// a new value that owns memory is kept in a temporary (cleaned up at the end of the block); what is read
+		// from it is copied by whoever keeps it
+		if (IsOwning(type) && IsFreshValue(value))
+		{
+			auto load = std::make_shared<ASTLoad>();
+			load->Operand = AddressOf(value);
+			value = load;
+		}
+
+		auto once = std::make_shared<ASTOnce>();
+		once->Location = value->Location;
+		once->Operand = value;
+		return once;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context)
+	{
+		// a ?? b   ->   when a is none use b otherwise a.value   (a is computed once, b only when needed)
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+
+		auto left = Visit(expr->LeftSide, valueContext);
+
+		if (!left)
+			return nullptr;
+
+		auto optional = m_TypeInferEngine.InferTypeFromNode(left);
+
+		if (!IsOptionalType(optional))
+		{
+			Token location = GetNodeLocation(left);
+			location.SetData(std::format("??’ needs an optional on its left, this is ‘{}", optional ? GetDisplayName(optional) : "?"));
+			Report(DiagnosticCode_NotOptional, location);
+			return nullptr;
+		}
+
+		auto valueType = OptionalValueType(optional);
+		valueContext.ExpectedType = valueType;
+		auto right = Visit(expr->RightSide, valueContext);
+
+		if (!right)
+			return nullptr;
+
+		// `a ?? b` with b optional too stays optional: `first ?? second ?? 0`
+		bool optionalResult = IsOptionalType(m_TypeInferEngine.InferTypeFromNode(right));
+		auto resultType = optionalResult ? optional : valueType;
+		auto once = EvaluatedOnce(left, optional);
+
+		std::shared_ptr<ASTNodeBase> held = once;
+
+		if (!optionalResult)
+		{
+			auto unwrap = std::make_shared<ASTOptionalUnwrap>();
+			unwrap->Location = expr->Location;
+			unwrap->Subject = once;
+			unwrap->OptionalTy = optional;
+			held = unwrap;
+		}
+
+		auto ternary = std::make_shared<ASTTernaryExpression>();
+		ternary->Location = expr->Location;
+		ternary->Condition = OptionalTest(once, optional, false);
+		ternary->Truthy = OwnedValue(Coerce(right, resultType), resultType);
+		ternary->Falsy = OwnedValue(held, resultType);
+
+		if (!ternary->Truthy || !ternary->Falsy)
+			return nullptr;
+
+		return ternary;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call)
+	{
+		// a?.b   ->   when a is none use none otherwise some(a.value.b)        (a is computed once)
+		// a?.f() ->   the same, or just `if a: a.f()` when f returns nothing
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		valueContext.ExpectedType = nullptr;
+
+		auto left = Visit(expr->LeftSide, valueContext);
+
+		if (!left)
+			return nullptr;
+
+		auto optional = m_TypeInferEngine.InferTypeFromNode(left);
+
+		if (!IsOptionalType(optional))
+		{
+			Token location = GetNodeLocation(left);
+			location.SetData(std::format("?.’ needs an optional on its left, this is ‘{}’ (use ‘.’", optional ? GetDisplayName(optional) : "?"));
+			Report(DiagnosticCode_NotOptional, location);
+			return nullptr;
+		}
+
+		auto once = EvaluatedOnce(left, optional);
+
+		auto unwrap = std::make_shared<ASTOptionalUnwrap>();
+		unwrap->Location = expr->Location;
+		unwrap->Subject = once;
+		unwrap->OptionalTy = optional;
+
+		auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
+		access->Location = expr->Location;
+		access->LeftSide = unwrap;
+		access->RightSide = expr->RightSide;
+
+		std::shared_ptr<ASTNodeBase> member = access;
+
+		if (call)
+		{
+			auto method = std::make_shared<ASTFunctionCall>();
+			method->Location = call->Location;
+			method->Callee = access;
+			method->Arguments = call->Arguments;
+			method->KeywordArguments = call->KeywordArguments;
+			member = method;
+		}
+
+		member = Visit(member, valueContext);
+
+		if (!member)
+			return nullptr;
+
+		auto memberType = m_TypeInferEngine.InferTypeFromNode(member);
+
+		if (!memberType || (memberType->Get() && memberType->Get()->isVoidTy()))
+		{
+			auto body = std::make_shared<ASTBlock>();
+			body->Children.push_back(member);
+
+			auto onlyIf = std::make_shared<ASTIfExpression>();
+			onlyIf->ConditionalBlocks.push_back({ .Condition = OptionalTest(once, optional, true), .CodeBlock = body });
+			return onlyIf;
+		}
+
+		// user?.address?.city: a member that is optional itself is not wrapped again
+		auto resultType = IsOptionalType(memberType) ? memberType : GetOptionalType(memberType);
+
+		auto none = std::make_shared<ASTNodeLiteral>(Token(TokenType::Keyword, "none", expr->Location.GetSourceFile(), expr->Location.LineNumber, expr->Location.ColumnNumber));
+
+		auto ternary = std::make_shared<ASTTernaryExpression>();
+		ternary->Location = expr->Location;
+		ternary->Condition = OptionalTest(once, optional, false);
+		ternary->Truthy = Coerce(Visit(none, valueContext), resultType);
+		ternary->Falsy = Coerce(OwnedValue(member, memberType), resultType);
+
+		if (!ternary->Truthy || !ternary->Falsy)
+			return nullptr;
+
+		return ternary;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type)

@@ -82,6 +82,7 @@ namespace clear
 	static std::map<OperatorType, OperatorInfo> g_OperatorTable = {
 		{OperatorType::Index,			  {30, 31}},
 		{OperatorType::Dot,				  {30, 31}},
+		{OperatorType::OptionalDot,		  {30, 31}},
 		{OperatorType::Subscript,	      {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseSubscriptExpr(node); }}},
 		{OperatorType::FunctionCall,	  {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseFunctionCallExpr(node); }}},
 		{OperatorType::StructInitializer, {30, 31, nullptr, nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseStructInitializerExpr(node); }}},
@@ -115,6 +116,8 @@ namespace clear
 		{OperatorType::BitwiseAnd, {14, 15}},
 		{OperatorType::BitwiseXor, {12, 13}},
 		{OperatorType::BitwiseOr,  {10, 11}},
+
+		{OperatorType::Coalesce,   {9, 9}},     // a ?? b ?? c groups to the right; looser than +, tighter than ==
 		
 		{OperatorType::Is,				{8, 9,	nullptr, [](Parser* p, std::shared_ptr<ASTNodeBase> node) { return p->ParseIsExpr(node); }}},
 		{OperatorType::LessThan,        {8, 9}},
@@ -424,22 +427,43 @@ namespace clear
 		return returnStatement;
     }
 
-	std::shared_ptr<ASTIfExpression> Parser::ParseIf()
+	Parser::Condition Parser::ParseCondition()
+	{
+		// `name := value`: declares name and tests it (an optional is true when it holds a value)
+		if (Match(TokenType::Identifier) && m_Position + 2 < m_Tokens.size() && 
+			m_Tokens[m_Position + 1].IsType(TokenType::Colon) && m_Tokens[m_Position + 2].IsType(TokenType::Equals))
+		{
+			Token name = Consume();
+			Consume(); // :
+			Consume(); // =
+
+			auto declaration = std::make_shared<ASTVariableDeclaration>(name);
+			declaration->Location = name;
+			declaration->Initializer = ParseExpr();
+
+			if (!declaration->Initializer)
+				return {};
+
+			return { declaration, std::make_shared<ASTVariable>(name) };
+		}
+
+		return { nullptr, ParseExpr() };
+	}
+
+	std::shared_ptr<ASTNodeBase> Parser::ParseIf()
     {
         EXPECT_DATA_RETURN("if", DiagnosticCode_None, nullptr);
         Consume();	
 
-		auto expr = ParseExpr();
+		struct Branch { Condition Test; std::shared_ptr<ASTBlock> Block; };
+		std::vector<Branch> branches;
+
+		auto test = ParseCondition();
 
         EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
         Consume();
 
-        std::shared_ptr<ASTIfExpression> ifExpr = std::make_shared<ASTIfExpression>();
-		
-		ifExpr->ConditionalBlocks.push_back({
-			.Condition = expr,
-			.CodeBlock = ParseCodeBlock() 
-		});
+		branches.push_back({ test, ParseCodeBlock() });
 		
 		// `elseif` and `else if` mean the same
 		while (Match("elseif") || (Match("else") && Next().GetData() == "if"))		
@@ -447,45 +471,90 @@ namespace clear
 			if (Consume().GetData() == "else")
 				Consume(); // if
 
-			auto expr = ParseExpr();
+			auto test = ParseCondition();
 
 			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
 			Consume();
 
-			ifExpr->ConditionalBlocks.push_back({
-				.Condition = expr,
-				.CodeBlock = ParseCodeBlock() 
-			});
+			branches.push_back({ test, ParseCodeBlock() });
 		}
 		
+		std::shared_ptr<ASTBlock> elseBlock;
+
 		if (Match("else"))
 		{
 			Consume();
 			EXPECT_TOKEN_RETURN(TokenType::Colon, DiagnosticCode_ExpectedIndentation, nullptr);
 			Consume();
 
-			ifExpr->ElseBlock = ParseCodeBlock();
+			elseBlock = ParseCodeBlock();
 		}
 
-		return ifExpr;
+		// built from the last branch back: a `name := value` branch declares name just before its own test,
+		// so `if a: .. elif m := f(): ..` becomes  if a: .. else: { let m = f(); if m: .. }
+		std::shared_ptr<ASTIfExpression> current;
+
+		for (size_t i = branches.size(); i-- > 0; )
+		{
+			if (!current)
+			{
+				current = std::make_shared<ASTIfExpression>();
+				current->ElseBlock = elseBlock;
+			}
+
+			current->ConditionalBlocks.insert(current->ConditionalBlocks.begin(), { .Condition = branches[i].Test.Value, .CodeBlock = branches[i].Block });
+
+			if (branches[i].Test.Declaration)
+			{
+				elseBlock = std::make_shared<ASTBlock>();
+				elseBlock->Children = { branches[i].Test.Declaration, current };
+				current = nullptr;
+			}
+		}
+
+		if (!current)
+			return elseBlock;
+
+		return current;
     }
 
-	std::shared_ptr<ASTWhileExpression> Parser::ParseWhile()
+	std::shared_ptr<ASTNodeBase> Parser::ParseWhile()
     {
         EXPECT_DATA_RETURN("while", DiagnosticCode_None, nullptr);
-        Consume();
+        Token keyword = Consume();
         
         std::shared_ptr<ASTWhileExpression> whileExp = std::make_shared<ASTWhileExpression>();
 
-		auto expr = ParseExpr();
+		auto test = ParseCondition();
 		
         EXPECT_TOKEN(TokenType::Colon,DiagnosticCode_ExpectedIndentation)
         Consume();
 
 		whileExp->WhileBlock = {
-			.Condition = expr,
+			.Condition = test.Value,
 			.CodeBlock = ParseCodeBlock()
 		};
+
+		// while line := read_line():   ->   while true: let line = read_line(); if not line: break; ...
+		if (test.Declaration)
+		{
+			Token location = test.Declaration->GetName();
+			auto token = [&](TokenType type, const std::string& text) { return Token(type, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+
+			auto missing = std::make_shared<ASTUnaryExpression>(OperatorType::Not);
+			missing->Location = location;
+			missing->Operand = std::make_shared<ASTVariable>(location);
+
+			auto stop = std::make_shared<ASTBlock>();
+			stop->Children.push_back(std::make_shared<ASTLoopControlFlow>("break", token(TokenType::Identifier, "break")));
+
+			auto check = std::make_shared<ASTIfExpression>();
+			check->ConditionalBlocks.push_back({ .Condition = missing, .CodeBlock = stop });
+
+			auto& body = whileExp->WhileBlock.CodeBlock->Children;
+			body.insert(body.begin(), { test.Declaration, check });
+			whileExp->WhileBlock.Condition = std::make_shared<ASTNodeLiteral>(token(TokenType::Keyword, "true"));
+		}
 
 		return whileExp;
     }
@@ -2241,6 +2310,8 @@ namespace clear
 			case TokenType::GreaterThan:        return OperatorType::GreaterThan;
 			case TokenType::GreaterThanEquals:  return OperatorType::GreaterThanEqual;
 			case TokenType::Dot:                return OperatorType::Dot;
+			case TokenType::QuestionDot:        return OperatorType::OptionalDot;
+			case TokenType::QuestionQuestion:   return OperatorType::Coalesce;
 			case TokenType::LeftBracket:        return OperatorType::Index;
 			
 			case TokenType::StarEquals:

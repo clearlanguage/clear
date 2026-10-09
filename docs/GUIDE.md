@@ -450,12 +450,31 @@ function find(values: [4; int], target: int) -> ?int:
 let found = find(data, 9)
 found.value                  // the int (checked: reading none stops the program)
 found.value_or(-1)
+found ?? -1                  // the same; `a ?? b ?? 0` tries a, then b, then 0
 found is none / found is not none
 switch found:
     case some(index):
         ...
     case none:
         ...
+
+if found:                    // holds a value: inside, found is the int itself
+    print(found + 1)
+else:
+    print("missing")
+
+if not found:                // ...and after an early exit it is the int from there on
+    return -1
+print(found * 2)
+
+if index := find(data, 3):   // declare and test in one go (also in `else if`)
+    print(index)
+while line := read_line():   // keeps going while there is a value
+    print(line)
+
+user?.name                   // ?String: none when user is none
+user?.address?.city          // stops at the first none
+user?.greet()                // only called when user holds a value
 
 union Bits:                  // fields share memory
     i: int64
@@ -466,6 +485,8 @@ let b = Bits(f = 1.0)
 A union can't have a field that needs cleaning up (a `String`, a `List`, a class with `operator destruct`...), because it doesn't know which field it holds. That is a compile error that suggests a variant.
 
 `none` can only go into a `?T`. Writing `let n: int = none` is a compile error.
+
+An optional in a condition means "holds a value". `found` being `0` still counts as holding one, unlike in Python. `?bool` in a condition is a compile error, because it could mean "holds a value" or "is true"; write `flag is not none` or `flag ?? false`. Only local variables are treated as their value inside `if found:`. A field (`if self.user:`) could be changed by a call in the block, so write `if user := self.user:` there instead.
 
 ### 3.14 Variants · [`examples/24_variants.cl`](../examples/24_variants.cl)
 

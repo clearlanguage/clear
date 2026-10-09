@@ -29,6 +29,7 @@ namespace clear
         Pow, Ternary, FunctionCall,
 		Subscript, StructInitializer,
 		ListInitializer, ArrayType, In, NotIn, Lambda, FunctionType, Optional,
+        Coalesce, OptionalDot,
 
         Count
     };

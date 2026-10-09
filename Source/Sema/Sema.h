@@ -123,6 +123,17 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+
+		// optionals: `a ?? b`, `a?.b`, `if r:` (r is its value inside), `if not r: return` (and after it)
+		struct Narrowing { std::shared_ptr<Symbol> Variable; Token Name; std::shared_ptr<Type> Optional; };
+		std::optional<Narrowing> NarrowableOptional(const std::shared_ptr<ASTNodeBase>& node);
+		std::shared_ptr<ASTVariableDeclaration> NarrowedDeclaration(const Narrowing& narrowing);
+		std::shared_ptr<ASTNodeBase> OptionalTest(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> optional, bool hasValue);
+		std::shared_ptr<ASTNodeBase> TestCondition(std::shared_ptr<ASTNodeBase> condition, bool hasValue);
+		std::shared_ptr<ASTNodeBase> EvaluatedOnce(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
+		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
+		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in
 		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);

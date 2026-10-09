@@ -200,8 +200,9 @@ namespace clear
 
     std::shared_ptr<Type> TypeRegistry::GetTypeFromToken(const Token& token)
     {
-        if(token.GetData() == "null") return m_Types["opaque_ptr"];
-        if(token.GetData() == "none") return GetType("none");
+        // the keywords, not the strings "null" and "none"
+        if(!token.IsType(TokenType::String) && token.GetData() == "null") return m_Types["opaque_ptr"];
+        if(!token.IsType(TokenType::String) && token.GetData() == "none") return GetType("none");
 
         if(token.IsType(TokenType::String))
         {
