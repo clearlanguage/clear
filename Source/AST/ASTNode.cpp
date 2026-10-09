@@ -2629,6 +2629,47 @@ namespace clear
 		for (auto& argument : Arguments)
 			args.push_back(argument->Codegen(ctx).GetLLVMValue());
 
+		// slices: { pointer to the first item, number of items }
+		if (Name == "make_slice" || Name == "slice_of_array" || Name == "slice_len" || Name == "slice_at" || Name == "slice_range")
+		{
+			auto slice = [&](llvm::Value* data, llvm::Value* length)
+			{
+				llvm::Value* value = llvm::UndefValue::get(ResultType->Get());
+				value = builder.CreateInsertValue(value, data, 0);
+				return builder.CreateInsertValue(value, length, 1);
+			};
+
+			if (Name == "make_slice")
+				return Symbol::CreateValue(slice(args[0], args[1]), ResultType);
+
+			if (Name == "slice_of_array")
+				return Symbol::CreateValue(slice(args[0], args[1]), ResultType); // an array's address is its first item's
+
+			if (Name == "slice_len")
+				return Symbol::CreateValue(builder.CreateExtractValue(args[0], 1), ResultType);
+
+			llvm::Value* data = builder.CreateExtractValue(args[0], 0);
+			llvm::Value* length = builder.CreateExtractValue(args[0], 1);
+
+			if (Name == "slice_at")
+			{
+				auto element = ResultType->As<PointerType>()->GetBaseType();
+
+				if (ctx.RuntimeChecks)
+					EmitCheck(ctx, builder.CreateICmpULT(args[1], length), "index out of range for a slice", Location, nullptr);
+
+				return Symbol::CreateValue(builder.CreateInBoundsGEP(element->Get(), data, { args[1] }), ResultType);
+			}
+
+			// slice_range(s, start, end): 0 <= start <= end <= len(s)
+			auto element = ResultType->As<SliceType>()->GetBaseType();
+
+			if (ctx.RuntimeChecks)
+				EmitCheck(ctx, builder.CreateAnd(builder.CreateICmpULE(args[1], args[2]), builder.CreateICmpULE(args[2], length)), "slice bounds out of range", Location, nullptr);
+
+			return Symbol::CreateValue(slice(builder.CreateInBoundsGEP(element->Get(), data, { args[1] }), builder.CreateSub(args[2], args[1])), ResultType);
+		}
+
 		if (Name == "strlen")
 		{
 			llvm::FunctionCallee strlen = ctx.Module.getOrInsertFunction("strlen", llvm::FunctionType::get(builder.getInt64Ty(), { builder.getPtrTy() }, false));

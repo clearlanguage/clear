@@ -131,6 +131,10 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> OptionalTest(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> optional, bool hasValue);
 		std::shared_ptr<ASTNodeBase> TestCondition(std::shared_ptr<ASTNodeBase> condition, bool hasValue);
 		std::shared_ptr<ASTNodeBase> EvaluatedOnce(std::shared_ptr<ASTNodeBase> value, std::shared_ptr<Type> type);
+		// slices: xs[a:b], s[i], len(s), for x in s, and arrays/lists passed where a []T is expected
+		std::shared_ptr<ASTNodeBase> VisitSlice(std::shared_ptr<ASTSliceExpr> slice, SemaContext context);
+		std::shared_ptr<ASTNodeBase> SliceOf(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type, const Token& location);
+		std::shared_ptr<ASTNodeBase> SliceIntrinsic(const std::string& name, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location);
 		std::shared_ptr<ASTNodeBase> VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitOptionalChain(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context, std::shared_ptr<ASTFunctionCall> call);
 		std::shared_ptr<ASTVariableDeclaration> m_NarrowAfter; // set by `if not r: return`, used by the block it is in

@@ -160,6 +160,23 @@ namespace clear
         virtual std::string GetHash() const override { return "str"; }
     };
 
+    // []T: a view of some T's that live somewhere else, { pointer to the first, how many }
+    class SliceType : public Type
+    {
+    public:
+        SliceType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context);
+        virtual ~SliceType() = default;
+
+        virtual llvm::Type* Get() const override { return m_LLVMType; }
+        virtual std::string GetHash() const override { return "[]" + m_BaseType->GetHash(); }
+
+        std::shared_ptr<Type> GetBaseType() const { return m_BaseType; }
+
+    private:
+        std::shared_ptr<Type> m_BaseType;
+        llvm::StructType* m_LLVMType;
+    };
+
     class ArrayType : public Type 
     {
     public:

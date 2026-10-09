@@ -458,6 +458,7 @@ namespace clear
 			case ASTNodeType::Move:						return ast;
 			case ASTNodeType::Copy:						return ast;
 			case ASTNodeType::Once:						return ast;
+			case ASTNodeType::SliceExpr:				return VisitSlice(std::dynamic_pointer_cast<ASTSliceExpr>(ast), context);
 			case ASTNodeType::Destroy:					return ast;
 			case ASTNodeType::VariantConstruct:			return ast;
 			case ASTNodeType::VariantField:				return ast;
@@ -894,6 +895,32 @@ namespace clear
 		{
 			if (!LookupSymbol("len").first)
 				return VisitLen(funcCall, context);
+		}
+
+		// view(p, n): the slice of n items starting at p (for containers that manage raw memory)
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && 
+			callee->GetName().GetData() == "view" && !LookupSymbol("view").first)
+		{
+			if (funcCall->Arguments.size() != 2)
+			{
+				Report(DiagnosticCode_WrongArgumentCount, callee->GetName());
+				return nullptr;
+			}
+
+			SemaContext valueContext = context;
+			valueContext.ValueReq = ValueRequired::RValue;
+			auto pointer = Visit(funcCall->Arguments[0], valueContext);
+			auto length = Visit(funcCall->Arguments[1], valueContext);
+			auto pointerType = pointer ? m_TypeInferEngine.InferTypeFromNode(pointer) : nullptr;
+
+			if (!length || !pointerType || !pointerType->IsPointer() || !pointerType->As<PointerType>()->GetBaseType())
+			{
+				Report(DiagnosticCode_ExpectedType, pointer ? GetNodeLocation(pointer) : callee->GetName());
+				return nullptr;
+			}
+
+			auto slice = m_Module->GetTypeRegistry()->GetSliceOf(pointerType->As<PointerType>()->GetBaseType());
+			return SliceIntrinsic("make_slice", slice, { pointer, Coerce(length, m_Module->Lookup("int64").value()->GetType()) }, callee->GetName());
 		}
 
 		// destroy(p): clean up *p now;  take(p): hand over the value at p (raw memory a container manages)
@@ -2632,6 +2659,61 @@ namespace clear
 				return Visit(block, context);
 			}
 
+			// for x in slice:   ->   let s = slice;  for i in 0..len(s): let x = s[i] (the element itself if it is an object)
+			if (auto slice = std::dynamic_pointer_cast<SliceType>(forExpr->IterableType))
+			{
+				static size_t s_SliceCounter = 0;
+				size_t id = s_SliceCounter++;
+				Token location = forExpr->Location;
+				auto name = [&](const std::string& text) { return std::make_shared<ASTVariable>(Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber)); };
+				std::string sliceName = std::format("__slice_{}", id), indexName = std::format("__slice_index_{}", id);
+				auto int64Type = m_Module->Lookup("int64").value()->GetType();
+
+				auto intrinsic = [&](const std::string& intrinsicName, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments)
+				{
+					auto node = std::make_shared<ASTIntrinsic>(intrinsicName, result);
+					node->Location = location;
+					node->Unanalysed = true;
+					node->Arguments.assign(arguments.begin(), arguments.end());
+					return node;
+				};
+
+				auto held = std::make_shared<ASTVariableDeclaration>(name(sliceName)->GetName());
+				held->Location = location;
+				held->Initializer = pristineIterable;
+
+				auto element = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
+				element->Location = forExpr->VariableName;
+				auto address = intrinsic("slice_at", m_Module->GetTypeRegistry()->GetPointerTo(slice->GetBaseType()), { name(sliceName), name(indexName) });
+
+				if (slice->GetBaseType()->IsClass())
+				{
+					element->Initializer = address;
+					element->IsAlias = true;
+				}
+				else
+				{
+					auto value = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+					value->Location = location;
+					value->Operand = address;
+					value->IsElement = true;
+					element->Initializer = value;
+				}
+
+				auto loop = std::make_shared<ASTForExpression>();
+				loop->Location = location;
+				loop->VariableName = name(indexName)->GetName();
+				loop->Start = std::make_shared<ASTConstantValue>((int64_t)0, int64Type);
+				loop->End = intrinsic("slice_len", int64Type, { name(sliceName) });
+				loop->CodeBlock = std::make_shared<ASTBlock>();
+				loop->CodeBlock->Children.push_back(element);
+				loop->CodeBlock->Children.insert(loop->CodeBlock->Children.end(), forExpr->CodeBlock->Children.begin(), forExpr->CodeBlock->Children.end());
+
+				auto block = std::make_shared<ASTBlock>();
+				block->Children = { held, loop };
+				return Visit(block, context);
+			}
+
 			if (!forExpr->IterableType || !forExpr->IterableType->IsArray())
 			{
 				Report(DiagnosticCode_NotIterable, GetNodeLocation(forExpr->Iterable));
@@ -3074,6 +3156,9 @@ namespace clear
 
 		if (type && type->IsArray())
 			return std::make_shared<ASTConstantValue>((int64_t)type->As<ArrayType>()->GetArraySize(), int64Type);
+
+		if (std::dynamic_pointer_cast<SliceType>(type))
+			return SliceIntrinsic("slice_len", int64Type, { AsValue(argument) }, location);
 
 		if (type && type->GetHash() == "str")
 		{
@@ -5079,8 +5164,18 @@ namespace clear
 		}
 
 		// [N; T] matched against an array binds T to the element type
-		if (auto array = std::dynamic_pointer_cast<ASTArrayType>(pattern); array && actual->IsArray())
+		if (auto array = std::dynamic_pointer_cast<ASTArrayType>(pattern); array && array->SizeNode && actual->IsArray())
 			return BindGenericType(array->TypeNode, actual->As<ArrayType>()->GetBaseType(), names, bindings);
+
+		// []T matched against a slice (or an array, which becomes one)
+		if (auto array = std::dynamic_pointer_cast<ASTArrayType>(pattern); array && !array->SizeNode)
+		{
+			if (auto slice = std::dynamic_pointer_cast<SliceType>(actual))
+				return BindGenericType(array->TypeNode, slice->GetBaseType(), names, bindings);
+
+			if (actual->IsArray())
+				return BindGenericType(array->TypeNode, actual->As<ArrayType>()->GetBaseType(), names, bindings);
+		}
 
 		// *T matched against a pointer binds T to the pointee
 		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(pattern); unary && unary->GetOperatorType() == OperatorType::Dereference && actual->IsPointer())
@@ -5200,6 +5295,21 @@ namespace clear
 
 			if (!targetType)
 				return nullptr;
+
+			// s[i] on a slice: the element itself (checked against the length when checks are on)
+			if (auto slice = std::dynamic_pointer_cast<SliceType>(targetType); slice && subscript->SubscriptArgs.size() == 1 && subscript->SubscriptArgs[0])
+			{
+				auto int64Type = m_Module->Lookup("int64").value()->GetType();
+				auto address = SliceIntrinsic("slice_at", m_Module->GetTypeRegistry()->GetPointerTo(slice->GetBaseType()),
+											  { AsValue(subscript->Target), Coerce(subscript->SubscriptArgs[0], int64Type) }, GetNodeLocation(subscript->SubscriptArgs[0]));
+
+				auto element = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+				element->Location = GetNodeLocation(subscript->Target);
+				element->Operand = address;
+				element->IsStorage = context.ValueReq == ValueRequired::LValue;
+				element->IsElement = true;
+				return element;
+			}
 
 			// f()[i]: index the computed pointer (or array) directly
 			if (!IsStorageNode(subscript->Target) && !targetType->IsClass())
@@ -5411,6 +5521,22 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTArrayType> arrayType, SemaContext context)
 	{
+		// []T
+		if (!arrayType->SizeNode)
+		{
+			arrayType->TypeNode = Visit(arrayType->TypeNode, context);
+			auto baseTy = arrayType->TypeNode ? GetTypeFromNode(arrayType->TypeNode) : nullptr;
+
+			if (!baseTy)
+			{
+				Report(DiagnosticCode_ExpectedType, arrayType->TypeNode ? GetNodeLocation(arrayType->TypeNode) : arrayType->Location);
+				return nullptr;
+			}
+
+			arrayType->GeneratedArrayType = m_Module->GetTypeRegistry()->GetSliceOf(baseTy);
+			return arrayType;
+		}
+
 		arrayType->SizeNode = Visit(arrayType->SizeNode, context);
 		arrayType->TypeNode = Visit(arrayType->TypeNode, context);
 
@@ -5768,6 +5894,164 @@ namespace clear
 		return once;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::SliceIntrinsic(const std::string& name, std::shared_ptr<Type> result, std::vector<std::shared_ptr<ASTNodeBase>> arguments, const Token& location)
+	{
+		auto intrinsic = std::make_shared<ASTIntrinsic>(name, result);
+		intrinsic->Location = location;
+		intrinsic->Arguments.assign(arguments.begin(), arguments.end());
+		return intrinsic;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::SliceOf(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type, const Token& location)
+	{
+		// the whole of an array, or of an object with operator slice, as a []T; null if it has none
+		auto int64Type = m_Module->Lookup("int64").value()->GetType();
+
+		if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+			return node;
+
+		// where the value lives: a variable is used in place, a computed value is kept in a temporary
+		auto storage = [&]() -> std::shared_ptr<ASTNodeBase>
+		{
+			if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && IsStorageNode(load->Operand))
+				return load->Operand;
+
+			if (IsStorageNode(node))
+				return node;
+
+			return AddressOf(node);
+		};
+
+		auto pointee = type && type->IsPointer() ? type->As<PointerType>()->GetBaseType() : nullptr;
+
+		if (type && (type->IsArray() || (pointee && pointee->IsArray())))
+		{
+			auto array = (type->IsArray() ? type : pointee)->As<ArrayType>();
+			auto address = type->IsArray() ? storage() : node;
+			auto slice = m_Module->GetTypeRegistry()->GetSliceOf(array->GetBaseType());
+			return SliceIntrinsic("slice_of_array", slice, { address, std::make_shared<ASTConstantValue>((int64_t)array->GetArraySize(), int64Type) }, location);
+		}
+
+		auto classType = ClassOf(type) ? ClassOf(type)->As<ClassType>() : nullptr;
+
+		if (classType && classType->MemberFunctions.contains("__slice__") && classType->MemberFunctions.contains("__len__"))
+		{
+			// self is passed as a pointer, computed once (it is used for the length too)
+			auto self = std::make_shared<ASTOnce>();
+			self->Location = location;
+			self->Operand = type->IsPointer() ? node : storage();
+
+			if (IsStorageNode(self->Operand))
+			{
+				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+				address->Location = location;
+				address->Operand = self->Operand;
+				self->Operand = address;
+			}
+
+			auto selfType = m_TypeInferEngine.InferTypeFromNode(self->Operand);
+
+			EnsureDefined(classType->MemberFunctions.at("__len__")->GetFunctionSymbol().FunctionNode);
+			EnsureDefined(classType->MemberFunctions.at("__slice__")->GetFunctionSymbol().FunctionNode);
+
+			auto length = CallMethod(self, selfType, "__len__", {}, location);
+			return length ? CallMethod(self, selfType, "__slice__", { std::make_shared<ASTConstantValue>((int64_t)0, int64Type), length }, location) : nullptr;
+		}
+
+		return nullptr;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitSlice(std::shared_ptr<ASTSliceExpr> slice, SemaContext context)
+	{
+		SemaContext storageContext = context;
+		storageContext.ValueReq = ValueRequired::LValue;
+		SemaContext valueContext = context;
+		valueContext.ValueReq = ValueRequired::RValue;
+		valueContext.ExpectedType = nullptr;
+
+		auto target = Visit(slice->Target, storageContext);
+
+		if (!target)
+			return nullptr;
+
+		auto int64Type = m_Module->Lookup("int64").value()->GetType();
+		auto type = m_TypeInferEngine.InferTypeFromNode(target);
+		Token location = slice->Location;
+
+		std::shared_ptr<ASTNodeBase> start = slice->Start ? Coerce(Visit(slice->Start, valueContext), int64Type) : nullptr;
+		std::shared_ptr<ASTNodeBase> end = slice->End ? Coerce(Visit(slice->End, valueContext), int64Type) : nullptr;
+
+		if ((slice->Start && !start) || (slice->End && !end))
+			return nullptr;
+
+		// an object with operator slice decides itself (List: a view of its items)
+		auto classType = ClassOf(type) ? ClassOf(type)->As<ClassType>() : nullptr;
+
+		if (classType && classType->MemberFunctions.contains("__slice__"))
+		{
+			// self is passed as a pointer, computed once (it is used for the length too)
+			auto self = std::make_shared<ASTOnce>();
+			self->Location = location;
+			self->Operand = type->IsPointer() ? AsValue(target) : (IsStorageNode(target) ? target : AddressOf(target));
+
+			if (IsStorageNode(self->Operand))
+			{
+				auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+				address->Location = location;
+				address->Operand = self->Operand;
+				self->Operand = address;
+			}
+
+			auto selfType = m_TypeInferEngine.InferTypeFromNode(self->Operand);
+			EnsureDefined(classType->MemberFunctions.at("__slice__")->GetFunctionSymbol().FunctionNode);
+
+			if (!end)
+			{
+				if (!classType->MemberFunctions.contains("__len__"))
+				{
+					location.SetData(GetDisplayName(type));
+					Report(DiagnosticCode_NotIterable, location);
+					return nullptr;
+				}
+
+				EnsureDefined(classType->MemberFunctions.at("__len__")->GetFunctionSymbol().FunctionNode);
+				end = CallMethod(self, selfType, "__len__", {}, location);
+			}
+
+			if (!start)
+				start = std::make_shared<ASTConstantValue>((int64_t)0, int64Type);
+
+			return end ? CallMethod(self, selfType, "__slice__", { start, end }, location) : nullptr;
+		}
+
+		auto whole = SliceOf(target, type, location);
+
+		if (!whole)
+		{
+			Token where = GetNodeLocation(target);
+			where.SetData(std::format("{}’ cannot be sliced (arrays, slices, and classes with operator slice can", GetDisplayName(type)));
+			Report(DiagnosticCode_NotIterable, where);
+			return nullptr;
+		}
+
+		if (!start && !end)
+			return std::dynamic_pointer_cast<SliceType>(type) ? AsValue(whole) : whole;
+
+		// the whole is computed once: the end defaults to its length
+		auto once = std::make_shared<ASTOnce>();
+		once->Location = location;
+		once->Operand = std::dynamic_pointer_cast<SliceType>(type) ? AsValue(whole) : whole;
+		auto sliceType = m_TypeInferEngine.InferTypeFromNode(once);
+
+		if (!start)
+			start = std::make_shared<ASTConstantValue>((int64_t)0, int64Type);
+
+		if (!end)
+			end = SliceIntrinsic("slice_len", int64Type, { once }, location);
+
+		return SliceIntrinsic("slice_range", sliceType, { once, start, end }, location);
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::VisitCoalesce(std::shared_ptr<ASTBinaryExpression> expr, SemaContext context)
 	{
 		// a ?? b   ->   when a is none use b otherwise a.value   (a is computed once, b only when needed)
@@ -6053,6 +6337,18 @@ namespace clear
 		if (!node || !target)
 			return node;
 
+		// an array or a list (anything with operator slice) where a []T is expected: all of it, as a view
+		if (auto slice = std::dynamic_pointer_cast<SliceType>(target))
+		{
+			auto type = m_TypeInferEngine.InferTypeFromNode(node);
+
+			if (type && type != target && !std::dynamic_pointer_cast<SliceType>(type))
+			{
+				if (auto whole = SliceOf(node, type, GetNodeLocation(node)); whole && m_TypeInferEngine.InferTypeFromNode(whole) == target)
+					return whole;
+			}
+		}
+
 		if (IsOwning(target) && m_TypeInferEngine.InferTypeFromNode(node) == target)
 			return TakeOwnership(node, target);
 
@@ -6296,6 +6592,21 @@ namespace clear
 					if (throughCall) *throughCall = true;
 					node = std::dynamic_pointer_cast<ASTSubscript>(node)->Target;
 					break;
+				case ASTNodeType::Once:
+					node = std::dynamic_pointer_cast<ASTOnce>(node)->Operand;
+					break;
+				case ASTNodeType::Intrinsic:
+				{
+					// slice_range(s, a, b), slice_of_array(&xs, n): a view of the first argument
+					auto intrinsic = std::dynamic_pointer_cast<ASTIntrinsic>(node);
+
+					if (intrinsic->Arguments.empty() || (intrinsic->Name != "slice_range" && intrinsic->Name != "slice_of_array" && intrinsic->Name != "slice_at"))
+						return nullptr;
+
+					if (throughCall) *throughCall = true;
+					node = intrinsic->Arguments[0];
+					break;
+				}
 				case ASTNodeType::FunctionCall:
 				{
 					// a method call: its first argument is the object
@@ -6318,7 +6629,9 @@ namespace clear
 
 	void Sema::NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl)
 	{
-		if (!decl->Initializer || !decl->ResolvedType || !decl->ResolvedType->IsPointer())
+		bool view = decl->ResolvedType && std::dynamic_pointer_cast<SliceType>(decl->ResolvedType);
+
+		if (!decl->Initializer || !decl->ResolvedType || (!decl->ResolvedType->IsPointer() && !view))
 			return;
 
 		bool throughCall = false;

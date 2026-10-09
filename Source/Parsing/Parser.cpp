@@ -1561,6 +1561,32 @@ namespace clear
 
 		std::shared_ptr<ASTSubscript> subscript = std::make_shared<ASTSubscript>();
 		subscript->Target = lhs;
+
+		// xs[a:b], xs[:b], xs[a:], xs[:]
+		{
+			size_t restart = m_Position;
+			std::shared_ptr<ASTNodeBase> start;
+
+			if (!Match(TokenType::Colon) && !Match(TokenType::RightBracket))
+				start = ParseExpr();
+
+			if (Match(TokenType::Colon))
+			{
+				auto slice = std::make_shared<ASTSliceExpr>();
+				slice->Location = Consume();
+				slice->Target = lhs;
+				slice->Start = start;
+
+				if (!Match(TokenType::RightBracket))
+					slice->End = ParseExpr();
+
+				EXPECT_TOKEN_RETURN(TokenType::RightBracket, DiagnosticCode_UnmatchedBracket, nullptr);
+				Consume();
+				return slice;
+			}
+
+			m_Position = restart;
+		}
 		
 		while (!Match(TokenType::RightBracket))
 		{
@@ -1894,6 +1920,15 @@ namespace clear
 		Consume();
 
 		std::shared_ptr<ASTArrayType> arrayType = std::make_shared<ASTArrayType>();
+
+		// []T: a slice (no size)
+		if (Match(TokenType::RightBracket))
+		{
+			Consume();
+			arrayType->TypeNode = ParseExpr(30);
+			return arrayType;
+		}
+
 		arrayType->SizeNode = ParseExpr();
 		
 		EXPECT_TOKEN_RETURN(TokenType::Semicolon, DiagnosticCode_ExpectedColon, nullptr);
@@ -1926,7 +1961,7 @@ namespace clear
 		{ "greater", "__gt__" }, { "greater_equal", "__ge__" },
 		{ "get", "__getitem__" }, { "set", "__setitem__" }, { "len", "__len__" }, { "contains", "__contains__" },
 		{ "iterate", "__iter__" }, { "call", "__call__" }, { "str", "__str__" }, { "hash", "__hash__" },
-		{ "destruct", "__destruct__" }, { "copy", "__copy__" },
+		{ "destruct", "__destruct__" }, { "copy", "__copy__" }, { "slice", "__slice__" },
 	};
 
 	bool Parser::NameSpecialMethod(std::shared_ptr<ASTFunctionDefinition> method, const Token& nameToken, bool isOperator)

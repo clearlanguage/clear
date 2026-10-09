@@ -90,6 +90,7 @@ namespace clear
 
     static constexpr size_t s_PointerKind = (size_t)-1;
     static constexpr size_t s_ConstKind   = (size_t)-2;
+    static constexpr size_t s_SliceKind   = (size_t)-3;
 
     std::shared_ptr<Type> TypeRegistry::GetPointerTo(std::shared_ptr<Type> base)
     {
@@ -113,6 +114,19 @@ namespace clear
 
         if (!slot)
             slot = std::make_shared<ArrayType>(base, count);
+
+        m_Types.try_emplace(slot->GetHash(), slot);
+        return slot;
+    }
+
+    std::shared_ptr<Type> TypeRegistry::GetSliceOf(std::shared_ptr<Type> base)
+    {
+        CLEAR_VERIFY(base, "invalid base");
+
+        auto& slot = DerivedTypeSlot(base, s_SliceKind);
+
+        if (!slot)
+            slot = std::make_shared<SliceType>(base, *m_Context);
 
         m_Types.try_emplace(slot->GetHash(), slot);
         return slot;

@@ -638,7 +638,25 @@ let doubled = numbers.map(lambda n: n * 2)          // a new List (here List[int
 let evens = numbers.filter(lambda n: n % 2 == 0)    // a new List with the items that pass
 numbers.sort()                                       // in place, smallest first (items need <)
 words.sort_by(lambda w: len(w))                      // in place, by a key; equal keys keep their order
+```
 
+**Slices** are views: a pointer to some items plus how many there are, with nothing copied.
+
+```clear
+let xs: [6; int] = {10, 20, 30, 40, 50, 60}
+let part = xs[1:4]          // []int: 20 30 40 (the end is left out, like Python)
+xs[:3]  xs[3:]  xs[:]       // from the start / to the end / everything
+part[0] = 99                // changes xs[1]
+len(part)  part[1:]  for x in part:
+
+function sum(values: []int) -> int:   // takes any array, List or slice of ints
+    ...
+sum(xs)  sum(numbers)  sum(numbers[2:5])
+```
+
+`List` supports slicing through `operator slice`, and your own classes can too. Indexes and bounds are checked when checks are on. A slice of a list must not be used after the list grows or shrinks (`push`, `remove`...), because that can move the items. The compiler warns when it sees that happen in one function.
+
+```clear
 let ages = Map[str, int]()
 ages["ada"] = 36             // also: m[k] += 1, get (-> ?V), get_or, `in`, remove, len, for key in m
 ```

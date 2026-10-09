@@ -37,7 +37,7 @@ namespace clear
 		ForLoop, Enum, ConstantValue, Temporary, Zero, Construct, Slot,
 		Assert, Contains, Intrinsic, TupleExpr, TupleGet, Sequence, Destructure,
 		Lambda, FunctionTypeExpr, FunctionRef, TypeLiteral, VTableRef, Macro, MacroCall, Yield, Await, Move, Destroy, Copy,
-		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct, Once
+		VariantConstruct, VariantField, VariantTag, OptionalUnwrap, OptionalValueOr, UnionConstruct, Once, SliceExpr
 	};
 
 	class ASTNodeBase;
@@ -352,6 +352,21 @@ namespace clear
 		llvm::SmallVector<std::shared_ptr<ASTNodeBase>> SubscriptArgs;
 		SubscriptSemantic Meaning = SubscriptSemantic::None;
 		std::shared_ptr<Symbol> GeneratedType;
+	};
+
+	// xs[a:b], xs[:b], xs[a:], xs[:] (lowered by Sema)
+	class ASTSliceExpr : public ASTNodeBase
+	{
+	public:
+		ASTSliceExpr() = default;
+		virtual ~ASTSliceExpr() = default;
+		virtual inline const ASTNodeType GetType() const override { return ASTNodeType::SliceExpr; }
+		virtual Symbol Codegen(CodegenContext&) override { return Symbol(); }
+
+	public:
+		std::shared_ptr<ASTNodeBase> Target;
+		std::shared_ptr<ASTNodeBase> Start; // null: from the beginning
+		std::shared_ptr<ASTNodeBase> End;   // null: to the end
 	};
 
 	class ASTFunctionDeclaration : public ASTNodeBase

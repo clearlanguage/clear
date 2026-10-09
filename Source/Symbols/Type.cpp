@@ -448,6 +448,13 @@ namespace clear
         return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");
     }
 
+    SliceType::SliceType(std::shared_ptr<Type> baseType, llvm::LLVMContext& context)
+        : m_BaseType(baseType)
+    {
+        m_LLVMType = llvm::StructType::get(context, { llvm::PointerType::get(context, 0), llvm::Type::getInt64Ty(context) });
+        Toggle(TypeFlags::Compound);
+    }
+
     std::string GetDisplayName(const std::shared_ptr<Type>& type)
     {
         if (!type)
@@ -465,6 +472,9 @@ namespace clear
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return std::format("[{}; {}]", array->GetArraySize(), GetDisplayName(array->GetBaseType()));
+
+        if (auto slice = std::dynamic_pointer_cast<SliceType>(type))
+            return "[]" + GetDisplayName(slice->GetBaseType());
 
         if (auto function = std::dynamic_pointer_cast<FunctionPointerType>(type))
         {

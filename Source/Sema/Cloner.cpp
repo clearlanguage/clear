@@ -75,6 +75,16 @@ namespace clear {
 			case ASTNodeType::ReturnStatement:			return CloneReturn(std::dynamic_pointer_cast<ASTReturn>(node));
 			case ASTNodeType::StructExpr:				return CloneStructExpr(std::dynamic_pointer_cast<ASTStructExpr>(node));
 			case ASTNodeType::Subscript:				return CloneSubscript(std::dynamic_pointer_cast<ASTSubscript>(node));
+			case ASTNodeType::SliceExpr:
+			{
+				auto original = std::dynamic_pointer_cast<ASTSliceExpr>(node);
+				auto slice = std::make_shared<ASTSliceExpr>();
+				slice->Location = original->Location;
+				slice->Target = Clone(original->Target);
+				slice->Start = Clone(original->Start);
+				slice->End = Clone(original->End);
+				return slice;
+			}
 			case ASTNodeType::CastExpr:					return CloneCastExpr(std::dynamic_pointer_cast<ASTCastExpr>(node));		
 			case ASTNodeType::SizeofExpr:				return CloneSizeofExpr(std::dynamic_pointer_cast<ASTSizeofExpr>(node));		
 			case ASTNodeType::IsExpr:					return CloneIsExpr(std::dynamic_pointer_cast<ASTIsExpr>(node));		

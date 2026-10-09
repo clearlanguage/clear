@@ -35,6 +35,12 @@ class List[T]:
     operator len(self: *List[T]) -> int64:
         return self.length
 
+    // list[a:b]: a view of those items, nothing is copied (adding or removing items may move them, so use it
+    // before changing the list)
+    operator slice(self, start: int64, end: int64) -> []T:
+        assert start >= 0 and start <= end and end <= self.length, "List slice out of range"
+        return view(self.data + start, end - start)
+
     function last(self: *List[T]) -> T:
         assert self.length > 0, "last of an empty List"
         return self[self.length - 1]
