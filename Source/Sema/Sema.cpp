@@ -52,6 +52,9 @@ namespace clear
 		}
 		else 
 		{
+			m_BlockCandidates.push_back(m_Copies.Candidates.size());
+			struct PopBlock { std::vector<size_t>& Stack; ~PopBlock() { Stack.pop_back(); } } popBlock { m_BlockCandidates };
+
 			for (size_t i = 0; i < ast->Children.size(); i++)
 			{
 				size_t firstCandidate = m_Copies.Candidates.size();
@@ -340,6 +343,16 @@ namespace clear
 					if (root && root->Variable && m_LocalVariables.contains(root->Variable.get()) && rootType && !rootType->IsPointer() && AddressOfRead(copy->Value))
 						m_Copies.Views.push_back({ decl, copy, decl->Variable.get(), root->Variable.get(), m_Copies.Clock });
 				}
+			}
+
+			// `if q:` names the value inside the optional q (see NarrowedDeclaration)
+			if (auto field = std::dynamic_pointer_cast<ASTVariantField>(decl->Initializer); field && decl->IsAlias && !context.GlobalState)
+			{
+				auto subject = std::dynamic_pointer_cast<ASTVariable>(field->Subject);
+
+				if (subject && subject->Variable && m_LocalVariables.contains(subject->Variable.get()) && field->VariantTy && field->VariantTy->IsClass() &&
+					field->VariantTy->As<ClassType>()->IsOptional)
+					m_NarrowedAliases[decl->Variable.get()] = subject;
 			}
 
 			if (decl->IsConst)
@@ -1895,6 +1908,19 @@ namespace clear
 			m_Returning = true;
 			returnStatement->ReturnValue = Coerce(returnStatement->ReturnValue, context.ReturnType);
 			m_Returning = false;
+		}
+
+		// a copy made earlier in this block whose variable is not used between it and here is the last use on
+		// this path, even if the variable is used again further down (another path) or the block is in a loop
+		if (!m_BlockCandidates.empty())
+		{
+			for (size_t i = m_BlockCandidates.back(); i < m_Copies.Candidates.size(); i++)
+			{
+				auto& candidate = m_Copies.Candidates[i];
+
+				if (candidate.Valid && m_Copies.Uses[candidate.Variable] == candidate.Use)
+					candidate.Final = true;
+			}
 		}
 
 		m_Unreachable = true;
@@ -4046,7 +4072,7 @@ namespace clear
 					type = type->As<PointerType>()->GetBaseType();
 
 				captures.push_back({ name, type });
-				m_Copies.NeverMove.insert(entry->Symbol.get()); // the lambda may run after the variable's last mention
+				m_Copies.NeverMove.insert(MoveRoot(entry->Symbol.get())); // the lambda may run after the variable's last mention
 			}
 		}
 
@@ -4521,8 +4547,153 @@ namespace clear
 		return CallMethod(member->LeftSide, objectType, instanceName, values, location);
 	}
 
+	// a place written without calls (xs[i + 1].name), as text: two places with the same text are the same place
+	static std::optional<std::string> PlaceText(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		if (!node)
+			return std::nullopt;
+
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(node); variable && !variable->Variable)
+			return variable->GetName().GetData();
+
+		if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(node); literal && literal->GetData().IsType(TokenType::Number))
+			return literal->GetData().GetData();
+
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node))
+		{
+			auto text = PlaceText(subscript->Target);
+
+			if (!text || subscript->SubscriptArgs.empty())
+				return std::nullopt;
+
+			*text += "[";
+
+			for (auto& argument : subscript->SubscriptArgs)
+			{
+				auto index = PlaceText(argument);
+
+				if (!index)
+					return std::nullopt;
+
+				*text += *index + ",";
+			}
+
+			return *text + "]";
+		}
+
+		if (auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node))
+		{
+			auto op = binary->GetExpression();
+
+			if (op != OperatorType::Dot && op != OperatorType::Add && op != OperatorType::Sub && op != OperatorType::Mul)
+				return std::nullopt;
+
+			auto left = PlaceText(binary->LeftSide);
+			auto right = PlaceText(binary->RightSide);
+
+			if (!left || !right)
+				return std::nullopt;
+
+			return std::format("({}{}{})", *left, (int)op, *right);
+		}
+
+		return std::nullopt;
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::VisitSwap(std::shared_ptr<ASTDestructure> destructure, SemaContext context, bool& isSwap)
+	{
+		// xs[i], xs[j] = xs[j], xs[i]: the same places on both sides, so the values only change places. Each is taken
+		// out as it is (no copy), then put into its new place (nothing to clean up: its old value was taken out)
+		auto tuple = std::dynamic_pointer_cast<ASTTupleExpr>(destructure->Value);
+
+		if (destructure->IsDeclaration || !tuple || tuple->Values.size() != destructure->Targets.size() || tuple->Values.size() < 2)
+			return nullptr;
+
+		std::vector<std::string> targets, values;
+
+		for (size_t i = 0; i < tuple->Values.size(); i++)
+		{
+			auto target = PlaceText(destructure->Targets[i]);
+			auto value = PlaceText(tuple->Values[i]);
+
+			if (!target || !value)
+				return nullptr;
+
+			targets.push_back(*target);
+			values.push_back(*value);
+		}
+
+		std::sort(targets.begin(), targets.end());
+		std::sort(values.begin(), values.end());
+
+		if (targets != values || std::adjacent_find(targets.begin(), targets.end()) != targets.end())
+			return nullptr;
+
+		isSwap = true;
+
+		static size_t s_Counter = 0;
+		Token location = destructure->Location;
+		auto token = [&](const std::string& text) { return Token(TokenType::Identifier, text, location.GetSourceFile(), location.LineNumber, location.ColumnNumber); };
+
+		auto call = [&](const std::string& name, std::vector<std::shared_ptr<ASTNodeBase>> arguments)
+		{
+			auto node = std::make_shared<ASTFunctionCall>();
+			node->Location = location;
+			node->Callee = std::make_shared<ASTVariable>(token(name));
+			node->Arguments.append(arguments.begin(), arguments.end());
+			return node;
+		};
+
+		auto address = [&](std::shared_ptr<ASTNodeBase> place)
+		{
+			auto node = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+			node->Location = location;
+			node->Operand = place;
+			return node;
+		};
+
+		std::vector<std::shared_ptr<ASTNodeBase>> statements;
+		std::vector<std::string> names;
+
+		for (auto& value : tuple->Values)
+		{
+			names.push_back(std::format("__swap_{}", s_Counter++));
+			auto held = std::make_shared<ASTVariableDeclaration>(token(names.back()));
+			held->Location = location;
+			held->Initializer = call("take", { address(value) });
+			statements.push_back(held);
+		}
+
+		for (size_t i = 0; i < destructure->Targets.size(); i++)
+			statements.push_back(call("place", { address(destructure->Targets[i]), std::make_shared<ASTVariable>(token(names[i])) }));
+
+		// the pointers made here are used right away: they do not keep the places from being moved out later
+		auto neverMove = m_Copies.NeverMove;
+		auto sequence = std::make_shared<ASTSequence>();
+		sequence->Location = location;
+
+		for (auto& statement : statements)
+		{
+			auto visited = Visit(statement, context);
+
+			if (!visited)
+				return nullptr;
+
+			sequence->Children.push_back(visited);
+		}
+
+		m_Copies.NeverMove = std::move(neverMove);
+		return sequence;
+	}
+
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTDestructure> destructure, SemaContext context)
 	{
+		bool isSwap = false;
+		auto swap = VisitSwap(destructure, context, isSwap);
+
+		if (isSwap)
+			return swap;
+
 		// evaluate the right side once into a hidden tuple, then hand out its elements:
 		//     let __destructure = value
 		//     target0 = __destructure[0]   (or `let name0 = ...`)
@@ -7031,6 +7202,23 @@ namespace clear
 			return result;
 		}
 
+		// let u = q inside `if q:` (q the value in the optional q): at its last use the optional is emptied instead
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && copyable && !m_Returning)
+		{
+			auto variable = std::dynamic_pointer_cast<ASTVariable>(load->Operand);
+			auto alias = variable && variable->Variable ? m_NarrowedAliases.find(variable->Variable.get()) : m_NarrowedAliases.end();
+
+			if (alias != m_NarrowedAliases.end())
+			{
+				auto result = copy();
+
+				if (auto use = m_Copies.UseOf.find(variable.get()); use != m_Copies.UseOf.end())
+					m_Copies.Candidates.push_back(CopyCandidate { alias->second->Variable.get(), use->second, result, alias->second, true });
+
+				return result;
+			}
+		}
+
 		// a value that cannot be copied (a File, a class with its own destruct) moves out of a local, which is left empty
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand))
 		{
@@ -7590,9 +7778,15 @@ namespace clear
 		m_ElementPointers.erase(variable->Variable.get());
 	}
 
+	Symbol* Sema::MoveRoot(Symbol* symbol)
+	{
+		auto alias = m_NarrowedAliases.find(symbol);
+		return alias != m_NarrowedAliases.end() ? alias->second->Variable.get() : symbol;
+	}
+
 	void Sema::NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired)
 	{
-		Symbol* symbol = variable->Variable.get();
+		Symbol* symbol = MoveRoot(variable->Variable.get());
 
 		if (!symbol || !m_LocalVariables.contains(symbol))
 			return;
@@ -7649,7 +7843,7 @@ namespace clear
 			if (type && (type->IsPointer() || std::dynamic_pointer_cast<SliceType>(type) || IsStorageNode(argument)))
 			{
 				if (auto root = RootVariable(argument, nullptr); root && root->Variable)
-					lent.insert(root->Variable.get());
+					lent.insert(MoveRoot(root->Variable.get()));
 			}
 		}
 
@@ -7887,7 +8081,8 @@ namespace clear
 
 			auto load = std::dynamic_pointer_cast<ASTLoad>(node);
 			auto variable = load ? std::dynamic_pointer_cast<ASTVariable>(load->Operand) : nullptr;
-			return variable && variable->Variable && m_LocalVariables.contains(variable->Variable.get()) ? variable->Variable.get() : nullptr;
+			Symbol* symbol = variable && variable->Variable ? MoveRoot(variable->Variable.get()) : nullptr;
+			return symbol && m_LocalVariables.contains(symbol) ? symbol : nullptr;
 		};
 
 		ForEachEvaluated(statement, once, [&](const std::shared_ptr<ASTNodeBase>& node)
@@ -7895,9 +8090,10 @@ namespace clear
 			if (node->GetType() == ASTNodeType::Variable)
 			{
 				auto variable = std::static_pointer_cast<ASTVariable>(node);
+				Symbol* symbol = variable->Variable ? MoveRoot(variable->Variable.get()) : nullptr;
 
-				if (variable->Variable && m_LocalVariables.contains(variable->Variable.get()))
-					order.push_back(Use { variable->Variable.get(), nullptr });
+				if (symbol && m_LocalVariables.contains(symbol))
+					order.push_back(Use { symbol, nullptr });
 			}
 			else if (node->GetType() == ASTNodeType::Copy)
 			{
@@ -7962,7 +8158,7 @@ namespace clear
 	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		if (auto root = RootVariable(node, nullptr); root && root->Variable)
-			m_Copies.NeverMove.insert(root->Variable.get());
+			m_Copies.NeverMove.insert(MoveRoot(root->Variable.get()));
 	}
 
 	void Sema::FinishCopies()
@@ -7998,7 +8194,8 @@ namespace clear
 		// can take the value instead: nobody would see the difference, and nothing is allocated
 		for (auto& candidate : m_Copies.Candidates)
 		{
-			if (!candidate.Valid || candidate.Copy->Elided || m_Copies.NeverMove.contains(candidate.Variable) || m_Copies.Uses[candidate.Variable] != candidate.Use)
+			if (!candidate.Valid || candidate.Copy->Elided || m_Copies.NeverMove.contains(candidate.Variable) || 
+				(m_Copies.Uses[candidate.Variable] != candidate.Use && !candidate.Final))
 				continue;
 
 			candidate.Copy->MoveFrom = candidate.Storage;
@@ -8080,7 +8277,7 @@ namespace clear
 		{
 			auto order = m_LocalOrder.find(m_Copies.Candidates[i].Variable);
 
-			if (order == m_LocalOrder.end() || order->second < loop.FirstLocal)
+			if ((order == m_LocalOrder.end() || order->second < loop.FirstLocal) && !m_Copies.Candidates[i].Final)
 				m_Copies.Candidates[i].Valid = false;
 		}
 

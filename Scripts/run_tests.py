@@ -12,6 +12,7 @@ is written in comments inside the test itself:
     // expect-error          (compilation must fail)
     // expect-error: E094    (... with this text in the compiler's output, e.g. an error code)
     // expect-warning: E099  (compilation must succeed and print this text)
+    // expect-no-warning: E103  (compilation must not print this text, e.g. with `// flags: --copies`)
     // flags: --checks       (extra compiler flags for this test, after CLEAR_TEST_FLAGS)
 
 Files inside a folder named `lib`, and files whose first line is `// test-helper`,
@@ -38,6 +39,7 @@ def parse_expectations(path):
     expect_error = False
     error_text = None
     warning_text = None
+    no_warning_text = None
     flags = []
 
     with open(path, encoding="utf-8") as f:
@@ -73,6 +75,11 @@ def parse_expectations(path):
             in_block = False
             continue
 
+        if stripped.startswith("// expect-no-warning:"):
+            no_warning_text = stripped.split(":", 1)[1].strip()
+            in_block = False
+            continue
+
         if stripped.startswith("// expect-warning:"):
             warning_text = stripped.split(":", 1)[1].strip()
             in_block = False
@@ -86,11 +93,11 @@ def parse_expectations(path):
             else:
                 in_block = False
 
-    return expected_lines, expected_exit, expect_error, error_text, warning_text, flags
+    return expected_lines, expected_exit, expect_error, error_text, warning_text, no_warning_text, flags
 
 
 def run_test(clearc, path, workdir):
-    expected_lines, expected_exit, expect_error, error_text, warning_text, test_flags = parse_expectations(path)
+    expected_lines, expected_exit, expect_error, error_text, warning_text, no_warning_text, test_flags = parse_expectations(path)
     output = os.path.join(workdir, os.path.basename(path).removesuffix(".cl"))
 
     extra_flags = os.environ.get("CLEAR_TEST_FLAGS", "").split()
@@ -117,6 +124,9 @@ def run_test(clearc, path, workdir):
 
     if warning_text and warning_text not in compiler_output:
         return False, f"expected a warning mentioning '{warning_text}', got:\n" + compiler_output
+
+    if no_warning_text and no_warning_text in compiler_output:
+        return False, f"expected no message mentioning '{no_warning_text}', got:\n" + compiler_output
 
     use_valgrind = os.environ.get("CLEAR_TEST_VALGRIND", "") not in ("", "0")
     command = [output]

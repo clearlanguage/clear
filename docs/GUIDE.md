@@ -157,6 +157,7 @@ Other markers:
 | `// expect-error` | the program must **fail** to compile (for testing diagnostics) |
 | `// expect-error: text` | ...and the compiler's output must contain `text` (part of the message, so the test fails if a *different* error happens) |
 | `// expect-warning: text` | the program must compile and the compiler must print `text` |
+| `// expect-no-warning: text` | the compiler must not print `text` (with `// flags: --copies`, `E103` checks that no copy is made) |
 | `// expect-exit: N` | the exit code (a crash from a failed check is `-6`, i.e. SIGABRT) |
 | `// flags: --checks` | extra compiler flags for this test |
 
@@ -752,7 +753,8 @@ A copy is made with `operator copy` if the class has one, otherwise field by fie
 
 **Copies nobody would notice are skipped.** A copy allocates, so the compiler leaves it out where it can prove the program behaves the same:
 
-- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, through a pointer or slice into it, or anywhere else in the same statement: in `print(k, size(k))` or `m[k] += 1`, `k` is copied, because another part of the statement still reads it.
+- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, through a pointer or slice into it, or anywhere else in the same statement: in `print(k, size(k))` or `m[k] += 1`, `k` is copied, because another part of the statement still reads it. A use followed by a `return` with no use in between is a last use too, even inside a loop or when the variable is used again on another path (`if front: xs[0] = value; return` then `xs.push(value)`). Inside `if q:`, the last use of `q` moves the value out of the optional.
+- **swapping moves.** `a, b = b, a` and `xs[i], xs[j] = xs[j], xs[i]` (the same places on both sides) only exchange the values, nothing is copied.
 - **a value that is only read looks at the original.** In `let w = words[i]`, if `w` is only read (its value, its fields, `len(w)`) and `words` doesn't change while `w` is in use, `w` is the item itself. Changing `w`, calling a method on it, or changing `words` meanwhile keeps the copy.
 
 So `operator copy` must make an equal, independent value. The compiler may skip it, the same rule as C++ copy elision. To see the copies that remain, build with `clearc build file.cl --copies`: each one gets a note with its line.
