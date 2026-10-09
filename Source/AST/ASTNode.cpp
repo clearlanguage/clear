@@ -578,12 +578,14 @@ namespace clear
 		function->insert(function->end(), checkSecond);
 		ctx.Builder.SetInsertPoint(checkSecond);
 		
+		ImmediateTemporaries temporaries(ctx);
 		Symbol rhs = right->Codegen(ctx);
 		
 		auto [rhsValue, rhsType] = rhs.GetValue();
 
 		rhsValue = TypeCasting::Cast(rhsValue, rhsType, Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx.Builder);
 		rhsType  = Symbol::GetBooleanType(ctx.ClearModule).GetType();
+		temporaries.End();
 		
 		ctx.Builder.CreateCondBr(rhsValue, trueResult, falseResult);
 		
@@ -2165,10 +2167,13 @@ namespace clear
 			function->insert(function->end(), branch.ConditionBlock);
 			ctx.Builder.SetInsertPoint(branch.ConditionBlock);
 
+			// (the temporaries of an `else if` condition are only made when it is tested)
+			ImmediateTemporaries temporaries(ctx);
 			Symbol condition;
 			condition = ConditionalBlocks[i].Condition->Codegen(ctx);
 
 			auto [conditionValue, conditionType] = condition.GetValue();
+			temporaries.End();
 			ctx.Builder.CreateCondBr(conditionValue, branch.BodyBlock, nextBranch);
 
 			function->insert(function->end(), branch.BodyBlock);
@@ -2215,6 +2220,8 @@ namespace clear
 
 		ctx.Builder.SetInsertPoint(conditionBlock);
 
+		// the condition's temporaries are cleaned up each time it is tested
+		ImmediateTemporaries temporaries(ctx);
 		Symbol condition;
 		condition = WhileBlock.Condition->Codegen(ctx);
 
@@ -2226,6 +2233,8 @@ namespace clear
 			
 		else if (conditionType->IsFloatingPoint())
 			conditionValue = ctx.Builder.CreateFCmpONE(conditionValue, llvm::ConstantFP::get(conditionType->Get(), 0.0));
+
+		temporaries.End();
 
 		if (!ctx.Builder.GetInsertBlock()->getTerminator())
 			ctx.Builder.CreateCondBr(conditionValue, body, end);
@@ -2388,9 +2397,10 @@ namespace clear
 		Symbol trueType = Symbol::GetBooleanType(ctx.ClearModule); 
 		condition = SymbolOps::Cast(condition, trueType, ctx.Builder);
 
-		ctx.Builder.CreateCondBr(condition.GetLLVMValue(), incomingBlock, falseBlock);
+		llvm::Instruction* branch = ctx.Builder.CreateCondBr(condition.GetLLVMValue(), incomingBlock, falseBlock);
 		ctx.Builder.SetInsertPoint(incomingBlock);
 
+		ConditionalTemporaries temporaries(ctx);
 		trueValue  = Truthy->Codegen(ctx);
 		auto ip = ctx.Builder.saveIP();
 
@@ -2400,6 +2410,7 @@ namespace clear
 		ctx.Builder.SetInsertPoint(falseBlock);
 		
 		falseValue = Falsy->Codegen(ctx);
+		temporaries.Finish(branch);
 
 		SymbolOps::Promote(trueValue, falseValue, ctx.Builder, &ip);
 
@@ -3162,7 +3173,19 @@ namespace clear
 			auto destroy = std::make_shared<ASTDestroy>();
 			destroy->Address = storage.GetLLVMValue();
 			destroy->ValueType = ValueType;
-			ctx.Defers->back().push_back(destroy);
+
+			if (ctx.ConditionalFlags)
+			{
+				llvm::AllocaInst* flag = llvm::cast<llvm::AllocaInst>(CreateAlloca(Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx).GetLLVMValue());
+				ctx.Builder.CreateStore(ctx.Builder.getTrue(), flag);
+				ctx.ConditionalFlags->push_back(flag);
+				destroy->Flag = flag;
+			}
+
+			if (ctx.TemporaryCleanups)
+				ctx.TemporaryCleanups->push_back(destroy);
+			else
+				ctx.Defers->back().push_back(destroy);
 		}
 
 		return storage;
@@ -3303,8 +3326,65 @@ namespace clear
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)
 	{
 		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();
+
+		if (!Flag)
+		{
+			EmitDestroy(ctx, ValueType, address);
+			return Symbol();
+		}
+
+		llvm::Function* function = ctx.Builder.GetInsertBlock()->getParent();
+		llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "destroy.made", function);
+		llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "destroy.skip", function);
+		ctx.Builder.CreateCondBr(ctx.Builder.CreateLoad(ctx.Builder.getInt1Ty(), Flag), destroy, done);
+		ctx.Builder.SetInsertPoint(destroy);
 		EmitDestroy(ctx, ValueType, address);
+		ctx.Builder.CreateBr(done);
+		ctx.Builder.SetInsertPoint(done);
 		return Symbol();
+	}
+
+	ConditionalTemporaries::ConditionalTemporaries(CodegenContext& ctx)
+		: m_Context(ctx), m_Outer(ctx.ConditionalFlags)
+	{
+		ctx.ConditionalFlags = &m_Flags;
+	}
+
+	void ConditionalTemporaries::Finish(llvm::Instruction* branch)
+	{
+		// the outermost conditional part clears the flags before it branches: every path to the cleanup passes there
+		m_Context.ConditionalFlags = m_Outer;
+
+		if (m_Outer)
+		{
+			m_Outer->insert(m_Outer->end(), m_Flags.begin(), m_Flags.end());
+			return;
+		}
+
+		llvm::IRBuilder<> before(branch);
+
+		for (llvm::AllocaInst* flag : m_Flags)
+			before.CreateStore(before.getFalse(), flag);
+	}
+
+	ImmediateTemporaries::ImmediateTemporaries(CodegenContext& ctx)
+		: m_Context(ctx), m_OuterFlags(ctx.ConditionalFlags), m_OuterCleanups(ctx.TemporaryCleanups)
+	{
+		// relative to its own cleanup, the code inside runs unconditionally
+		ctx.ConditionalFlags = nullptr;
+		ctx.TemporaryCleanups = &m_Cleanups;
+	}
+
+	void ImmediateTemporaries::End()
+	{
+		m_Context.ConditionalFlags = m_OuterFlags;
+		m_Context.TemporaryCleanups = m_OuterCleanups;
+
+		if (llvm::BasicBlock* block = m_Context.Builder.GetInsertBlock(); !block || block->getTerminator())
+			return;
+
+		for (auto it = m_Cleanups.rbegin(); it != m_Cleanups.rend(); it++)
+			(*it)->Codegen(m_Context);
 	}
 
 	void EmitDestroy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* address)
