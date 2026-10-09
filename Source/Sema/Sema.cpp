@@ -4944,6 +4944,18 @@ namespace clear
 			return std::format("({}{}{})", *left, (int)op, *right);
 		}
 
+		// xs[len(xs) - 1]: a length is read like a place (a swap doesn't change it)
+		if (auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node); call && call->Arguments.size() == 1)
+		{
+			auto callee = std::dynamic_pointer_cast<ASTVariable>(call->Callee);
+
+			if (callee && !callee->Variable && callee->GetName().GetData() == "len")
+			{
+				if (auto argument = PlaceText(call->Arguments[0]))
+					return "len(" + *argument + ")";
+			}
+		}
+
 		return std::nullopt;
 	}
 
