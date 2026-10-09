@@ -20,6 +20,11 @@ namespace clear
 		return it->second.Symbol;
 	}
 
+	void SymbolTable::Set(llvm::StringRef name, SymbolEntry entry)
+	{
+		m_Symbols.insert_or_assign(std::string(name), std::move(entry));
+	}
+
 	std::optional<SymbolEntry> SymbolTable::Get(llvm::StringRef name)
 	{
 		auto it = m_Symbols.find(std::string(name));

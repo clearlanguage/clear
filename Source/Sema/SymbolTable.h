@@ -30,6 +30,7 @@ namespace clear
 		bool Insert(llvm::StringRef name, SymbolEntryType type, std::shared_ptr<Symbol> symbol);
 		std::optional<std::shared_ptr<Symbol>> InsertEmpty(llvm::StringRef name, SymbolEntryType type);
 		std::optional<SymbolEntry> Get(llvm::StringRef name);
+		void Set(llvm::StringRef name, SymbolEntry entry); // replaces what the name means in this scope
 
 	private:
 		std::unordered_map<std::string, SymbolEntry> m_Symbols;

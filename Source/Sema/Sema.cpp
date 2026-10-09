@@ -231,6 +231,8 @@ namespace clear
 
 		if (!result)
 			m_FailedDeclarations.insert(decl->GetName().GetData());
+		else if (auto narrowing = m_NarrowingDeclarations.find(decl.get()); narrowing != m_NarrowingDeclarations.end() && decl->Variable)
+			m_NarrowedNames[decl->Variable.get()] = narrowing->second;
 
 		return result;
 	}
@@ -1982,6 +1984,8 @@ namespace clear
 		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(assignmentOp->Storage))
 			NoteContainerChange(subscript->Target, GetNodeLocation(subscript->Target));
 
+		EndNarrowing(assignmentOp);
+
 		// x = v gives x a new value (x += v reads it first)
 		auto reinitialised = assignmentOp->GetAssignType() == AssignmentOperatorType::Normal ? std::dynamic_pointer_cast<ASTVariable>(assignmentOp->Storage) : nullptr;
 		m_Reinitialised = reinitialised.get();
@@ -2808,34 +2812,10 @@ namespace clear
 			auto& conditionalBlock = ifExpr->ConditionalBlocks[index];
 
 			// optional local variables known to hold a value: inside the block for `if a and b:` (each of a, b),
-			// after it (or in the else) for `if not a or not b:` (each of a, b)
+			// after it (or in the else) for `if not a or b is none:` (each of a, b)
 			std::vector<Narrowing> inside, outside;
-			std::function<void(const std::shared_ptr<ASTNodeBase>&)> holdsInside = [&](const std::shared_ptr<ASTNodeBase>& test)
-			{
-				if (auto both = std::dynamic_pointer_cast<ASTBinaryExpression>(test); both && both->GetExpression() == OperatorType::And)
-				{
-					holdsInside(both->LeftSide);
-					holdsInside(both->RightSide);
-				}
-				else if (auto narrowing = NarrowableOptional(test))
-					inside.push_back(*narrowing);
-			};
-			std::function<void(const std::shared_ptr<ASTNodeBase>&)> holdsOutside = [&](const std::shared_ptr<ASTNodeBase>& test)
-			{
-				if (auto either = std::dynamic_pointer_cast<ASTBinaryExpression>(test); either && either->GetExpression() == OperatorType::Or)
-				{
-					holdsOutside(either->LeftSide);
-					holdsOutside(either->RightSide);
-				}
-				else if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(test); unary && unary->GetOperatorType() == OperatorType::Not)
-				{
-					if (auto narrowing = NarrowableOptional(unary->Operand))
-						outside.push_back(*narrowing);
-				}
-			};
-
-			holdsInside(conditionalBlock.Condition);
-			holdsOutside(conditionalBlock.Condition);
+			CollectNarrowings(conditionalBlock.Condition, true, inside);
+			CollectNarrowings(conditionalBlock.Condition, false, outside);
 
 			m_Moved = branches.Start;
 			conditionalBlock.Condition = TestCondition(Visit(conditionalBlock.Condition, conditionContext), true);
@@ -6539,6 +6519,100 @@ namespace clear
 		return Narrowing { entry->Symbol, variable->GetName(), type };
 	}
 
+	void Sema::CollectNarrowings(const std::shared_ptr<ASTNodeBase>& test, bool whenTrue, std::vector<Narrowing>& narrowings)
+	{
+		// the optional locals that hold a value when `test` turns out true (whenTrue) or false:
+		// true:  a, a and b, a is not none, not (a is none)        false: not a, not a or b is none
+		if (auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(test); binary && binary->GetExpression() == (whenTrue ? OperatorType::And : OperatorType::Or))
+		{
+			CollectNarrowings(binary->LeftSide, whenTrue, narrowings);
+			CollectNarrowings(binary->RightSide, whenTrue, narrowings);
+			return;
+		}
+
+		if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(test); unary && unary->GetOperatorType() == OperatorType::Not)
+		{
+			CollectNarrowings(unary->Operand, !whenTrue, narrowings);
+			return;
+		}
+
+		if (auto is = std::dynamic_pointer_cast<ASTIsExpr>(test))
+		{
+			auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(is->TypeNode);
+
+			if (literal && literal->GetData().GetData() == "none" && is->Negate == whenTrue)
+			{
+				if (auto narrowing = NarrowableOptional(is->Object))
+					narrowings.push_back(*narrowing);
+			}
+
+			return;
+		}
+
+		if (whenTrue)
+		{
+			if (auto narrowing = NarrowableOptional(test))
+				narrowings.push_back(*narrowing);
+		}
+	}
+
+	bool Sema::EndNarrowing(const std::shared_ptr<ASTAssignmentOperator>& assignment)
+	{
+		// r = none (or another optional) inside `if r:` sets the optional itself; from here on r is the optional again
+		auto target = std::dynamic_pointer_cast<ASTVariable>(assignment->Storage);
+
+		if (!target || target->Variable || assignment->GetAssignType() != AssignmentOperatorType::Normal)
+			return false;
+
+		// what the value is, before it is analysed: none, an optional variable, or a call returning one
+		auto optionalValue = [&](const std::shared_ptr<ASTNodeBase>& value) -> bool
+		{
+			if (auto literal = std::dynamic_pointer_cast<ASTNodeLiteral>(value))
+				return literal->GetData().GetData() == "none" && !literal->GetData().IsType(TokenType::String);
+
+			if (auto variable = std::dynamic_pointer_cast<ASTVariable>(value))
+			{
+				auto [entry, scope] = LookupSymbol(variable->GetName().GetData());
+				return entry && entry->Type == SymbolEntryType::Variable && entry->Symbol && IsOptionalType(entry->Symbol->GetType());
+			}
+
+			if (auto call = std::dynamic_pointer_cast<ASTFunctionCall>(value))
+			{
+				auto callee = std::dynamic_pointer_cast<ASTVariable>(call->Callee);
+				auto [entry, scope] = callee ? LookupSymbol(callee->GetName().GetData()) : std::pair<std::optional<SymbolEntry>, size_t>();
+
+				if (entry && entry->Symbol && entry->Symbol->Kind == SymbolKind::Function)
+				{
+					auto function = entry->Symbol->GetFunctionSymbol().FunctionNode;
+					return function && IsOptionalType(function->ReturnTypeVal);
+				}
+			}
+
+			return false;
+		};
+
+		if (!optionalValue(assignment->Value))
+			return false;
+
+		for (int64_t i = (int64_t)m_ScopeStack.size() - 1; i >= 0; i--)
+		{
+			auto entry = m_ScopeStack[i].Get(target->GetName().GetData());
+
+			if (!entry)
+				continue;
+
+			auto narrowed = m_NarrowedNames.find(entry->Symbol.get());
+
+			if (narrowed == m_NarrowedNames.end())
+				return false;
+
+			m_ScopeStack[i].Set(target->GetName().GetData(), SymbolEntry { SymbolEntryType::Variable, narrowed->second.Variable });
+			return true;
+		}
+
+		return false;
+	}
+
 	std::shared_ptr<ASTVariableDeclaration> Sema::NarrowedDeclaration(const Narrowing& narrowing)
 	{
 		// let r = <the value inside r>, named in place: changing it changes the optional
@@ -6557,6 +6631,7 @@ namespace clear
 		declaration->Location = narrowing.Name;
 		declaration->Initializer = field;
 		declaration->IsAlias = true;
+		m_NarrowingDeclarations[declaration.get()] = narrowing;
 		return declaration;
 	}
 
@@ -8196,6 +8271,26 @@ namespace clear
 	{
 		bool insertLoad = context.ValueReq == ValueRequired::RValue;
 
+		// x.value where x is narrowed (`if x is not none:`, after `if x is none: return`): still the optional's
+		// value, exactly as without the narrowing (it may move the value out)
+		if (auto left = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->LeftSide), right = std::dynamic_pointer_cast<ASTVariable>(binaryExpr->RightSide);
+			left && right && !left->Variable && right->GetName().GetData() == "value")
+		{
+			auto [entry, scope] = LookupSymbol(left->GetName().GetData());
+			auto narrowed = entry ? m_NarrowedNames.find(entry->Symbol.get()) : m_NarrowedNames.end();
+			auto valueClass = narrowed != m_NarrowedNames.end() ? std::dynamic_pointer_cast<ClassType>(OptionalValueType(narrowed->second.Optional)) : nullptr;
+			bool ownValue = valueClass && (valueClass->GetMemberValueIndex("value") || valueClass->MemberFunctions.contains("value"));
+
+			if (narrowed != m_NarrowedNames.end() && !ownValue && scope < m_ScopeStack.size())
+			{
+				SymbolEntry alias = *entry;
+				m_ScopeStack[scope].Set(left->GetName().GetData(), SymbolEntry { SymbolEntryType::Variable, narrowed->second.Variable });
+				auto result = VisitBinaryExprMemberAccess(binaryExpr, context);
+				m_ScopeStack[scope].Set(left->GetName().GetData(), alias);
+				return result;
+			}
+		}
+
 		// m.NAME, m.N, m.twice!(x) through an import alias
 		if (auto member = ModuleMember(binaryExpr))
 		{
@@ -8384,8 +8479,36 @@ namespace clear
 	{
 		context.ValueReq = ValueRequired::RValue;
 
+		// `a and a > 2`, `not a or a < 0`: the right side only runs when the left says a holds a value
+		std::vector<Narrowing> narrowings;
+
+		if (binaryExpr->GetExpression() == OperatorType::And || binaryExpr->GetExpression() == OperatorType::Or)
+			CollectNarrowings(binaryExpr->LeftSide, binaryExpr->GetExpression() == OperatorType::And, narrowings);
+
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
-		binaryExpr->RightSide = Visit(binaryExpr->RightSide, context);
+
+		if (narrowings.empty())
+		{
+			binaryExpr->RightSide = Visit(binaryExpr->RightSide, context);
+		}
+		else if (binaryExpr->LeftSide)
+		{
+			auto sequence = std::make_shared<ASTSequence>();
+			sequence->Location = binaryExpr->RightSide->Location;
+			m_ScopeStack.emplace_back();
+
+			for (auto& narrowing : narrowings)
+			{
+				if (auto declaration = Visit(NarrowedDeclaration(narrowing), context))
+					sequence->Children.push_back(declaration);
+			}
+
+			auto right = TestCondition(Visit(binaryExpr->RightSide, context), true);
+			m_ScopeStack.pop_back();
+
+			sequence->Value = right;
+			binaryExpr->RightSide = right ? sequence : nullptr;
+		}
 
 		if (!binaryExpr->LeftSide || !binaryExpr->RightSide)
 			return nullptr;

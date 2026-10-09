@@ -864,11 +864,12 @@ namespace clear
 					break;
 				child->Codegen(ctx);
 			}
-			return Symbol();
+			return Value ? Value->Codegen(ctx) : Symbol();
 		}
 
 	public:
 		std::vector<std::shared_ptr<ASTNodeBase>> Children;
+		std::shared_ptr<ASTNodeBase> Value; // the sequence's value, worked out after the children (may be null)
 	};
 
 	// a, b = b, a   /   let q, r = divmod(7, 2)

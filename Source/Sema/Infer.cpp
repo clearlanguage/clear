@@ -20,6 +20,7 @@ namespace clear
 		switch (node->GetType()) 
 		{
 			case ASTNodeType::Zero:			return std::dynamic_pointer_cast<ASTZero>(node)->ValueType;
+			case ASTNodeType::Sequence:		return InferTypeFromNode(std::dynamic_pointer_cast<ASTSequence>(node)->Value);
 			case ASTNodeType::Contains:		return m_Module->Lookup("bool").value()->GetType();
 			case ASTNodeType::FunctionRef:	return std::dynamic_pointer_cast<ASTFunctionRef>(node)->FunctionTy;
 			case ASTNodeType::VTableRef:	return std::dynamic_pointer_cast<ASTVTableRef>(node)->PointerTy;

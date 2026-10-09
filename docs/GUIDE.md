@@ -517,6 +517,12 @@ if index := find(data, 3):   // declare and test in one go (also in `else if`)
 
 if a and b:                  // both are values inside (and `if not a or not b: return` narrows both after)
     print(a + b)
+if a and a > 2:              // ...also in the rest of the condition itself
+if not a or a < 0:           // (a < 0 only runs when a holds a value)
+    return -1
+if x is none or y is none:   // `is none` / `is not none` narrow like `not x` / `x`
+    return -1
+print(x + y)                 // x.value also still works
 while line := read_line():   // keeps going while there is a value
     print(line)
 
@@ -534,7 +540,7 @@ A union can't have a field that needs cleaning up (a `String`, a `List`, a class
 
 `none` can only go into a `?T`. Writing `let n: int = none` is a compile error.
 
-An optional in a condition means "holds a value". `found` being `0` still counts as holding one, unlike in Python. `?bool` in a condition is a compile error, because it could mean "holds a value" or "is true"; write `flag is not none` or `flag ?? false`. Only local variables are treated as their value inside `if found:`. A field (`if self.user:`) could be changed by a call in the block, so write `if user := self.user:` there instead.
+An optional in a condition means "holds a value". `found` being `0` still counts as holding one, unlike in Python. `?bool` in a condition is a compile error, because it could mean "holds a value" or "is true"; write `flag is not none` or `flag ?? false`. Only local variables are treated as their value inside `if found:`. Assigning to the value inside (`found += 1`) changes the optional's value. Assigning `none` or another optional (`found = none`) sets the optional itself, and from that line on `found` is the optional again. A field (`if self.user:`) could be changed by a call in the block, so write `if user := self.user:` there instead.
 
 ### 3.14 Variants · [`examples/24_variants.cl`](../examples/24_variants.cl)
 

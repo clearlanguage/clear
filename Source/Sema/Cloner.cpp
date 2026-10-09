@@ -64,6 +64,8 @@ namespace clear {
 				auto sequence = std::make_shared<ASTSequence>();
 				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children)
 					sequence->Children.push_back(Clone(child));
+				if (auto value = std::dynamic_pointer_cast<ASTSequence>(node)->Value)
+					sequence->Value = Clone(value);
 				return sequence;
 			}
 			case ASTNodeType::TypeSpecifier:			return CloneTypeSpec(std::dynamic_pointer_cast<ASTTypeSpecifier>(node));
