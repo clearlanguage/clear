@@ -109,12 +109,12 @@ let back = big as int32        // narrowing needs `as`
 const LIMIT = 64               // folded at compile time
 let buffer: [LIMIT; int] = {}  // fixed size arrays (sizes may use consts), all zero
 let p: *int = &count           // pointers, *p to dereference
-let name: str = "clear"        // string literals; == compares their contents
+let name: str = "clear"        // str: text you look at (pointer + length); == compares contents, name[1:3] is "le"
 let t = (1, 2.5, "three")      // tuples: t[0], t[2]
 let empty: int                 // never garbage: starts at zero
 ```
 
-Built-in types: `int8 … int64`, `uint8 … uint64`, `int` (= `int32`), `uint` (= `uint32`), `float32`, `float64`, `float` (= `float64`), `bool`, `str`, pointers `*T`, arrays `[N; T]`, tuples `(A, B)`, optionals `?T`, function types `function(int) -> int`.
+Built-in types: `int8 … int64`, `uint8 … uint64`, `int` (= `int32`), `uint` (= `uint32`), `float32`, `float64`, `float` (= `float64`), `bool`, `str`, pointers `*T`, arrays `[N; T]`, slices `[]T`, tuples `(A, B)`, optionals `?T`, function types `function(int) -> int`.
 
 Conversions that cannot lose information happen automatically (int → wider int, int → float64, float32 → float64, `*Derived` → `*Base`). Everything else needs an explicit `as`.
 
@@ -182,6 +182,7 @@ apply(lambda x: x + 100, 1)
 apply_any(lambda x: x * 2, 21)              // x is an int because f is called with one
 let add = lambda a, b: a + b                // add(1, 2) and add(1.5, 2.5) both work
 let squares = numbers.map(lambda n: n * n)  // also .filter(...), .sort(), .sort_by(key)
+let middle = numbers[2:5]                   // a slice: []int looking at three items, nothing copied
 let offset = 10
 let shifted = lambda (x: int): x + offset
 ```

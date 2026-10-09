@@ -616,13 +616,27 @@ panic: index out of range for an array of 3 (18_safety_checks.cl:15:18)
 
 ### 3.19 Strings · [`examples/19_strings.cl`](../examples/19_strings.cl)
 
-There are two string types:
+There are two string types, like `[]T` and `List[T]`:
 
 | | `str` | `String` (`import "string"`) |
 | --- | --- | --- |
-| what | a C string, the type of `"literals"` | an owned, growable string on the heap |
-| cost | free | allocates; freed automatically at the end of its scope |
-| `==`, `in`, `len`, print | yes | yes, plus `+`, `<`, `find`, `slice`, `strip`, `upper`, `lower`, `starts_with`, `ends_with`, `to_int`, `to_float`, `append`, `push`, `from_int` … |
+| what | text you **look at**: a pointer and a length (a literal, a String, or part of either) | text you **own**: on the heap, growable |
+| cost | free to make and pass around | allocates; cleaned up automatically at the end of its scope |
+| can do | `==`, `<`, `in`, `len`, `s[i]`, `s[a:b]`, `for c in s`, print, `hash`, Map keys | the same, plus `append`, `push`, `+`, `find`, `upper`, `lower`, `strip`, `starts_with`, `ends_with`, `to_int`, `to_float`… |
+
+```clear
+let name = String("ada lovelace")
+let first: str = name[:3]          // "ada", looks at name's bytes: nothing copied
+greet(name)                        // a String goes wherever a str is expected, for free
+greet("literal")
+name == "ada lovelace"             // String and str compare by content
+let mine = String(first)           // str -> String is written out, because it allocates
+
+function greet(who: str):          // take str unless you need to keep or change the text
+    print("hi", who)
+```
+
+A `str` must not outlive the String it looks at, or be used after that String changes, the same rule as for slices. Indexing is checked against the length (`s[len(s)]` is out of range, even though a literal has a zero byte there for C).
 
 ### 3.20 Collections · [`examples/20_collections.cl`](../examples/20_collections.cl)
 
@@ -753,7 +767,7 @@ declare printf(format: *int8, args: ...) -> int32
 declare abs(n: int32) -> int32
 ```
 
-Any function from the C library can be declared and called directly. `*int8` is a C `char*`; `str` converts to it automatically.
+Any function from the C library can be declared and called directly. `*int8` is a C `char*`. A `str` passed to C (as `*int8`, or as `str` in a `declare`) becomes a pointer to its bytes, and C needs those to end with a zero. Literals and a String's text always do, but part of a text (`s[0:5]`) does not. With checks on, passing one stops the program and tells you to use `String(part).c_str()`. A `char*` that C returns becomes a `str` by measuring it.
 
 ---
 

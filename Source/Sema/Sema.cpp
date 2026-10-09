@@ -897,6 +897,24 @@ namespace clear
 				return VisitLen(funcCall, context);
 		}
 
+		// pointer(s): the address of a slice's (or str's) first item, unchecked (for library code)
+		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && 
+			callee->GetName().GetData() == "pointer" && !LookupSymbol("pointer").first && funcCall->Arguments.size() == 1)
+		{
+			SemaContext valueContext = context;
+			valueContext.ValueReq = ValueRequired::RValue;
+			auto value = Visit(funcCall->Arguments[0], valueContext);
+			auto slice = value ? std::dynamic_pointer_cast<SliceType>(m_TypeInferEngine.InferTypeFromNode(value)) : nullptr;
+
+			if (!slice)
+			{
+				Report(DiagnosticCode_ExpectedType, value ? GetNodeLocation(value) : callee->GetName());
+				return nullptr;
+			}
+
+			return SliceIntrinsic("slice_data", m_Module->GetTypeRegistry()->GetPointerTo(slice->GetBaseType()), { value }, callee->GetName());
+		}
+
 		// view(p, n): the slice of n items starting at p (for containers that manage raw memory)
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && 
 			callee->GetName().GetData() == "view" && !LookupSymbol("view").first)
@@ -1568,6 +1586,18 @@ namespace clear
 			funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], parameterType);
 		}
 
+		// printf("%s", text): a C function's extra arguments get a str as the char* C expects
+		if (function->IsVariadic && !function->CodeBlock)
+		{
+			auto bytes = m_Module->GetTypeRegistry()->GetPointerTo(m_Module->Lookup("int8").value()->GetType());
+
+			for (size_t i = expected; i < funcCall->Arguments.size(); i++)
+			{
+				if (auto type = m_TypeInferEngine.InferTypeFromNode(funcCall->Arguments[i]); type && type->GetHash() == "str")
+					funcCall->Arguments[i] = Coerce(funcCall->Arguments[i], bytes);
+			}
+		}
+
 		// a virtual method runs the receiver's own version, looked up in its vtable at run time
 		if (methodClass && function->IsVirtual)
 		{
@@ -2027,6 +2057,10 @@ namespace clear
 		{
 			decl->ReturnTypeNode = Visit(decl->ReturnTypeNode);
 			decl->ReturnType = GetTypeFromNode(decl->ReturnTypeNode);
+
+			// a C function returning str returns char* (it becomes a str where one is expected)
+			if (decl->ReturnType && decl->ReturnType->GetHash() == "str")
+				decl->ReturnType = m_Module->GetTypeRegistry()->GetPointerTo(m_Module->Lookup("int8").value()->GetType());
 		}
 			
 		std::shared_ptr<Symbol> symbol = std::make_shared<Symbol>(Symbol::CreateFunction(std::make_shared<ASTFunctionDefinition>("")));
@@ -2042,6 +2076,10 @@ namespace clear
 				function.FunctionNode->IsVariadic = true;
 				break;
 			}
+
+			// a C function sees a str as char* (the call converts it, checking it ends with a zero)
+			if (arg->ResolvedType && arg->ResolvedType->GetHash() == "str")
+				arg->ResolvedType = m_Module->GetTypeRegistry()->GetPointerTo(m_Module->Lookup("int8").value()->GetType());
 
 			auto parameter = std::make_shared<ASTVariableDeclaration>(Token(TokenType::Identifier, arg->GetName()));
 			parameter->ResolvedType = arg->ResolvedType;
@@ -3160,14 +3198,6 @@ namespace clear
 		if (std::dynamic_pointer_cast<SliceType>(type))
 			return SliceIntrinsic("slice_len", int64Type, { AsValue(argument) }, location);
 
-		if (type && type->GetHash() == "str")
-		{
-			auto intrinsic = std::make_shared<ASTIntrinsic>("strlen", int64Type);
-			intrinsic->Location = location;
-			intrinsic->Arguments.push_back(AsValue(argument));
-			return intrinsic;
-		}
-
 		if (auto classType = ClassOf(type); classType && classType->As<ClassType>()->MemberFunctions.contains("__len__"))
 		{
 			EnsureDefined(classType->As<ClassType>()->MemberFunctions.at("__len__")->GetFunctionSymbol().FunctionNode);
@@ -3341,7 +3371,7 @@ namespace clear
 
 		auto intrinsic = std::make_shared<ASTIntrinsic>(isString ? "hash_str" : "hash_int", uint64Type);
 		intrinsic->Location = location;
-		intrinsic->Arguments.push_back(argument);
+		intrinsic->Arguments.push_back(AsValue(argument));
 		return intrinsic;
 	}
 
@@ -4399,6 +4429,15 @@ namespace clear
 			return castExpr;
 
 		auto sourceType = m_TypeInferEngine.InferTypeFromNode(castExpr->Object);
+
+		// text as *int8, pointer as str: the same conversions as when passing them (see Coerce)
+		if (sourceType && sourceType != castExpr->TargetType && (sourceType->GetHash() == "str" || castExpr->TargetType->GetHash() == "str"))
+		{
+			auto converted = Coerce(AsValue(castExpr->Object), castExpr->TargetType);
+
+			if (converted && m_TypeInferEngine.InferTypeFromNode(converted) == castExpr->TargetType)
+				return converted;
+		}
 
 		// value as Number: put it in the variant
 		if (castExpr->TargetType->IsClass() && castExpr->TargetType->As<ClassType>()->IsTypeVariant && sourceType != castExpr->TargetType)
@@ -6337,6 +6376,24 @@ namespace clear
 		if (!node || !target)
 			return node;
 
+		// str <-> C strings and bytes: str -> *int8 is a pointer to its bytes (they must end with a zero),
+		// *int8 -> str measures the C string, []int8 and str are the same thing seen two ways
+		if (auto source = m_TypeInferEngine.InferTypeFromNode(node); source && source != target)
+		{
+			bool sourceStr = source->GetHash() == "str", targetStr = target->GetHash() == "str";
+			auto bytes = [](const std::shared_ptr<Type>& type) { return type->IsPointer() && type->As<PointerType>()->GetBaseType() && type->As<PointerType>()->GetBaseType()->GetHash() == "int8"; };
+			auto byteSlice = [](const std::shared_ptr<Type>& type) { auto slice = std::dynamic_pointer_cast<SliceType>(type); return slice && type->GetHash() != "str" && slice->GetBaseType()->GetHash() == "int8"; };
+
+			if (sourceStr && bytes(target))
+				return SliceIntrinsic("str_c", target, { node }, GetNodeLocation(node));
+
+			if (targetStr && bytes(source))
+				return SliceIntrinsic("str_from_c", target, { node }, GetNodeLocation(node));
+
+			if ((sourceStr && byteSlice(target)) || (targetStr && byteSlice(source)))
+				return SliceIntrinsic("slice_retype", target, { node }, GetNodeLocation(node));
+		}
+
 		// an array or a list (anything with operator slice) where a []T is expected: all of it, as a view
 		if (auto slice = std::dynamic_pointer_cast<SliceType>(target))
 		{
@@ -6925,6 +6982,35 @@ namespace clear
 		auto isInteger = [&](std::shared_ptr<Type> t) { return t->IsIntegral() && !t->IsEnum() && !isBool(t); };
 		auto isPointer = [](std::shared_ptr<Type> t) { return t->Get()->isPointerTy(); };
 		auto truthy    = [&](std::shared_ptr<Type> t) { return t->IsIntegral() || t->IsFloatingPoint() || isPointer(t); };
+		auto isText    = [](std::shared_ptr<Type> t) { return t->GetHash() == "str"; };
+
+		// name == "ada" with name a String: compared as text (a String becomes a str without copying)
+		bool comparison = expr->GetExpression() == OperatorType::IsEqual || expr->GetExpression() == OperatorType::NotEqual ||
+						  expr->GetExpression() == OperatorType::LessThan || expr->GetExpression() == OperatorType::LessThanEqual ||
+						  expr->GetExpression() == OperatorType::GreaterThan || expr->GetExpression() == OperatorType::GreaterThanEqual;
+
+		// text == null: whether it points at any bytes (a str that was never set does not)
+		if (comparison && isText(lhs) != isText(rhs) && (lhs->GetHash() == "opaque_ptr" || rhs->GetHash() == "opaque_ptr" || 
+			lhs->GetHash() == "null" || rhs->GetHash() == "null" || isPointer(isText(lhs) ? rhs : lhs)))
+		{
+			auto& text = isText(lhs) ? expr->LeftSide : expr->RightSide;
+			auto bytes = m_Module->GetTypeRegistry()->GetPointerTo(m_Module->Lookup("int8").value()->GetType());
+			text = SliceIntrinsic("slice_data", bytes, { text }, GetNodeLocation(text));
+			lhs = m_TypeInferEngine.InferTypeFromNode(expr->LeftSide);
+			rhs = m_TypeInferEngine.InferTypeFromNode(expr->RightSide);
+		}
+
+		if (comparison && isText(lhs) != isText(rhs))
+		{
+			auto& other = isText(lhs) ? expr->RightSide : expr->LeftSide;
+			auto text = isText(lhs) ? lhs : rhs;
+
+			if (auto converted = Coerce(other, text); converted && m_TypeInferEngine.InferTypeFromNode(converted) == text)
+			{
+				other = converted;
+				lhs = rhs = text;
+			}
+		}
 
 		bool valid = false;
 
@@ -6974,14 +7060,14 @@ namespace clear
 				break;
 			case OperatorType::IsEqual:
 			case OperatorType::NotEqual:
-				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) ||
+				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) || (isText(lhs) && isText(rhs)) ||
 						(isBool(lhs) && isBool(rhs)) || (lhs->IsEnum() && lhs->GetHash() == rhs->GetHash());
 				break;
 			case OperatorType::LessThan:
 			case OperatorType::LessThanEqual:
 			case OperatorType::GreaterThan:
 			case OperatorType::GreaterThanEqual:
-				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) ||
+				valid = (isNumber(lhs) && isNumber(rhs)) || (isPointer(lhs) && isPointer(rhs)) || (isText(lhs) && isText(rhs)) ||
 						(lhs->IsEnum() && lhs->GetHash() == rhs->GetHash());
 				break;
 			case OperatorType::And:

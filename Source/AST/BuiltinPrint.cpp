@@ -35,7 +35,14 @@ namespace clear
 			auto& builder = m_Ctx.Builder;
 			llvm::Type* llvmType = value->getType();
 
-			if (type && type->IsEnum())
+			// str: its length says where it ends (part of a text has no zero after it)
+			if (type && type->GetHash() == "str")
+			{
+				m_Format += "%.*s";
+				m_Args.push_back(builder.CreateTrunc(builder.CreateExtractValue(value, 1), builder.getInt32Ty()));
+				m_Args.push_back(builder.CreateExtractValue(value, 0));
+			}
+			else if (type && type->IsEnum())
 			{
 				// Color.Red rather than 0
 				auto enumType = std::dynamic_pointer_cast<EnumType>(type);

@@ -35,7 +35,16 @@ namespace clear
 
 		if(hash == "bool") return {llvm::ConstantInt::get(llvm::Type::getInt1Ty(context), data.AsBool()), nullptr};
 		
-		if(hash == "int8*" || hash == "str") return GetConstantString(data.GetData(), context, module);
+		if(hash == "int8*") return GetConstantString(data.GetData(), context, module);
+
+		// { bytes (followed by a zero, for C), length }
+		if(hash == "str")
+		{
+			auto [bytes, _] = GetConstantString(data.GetData(), context, module);
+			auto length = llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), data.GetData().size());
+			llvm::Constant* fields[] = { llvm::cast<llvm::Constant>(bytes), length };
+			return { llvm::ConstantStruct::get(llvm::cast<llvm::StructType>(type->Get()), fields), nullptr };
+		}
 		if(hash == "void*") return { llvm::ConstantPointerNull::get((llvm::PointerType*)type->Get()), nullptr };
 
 

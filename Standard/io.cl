@@ -49,15 +49,16 @@ class File:
             character = fgetc(self.handle)
         return text
 
+    // any text: a literal, a String, or part of one
     function write(self: *File, text: str):
-        fputs(text, self.handle)
+        fwrite(pointer(text), 1, len(text) as uint64, self.handle)
 
-    function write_string(self: *File, text: String):
-        fwrite(text.data, 1, text.length as uint64, self.handle)
+    function write_string(self: *File, text: str):
+        self.write(text)
 
     function write_line(self: *File, text: str):
-        fputs(text, self.handle)
-        fputs("\n", self.handle)
+        self.write(text)
+        self.write("\n")
 
     function flush(self: *File):
         fflush(self.handle)
@@ -72,8 +73,10 @@ class File:
         self.handle = null
 
 // mode as in C: "r" read, "w" write (replace), "a" append, add "b" for binary
+// C wants the path to end with a zero byte: a String's text always does (part of a text might not)
 function open(path: str, mode: str) -> ?File:
-    let handle = fopen(path, mode)
+    let terminated = String(path)
+    let handle = fopen(terminated.c_str(), String(mode).c_str())
     if handle == null:
         return none
     return File(handle)
@@ -106,14 +109,16 @@ function append_file(path: str, text: str) -> bool:
     return true
 
 function file_exists(path: str) -> bool:
-    let handle = fopen(path, "r")
+    let terminated = String(path)
+    let handle = fopen(terminated.c_str(), "r")
     if handle == null:
         return false
     fclose(handle)
     return true
 
 function delete_file(path: str) -> bool:
-    return remove(path) == 0
+    let terminated = String(path)
+    return remove(terminated.c_str()) == 0
 
 let standard_input: *int8 = null
 
@@ -144,5 +149,5 @@ function input(prompt: str) -> String:
 declare printf(format: *int8, args: ...) -> int32
 
 function print_text(text: str):
-    printf("%s", text)
+    printf("%.*s", len(text) as int32, pointer(text))
     fflush(null)
