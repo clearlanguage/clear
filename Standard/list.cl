@@ -26,14 +26,11 @@ class List[T]:
         self.length -= 1
         return *(self.data + self.length)
 
-    // indices are checked like array indices (the checks disappear with --no-checks / -O3)
-    operator get(self: *List[T], index: int64) -> T:
+    // list[i] is the element itself: read it, assign to it (list[i] = v), or change it (list[i].count += 1).
+    // Indices are checked like array indices (the checks disappear with --no-checks / -O3)
+    operator get(self, index: int64) -> *T:
         assert index >= 0 and index < self.length, "List index out of range"
-        return *(self.data + index)
-
-    operator set(self: *List[T], index: int64, value: T):
-        assert index >= 0 and index < self.length, "List index out of range"
-        *(self.data + index) = value
+        return self.data + index
 
     operator len(self: *List[T]) -> int64:
         return self.length

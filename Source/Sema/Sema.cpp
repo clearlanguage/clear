@@ -222,6 +222,10 @@ namespace clear
 
 			decl->ResolvedType = m_TypeInferEngine.InferTypeFromNode(decl->Initializer);
 
+			// an alias names the place a pointer points at, it holds no value of its own
+			if (decl->IsAlias && decl->ResolvedType && decl->ResolvedType->IsPointer())
+				decl->ResolvedType = decl->ResolvedType->As<PointerType>()->GetBaseType();
+
 			if (!decl->ResolvedType || decl->ResolvedType->Get()->isVoidTy())
 			{
 				Report(DiagnosticCode_NeedsTypeOrValue, decl->GetName());
@@ -1588,6 +1592,15 @@ namespace clear
 
 				if (!current)
 					return nullptr;
+
+				// a get that returns a reference: the current value is what it points at
+				if (auto pointer = m_TypeInferEngine.InferTypeFromNode(current); pointer && pointer->IsPointer())
+				{
+					auto deref = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+					deref->Location = funcCallNode->Location;
+					deref->Operand = current;
+					current = deref;
+				}
 			}
 
 			auto value = CompoundValue(assignmentOp->GetAssignType(), current, assignmentOp->Value);
@@ -2299,6 +2312,7 @@ namespace clear
 			}
 
 			forExpr->VariableType = forExpr->IterableType->As<ArrayType>()->GetBaseType();
+			forExpr->IterableIsTemporary = !IsStorageNode(forExpr->Iterable);
 		}
 		else
 		{
@@ -2435,6 +2449,19 @@ namespace clear
 		auto elementDecl = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
 		elementDecl->Location = forExpr->VariableName;
 		elementDecl->Initializer = method(iterableName, slotted ? "__at__" : "__getitem__", { name(indexName) });
+
+		// a get that returns a reference to an object: the loop variable *is* that object (x.qty = 1 changes the item);
+		// numbers and other plain values are copied, like in Python
+		if (auto getter = classType->MemberFunctions.at("__getitem__")->GetFunctionSymbol().FunctionNode; 
+			getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer() && getter->ReturnTypeVal->As<PointerType>()->GetBaseType()->IsClass())
+			elementDecl->IsAlias = true;
+		else if (getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer())
+		{
+			auto value = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+			value->Location = location;
+			value->Operand = elementDecl->Initializer;
+			elementDecl->Initializer = value;
+		}
 
 		loop->CodeBlock = std::make_shared<ASTBlock>();
 
@@ -4478,6 +4505,24 @@ namespace clear
 				// an assignment rewrites this call into __setitem__, its arguments are checked there
 				if (assignTarget && hasSet)
 					return funcCall;
+
+				// operator get returning *T: obj[i] is the element itself (read it, assign to it, change its fields)
+				auto getter = var->Variable->GetFunctionSymbol().FunctionNode;
+				EnsureDefined(getter);
+
+				if (getter && getter->ReturnTypeVal && getter->ReturnTypeVal->IsPointer())
+				{
+					auto call = CheckCall(funcCall);
+
+					if (!call)
+						return nullptr;
+
+					auto element = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+					element->Location = funcCall->Location;
+					element->Operand = call;
+					element->IsStorage = context.ValueReq == ValueRequired::LValue;
+					return element;
+				}
 
 				return CheckCall(funcCall);
 			}

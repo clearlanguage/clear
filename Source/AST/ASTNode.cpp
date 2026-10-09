@@ -787,6 +787,12 @@ namespace clear
 		{
 			Symbol initializer = Initializer ? Initializer->Codegen(ctx) : Symbol();
 
+			if (IsAlias)
+			{
+				*Variable = Symbol::CreateValue(initializer.GetLLVMValue(), ctx.TypeReg->GetPointerTo(resolvedType.GetType()));
+				return *Variable;
+			}
+
 			*Variable = CreateAlloca(resolvedType.GetType(), ctx);
 
 			if (initializer.Kind != SymbolKind::None)
@@ -2154,8 +2160,16 @@ namespace clear
 			// copy the current element into the loop variable
 			llvm::Value* index = ctx.Builder.CreateLoad(ctx.Builder.getInt64Ty(), counter.GetLLVMValue());
 			llvm::Value* address = ctx.Builder.CreateInBoundsGEP(IterableType->Get(), iterable.GetLLVMValue(), { ctx.Builder.getInt64(0), index }, "for.element");
-			llvm::Value* element = ctx.Builder.CreateLoad(VariableType->Get(), address);
-			ctx.Builder.CreateStore(element, variable.GetLLVMValue());
+			// objects are visited in place (the loop variable is the element), plain values are copied
+			if (VariableType->IsClass() && !IterableIsTemporary)
+			{
+				*Variable = Symbol::CreateValue(address, ctx.TypeReg->GetPointerTo(VariableType));
+			}
+			else
+			{
+				llvm::Value* element = ctx.Builder.CreateLoad(VariableType->Get(), address);
+				ctx.Builder.CreateStore(element, variable.GetLLVMValue());
+			}
 		}
 
 		{

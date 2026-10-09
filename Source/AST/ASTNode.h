@@ -203,6 +203,7 @@ namespace clear
 		std::shared_ptr<Type> ResolvedType;
 		bool IsConst = false;
 		bool IsParameter = false;
+		bool IsAlias = false; // the initializer is a pointer and the variable *is* what it points at (for loops over references)
 		std::shared_ptr<ASTNodeBase> DefaultValue; // parameters: used when a call leaves the argument out
 
 	private:
@@ -501,6 +502,7 @@ namespace clear
 		std::shared_ptr<Symbol> Variable;
 		std::shared_ptr<Type> VariableType;
 		std::shared_ptr<Type> IterableType;
+		bool IterableIsTemporary = false; // not a variable/field: objects in it are copied out rather than visited in place
 	};
 
 	class ASTTernaryExpression : public ASTNodeBase
