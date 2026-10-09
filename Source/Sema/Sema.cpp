@@ -7887,8 +7887,9 @@ namespace clear
 			}
 		}
 
+		// found as the instance itself (a class another file made and exposed) or as its generic record
 		if (instanceSymbol)
-			return instanceSymbol->GetGeneric().GeneratedSymbol;
+			return instanceSymbol->Kind == SymbolKind::Generic ? instanceSymbol->GetGeneric().GeneratedSymbol : instanceSymbol;
 
 		GenericTemplateSymbol genericTemplate = genericSymbol->GetGenericTemplate();
 		std::shared_ptr<ASTGenericTemplate> node = std::dynamic_pointer_cast<ASTGenericTemplate>(genericTemplate.GenericTemplate);

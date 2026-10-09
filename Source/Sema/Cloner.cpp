@@ -447,6 +447,7 @@ namespace clear {
 		std::shared_ptr<ASTIsExpr> isExpr = std::make_shared<ASTIsExpr>();
 		isExpr->Object = Clone(node->Object);
 		isExpr->TypeNode = Clone(node->TypeNode);
+		isExpr->Negate = node->Negate; // `is not`
 		
 		return isExpr;
 	}

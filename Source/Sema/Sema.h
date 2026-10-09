@@ -191,7 +191,7 @@ namespace clear
 		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::unordered_set<std::string> m_FailedDeclarations;
 		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
-		std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances;
+		static inline std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances; // shared: List[int] is one type in every file
 		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first
 		std::unordered_set<ASTClass*> m_ClassesInProgress;
 		size_t m_MacroCounter = 0;
@@ -255,7 +255,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> CallLambdaTemplate(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<Type> calleeType, std::shared_ptr<ClassType> closureType);
 		std::string InstantiateLambdaCall(std::shared_ptr<ClassType> closureType, const std::vector<std::shared_ptr<Type>>& argumentTypes, const Token& location);
 
-		std::unordered_set<std::string> m_GenericMethodNames;
+		static inline std::unordered_set<std::string> m_GenericMethodNames; // shared by every file
 		std::shared_ptr<ASTNodeBase> CallGenericMethod(std::shared_ptr<ASTFunctionCall> funcCall, std::shared_ptr<ASTBinaryExpression> member, std::shared_ptr<Type> objectType,
 													   std::shared_ptr<ClassType> classType, const std::string& name);
 		bool BindCallable(std::shared_ptr<ASTFunctionTypeExpr> pattern, std::shared_ptr<Type> actual, llvm::ArrayRef<std::string> names,
@@ -295,8 +295,9 @@ namespace clear
 			LazyBody Context;
 			std::unordered_map<std::string, std::string> Instances; // type arguments -> the method made for them
 		};
-		std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
-		std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // generic methods not analysed yet
+		// shared by every file's analysis: a List[int] made in one file has its methods analysed when another uses them
+		static inline std::unordered_map<Type*, std::unordered_map<std::string, GenericMethod>> m_GenericMethods;
+		static inline std::unordered_map<ASTFunctionDefinition*, LazyBody> m_LazyBodies; // methods of generic instances not analysed yet
 		std::shared_ptr<Module> m_Module;
 		DiagnosticsBuilder& m_DiagBuilder;
 		ConstEval m_ConstantEvaluator;
