@@ -83,6 +83,19 @@ add_test(NAME clear_language_tests
 add_test(NAME clear_language_tests_optimized
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
 set_tests_properties(clear_language_tests_optimized PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O3")
+add_test(NAME clear_language_tests_unoptimized
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+set_tests_properties(clear_language_tests_unoptimized PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O0")
+# every test and example under valgrind: memory errors and leaks fail the test
+find_program(VALGRIND_EXECUTABLE valgrind)
+if(VALGRIND_EXECUTABLE)
+    add_test(NAME clear_language_tests_valgrind
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/Tests)
+    set_tests_properties(clear_language_tests_valgrind PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O0;CLEAR_TEST_VALGRIND=1")
+    add_test(NAME clear_examples_valgrind
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/run_tests.py $<TARGET_FILE:clearc> ${CMAKE_SOURCE_DIR}/examples)
+    set_tests_properties(clear_examples_valgrind PROPERTIES ENVIRONMENT "CLEAR_TEST_FLAGS=-O0;CLEAR_TEST_VALGRIND=1")
+endif()
 add_test(NAME clear_package_manager
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Scripts/test_packages.py $<TARGET_FILE:clearc>)
 add_test(NAME clear_examples

@@ -17,7 +17,7 @@ jobs:
     - name: Install toolchain
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang-18 llvm-18-dev libstdc++-14-dev zlib1g-dev libzstd-dev libedit-dev libcurl4-openssl-dev
+        sudo apt-get install -y clang-18 llvm-18-dev libstdc++-14-dev zlib1g-dev libzstd-dev libedit-dev libcurl4-openssl-dev valgrind
         # clearc links the programs it compiles with `clang`
         sudo ln -sf /usr/bin/clang-18 /usr/local/bin/clang
 

@@ -20,8 +20,12 @@ are helpers that tests import, not tests.
 usage: run_tests.py <path to clearc> <tests directory> [name filter]
 
 Set CLEAR_TEST_FLAGS to pass extra compiler flags, e.g. CLEAR_TEST_FLAGS=-O3
+
+Set CLEAR_TEST_VALGRIND=1 to run every program under valgrind. A test then also fails
+on any memory error, and (when it is expected to exit with 0) on any leaked block.
 """
 
+import concurrent.futures
 import os
 import subprocess
 import sys
@@ -114,9 +118,23 @@ def run_test(clearc, path, workdir):
     if warning_text and warning_text not in compiler_output:
         return False, f"expected a warning mentioning '{warning_text}', got:\n" + compiler_output
 
-    run_result = subprocess.run([output], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    use_valgrind = os.environ.get("CLEAR_TEST_VALGRIND", "") not in ("", "0")
+    command = [output]
+    if use_valgrind:
+        # a program that stops early (panic, exit code) may leave memory behind on purpose
+        leak_kinds = "definite" if expected_exit == 0 else "none"
+        command = ["valgrind", "--quiet", "--leak-check=full", f"--errors-for-leak-kinds={leak_kinds}",
+                   "--error-exitcode=99", "--log-file=" + output + ".vg", output]
+
+    run_result = subprocess.run(command, capture_output=True, text=True, timeout=300 if use_valgrind else 60,
+                                stdin=subprocess.DEVNULL)
 
     problems = []
+    if use_valgrind and run_result.returncode == 99 and expected_exit != 99:
+        with open(output + ".vg", encoding="utf-8", errors="replace") as f:
+            problems.append("valgrind found memory errors:\n" + f.read())
+        return False, "\n".join(problems)
+
     if run_result.returncode != expected_exit:
         problems.append(f"exit code {run_result.returncode}, expected {expected_exit}")
 
@@ -157,16 +175,21 @@ def main():
 
     failures = []
     with tempfile.TemporaryDirectory(prefix="clear-tests-") as workdir:
-        for path in tests:
-            rel = os.path.relpath(path, tests_dir)
+        def run_one(path):
+            # each test gets its own folder, so tests with the same file name don't collide
+            test_dir = tempfile.mkdtemp(dir=workdir)
             try:
-                ok, message = run_test(clearc, path, workdir)
+                return run_test(clearc, path, test_dir)
             except subprocess.TimeoutExpired:
-                ok, message = False, "timed out"
+                return False, "timed out"
 
-            print(("PASS " if ok else "FAIL ") + rel)
-            if not ok:
-                failures.append((rel, message))
+        jobs = int(os.environ.get("CLEAR_TEST_JOBS", os.cpu_count() or 1))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            for path, (ok, message) in zip(tests, pool.map(run_one, tests)):
+                rel = os.path.relpath(path, tests_dir)
+                print(("PASS " if ok else "FAIL ") + rel, flush=True)
+                if not ok:
+                    failures.append((rel, message))
 
     for rel, message in failures:
         print(f"\n=== {rel}\n{message}")
