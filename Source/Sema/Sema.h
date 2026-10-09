@@ -123,6 +123,8 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+		void AdaptLiterals(std::shared_ptr<ASTBinaryExpression> expr, const SemaContext& context);
+		static bool ContainsByValue(const std::shared_ptr<Type>& type, const std::shared_ptr<Type>& target);
 
 		// optionals: `a ?? b`, `a?.b`, `if r:` (r is its value inside), `if not r: return` (and after it)
 		struct Narrowing { std::shared_ptr<Symbol> Variable; Token Name; std::shared_ptr<Type> Optional; };

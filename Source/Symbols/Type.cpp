@@ -8,6 +8,7 @@
 #include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/DataLayout.h>
+#include <unordered_set>
 #include <memory>
 #include <format>
 
@@ -365,6 +366,14 @@ namespace clear
         if (!type)
             return false;
 
+        // a type that contains itself (through a List, say) is asked about again while being answered
+        static thread_local std::unordered_set<Type*> s_Checking;
+
+        if (!s_Checking.insert(type.get()).second)
+            return false;
+
+        struct Done { Type* T; ~Done() { s_Checking.erase(T); } } done { type.get() };
+
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return IsOwning(array->GetBaseType());
 
@@ -402,6 +411,15 @@ namespace clear
     {
         if (!IsOwning(type))
             return true;
+
+        // class Node: children: List[Node] asks the question about Node again while answering it: the answer is
+        // whatever the rest of Node says (copyable unless something else stops it)
+        static thread_local std::unordered_set<Type*> s_Checking;
+
+        if (!s_Checking.insert(type.get()).second)
+            return true;
+
+        struct Done { Type* T; ~Done() { s_Checking.erase(T); } } done { type.get() };
 
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return IsCopyable(array->GetBaseType());

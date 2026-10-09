@@ -25,7 +25,7 @@ namespace clear
             return Symbol::CreateValue(floatOp(builder, valuel, valuer, opName), typel);
         }
 
-        auto typeToReturn = typel->IsSigned() ? typel : typer;
+        auto typeToReturn = !typel->IsSigned() ? typel : typer; // unsigned wins, as in C (and as Sema decides)
         return Symbol::CreateValue(intOp(builder, valuel, valuer, opName), typeToReturn);
     }
 
@@ -43,7 +43,7 @@ namespace clear
             return Symbol::CreateValue(floatOp(builder, valuel, valuer, opName), typel);
         }
 
-        auto typeToReturn = typel->IsSigned() ? typel : typer;
+        auto typeToReturn = !typel->IsSigned() ? typel : typer; // unsigned wins, as in C (and as Sema decides)
 
         if(typeToReturn->IsSigned())
             return Symbol::CreateValue(sIntOp(builder, valuel, valuer, opName), typeToReturn);
@@ -65,7 +65,7 @@ namespace clear
             return Symbol::CreateValue(floatOp(builder, valuel, valuer, opName), booleanType);
         }
 
-        auto typeToReturn = typel->IsSigned() ? typel : typer;
+        auto typeToReturn = !typel->IsSigned() ? typel : typer; // unsigned wins, as in C (and as Sema decides)
 
         if(typeToReturn->IsSigned())
             return Symbol::CreateValue(sIntOp(builder, valuel, valuer, opName), booleanType);
@@ -106,7 +106,7 @@ namespace clear
         auto [valuel, typel] = lhs.GetValue();
         auto [valuer, typer] = rhs.GetValue();
 
-        auto typeToReturn = typel->IsSigned() ? typel : typer;
+        auto typeToReturn = !typel->IsSigned() ? typel : typer; // unsigned wins, as in C (and as Sema decides)
 
         if(typeToReturn->IsSigned())
             return Symbol::CreateValue(sOp(builder, valuel, valuer, opName), typeToReturn);

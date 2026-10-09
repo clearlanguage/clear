@@ -2410,6 +2410,20 @@ namespace clear
 
 		classTy->MemberDefaults = defaults;
 
+		// class N: next: N would be infinitely big
+		for (size_t i = 0; i < members.size(); i++)
+		{
+			if (members[i].second->Kind != SymbolKind::Type || !ContainsByValue(members[i].second->GetType(), classTy))
+				continue;
+
+			auto spec = std::find_if(classExpr->Members.begin(), classExpr->Members.end(), [&](auto& m) { return m->GetName() == members[i].first; });
+			Token location = spec != classExpr->Members.end() && (*spec)->TypeResolver ? GetNodeLocation((*spec)->TypeResolver) : classExpr->Location;
+			size_t width = location.GetData().size();
+			location.SetData(GetDisplayName(classTy));
+			Report(DiagnosticCode_InfiniteType, location, width);
+			return false;
+		}
+
 		// a union does not know which field it holds, so it could never clean one up
 		if (classExpr->IsUnion)
 		{
@@ -4674,6 +4688,16 @@ namespace clear
 					return false;
 				}
 
+				// Neg(child: Expr): an Expr inside an Expr, without end
+				if (ContainsByValue(fieldType, classType))
+				{
+					Token location = field->TypeResolver ? GetNodeLocation(field->TypeResolver) : field->GetName();
+					size_t width = location.GetData().size();
+					location.SetData(GetDisplayName(classType));
+					Report(DiagnosticCode_InfiniteType, location, width);
+					return false;
+				}
+
 				variantCase.Fields.push_back({ field->GetName().GetData(), fieldType });
 
 				// variant Number: int, float64 — the case is named after its type
@@ -5881,6 +5905,99 @@ namespace clear
 		}
 	}
 
+	bool Sema::ContainsByValue(const std::shared_ptr<Type>& type, const std::shared_ptr<Type>& target)
+	{
+		// whether `type` holds a `target` inside itself (not behind a pointer or a List): then target would contain
+		// itself, without end
+		if (!type)
+			return false;
+
+		if (type == target)
+			return true;
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+			return ContainsByValue(array->GetBaseType(), target);
+
+		if (auto tuple = std::dynamic_pointer_cast<TupleType>(type))
+		{
+			for (auto& element : tuple->GetElements())
+				if (ContainsByValue(element, target))
+					return true;
+			return false;
+		}
+
+		auto classType = std::dynamic_pointer_cast<ClassType>(type);
+
+		if (!classType)
+			return false;
+
+		static thread_local std::unordered_set<Type*> s_Visiting;
+
+		if (!s_Visiting.insert(type.get()).second)
+			return false;
+
+		struct Done { Type* T; ~Done() { s_Visiting.erase(T); } } done { type.get() };
+
+		for (auto& variantCase : classType->Cases)
+			for (auto& [name, field] : variantCase.Fields)
+				if (ContainsByValue(field, target))
+					return true;
+
+		for (const auto& [name, field] : classType->GetMemberValues())
+			if (ContainsByValue(field, target))
+				return true;
+
+		return false;
+	}
+
+	void Sema::AdaptLiterals(std::shared_ptr<ASTBinaryExpression> expr, const SemaContext& context)
+	{
+		// a number written out takes the type of what it is combined with, when it fits: `c >> 16` with c a uint32
+		// stays unsigned, `b + 32` with b an int8 stays int8, `f * 2.0` with f a float32 stays float32.
+		// Two literals take the type the result goes into (`let big: int64 = 1 << 40`).
+		auto numeric = [](const std::shared_ptr<Type>& type) { return type && (type->IsIntegral() || type->IsFloatingPoint()) && !type->IsEnum() && !type->Get()->isIntegerTy(1); };
+		auto fits = [&](const std::shared_ptr<ASTNodeBase>& literal, const std::shared_ptr<Type>& target)
+		{
+			auto type = m_TypeInferEngine.InferTypeFromNode(literal);
+
+			if (!numeric(type) || !numeric(target) || type == target)
+				return false;
+
+			if (target->IsIntegral())
+				return type->IsIntegral() && IsConstantThatFits(literal, target);
+
+			return IsImplicitlyConvertible(type, target, true);
+		};
+
+		bool leftLiteral = IsNumericLiteral(expr->LeftSide), rightLiteral = IsNumericLiteral(expr->RightSide);
+		auto leftType = m_TypeInferEngine.InferTypeFromNode(expr->LeftSide);
+		auto rightType = m_TypeInferEngine.InferTypeFromNode(expr->RightSide);
+
+		// a shift amount does not decide the type of what is shifted
+		bool shift = expr->GetExpression() == OperatorType::LeftShift || expr->GetExpression() == OperatorType::RightShift;
+
+		// the literal becomes a constant of that type (not just converted: code generation looks at its type)
+		auto adapt = [&](std::shared_ptr<ASTNodeBase>& literal, const std::shared_ptr<Type>& target)
+		{
+			if (auto value = EvaluateInteger(literal); value && target->IsIntegral())
+				literal = std::make_shared<ASTConstantValue>(*value, target);
+			else
+				literal = Coerce(literal, target);
+		};
+
+		if (leftLiteral && !rightLiteral && !shift && fits(expr->LeftSide, rightType))
+			adapt(expr->LeftSide, rightType);
+		else if (rightLiteral && !leftLiteral && fits(expr->RightSide, leftType))
+			adapt(expr->RightSide, leftType);
+		else if (leftLiteral && (rightLiteral || shift) && numeric(context.ExpectedType) && fits(expr->LeftSide, context.ExpectedType))
+		{
+			adapt(expr->LeftSide, context.ExpectedType);
+
+			if (rightLiteral && !shift && fits(expr->RightSide, context.ExpectedType))
+				adapt(expr->RightSide, context.ExpectedType);
+		}
+	}
+
 	static bool IsOptionalType(const std::shared_ptr<Type>& type)
 	{
 		return type && type->IsClass() && type->As<ClassType>()->IsOptional;
@@ -6353,6 +6470,14 @@ namespace clear
 	{
 		if (!IsOwning(type))
 			return;
+
+		// a type that holds itself (through a List) is already being prepared
+		static thread_local std::unordered_set<Type*> s_Preparing;
+
+		if (!s_Preparing.insert(type.get()).second)
+			return;
+
+		struct Done { Type* T; ~Done() { s_Preparing.erase(T); } } done { type.get() };
 
 		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
 			return EnsureCopyDefined(array->GetBaseType());
@@ -7070,6 +7195,8 @@ namespace clear
 				return text;
 		}
 
+		AdaptLiterals(binaryExpression, context);
+
 		if (auto overload = TryOperatorOverload(binaryExpression))
 			return overload.value();
 
@@ -7499,6 +7626,13 @@ namespace clear
 
 		if (!binaryExpr->LeftSide || !binaryExpr->RightSide)
 			return nullptr;
+
+		if (binaryExpr->GetExpression() != OperatorType::And && binaryExpr->GetExpression() != OperatorType::Or)
+		{
+			SemaContext comparison = context;
+			comparison.ExpectedType = nullptr; // a comparison's operands are not the bool it produces
+			AdaptLiterals(binaryExpr, comparison);
+		}
 
 		if (auto overload = TryOperatorOverload(binaryExpr))
 			return overload.value();

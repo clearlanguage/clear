@@ -412,3 +412,7 @@ Advice  = "Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not 
 [CopyMade]
 Message = "A copy is made here."
 Advice  = "This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead."
+
+[InfiniteType]
+Message = "This type contains itself, so it would be infinitely big."
+Advice  = "‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’."

@@ -99,8 +99,22 @@ namespace clear
 		return CheckErrors();
 	}
 
+    // sizes (sizeof T, how much a List allocates per item, a variant's storage) must be the target's: with LLVM's
+    // default layout an int64 is only 4-byte aligned, so { int, int64 } would be measured as 12 bytes, not 16
+    void CompilationManager::UseTargetLayout(llvm::Module& module)
+    {
+        if (CreateTargetMachine())
+        {
+            module.setDataLayout(m_TargetMachine->createDataLayout());
+            module.setTargetTriple(m_TargetMachine->getTargetTriple().str());
+        }
+    }
+
     void CompilationManager::LoadSources()
     {
+        UseTargetLayout(*m_MainModule->GetModule());
+        UseTargetLayout(*m_Builtins->GetModule());
+
         for(const auto& dir : m_Config.SourceDirectories)
         {
             LoadDirectory(dir);
@@ -217,6 +231,7 @@ namespace clear
             std::println("Loading source file {}" , path.string());
 		
 		std::shared_ptr<Module> newModule = std::make_shared<Module>(path.filename(), m_MainModule->GetContext(), m_Builtins, path);
+		UseTargetLayout(*newModule->GetModule());
 		newModule->RuntimeChecks = m_Config.RuntimeChecksEnabled();
 		newModule->ReportCopies = m_Config.ReportCopies;
 		

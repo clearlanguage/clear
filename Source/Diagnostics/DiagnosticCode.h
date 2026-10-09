@@ -107,6 +107,7 @@ namespace clear
 		DiagnosticCode_NotOptional,
 		DiagnosticCode_OptionalBoolCondition,
 		DiagnosticCode_CopyMade,
+		DiagnosticCode_InfiniteType,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -214,6 +215,7 @@ namespace clear
 		"This is not an optional.",
 		"An optional bool is ambiguous as a condition.",
 		"A copy is made here.",
+		"This type contains itself, so it would be infinitely big.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -320,5 +322,6 @@ namespace clear
 		"‘{}’.",
 		"Does it mean ‘holds a value’ or ‘is true’? Write ‘x is not none’ or ‘x ?? false’.",
 		"This ‘{}’ is copied (it allocates). If you only read it, work on it in place, or take a str, []T or pointer instead.",
+		"‘{}’ holds a value of its own type. Hold it through a pointer, a List or an optional pointer instead, e.g. ‘next: *Node’ or ‘children: List[Node]’.",
 	};
 }
