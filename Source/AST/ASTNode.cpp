@@ -187,10 +187,13 @@ namespace clear
 
 	Symbol ASTNodeLiteral::Codegen(CodegenContext& ctx)
 	{
-		if(m_Value.has_value())
+		// a text literal is a global of the module being generated: a node shared by modules (a default
+		// argument, a field default) makes its own in each one
+		if(m_Value.has_value() && m_ValueModule == &ctx.Module)
 			return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 
 		m_Value = Value(m_Token, ctx.ClearModule->GetTypeFromToken(m_Token), ctx.Context, ctx.Module);
+		m_ValueModule = &ctx.Module;
 		return Symbol::CreateValue(m_Value.value().Get(), m_Value.value().GetType());
 	}
 

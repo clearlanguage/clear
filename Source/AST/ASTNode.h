@@ -149,6 +149,7 @@ namespace clear
 	private:
 		Token m_Token;
 		std::optional<Value> m_Value;
+		const llvm::Module* m_ValueModule = nullptr;
 	};
 
 	class ASTBinaryExpression : public ASTNodeBase
