@@ -1676,16 +1676,19 @@ namespace clear
 		}
 
 		std::shared_ptr<Type> arrayType = ListType;
+		llvm::ArrayType* llvmArrayType = llvm::dyn_cast<llvm::ArrayType>(arrayType->Get());
 
+		// computed items get a zero placeholder of the element type (a scalar zero for a scalar element:
+		// ConstantAggregateZero is only valid for aggregates and makes invalid IR otherwise)
 		llvm::SmallVector<llvm::Constant*> constantValues;
-		constantValues.resize(values.size(), llvm::ConstantAggregateZero::get(first.GetType()->Get()));
-		
+		constantValues.resize(values.size(), llvm::Constant::getNullValue(llvmArrayType->getElementType()));
+
 		bool isConst = true;
 
 		for(size_t i = 0; i < values.size(); i++)
 		{
 			llvm::Constant* constant = llvm::dyn_cast<llvm::Constant>(values[i]);
-			
+
 			if(constant)
 			{
 				constantValues[i] = constant;
@@ -1695,8 +1698,6 @@ namespace clear
 			isConst = false;
 		}
 
-
-		llvm::ArrayType* llvmArrayType = llvm::dyn_cast<llvm::ArrayType>(arrayType->Get());
 
 		llvm::Constant* initializer = llvm::ConstantArray::get(llvmArrayType, constantValues);
 
