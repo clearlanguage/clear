@@ -197,6 +197,7 @@ let ratio = 2.5                // float64
 let small: uint8 = 200         // literals adapt to the declared type
 let big: int64 = count         // widening is automatic
 let back = big as int32        // narrowing needs `as`
+let start: int64 = 0           // len() and indexes are int64: a counter that holds one says so
 let name: str = "clear"
 let empty: int                 // starts at 0, never garbage
 let grid: [LIMIT; int] = {1, 2}  // arrays: missing elements are 0
