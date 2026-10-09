@@ -112,6 +112,9 @@ namespace clear
 		DiagnosticCode_MacroHasNoValue,
 		DiagnosticCode_NoConversion,
 		DiagnosticCode_UsedHere,
+		DiagnosticCode_NotAPointer,
+		DiagnosticCode_IntegerLiteralTooLarge,
+		DiagnosticCode_OverrideMismatch,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -224,6 +227,9 @@ namespace clear
 		"This macro is a list of statements, so it has no value.",
 		"These types do not convert to each other.",
 		"The standard library code above is used from this line of the program.",
+		"Only a pointer can be dereferenced.",
+		"Integer literal is too large.",
+		"An override does not match the method it replaces.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -335,5 +341,8 @@ namespace clear
 		"‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2).",
 		"{}.",
 		"The problem comes from how ‘{}’ is used here.",
+		"‘{}’, not a pointer, so ‘*’ cannot read through it. Use the value as it is, or take its address with ‘&’.",
+		"‘{}’ does not fit in 64 bits (the largest integer is 18446744073709551615, 0xFFFF_FFFF_FFFF_FFFF). Write it as a float, with a ‘.’ or an exponent, if an approximate value is enough.",
+		"{}.",
 	};
 }

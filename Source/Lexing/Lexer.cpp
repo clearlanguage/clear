@@ -2,6 +2,7 @@
 
 #include "Core/Log.h"
 
+#include <charconv>
 #include <fstream>
 #include <iostream>
 #include <math.h>
@@ -409,12 +410,25 @@ namespace clear
             suffix = GetWord(shouldContinue);
         }
 
-        if (!isNumber) 
+        if (!isNumber)
         {
             Report(word, DiagnosticCode_InvalidNumberLiteral, Severity::High);
             AbortCurrent();
 
             return;
+        }
+
+        // a whole number must fit in 64 bits (a float is written with '.' or an exponent)
+        if (word.find_first_of(".eE") == std::string::npos)
+        {
+            uint64_t whole = 0;
+
+            if (std::from_chars(word.data(), word.data() + word.size(), whole).ec == std::errc::result_out_of_range)
+            {
+                ReportTooLarge(word);
+                EmplaceBack(TokenType::Number, "0", suffix);
+                return;
+            }
         }
 
         EmplaceBack(TokenType::Number, word,suffix);
@@ -469,13 +483,22 @@ namespace clear
             return  m_Position < m_Contents.size() && (isDigit || isValidCap || isValidLower || m_Contents[m_Position] == '_');
         };
 
-        std::string word = GetWord(ShouldContinue);
+        std::string written = GetWord(ShouldContinue);
+        std::string word = written;
         std::erase(word, '_');
+
+        // more than 16 digits (after leading zeros) do not fit in 64 bits
+        if (word.size() - std::min(word.size(), word.find_first_not_of('0')) > 16)
+        {
+            ReportTooLarge(m_Contents.substr(m_Position - written.size() - 2, written.size() + 2));
+            EmplaceBack(TokenType::Number, "0");
+            return;
+        }
 
         size_t k = 0;
         uint64_t num = 0;
 
-        for (auto it = word.rbegin(); it != word.rend(); it++) 
+        for (auto it = word.rbegin(); it != word.rend(); it++)
         {
             uint64_t digit = 0;
 
@@ -503,13 +526,21 @@ namespace clear
             return  m_Position < m_Contents.size() && (m_Contents[m_Position] == '0' || m_Contents[m_Position] == '1' || m_Contents[m_Position] == '_');
         };
 
-        std::string word = GetWord(ShouldContinue);
+        std::string written = GetWord(ShouldContinue);
+        std::string word = written;
         std::erase(word, '_');
+
+        if (word.size() - std::min(word.size(), word.find_first_not_of('0')) > 64)
+        {
+            ReportTooLarge(m_Contents.substr(m_Position - written.size() - 2, written.size() + 2));
+            EmplaceBack(TokenType::Number, "0");
+            return;
+        }
 
         size_t k = 0;
         uint64_t num = 0;
 
-        for (auto it = word.rbegin(); it != word.rend(); it++) 
+        for (auto it = word.rbegin(); it != word.rend(); it++)
         {
             uint64_t digit = *it - '0';
             num |= digit << k++;
@@ -681,6 +712,13 @@ namespace clear
     void Lexer::Report(const Token& token, DiagnosticCode code, Severity severity)
     {
         m_DiagBuilder.Report(Stage::Lexing, severity, token, code);
+    }
+
+    void Lexer::ReportTooLarge(const std::string& written)
+    {
+        // pointing at where the literal starts
+        Token token(TokenType::None, written, m_File, m_StartLine, m_StartColumn);
+        m_DiagBuilder.Report(Stage::Lexing, Severity::High, token, DiagnosticCode_IntegerLiteralTooLarge, written.size());
     }
 
     void Lexer::AbortCurrent()

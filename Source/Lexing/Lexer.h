@@ -65,6 +65,7 @@ namespace clear
         void Report(const Token& token, DiagnosticCode code, Severity severity);
 
         void AbortCurrent();
+        void ReportTooLarge(const std::string& written); // an integer literal that does not fit in 64 bits
 
         void EmplaceBack(TokenType type, const std::string& data);
         void EmplaceBack(TokenType type, const std::string& data,const std::string& metadata);

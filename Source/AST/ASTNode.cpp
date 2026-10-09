@@ -525,6 +525,36 @@ namespace clear
 		return Symbol();
     }
 
+	// value << amount, value >> amount, in the type of the value. An amount outside 0..bits-1 stops the program
+	// when checks are on; otherwise only its low bits count (amount % bits, what x86 and ARM do), so the result
+	// is the same at every optimization level (LLVM would make it undefined)
+	static Symbol EmitShift(CodegenContext& ctx, Symbol& value, Symbol& amount, bool left, const Token& location)
+	{
+		auto& builder = ctx.Builder;
+		auto [lhs, valueType] = value.GetValue();
+		auto [rhs, amountType] = amount.GetValue();
+
+		if (!lhs->getType()->isIntegerTy() || !rhs->getType()->isIntegerTy())
+			return left ? SymbolOps::Shl(value, amount, builder) : SymbolOps::Shr(value, amount, builder);
+
+		unsigned bits = lhs->getType()->getIntegerBitWidth();
+
+		// a negative amount reads as a huge unsigned one, so one comparison covers both ends
+		if (ctx.RuntimeChecks)
+		{
+			llvm::Value* inRange = builder.CreateICmpULT(rhs, llvm::ConstantInt::get(rhs->getType(), bits));
+			EmitCheck(ctx, inRange, std::format("shift amount out of range for a {} bit value (valid: 0 to {})", bits, bits - 1), location);
+		}
+
+		llvm::Value* count = builder.CreateZExtOrTrunc(rhs, lhs->getType());
+		count = builder.CreateAnd(count, llvm::ConstantInt::get(lhs->getType(), bits - 1));
+
+		llvm::Value* result = left ? builder.CreateShl(lhs, count, "shl")
+								   : (valueType && valueType->IsSigned() ? builder.CreateAShr(lhs, count, "shr") : builder.CreateLShr(lhs, count, "shr"));
+
+		return Symbol::CreateValue(result, valueType);
+	}
+
     Symbol ASTBinaryExpression::HandleBitwiseExpression(std::shared_ptr<ASTNodeBase> left, std::shared_ptr<ASTNodeBase> right, CodegenContext& ctx)
     {
 
@@ -541,8 +571,8 @@ namespace clear
     		case OperatorType::BitwiseAnd: return SymbolOps::BitAnd(lhs, rhs, ctx.Builder);
     		case OperatorType::BitwiseOr:  return SymbolOps::BitOr(lhs, rhs, ctx.Builder);
     		case OperatorType::BitwiseXor: return SymbolOps::BitXor(lhs, rhs, ctx.Builder);
-    		case OperatorType::LeftShift:  return SymbolOps::Shl(lhs, rhs, ctx.Builder);
-    		case OperatorType::RightShift: return SymbolOps::Shr(lhs, rhs, ctx.Builder);
+    		case OperatorType::LeftShift:  return EmitShift(ctx, lhs, rhs, true, Location.GetSourceFile().empty() ? GetNodeLocation(right) : Location);
+    		case OperatorType::RightShift: return EmitShift(ctx, lhs, rhs, false, Location.GetSourceFile().empty() ? GetNodeLocation(right) : Location);
     		case OperatorType::BitwiseNot: return SymbolOps::Not(lhs, ctx.Builder);
     		default: return {};
     	}
@@ -929,6 +959,9 @@ namespace clear
 		Symbol storage;
 		storage = Storage->Codegen(ctx);
 
+		if (CompoundTarget)
+			CompoundTarget->Value = storage;
+
 		Symbol data;
 		data    = Value->Codegen(ctx);
 
@@ -968,8 +1001,8 @@ namespace clear
 		else if (m_Type == AssignmentOperatorType::BitAnd) tmp = SymbolOps::BitAnd(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitOr)  tmp = SymbolOps::BitOr(loadedValue, data, ctx.Builder);
 		else if (m_Type == AssignmentOperatorType::BitXor) tmp = SymbolOps::BitXor(loadedValue, data, ctx.Builder);
-		else if (m_Type == AssignmentOperatorType::Shl)    tmp = SymbolOps::Shl(loadedValue, data, ctx.Builder);
-		else if (m_Type == AssignmentOperatorType::Shr)    tmp = SymbolOps::Shr(loadedValue, data, ctx.Builder);
+		else if (m_Type == AssignmentOperatorType::Shl)    tmp = EmitShift(ctx, loadedValue, data, true, Location.GetSourceFile().empty() ? GetNodeLocation(Value) : Location);
+		else if (m_Type == AssignmentOperatorType::Shr)    tmp = EmitShift(ctx, loadedValue, data, false, Location.GetSourceFile().empty() ? GetNodeLocation(Value) : Location);
 		else 
 		{
 			CLEAR_UNREACHABLE("invalid assignment type");
@@ -1345,24 +1378,66 @@ namespace clear
 		return Symbol::CreateValue(GetFunctionHere(Function, ctx), FunctionTy);
 	}
 
-	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	// void <Class>.destroy(ptr): the whole cleanup of a value of exactly this class (slot 0 of its vtable)
+	static llvm::Function* GetDestroyFunction(CodegenContext& ctx, const std::shared_ptr<ClassType>& classType)
 	{
-		// one constant table per class and module: [n x ptr] holding the class's version of each virtual method
-		std::string name = std::format("{}.vtable", ClassTy->GetHash());
+		std::string name = std::format("{}.destroy", classType->GetHash());
+
+		if (llvm::Function* existing = ctx.Module.getFunction(name))
+			return existing;
+
+		auto& builder = ctx.Builder;
+		auto function = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), { builder.getPtrTy() }, false),
+											   llvm::Function::LinkOnceODRLinkage, name, ctx.Module);
+
+		llvm::IRBuilderBase::InsertPointGuard guard(builder);
+		builder.SetInsertPoint(llvm::BasicBlock::Create(ctx.Context, "entry", function));
+		EmitDestroy(ctx, classType, function->getArg(0));
+		builder.CreateRetVoid();
+		return function;
+	}
+
+	// one constant table per class and module: [n + 1 x ptr], first the class's cleanup (so destroying through a
+	// *Base cleans up the whole object), then the class's version of each virtual method
+	static llvm::GlobalVariable* GetVTable(CodegenContext& ctx, const std::shared_ptr<ClassType>& classType)
+	{
+		std::string name = std::format("{}.vtable", classType->GetHash());
 		llvm::GlobalVariable* table = ctx.Module.getNamedGlobal(name);
 
 		if (!table)
 		{
 			llvm::SmallVector<llvm::Constant*> slots;
+			slots.push_back(GetDestroyFunction(ctx, classType));
 
-			for (auto& function : ClassTy->VTable)
+			for (auto& function : classType->VTable)
 				slots.push_back(GetFunctionHere(function, ctx));
 
 			auto arrayType = llvm::ArrayType::get(ctx.Builder.getPtrTy(), slots.size());
 			table = new llvm::GlobalVariable(ctx.Module, arrayType, true, llvm::GlobalValue::LinkOnceODRLinkage, llvm::ConstantArray::get(arrayType, slots), name);
 		}
 
-		return Symbol::CreateValue(table, PointerTy);
+		return table;
+	}
+
+	Symbol ASTVTableRef::Codegen(CodegenContext& ctx)
+	{
+		return Symbol::CreateValue(GetVTable(ctx, ClassTy), PointerTy);
+	}
+
+	// *p read as a value, with p: *Base pointing at a Derived: the value is a Base (only the Base part is copied),
+	// so it gets Base's table, and its methods and cleanup are Base's
+	static Symbol LoadThroughPointer(CodegenContext& ctx, Symbol& pointer)
+	{
+		Symbol value = SymbolOps::Load(pointer, ctx.Builder);
+		auto type = value.GetType();
+
+		if (value.Kind == SymbolKind::Value && type && type->IsClass() && type->As<ClassType>()->HasVTable && type->Get()->isStructTy())
+		{
+			llvm::Value* exact = ctx.Builder.CreateInsertValue(value.GetLLVMValue(), GetVTable(ctx, type->As<ClassType>()), { 0u });
+			return Symbol::CreateValue(exact, type);
+		}
+
+		return value;
 	}
 
 	Symbol ASTFunctionCall::Codegen(CodegenContext& ctx)
@@ -1425,12 +1500,12 @@ namespace clear
 
 		ConvertArguments(ctx, functionType, args, types);
 
-		// virtual: receiver->__vtable[slot](receiver, ...)
-		if (VirtualSlot >= 0 && calleeSymbol.Receiver)
+		// virtual: receiver->__vtable[slot](receiver, ...) (an operator or a property called by name gets the object as its first argument)
+		if (VirtualSlot >= 0 && (calleeSymbol.Receiver || !args.empty()))
 		{
-			llvm::Value* receiver = calleeSymbol.Receiver->GetLLVMValue();
+			llvm::Value* receiver = calleeSymbol.Receiver ? calleeSymbol.Receiver->GetLLVMValue() : args[0];
 			llvm::Value* table = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), receiver, "vtable");
-			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot, "vslot");
+			llvm::Value* slot = ctx.Builder.CreateConstInBoundsGEP1_64(ctx.Builder.getPtrTy(), table, (uint64_t)VirtualSlot + 1, "vslot"); // slot 0 is the cleanup
 			llvm::Value* target = ctx.Builder.CreateLoad(ctx.Builder.getPtrTy(), slot, "vfunc");
 			llvm::Value* result = ctx.Builder.CreateCall(functionType, target, args);
 
@@ -1699,16 +1774,19 @@ namespace clear
 		}
 
 		std::shared_ptr<Type> arrayType = ListType;
+		llvm::ArrayType* llvmArrayType = llvm::dyn_cast<llvm::ArrayType>(arrayType->Get());
 
+		// computed items get a zero placeholder of the element type (a scalar zero for a scalar element:
+		// ConstantAggregateZero is only valid for aggregates and makes invalid IR otherwise)
 		llvm::SmallVector<llvm::Constant*> constantValues;
-		constantValues.resize(values.size(), llvm::ConstantAggregateZero::get(first.GetType()->Get()));
-		
+		constantValues.resize(values.size(), llvm::Constant::getNullValue(llvmArrayType->getElementType()));
+
 		bool isConst = true;
 
 		for(size_t i = 0; i < values.size(); i++)
 		{
 			llvm::Constant* constant = llvm::dyn_cast<llvm::Constant>(values[i]);
-			
+
 			if(constant)
 			{
 				constantValues[i] = constant;
@@ -1718,8 +1796,6 @@ namespace clear
 			isConst = false;
 		}
 
-
-		llvm::ArrayType* llvmArrayType = llvm::dyn_cast<llvm::ArrayType>(arrayType->Get());
 
 		llvm::Constant* initializer = llvm::ConstantArray::get(llvmArrayType, constantValues);
 
@@ -2020,7 +2096,7 @@ namespace clear
 			auto [resultValue, resultType] = result.GetValue();
 
 			CLEAR_VERIFY(resultType->IsPointer(), "not a valid dereference");
-			return SymbolOps::Load(result, ctx.Builder);
+			return LoadThroughPointer(ctx, result);
 		}	
 
 		if(m_Type == OperatorType::Address)
@@ -2147,6 +2223,10 @@ namespace clear
 	Symbol ASTLoad::Codegen(CodegenContext& ctx)
 	{
 		Symbol operand = Operand->Codegen(ctx);
+
+		if (auto deref = std::dynamic_pointer_cast<ASTUnaryExpression>(Operand); deref && deref->GetOperatorType() == OperatorType::Dereference && !deref->IsElement)
+			return LoadThroughPointer(ctx, operand);
+
 		return SymbolOps::Load(operand, ctx.Builder);
 	}
 
@@ -3355,6 +3435,32 @@ namespace clear
 	{
 		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();
 
+		// destroy(p) with p: *Base may point at a Derived: the object's own cleanup comes from its vtable
+		// (an object that was never built, all zero, has no table: then the cleanup of the type written)
+		if (!Address && ValueType && ValueType->IsClass() && ValueType->As<ClassType>()->HasVTable)
+		{
+			auto& builder = ctx.Builder;
+			llvm::Function* function = builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock* dynamic = llvm::BasicBlock::Create(ctx.Context, "destroy.dynamic", function);
+			llvm::BasicBlock* fallback = llvm::BasicBlock::Create(ctx.Context, "destroy.static", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "destroy.done", function);
+
+			llvm::Value* table = builder.CreateLoad(builder.getPtrTy(), address, "vtable");
+			builder.CreateCondBr(builder.CreateIsNotNull(table), dynamic, fallback);
+
+			builder.SetInsertPoint(dynamic);
+			llvm::Value* cleanup = builder.CreateLoad(builder.getPtrTy(), table, "vdestroy");
+			builder.CreateCall(llvm::FunctionType::get(builder.getVoidTy(), { builder.getPtrTy() }, false), cleanup, { address });
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(fallback);
+			EmitDestroy(ctx, ValueType, address);
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(done);
+			return Symbol();
+		}
+
 		if (!Flag)
 		{
 			EmitDestroy(ctx, ValueType, address);
@@ -3487,9 +3593,18 @@ namespace clear
 			return;
 		}
 
-		// operator destruct first, then the fields that own something (last field first)
-		if (auto destruct = classType->MemberFunctions.find("__destruct__"); destruct != classType->MemberFunctions.end())
+		// operator destruct first: the class's own, then its base's (and so on up), each once; then the fields that
+		// own something (last field first)
+		std::shared_ptr<ASTFunctionDefinition> lastDestruct;
+
+		for (auto level = classType; level; level = level->Base)
 		{
+			auto destruct = level->MemberFunctions.find("__destruct__");
+
+			if (destruct == level->MemberFunctions.end() || destruct->second->GetFunctionSymbol().FunctionNode == lastDestruct)
+				continue;
+
+			lastDestruct = destruct->second->GetFunctionSymbol().FunctionNode;
 			llvm::Function* callee = GetFunctionHere(destruct->second, ctx);
 			builder.CreateCall(callee, { address });
 		}

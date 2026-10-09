@@ -33,6 +33,50 @@ namespace clear
 
 		void Value(llvm::Value* value, std::shared_ptr<Type> type)
 		{
+			// lists, maps, classes and enums are printed by a function per type, which can call itself for a type
+			// that contains itself (class Node: kids: List[Node])
+			if (IsComposite(value, type))
+			{
+				llvm::Function* printer = PrinterFor(type);
+				Flush();
+				Symbol slot = CreateStackSlot(type, value);
+				m_Ctx.Builder.CreateCall(printer, { slot.GetLLVMValue() });
+				return;
+			}
+
+			Inline(value, type);
+		}
+
+		static bool IsComposite(llvm::Value* value, const std::shared_ptr<Type>& type)
+		{
+			return value->getType()->isStructTy() && type && type->IsClass();
+		}
+
+		// void clear.print.<type>(ptr): prints the value at the address
+		llvm::Function* PrinterFor(const std::shared_ptr<Type>& type)
+		{
+			std::string name = std::format("clear.print.{}", type->GetHash());
+			llvm::Module& module = m_Ctx.Module;
+
+			if (llvm::Function* existing = module.getFunction(name))
+				return existing;
+
+			auto& builder = m_Ctx.Builder;
+			auto function = llvm::Function::Create(llvm::FunctionType::get(builder.getVoidTy(), { builder.getPtrTy() }, false),
+												   llvm::Function::InternalLinkage, name, module);
+
+			llvm::IRBuilderBase::InsertPointGuard guard(builder);
+			builder.SetInsertPoint(llvm::BasicBlock::Create(m_Ctx.Context, "entry", function));
+
+			PrintBuilder body(m_Ctx);
+			body.Inline(builder.CreateLoad(type->Get(), function->getArg(0)), type);
+			body.Flush();
+			builder.CreateRetVoid();
+			return function;
+		}
+
+		void Inline(llvm::Value* value, std::shared_ptr<Type> type)
+		{
 			auto& builder = m_Ctx.Builder;
 			llvm::Type* llvmType = value->getType();
 
@@ -130,10 +174,23 @@ namespace clear
 			{
 				// operator str (a String inside a list, an array or a field prints its text)
 				auto classType = type->As<ClassType>();
-				Symbol slot = CreateStackSlot(classType, value);
+				auto node = classType->MemberFunctions.at("__str__")->GetFunctionSymbol().FunctionNode;
 				llvm::Function* method = GetFunctionHere(classType->MemberFunctions.at("__str__"), m_Ctx);
-				auto result = classType->MemberFunctions.at("__str__")->GetFunctionSymbol().FunctionNode->ReturnTypeVal;
-				Value(builder.CreateCall(method, { slot.GetLLVMValue() }), result);
+				auto result = node->ReturnTypeVal;
+				bool byPointer = node->Arguments[0]->ResolvedType && node->Arguments[0]->ResolvedType->IsPointer();
+				llvm::Value* self = byPointer ? CreateStackSlot(classType, value).GetLLVMValue() : value;
+				llvm::Value* text = builder.CreateCall(method, { self });
+
+				// one that makes a String: printed, then cleaned up
+				if (IsOwning(result))
+				{
+					Symbol made = CreateStackSlot(result, text);
+					Value(text, result);
+					Flush();
+					EmitDestroy(m_Ctx, result, made.GetLLVMValue());
+				}
+				else
+					Value(text, result);
 			}
 			else if (llvmType->isStructTy() && type && type->IsClass())
 			{
@@ -266,8 +323,8 @@ namespace clear
 				return false;
 
 			auto node = method->second->GetFunctionSymbol().FunctionNode;
-			// (only one that gives a str: a String it made would have to be freed after printing)
-			return node && node->BodyResolved && node->Arguments.size() == 1 && node->ReturnTypeVal && node->ReturnTypeVal->GetHash() == "str";
+			// (a str, or a value that prints, such as a String, which is cleaned up after printing)
+			return node && node->BodyResolved && node->Arguments.size() == 1 && node->ReturnTypeVal && node->ReturnTypeVal->GetHash() != classType->GetHash();
 		}
 
 		void Flush()

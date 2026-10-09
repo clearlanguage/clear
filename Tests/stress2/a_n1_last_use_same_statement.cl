@@ -25,6 +25,11 @@ function grow(n: N) -> N:
 class Pos:
     n: int
 
+class V:
+    s: String
+    operator add(self, other: V) -> V:
+        return V(self.s + other.s)
+
 class Ord:
     name: String
 
@@ -60,6 +65,10 @@ function main() -> int32:
     let w = String("w")
     let pair = (w, w)
     print(pair[0], pair[1])
+
+    let twice = V(String("ab"))
+    twice += twice
+    print(twice.s)
     return 0
 
 // expect:
@@ -70,3 +79,4 @@ function main() -> int32:
 // 12
 // {gus: Pos(n=8)}
 // w w
+// abab
