@@ -59,10 +59,11 @@ static int CompileProject(const std::filesystem::path& directory, const CommandL
 }
 
 static int CompileFile(const std::filesystem::path& file, const std::filesystem::path& output, const CommandLine::ParsingResult& options,
-                       const std::vector<BuildConfig::PackageRoot>& packages = {})
+                       const std::vector<BuildConfig::PackageRoot>& packages = {}, bool checkOnly = false)
 {
     BuildConfig config = BuildConfig::ForSingleFile(file, output);
     config.Packages = packages;
+    config.CheckOnly = checkOnly;
     ApplyOptions(config, options);
 
     CompilationManager manager(config);
@@ -148,6 +149,53 @@ static int RunFile(const CommandLine::ParsingResult& options)
     return status;
 }
 
+// check: the same front end as build (imports, packages, type checking), but nothing is written.
+// A file inside a project sees the project's dependencies, so editors can check any file on save.
+static int CheckSource(const CommandLine::ParsingResult& options)
+{
+    std::filesystem::path source = std::filesystem::absolute(options.Directory);
+    std::filesystem::path projectRoot;
+
+    if (PackageManager::IsProject(source))
+        projectRoot = source;
+    else
+    {
+        for (auto dir = source.parent_path(); !dir.empty(); dir = dir.parent_path())
+        {
+            if (PackageManager::IsProject(dir))
+            {
+                projectRoot = dir;
+                break;
+            }
+
+            if (dir == dir.root_path())
+                break;
+        }
+    }
+
+    std::vector<BuildConfig::PackageRoot> packages;
+
+    if (!projectRoot.empty())
+    {
+        auto project = PrepareProject(projectRoot, false, options.Verbose);
+
+        if (!project)
+            return 1;
+
+        packages = project->Packages;
+
+        if (source == projectRoot)
+            source = project->Project.Root / project->Project.Main;
+    }
+    else if (std::filesystem::is_directory(source))
+    {
+        std::println(stderr, "clearc: check expects a .cl file or a project directory");
+        return 2;
+    }
+
+    return CompileFile(source, std::filesystem::temp_directory_path() / "clear-check", options, packages, /* checkOnly = */ true);
+}
+
 int main(int argc, char* argv[])
 {
     InstallCrashHandler();
@@ -210,6 +258,10 @@ int main(int argc, char* argv[])
         case CommandLine::ProgramMode::Run:
         {
             return RunFile(result);
+        }
+        case CommandLine::ProgramMode::Check:
+        {
+            return CheckSource(result);
         }
         case CommandLine::ProgramMode::New:
         {

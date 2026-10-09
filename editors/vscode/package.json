@@ -1,0 +1,266 @@
+{
+    "name": "clear-language",
+    "displayName": "Clear Language",
+    "description": "Clear language support: syntax highlighting, completion, hover, go to definition, outline, errors on save, and run/build commands.",
+    "version": "0.1.0",
+    "publisher": "clearlanguage",
+    "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/clearlanguage/clear.git",
+        "directory": "editors/vscode"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Snippets",
+        "Linters"
+    ],
+    "keywords": [
+        "clear",
+        "clearc",
+        "llvm"
+    ],
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "workspaceContains:**/*.cl",
+        "workspaceContains:clear.toml"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "clear",
+                "aliases": [
+                    "Clear",
+                    "clear"
+                ],
+                "extensions": [
+                    ".cl"
+                ],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "light": "./images/file-icon.svg",
+                    "dark": "./images/file-icon.svg"
+                }
+            }
+        ],
+        "grammars": [
+            {
+                "language": "clear",
+                "scopeName": "source.clear",
+                "path": "./syntaxes/clear.tmLanguage.json"
+            },
+            {
+                "scopeName": "markdown.clear.codeblock",
+                "path": "./syntaxes/clear.markdown.tmLanguage.json",
+                "injectTo": [
+                    "text.html.markdown"
+                ],
+                "embeddedLanguages": {
+                    "meta.embedded.block.clear": "clear"
+                }
+            }
+        ],
+        "snippets": [
+            {
+                "language": "clear",
+                "path": "./snippets/clear.json"
+            }
+        ],
+        "commands": [
+            {
+                "command": "clear.run",
+                "title": "Run File",
+                "category": "Clear",
+                "icon": "$(play)"
+            },
+            {
+                "command": "clear.build",
+                "title": "Build File",
+                "category": "Clear",
+                "icon": "$(tools)"
+            },
+            {
+                "command": "clear.check",
+                "title": "Check File for Errors",
+                "category": "Clear"
+            },
+            {
+                "command": "clear.runProject",
+                "title": "Run Project",
+                "category": "Clear"
+            },
+            {
+                "command": "clear.newProject",
+                "title": "New Project...",
+                "category": "Clear"
+            },
+            {
+                "command": "clear.showIR",
+                "title": "Show LLVM IR",
+                "category": "Clear"
+            }
+        ],
+        "menus": {
+            "editor/title/run": [
+                {
+                    "command": "clear.run",
+                    "when": "resourceLangId == clear",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "clear.build",
+                    "when": "resourceLangId == clear",
+                    "group": "navigation@1"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "clear.run",
+                    "when": "editorLangId == clear"
+                },
+                {
+                    "command": "clear.build",
+                    "when": "editorLangId == clear"
+                },
+                {
+                    "command": "clear.check",
+                    "when": "editorLangId == clear"
+                },
+                {
+                    "command": "clear.showIR",
+                    "when": "editorLangId == clear"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "clear.run",
+                "key": "ctrl+f5",
+                "mac": "cmd+f5",
+                "when": "editorLangId == clear"
+            }
+        ],
+        "configuration": {
+            "title": "Clear",
+            "properties": {
+                "clear.compilerPath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Path to `clearc`. Empty: `build/clearc` in the workspace, then `clearc` on the `PATH`.",
+                    "scope": "machine-overridable"
+                },
+                "clear.standardLibraryPath": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Folder holding the standard library (`list.cl`, `math.cl`...) used for completion and hover. Empty: `$CLEAR_STANDARD_DIR`, then `Standard/` in the workspace, then the copy bundled with the extension.",
+                    "scope": "machine-overridable"
+                },
+                "clear.diagnostics.enable": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Run `clearc check` and show its errors and warnings in the editor."
+                },
+                "clear.diagnostics.trigger": {
+                    "type": "string",
+                    "enum": [
+                        "onSave",
+                        "onType"
+                    ],
+                    "enumDescriptions": [
+                        "Check when a file is opened or saved.",
+                        "Also check while typing (the unsaved text is checked from a temporary copy next to the file)."
+                    ],
+                    "default": "onSave",
+                    "description": "When to check Clear files for errors."
+                },
+                "clear.inlayHints.variableTypes": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Show the type of `let` variables that don't write one, e.g. `let total: int = ...`."
+                },
+                "clear.run.arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "markdownDescription": "Extra options for `clearc run` and `clearc build`, for example `[\"-O3\"]`."
+                }
+            }
+        },
+        "problemMatchers": [
+            {
+                "name": "clearc",
+                "owner": "clear",
+                "source": "clearc",
+                "fileLocation": [
+                    "autoDetect",
+                    "${workspaceFolder}"
+                ],
+                "pattern": [
+                    {
+                        "regexp": "^(error|warning|note)\\[(E\\d+)\\]: (.*)$",
+                        "severity": 1,
+                        "code": 2,
+                        "message": 3
+                    },
+                    {
+                        "regexp": "^\\s*--> (.*):(\\d+):(\\d+)$",
+                        "file": 1,
+                        "line": 2,
+                        "column": 3
+                    }
+                ]
+            }
+        ],
+        "taskDefinitions": [
+            {
+                "type": "clear",
+                "required": [
+                    "command"
+                ],
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": [
+                            "run",
+                            "build",
+                            "check"
+                        ],
+                        "description": "The clearc command."
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "The .cl file or project directory (default: the workspace folder)."
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Extra clearc options."
+                    }
+                }
+            }
+        ]
+    },
+    "scripts": {
+        "copy-standard": "node scripts/copy-standard.js",
+        "compile": "npm run copy-standard && tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "test": "npm run compile && node --test \"out/test/*.test.js\"",
+        "package": "npm run compile && vsce package --no-dependencies",
+        "vscode:prepublish": "npm run compile"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@types/vscode": "~1.85.0",
+        "@vscode/vsce": "^3.2.1",
+        "typescript": "^5.4.0",
+        "vscode-oniguruma": "^2.0.1",
+        "vscode-textmate": "^9.1.0"
+    }
+}

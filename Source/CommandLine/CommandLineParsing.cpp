@@ -112,6 +112,7 @@ namespace clear
 
                 if (arg == "build" && result.Options == ProgramMode::None) { result.Options = ProgramMode::Build; continue; }
                 if (arg == "run"   && result.Options == ProgramMode::None) { result.Options = ProgramMode::Run;   continue; }
+                if (arg == "check" && result.Options == ProgramMode::None) { result.Options = ProgramMode::Check; continue; }
 
                 if (arg == "-o")
                 {
@@ -161,8 +162,8 @@ namespace clear
             if (result.Directory.empty())
             {
                 // inside a project, `clearc run` runs it
-                if (result.Options == ProgramMode::Run && !std::filesystem::exists(std::filesystem::current_path() / "clear.toml"))
-                    return Fail("run expects a .cl file or a project directory");
+                if ((result.Options == ProgramMode::Run || result.Options == ProgramMode::Check) && !std::filesystem::exists(std::filesystem::current_path() / "clear.toml"))
+                    return Fail(std::format("{} expects a .cl file or a project directory", result.Options == ProgramMode::Run ? "run" : "check"));
 
                 result.Directory = std::filesystem::current_path();
             }
@@ -177,6 +178,7 @@ namespace clear
             std::println("commands:");
             std::println("  run <file.cl | project> [-- args]   compile and run a file or a project (clear.toml)");
             std::println("  build <file.cl | project>   compile a file or a project (clear.toml, or a legacy build.toml)");
+            std::println("  check <file.cl | project>   report errors and warnings without building anything");
             std::println("  new <directory>             start a project: clear.toml and main.cl");
             std::println("  add <name> --git <url> [--tag t | --branch b | --rev r]");
             std::println("  add <name> --path <dir>     add a dependency to clear.toml");

@@ -17,6 +17,7 @@ namespace clear
             Compile,              // --compile directory (with build.toml)
             Build,                // build file.cl | directory
             Run,                  // run file.cl [-- program args]
+            Check,                // check file.cl | directory: report errors, write nothing
             New,                  // new <directory>
             Add,                  // add <name> --git <url> [--tag t | --branch b | --rev r] | --path <dir>
             Fetch,                // fetch [project]

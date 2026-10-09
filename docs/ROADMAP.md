@@ -164,8 +164,10 @@ Clear's promise is C-level speed, so this is measured, not assumed.
       globals.
 - [x] `Map[K, V]`, `io` (files, stdin), an owned `String`.
 - [ ] `clearc fmt` formatter.
-- [ ] Language server (diagnostics + go-to-definition) built on the same
-      front end.
+- [x] VS Code extension (`editors/vscode`): highlighting, completion, hover,
+      go to definition, references, rename, errors from `clearc check`.
+- [ ] Language server built on the compiler's own front end, so editors other
+      than VS Code get the same features and completion uses the real types.
 - [x] Package manager: `clear.toml`, git/path dependencies, `clear.lock`, `clearc new/add/fetch/update`.
 
 ## Phase 6: A full language

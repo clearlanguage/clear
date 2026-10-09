@@ -89,6 +89,9 @@ namespace clear
 		CompileModules();
 		if (!CheckErrors()) return false;
 
+		if (m_Config.CheckOnly)
+			return true;
+
 		LinkModules();
 		if (!CheckErrors()) return false;
 

@@ -98,6 +98,7 @@ namespace clear
         int RuntimeChecks = -1;
 
         bool ReportCopies = false; // --copies: a note at each copy of a value that owns memory
+        bool CheckOnly = false;    // check: stop after type checking, write nothing
 
         bool RuntimeChecksEnabled() const { return RuntimeChecks == -1 ? OptimizationLevel != OptimizationLevelType::Distribution : RuntimeChecks == 1; }
 

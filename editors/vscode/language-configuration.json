@@ -1,0 +1,117 @@
+{
+    "comments": {
+        "lineComment": "//",
+        "blockComment": [
+            "/*",
+            "*/"
+        ]
+    },
+    "brackets": [
+        [
+            "(",
+            ")"
+        ],
+        [
+            "[",
+            "]"
+        ],
+        [
+            "{",
+            "}"
+        ]
+    ],
+    "autoClosingPairs": [
+        {
+            "open": "(",
+            "close": ")"
+        },
+        {
+            "open": "[",
+            "close": "]"
+        },
+        {
+            "open": "{",
+            "close": "}"
+        },
+        {
+            "open": "\"",
+            "close": "\"",
+            "notIn": [
+                "string",
+                "comment"
+            ]
+        },
+        {
+            "open": "'",
+            "close": "'",
+            "notIn": [
+                "string",
+                "comment"
+            ]
+        },
+        {
+            "open": "/*",
+            "close": " */",
+            "notIn": [
+                "string"
+            ]
+        }
+    ],
+    "autoCloseBefore": ";:.,=}])> \n\t",
+    "surroundingPairs": [
+        [
+            "(",
+            ")"
+        ],
+        [
+            "[",
+            "]"
+        ],
+        [
+            "{",
+            "}"
+        ],
+        [
+            "\"",
+            "\""
+        ],
+        [
+            "'",
+            "'"
+        ]
+    ],
+    "folding": {
+        "offSide": true,
+        "markers": {
+            "start": "^\\s*//\\s*region\\b",
+            "end": "^\\s*//\\s*endregion\\b"
+        }
+    },
+    "wordPattern": "[A-Za-z_][A-Za-z0-9_]*|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?",
+    "indentationRules": {
+        "increaseIndentPattern": "^\\s*[^/\\s].*:\\s*(//.*)?$",
+        "decreaseIndentPattern": "^\\s*(else|elseif|else\\s+if\\b.*)\\s*:\\s*(//.*)?$"
+    },
+    "onEnterRules": [
+        {
+            "beforeText": "^\\s*(?:function|async\\s+function|operator|property|class|trait|enum|variant|union|macro|if|else|elseif|while|for|switch|case|default)\\b.*:\\s*(//.*)?$",
+            "action": {
+                "indent": "indent"
+            }
+        },
+        {
+            "beforeText": "^\\s*(?:return|break|continue|pass)\\b.*$",
+            "action": {
+                "indent": "outdent"
+            }
+        },
+        {
+            "beforeText": "^\\s*//.*$",
+            "afterText": "^.+$",
+            "action": {
+                "indent": "none",
+                "appendText": "// "
+            }
+        }
+    ]
+}

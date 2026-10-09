@@ -38,3 +38,31 @@ jobs:
 
     - name: Benchmarks (Clear vs C, informational)
       run: python3 Scripts/bench.py build/clearc Benchmarks 3
+
+  vscode-extension:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: editors/vscode
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install
+      run: npm ci
+
+    - name: Test
+      run: npm test
+
+    - name: Package
+      run: npm run package
+
+    - name: Upload the extension
+      uses: actions/upload-artifact@v4
+      with:
+        name: clear-vscode-extension
+        path: editors/vscode/*.vsix

@@ -93,6 +93,7 @@ clearc build hello.cl            # write ./hello
 | `clearc run file.cl [-- args]` | compile for this CPU and run; arguments after `--` go to the program |
 | `clearc build file.cl` | write an executable named after the file |
 | `clearc build file.cl -o out` | choose the output path |
+| `clearc check file.cl` | report errors and warnings without building anything (what editors run on save) |
 | `clearc new <dir>` | start a project (`clear.toml` + `main.cl`) |
 | `clearc run <dir>` / `clearc build <dir>` | run or build a project (output in `<dir>/build/`) |
 | `clearc add <name> --git <url> [--tag t \| --branch b \| --rev r]` | add a git dependency |
@@ -117,12 +118,13 @@ clearc build hello.cl            # write ./hello
 cd build && ctest --output-on-failure
 ```
 
-This runs four suites:
+This runs these suites:
 
 1. `Tests/` at the default level.
 2. `Tests/` again at `-O3`.
 3. Every program in `examples/`.
 4. The package manager end-to-end test, which uses local git repositories and needs no network.
+5. `clearc check` on every example, on a file with errors, and inside a project.
 
 ### 2.2 Run the language tests directly
 

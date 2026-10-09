@@ -70,6 +70,7 @@ cmake --build build -j
 ```
 clearc run hello.cl              # compile for this machine and run
 clearc build hello.cl -O3        # produce ./hello, fully optimized
+clearc check hello.cl            # only report errors (what the VS Code extension runs on save)
 clearc build hello.cl -o app --native --emit-ir
 clearc new app && clearc run app # a project with dependencies (see "Modules, packages and C")
 ```
@@ -93,6 +94,10 @@ error[E048]: Cannot convert implicitly, the conversion may lose information.
   |                 ^^^
   = help: Converting ‘int64’ to ‘int32’ needs an explicit cast, for example ‘value as T’.
 ```
+
+### Editor support
+
+[`editors/vscode`](editors/vscode) is a VS Code extension: syntax highlighting, errors on save (from `clearc check`), completion that knows members and types (`points[0].`, `for p in points: p.`), hover with doc comments, go to definition (also into the standard library), references, rename, signature help, inlay type hints, snippets, and Run/Build commands. Build it with `cd editors/vscode && npm install && npm run package`, then `code --install-extension clear-language-0.1.0.vsix`. CI also uploads the packaged `.vsix` with every build.
 
 ---
 

@@ -1,0 +1,347 @@
+{
+    "main": {
+        "prefix": "main",
+        "description": "Program entry point",
+        "body": [
+            "function main() -> int32:",
+            "\t${0:pass}",
+            "\treturn 0"
+        ]
+    },
+    "function": {
+        "prefix": "function",
+        "description": "Function",
+        "body": [
+            "function ${1:name}(${2:params})${3: -> ${4:int}}:",
+            "\t${0:pass}"
+        ]
+    },
+    "async function": {
+        "prefix": "async",
+        "description": "Async function (returns a Task)",
+        "body": [
+            "async function ${1:name}(${2:params}) -> ${3:int}:",
+            "\t${0:pass}"
+        ]
+    },
+    "generic function": {
+        "prefix": "functiong",
+        "description": "Generic function",
+        "body": [
+            "function ${1:name}[${2:T}](${3:value}: ${2:T}) -> ${2:T}:",
+            "\t${0:return ${3:value}}"
+        ]
+    },
+    "generator": {
+        "prefix": "generator",
+        "description": "Generator function",
+        "body": [
+            "function ${1:name}(${2:params}) -> Generator[${3:int}]:",
+            "\t${0:yield 0}"
+        ]
+    },
+    "method": {
+        "prefix": "method",
+        "description": "Method",
+        "body": [
+            "function ${1:name}(self${2:, params})${3: -> ${4:int}}:",
+            "\t${0:pass}"
+        ]
+    },
+    "init": {
+        "prefix": "init",
+        "description": "Constructor",
+        "body": [
+            "function init(self${1:, params}):",
+            "\t${0:pass}"
+        ]
+    },
+    "operator": {
+        "prefix": "operator",
+        "description": "Operator method",
+        "body": [
+            "operator ${1|add,subtract,multiply,divide,modulo,power,equals,not_equals,less,less_equal,greater,greater_equal,get,set,len,iterate,contains,call,str,hash,slice,destruct,copy|}(self${2:, other: ${3:Self}})${4: -> ${5:Self}}:",
+            "\t${0:pass}"
+        ]
+    },
+    "operator str": {
+        "prefix": "opstr",
+        "description": "What print() shows",
+        "body": [
+            "operator str(self) -> str:",
+            "\treturn ${0:\"\"}"
+        ]
+    },
+    "operator destruct": {
+        "prefix": "opdestruct",
+        "description": "Cleanup when the scope ends",
+        "body": [
+            "operator destruct(self):",
+            "\t${0:pass}"
+        ]
+    },
+    "property getter": {
+        "prefix": "property",
+        "description": "Property getter",
+        "body": [
+            "property ${1:name}(self) -> ${2:int}:",
+            "\treturn ${0:self.${1:name}_}"
+        ]
+    },
+    "property setter": {
+        "prefix": "propertyset",
+        "description": "Property setter",
+        "body": [
+            "property ${1:name}(self, value: ${2:int}):",
+            "\t${0:pass}"
+        ]
+    },
+    "class": {
+        "prefix": "class",
+        "description": "Class",
+        "body": [
+            "class ${1:Name}:",
+            "\t${2:field}: ${3:int}",
+            "",
+            "\tfunction init(self, ${2:field}: ${3:int}):",
+            "\t\tself.${2:field} = ${2:field}$0"
+        ]
+    },
+    "class (inherits)": {
+        "prefix": "classi",
+        "description": "Class with a base class or traits",
+        "body": [
+            "class ${1:Name}(${2:Base}):",
+            "\t${0:pass}"
+        ]
+    },
+    "generic class": {
+        "prefix": "classg",
+        "description": "Generic class",
+        "body": [
+            "class ${1:Box}[${2:T}]:",
+            "\t${3:value}: ${2:T}$0"
+        ]
+    },
+    "trait": {
+        "prefix": "trait",
+        "description": "Trait",
+        "body": [
+            "trait ${1:Name}:",
+            "\tfunction ${2:method}(self: *${1:Name})${3: -> ${4:int}}$0"
+        ]
+    },
+    "enum": {
+        "prefix": "enum",
+        "description": "Enum",
+        "body": [
+            "enum ${1:Name}:",
+            "\t${2:First}",
+            "\t${3:Second}$0"
+        ]
+    },
+    "enum with data": {
+        "prefix": "enumd",
+        "description": "Enum whose cases carry data",
+        "body": [
+            "enum ${1:Shape}:",
+            "\t${2:Circle}(${3:radius}: ${4:float64})",
+            "\t${5:Empty}$0"
+        ]
+    },
+    "variant": {
+        "prefix": "variant",
+        "description": "Variant (tagged union of types)",
+        "body": [
+            "variant ${1:Number}:",
+            "\t${2:int}",
+            "\t${3:float64}$0"
+        ]
+    },
+    "union": {
+        "prefix": "union",
+        "description": "Union (fields share memory)",
+        "body": [
+            "union ${1:Bits}:",
+            "\t${2:i}: ${3:int64}",
+            "\t${4:f}: ${5:float64}$0"
+        ]
+    },
+    "macro": {
+        "prefix": "macro",
+        "description": "Macro",
+        "body": [
+            "macro ${1:name}(${2:x}):",
+            "\t${0:$2}"
+        ]
+    },
+    "if": {
+        "prefix": "if",
+        "description": "if",
+        "body": [
+            "if ${1:condition}:",
+            "\t${0:pass}"
+        ]
+    },
+    "if / else": {
+        "prefix": "ife",
+        "description": "if / else",
+        "body": [
+            "if ${1:condition}:",
+            "\t${2:pass}",
+            "else:",
+            "\t${0:pass}"
+        ]
+    },
+    "if let": {
+        "prefix": "ifl",
+        "description": "Declare and test an optional",
+        "body": [
+            "if ${1:value} := ${2:expression}:",
+            "\t${0:pass}"
+        ]
+    },
+    "else if": {
+        "prefix": "elif",
+        "description": "else if",
+        "body": [
+            "else if ${1:condition}:",
+            "\t${0:pass}"
+        ]
+    },
+    "for range": {
+        "prefix": "for",
+        "description": "for over a range",
+        "body": [
+            "for ${1:i} in ${2:0}..${3:n}:",
+            "\t${0:pass}"
+        ]
+    },
+    "for in": {
+        "prefix": "forin",
+        "description": "for over a collection",
+        "body": [
+            "for ${1:item} in ${2:items}:",
+            "\t${0:pass}"
+        ]
+    },
+    "while": {
+        "prefix": "while",
+        "description": "while",
+        "body": [
+            "while ${1:condition}:",
+            "\t${0:pass}"
+        ]
+    },
+    "while let": {
+        "prefix": "whilel",
+        "description": "Loop while an optional holds a value",
+        "body": [
+            "while ${1:line} := ${2:read_line()}:",
+            "\t${0:pass}"
+        ]
+    },
+    "switch": {
+        "prefix": "switch",
+        "description": "switch",
+        "body": [
+            "switch ${1:value}:",
+            "\tcase ${2:1}:",
+            "\t\t${3:pass}",
+            "\tdefault:",
+            "\t\t${0:pass}"
+        ]
+    },
+    "case": {
+        "prefix": "case",
+        "description": "case",
+        "body": [
+            "case ${1:value}:",
+            "\t${0:pass}"
+        ]
+    },
+    "when": {
+        "prefix": "when",
+        "description": "Conditional expression",
+        "body": [
+            "when ${1:condition} use ${2:a} otherwise ${0:b}"
+        ]
+    },
+    "lambda": {
+        "prefix": "lambda",
+        "description": "Lambda",
+        "body": [
+            "lambda ${1:x}: ${0:x}"
+        ]
+    },
+    "defer": {
+        "prefix": "defer",
+        "description": "Run when the block exits",
+        "body": [
+            "defer ${0:cleanup()}"
+        ]
+    },
+    "assert": {
+        "prefix": "assert",
+        "description": "assert",
+        "body": [
+            "assert ${1:condition}, \"${0:message}\""
+        ]
+    },
+    "let": {
+        "prefix": "let",
+        "description": "Variable",
+        "body": [
+            "let ${1:name} = ${0:value}"
+        ]
+    },
+    "let typed": {
+        "prefix": "lett",
+        "description": "Variable with a type",
+        "body": [
+            "let ${1:name}: ${2:int} = ${0:0}"
+        ]
+    },
+    "const": {
+        "prefix": "const",
+        "description": "Constant",
+        "body": [
+            "const ${1:NAME} = ${0:0}"
+        ]
+    },
+    "import": {
+        "prefix": "import",
+        "description": "Import a module",
+        "body": [
+            "import \"${1|math,list,map,string,io,memory|}\"$0"
+        ]
+    },
+    "declare": {
+        "prefix": "declare",
+        "description": "Declare a C function",
+        "body": [
+            "declare ${1:name}(${2:args}) -> ${0:int32}"
+        ]
+    },
+    "print": {
+        "prefix": "print",
+        "description": "print",
+        "body": [
+            "print(${0})"
+        ]
+    },
+    "List": {
+        "prefix": "list",
+        "description": "A new List",
+        "body": [
+            "let ${1:items} = List[${2:int}]()$0"
+        ]
+    },
+    "Map": {
+        "prefix": "map",
+        "description": "A new Map",
+        "body": [
+            "let ${1:table} = Map[${2:str}, ${3:int}]()$0"
+        ]
+    }
+}
