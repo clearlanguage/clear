@@ -54,7 +54,9 @@ namespace clear
 		{
 			for (size_t i = 0; i < ast->Children.size(); i++)
 			{
+				size_t firstCandidate = m_Copies.Candidates.size();
 				ast->Children[i] = Visit(ast->Children[i], context);
+				CheckStatementUses(ast->Children[i], firstCandidate);
 
 				// `if not r: return` above: the rest of the block sees r as its value, in a scope of its own (r is
 				// already declared in this one)
@@ -7587,6 +7589,295 @@ namespace clear
 		}
 	}
 
+	// the nodes a statement evaluates, as code generation reaches them (a node shared by two places counts twice).
+	// Nested blocks are statements of their own, and lambdas are separate functions
+	template <typename F>
+	static void ForEachEvaluated(const std::shared_ptr<ASTNodeBase>& node, std::unordered_set<ASTNodeBase*>& once, F&& visit)
+	{
+		if (!node)
+			return;
+
+		auto recurse = [&](const std::shared_ptr<ASTNodeBase>& child) { ForEachEvaluated(child, once, visit); };
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Block:
+			case ASTNodeType::Lambda:
+			case ASTNodeType::Defer:
+			case ASTNodeType::FunctionDefinition:
+			case ASTNodeType::Class:
+			case ASTNodeType::GenericTemplate:
+				return;
+			case ASTNodeType::Once:
+				// computed the first time it is reached, later places reuse the value
+				if (!once.insert(node.get()).second)
+					return;
+				break;
+			default:
+				break;
+		}
+
+		if (!visit(node))
+			return;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::BinaryExpression:
+			{
+				auto n = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				recurse(n->LeftSide); recurse(n->RightSide);
+				break;
+			}
+			case ASTNodeType::VariableDecleration:
+				recurse(std::dynamic_pointer_cast<ASTVariableDeclaration>(node)->Initializer);
+				break;
+			case ASTNodeType::AssignmentOperator:
+			{
+				auto n = std::dynamic_pointer_cast<ASTAssignmentOperator>(node);
+				recurse(n->Value);
+
+				// x = v only writes x once v is made, x += v reads it
+				if (n->GetAssignType() != AssignmentOperatorType::Normal || n->Storage->GetType() != ASTNodeType::Variable)
+					recurse(n->Storage);
+				break;
+			}
+			case ASTNodeType::FunctionCall:
+			{
+				auto n = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+				recurse(n->Callee);
+				for (auto& argument : n->Arguments) recurse(argument);
+				for (auto& [name, argument] : n->KeywordArguments) recurse(argument);
+				break;
+			}
+			case ASTNodeType::Subscript:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSubscript>(node);
+				recurse(n->Target);
+				for (auto& argument : n->SubscriptArgs) recurse(argument);
+				break;
+			}
+			case ASTNodeType::SliceExpr:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSliceExpr>(node);
+				recurse(n->Target); recurse(n->Start); recurse(n->End);
+				break;
+			}
+			case ASTNodeType::ListExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTListExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::StructExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTStructExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::ReturnStatement:
+				recurse(std::dynamic_pointer_cast<ASTReturn>(node)->ReturnValue);
+				break;
+			case ASTNodeType::UnaryExpression:
+				recurse(std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand);
+				break;
+			case ASTNodeType::Load:
+				recurse(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+				break;
+			case ASTNodeType::IfExpression:
+				for (auto& block : std::dynamic_pointer_cast<ASTIfExpression>(node)->ConditionalBlocks) recurse(block.Condition);
+				break;
+			case ASTNodeType::WhileLoop:
+				recurse(std::dynamic_pointer_cast<ASTWhileExpression>(node)->WhileBlock.Condition);
+				break;
+			case ASTNodeType::ForLoop:
+			{
+				auto n = std::dynamic_pointer_cast<ASTForExpression>(node);
+				recurse(n->Start); recurse(n->End); recurse(n->Iterable);
+				break;
+			}
+			case ASTNodeType::TernaryExpression:
+			{
+				auto n = std::dynamic_pointer_cast<ASTTernaryExpression>(node);
+				recurse(n->Condition); recurse(n->Truthy); recurse(n->Falsy);
+				break;
+			}
+			case ASTNodeType::DefaultArgument:
+				recurse(std::dynamic_pointer_cast<ASTDefaultArgument>(node)->Value);
+				break;
+			case ASTNodeType::Switch:
+			{
+				auto n = std::dynamic_pointer_cast<ASTSwitch>(node);
+				recurse(n->Value);
+				for (auto& switchCase : n->Cases) for (auto& value : switchCase.Values) recurse(value);
+				break;
+			}
+			case ASTNodeType::Temporary:
+				recurse(std::dynamic_pointer_cast<ASTTemporary>(node)->Operand);
+				break;
+			case ASTNodeType::Construct:
+			{
+				auto n = std::dynamic_pointer_cast<ASTConstruct>(node);
+				recurse(n->Initial); recurse(n->InitCall);
+				break;
+			}
+			case ASTNodeType::Assert:
+			{
+				auto n = std::dynamic_pointer_cast<ASTAssert>(node);
+				recurse(n->Condition); recurse(n->Message);
+				break;
+			}
+			case ASTNodeType::Contains:
+			{
+				auto n = std::dynamic_pointer_cast<ASTContains>(node);
+				recurse(n->Needle); recurse(n->Haystack);
+				break;
+			}
+			case ASTNodeType::Intrinsic:
+				for (auto& argument : std::dynamic_pointer_cast<ASTIntrinsic>(node)->Arguments) recurse(argument);
+				break;
+			case ASTNodeType::TupleExpr:
+				for (auto& value : std::dynamic_pointer_cast<ASTTupleExpr>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::TupleGet:
+				recurse(std::dynamic_pointer_cast<ASTTupleGet>(node)->Tuple);
+				break;
+			case ASTNodeType::Sequence:
+				for (auto& child : std::dynamic_pointer_cast<ASTSequence>(node)->Children) recurse(child);
+				break;
+			case ASTNodeType::Destructure:
+			{
+				auto n = std::dynamic_pointer_cast<ASTDestructure>(node);
+				recurse(n->Value);
+				for (auto& target : n->Targets) recurse(target);
+				break;
+			}
+			case ASTNodeType::Once:
+				recurse(std::dynamic_pointer_cast<ASTOnce>(node)->Operand);
+				break;
+			case ASTNodeType::Move:
+				recurse(std::dynamic_pointer_cast<ASTMove>(node)->Value);
+				break;
+			case ASTNodeType::Copy:
+				recurse(std::dynamic_pointer_cast<ASTCopy>(node)->Value);
+				break;
+			case ASTNodeType::Destroy:
+				recurse(std::dynamic_pointer_cast<ASTDestroy>(node)->Pointer);
+				break;
+			case ASTNodeType::Yield:
+				recurse(std::dynamic_pointer_cast<ASTYield>(node)->Value);
+				break;
+			case ASTNodeType::Await:
+				recurse(std::dynamic_pointer_cast<ASTAwait>(node)->Operand);
+				break;
+			case ASTNodeType::VariantConstruct:
+				for (auto& value : std::dynamic_pointer_cast<ASTVariantConstruct>(node)->Values) recurse(value);
+				break;
+			case ASTNodeType::VariantField:
+				recurse(std::dynamic_pointer_cast<ASTVariantField>(node)->Subject);
+				break;
+			case ASTNodeType::VariantTag:
+				recurse(std::dynamic_pointer_cast<ASTVariantTag>(node)->Subject);
+				break;
+			case ASTNodeType::OptionalUnwrap:
+				recurse(std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->Subject);
+				break;
+			case ASTNodeType::OptionalValueOr:
+			{
+				auto n = std::dynamic_pointer_cast<ASTOptionalValueOr>(node);
+				recurse(n->Subject); recurse(n->Default);
+				break;
+			}
+			case ASTNodeType::UnionConstruct:
+				recurse(std::dynamic_pointer_cast<ASTUnionConstruct>(node)->Value);
+				break;
+			case ASTNodeType::CastExpr:
+				recurse(std::dynamic_pointer_cast<ASTCastExpr>(node)->Object);
+				break;
+			case ASTNodeType::IsExpr:
+				recurse(std::dynamic_pointer_cast<ASTIsExpr>(node)->Object);
+				break;
+			default:
+				break;
+		}
+	}
+
+	void Sema::CheckStatementUses(const std::shared_ptr<ASTNodeBase>& statement, size_t firstCandidate)
+	{
+		// print(k, size(k)), m[k] += 1, a * grow(a): the last use of k may not take it while another use in the
+		// same statement still reads it (before or after, the order arguments are evaluated in does not matter)
+		if (firstCandidate >= m_Copies.Candidates.size() || !statement)
+			return;
+
+		// each place a local is reached, in the order the code runs: through a copy (finished before anything
+		// later runs) or anything else (a read or a pointer that may still be in use when a later part runs)
+		struct Use { Symbol* Variable; ASTCopy* Copy; };
+		std::vector<Use> order;
+		std::unordered_map<ASTCopy*, size_t> reached;
+		std::unordered_set<ASTNodeBase*> once;
+
+		auto localOf = [&](std::shared_ptr<ASTNodeBase> node) -> Symbol*
+		{
+			if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node))
+				node = unwrap->Subject;
+
+			auto load = std::dynamic_pointer_cast<ASTLoad>(node);
+			auto variable = load ? std::dynamic_pointer_cast<ASTVariable>(load->Operand) : nullptr;
+			return variable && variable->Variable && m_LocalVariables.contains(variable->Variable.get()) ? variable->Variable.get() : nullptr;
+		};
+
+		ForEachEvaluated(statement, once, [&](const std::shared_ptr<ASTNodeBase>& node)
+		{
+			if (node->GetType() == ASTNodeType::Variable)
+			{
+				auto variable = std::static_pointer_cast<ASTVariable>(node);
+
+				if (variable->Variable && m_LocalVariables.contains(variable->Variable.get()))
+					order.push_back(Use { variable->Variable.get(), nullptr });
+			}
+			else if (node->GetType() == ASTNodeType::Copy)
+			{
+				auto copy = static_cast<ASTCopy*>(node.get());
+				reached[copy]++;
+
+				if (Symbol* local = localOf(copy->Value))
+				{
+					order.push_back(Use { local, copy });
+					return false;
+				}
+			}
+
+			return true;
+		});
+
+		for (size_t i = firstCandidate; i < m_Copies.Candidates.size(); i++)
+		{
+			auto& candidate = m_Copies.Candidates[i];
+			auto copy = reached.find(candidate.Copy.get());
+
+			if (copy == reached.end())
+				continue;
+
+			// the same copy reached twice (m[k] += 1 passes k to get and to set): the first would empty k for the second
+			if (copy->second > 1)
+			{
+				candidate.Valid = false;
+				continue;
+			}
+
+			// (e, e): copies of e made before this one are finished, any other use of e is not
+			bool before = true;
+
+			for (auto& use : order)
+			{
+				if (use.Copy == candidate.Copy.get())
+				{
+					before = false;
+					continue;
+				}
+
+				if (use.Variable == candidate.Variable && (!use.Copy || !before))
+				{
+					candidate.Valid = false;
+					break;
+				}
+			}
+		}
+	}
+
 	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		if (auto root = RootVariable(node, nullptr); root && root->Variable)
@@ -8122,6 +8413,7 @@ namespace clear
 
 		// obj.field read as a value only reads obj (a method call or a write does not come through here as a value)
 		context.ValueReq = ValueRequired::LValue;
+		context.AssignmentTarget = false; // m[k].n = v changes the element m[k] gives, it does not call operator set
 		bool wasReading = std::exchange(m_ReadingUse, insertLoad || m_ReadingUse);
 		binaryExpr->LeftSide = Visit(binaryExpr->LeftSide, context);
 		m_ReadingUse = wasReading;
