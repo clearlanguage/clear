@@ -241,6 +241,8 @@ namespace clear
 		FunctionCopies m_Copies;
 		void NoteUse(const std::shared_ptr<ASTVariable>& variable, ValueRequired valueRequired);
 		void NeverMove(const std::shared_ptr<ASTNodeBase>& node);
+		void MarkMovedFrom(const std::shared_ptr<ASTNodeBase>& storage);
+		std::unordered_map<Symbol*, ASTVariableDeclaration*> m_LocalDeclarations; // for the drop flags of moved variables
 		void CheckStatementUses(const std::shared_ptr<ASTNodeBase>& statement, size_t firstCandidate);
 	public:
 		void KeepLentArguments(llvm::ArrayRef<std::shared_ptr<ASTNodeBase>> arguments, size_t firstCandidate);

@@ -851,12 +851,21 @@ namespace clear
 			if (initializer.Kind != SymbolKind::None)
 				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
 
-			// an owning local is cleaned up when its block ends, however it ends
+			// an owning local is cleaned up when its block ends, however it ends (unless its value was moved out)
 			if (IsOwning(ResolvedType) && !ctx.Defers->empty())
 			{
 				auto destroy = std::make_shared<ASTDestroy>();
 				destroy->Address = Variable->GetLLVMValue();
 				destroy->ValueType = ResolvedType;
+
+				if (MovedFrom)
+				{
+					llvm::AllocaInst* flag = llvm::cast<llvm::AllocaInst>(CreateAlloca(Symbol::GetBooleanType(ctx.ClearModule).GetType(), ctx).GetLLVMValue());
+					ctx.Builder.CreateStore(ctx.Builder.getTrue(), flag);
+					(*ctx.DropFlags)[Variable->GetLLVMValue()] = flag;
+					destroy->Flag = flag;
+				}
+
 				ctx.Defers->back().push_back(destroy);
 			}
 		}
@@ -929,7 +938,19 @@ namespace clear
 		{
 			// the new value is ready (and its source emptied, if it was moved): now the old one can go
 			if (DestroyOld)
-				EmitDestroy(ctx, storage.GetType()->As<PointerType>()->GetBaseType(), storage.GetLLVMValue());
+			{
+				// a variable whose value may have been moved out: only what it still holds is cleaned up, and it
+				// holds a value again afterwards
+				auto flag = ctx.DropFlags->find(storage.GetLLVMValue());
+				auto destroy = std::make_shared<ASTDestroy>();
+				destroy->Address = storage.GetLLVMValue();
+				destroy->ValueType = storage.GetType()->As<PointerType>()->GetBaseType();
+				destroy->Flag = flag != ctx.DropFlags->end() ? flag->second : nullptr;
+				destroy->Codegen(ctx);
+
+				if (destroy->Flag)
+					ctx.Builder.CreateStore(ctx.Builder.getTrue(), destroy->Flag);
+			}
 
 			SymbolOps::Store(storage, data, ctx.Builder, ctx.Module, true);
 			return Symbol();
@@ -3196,13 +3217,21 @@ namespace clear
 		return Symbol::CreateValue(llvm::ConstantInt::get(ValueType->Get(), Value, /* isSigned = */ true), ValueType);
 	}
 
-	Symbol ASTMove::Codegen(CodegenContext& ctx)
+	// the value of a variable was moved out: it holds nothing to clean up any more (its drop flag says so; the
+	// storage is also left all zero)
+	static void EmitMovedOut(CodegenContext& ctx, const Symbol& storage)
 	{
-		// read the value, then leave the source all zero: its own cleanup becomes a no-op
-		Symbol value = Value->Codegen(ctx);
-		Symbol storage = Storage->Codegen(ctx);
 		auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
 		ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
+
+		if (auto flag = ctx.DropFlags->find(storage.GetLLVMValue()); flag != ctx.DropFlags->end())
+			ctx.Builder.CreateStore(ctx.Builder.getFalse(), flag->second);
+	}
+
+	Symbol ASTMove::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Value->Codegen(ctx);
+		EmitMovedOut(ctx, Storage->Codegen(ctx));
 		return value;
 	}
 
@@ -3214,9 +3243,7 @@ namespace clear
 		if (MoveFrom)
 		{
 			// (the variable may hold more than the value: maybe.value empties the whole optional, which makes it none)
-			Symbol storage = MoveFrom->Codegen(ctx);
-			auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
-			ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
+			EmitMovedOut(ctx, MoveFrom->Codegen(ctx));
 			return value;
 		}
 

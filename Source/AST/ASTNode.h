@@ -73,6 +73,9 @@ namespace clear
 		std::vector<std::shared_ptr<ASTNodeBase>>* TemporaryCleanups = nullptr;
 		size_t DeferEmission = 0; // which emission of a deferred expression is being generated (0: none)
 
+		// variables a value may be moved out of -> their drop flag (an i1: whether they hold a value to clean up)
+		std::shared_ptr<std::unordered_map<llvm::Value*, llvm::AllocaInst*>> DropFlags = std::make_shared<std::unordered_map<llvm::Value*, llvm::AllocaInst*>>();
+
 		// inside a generator or async function: where suspending and destroying lead
 		struct CoroutineState
 		{
@@ -212,6 +215,7 @@ namespace clear
 		bool IsConst = false;
 		bool IsParameter = false;
 		bool IsAlias = false; // the initializer is a pointer and the variable *is* what it points at (for loops over references)
+		bool MovedFrom = false; // some use moves the value out: a flag says whether the variable still holds one
 		std::shared_ptr<ASTNodeBase> DefaultValue; // parameters: used when a call leaves the argument out
 
 	private:

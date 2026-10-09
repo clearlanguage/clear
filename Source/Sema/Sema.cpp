@@ -322,6 +322,7 @@ namespace clear
 			if (!context.GlobalState && !decl->IsAlias)
 			{
 				m_LocalVariables.insert(decl->Variable.get());
+				m_LocalDeclarations[decl->Variable.get()] = decl.get();
 				m_LocalOrder[decl->Variable.get()] = m_LocalCounter++;
 				m_Moved.erase(decl->Variable.get());
 				NoteElementPointer(decl);
@@ -7037,6 +7038,7 @@ namespace clear
 				m_Copies.NotViewable.insert(variable->Variable.get());
 
 			RecordMove(std::dynamic_pointer_cast<ASTVariable>(load->Operand));
+			MarkMovedFrom(load->Operand);
 
 			auto move = std::make_shared<ASTMove>();
 			move->Location = node->Location;
@@ -7067,6 +7069,7 @@ namespace clear
 		{
 			if (auto load = std::dynamic_pointer_cast<ASTLoad>(unwrap->Subject); load && isLocal(load->Operand))
 			{
+				MarkMovedFrom(load->Operand);
 				auto move = std::make_shared<ASTMove>();
 				move->Location = node->Location;
 				move->Storage = load->Operand;
@@ -7946,6 +7949,16 @@ namespace clear
 		}
 	}
 
+	void Sema::MarkMovedFrom(const std::shared_ptr<ASTNodeBase>& storage)
+	{
+		// the variable gets a drop flag: once its value is moved out, it is not cleaned up (nor its destruct run)
+		if (auto variable = std::dynamic_pointer_cast<ASTVariable>(storage); variable && variable->Variable)
+		{
+			if (auto decl = m_LocalDeclarations.find(variable->Variable.get()); decl != m_LocalDeclarations.end())
+				decl->second->MovedFrom = true;
+		}
+	}
+
 	void Sema::NeverMove(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		if (auto root = RootVariable(node, nullptr); root && root->Variable)
@@ -7989,6 +8002,7 @@ namespace clear
 				continue;
 
 			candidate.Copy->MoveFrom = candidate.Storage;
+			MarkMovedFrom(candidate.Storage);
 		}
 
 		// clearc --copies: say where the rest are (in the program, not the standard library)

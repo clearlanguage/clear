@@ -752,12 +752,14 @@ A copy is made with `operator copy` if the class has one, otherwise field by fie
 
 **Copies nobody would notice are skipped.** A copy allocates, so the compiler leaves it out where it can prove the program behaves the same:
 
-- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, or through a pointer or slice into it.
+- **the last use moves.** `names.push(s)` where `s` isn't used again hands `s` over instead of copying it. Not when the variable is used in a later loop iteration, in a `defer`, by a lambda, through a pointer or slice into it, or anywhere else in the same statement: in `print(k, size(k))` or `m[k] += 1`, `k` is copied, because another part of the statement still reads it.
 - **a value that is only read looks at the original.** In `let w = words[i]`, if `w` is only read (its value, its fields, `len(w)`) and `words` doesn't change while `w` is in use, `w` is the item itself. Changing `w`, calling a method on it, or changing `words` meanwhile keeps the copy.
 
 So `operator copy` must make an equal, independent value. The compiler may skip it, the same rule as C++ copy elision. To see the copies that remain, build with `clearc build file.cl --copies`: each one gets a note with its line.
 
-**Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
+**Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty, and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
+
+**A moved value is cleaned up once, by its new owner.** When a value is moved out of a variable (a value that can't be copied, `return x`, or a last use), the variable is not cleaned up at the end of its scope: its `operator destruct` does not run for the empty variable, so a destructor never sees a moved-from object and a destructor that counts or logs stays balanced. If the move happens only on some paths (inside an `if`), the compiler keeps a flag saying whether the variable still holds its value and cleans it up only then. Giving the variable a new value (`x = v`) makes it hold one again.
 
 Using a variable after it was moved is a compile error, until it is given a new value. The compiler follows this through the function: a move in one branch of an `if` counts, moving a variable from outside a loop inside the loop is an error (the second time round it would be empty), and so is passing the same variable twice in one call. Generators and tasks can't be copied either: `let h = g`, passing one to a function and `await t` move them.
 
