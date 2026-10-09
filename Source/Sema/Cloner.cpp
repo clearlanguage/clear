@@ -162,6 +162,7 @@ namespace clear {
 
 				lambda->ReturnType = Clone(original->ReturnType);
 				lambda->Body = Clone(original->Body);
+				lambda->MovesCaptures = original->MovesCaptures;
 				return lambda;
 			}
 			case ASTNodeType::FunctionTypeExpr:

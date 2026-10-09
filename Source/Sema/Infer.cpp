@@ -136,6 +136,11 @@ namespace clear
 			case ASTNodeType::Load:
 			{
 				auto load = std::dynamic_pointer_cast<ASTLoad>(node);
+
+				// reading a temporary gives the value it holds
+				if (auto temporary = std::dynamic_pointer_cast<ASTTemporary>(load->Operand))
+					return temporary->ValueType;
+
 				return InferTypeFromNode(load->Operand);
 			}
 			case ASTNodeType::Subscript:

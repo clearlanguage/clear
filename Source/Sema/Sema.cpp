@@ -1,6 +1,7 @@
 #include "Sema.h"
 #include "AST/ASTNode.h"
 #include "Core/Log.h"
+#include "Core/CrashHandler.h"
 #include "Core/Operator.h"
 #include "Core/Value.h"
 #include "Diagnostics/Diagnostic.h"
@@ -252,7 +253,12 @@ namespace clear
 
 			// owning values can be moved out of locals (and parameters), not out of anything else
 			if (!context.GlobalState && !decl->IsAlias)
+			{
 				m_LocalVariables.insert(decl->Variable.get());
+				m_LocalOrder[decl->Variable.get()] = m_LocalCounter++;
+				m_Moved.erase(decl->Variable.get());
+				NoteElementPointer(decl);
+			}
 
 			if (decl->IsConst)
 			{
@@ -332,6 +338,12 @@ namespace clear
 		
 		variable->Variable = symbol.value().Symbol;
 
+		if (variable.get() != m_Reinitialised)
+		{
+			CheckNotMoved(variable);
+			CheckStalePointer(variable);
+		}
+
 		// a function used as a value (not called) is its address
 		if (context.ValueReq == ValueRequired::RValue && variable->Variable->Kind == SymbolKind::Function)
 		{
@@ -371,6 +383,9 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context)
     {
+		if (ast)
+			NoteProgress("checking", ast->Location.GetSourceFile(), ast->Location.LineNumber, ast->Location.ColumnNumber);
+
 		if (!ast) return nullptr;
 
     	switch (ast->GetType()) 
@@ -625,8 +640,17 @@ namespace clear
 				m_ScopeStack.back().Insert(arg->GetName().GetData(), SymbolEntryType::Variable, arg->Variable);
 		}
 
+		// a body can be analysed in the middle of another one (generics, lambdas): its moves are its own
+		MovedSet outerMoved = std::exchange(m_Moved, {});
+		bool outerUnreachable = std::exchange(m_Unreachable, false);
+		auto outerLoops = std::exchange(m_LoopMoves, {});
+
 		Visit(func->CodeBlock, context);	
 		m_ScopeStack.pop_back();
+
+		m_Moved = std::move(outerMoved);
+		m_Unreachable = outerUnreachable;
+		m_LoopMoves = std::move(outerLoops);
 
 		// every path through a function with a return type must return a value (main may end and return 0, like C)
 		bool returnsValue = func->CoroutineKind ? (func->CoroutineKind == 2 && func->CoroutineValue != nullptr) 
@@ -732,6 +756,15 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context)
 	{
 		context.ValueReq = ValueRequired::RValue;
+
+		// xs.push(v), xs.remove(i) ...: these can move or free the items, so pointers into xs go stale
+		if (auto member = std::dynamic_pointer_cast<ASTBinaryExpression>(funcCall->Callee); member && member->GetExpression() == OperatorType::Dot)
+		{
+			static const std::unordered_set<std::string> changing = { "push", "pop", "insert", "remove", "clear", "reserve", "resize", "grow", "extend", "append", "free", "take" };
+
+			if (auto method = std::dynamic_pointer_cast<ASTVariable>(member->RightSide); method && changing.contains(method->GetName().GetData()))
+				NoteContainerChange(member->LeftSide, method->GetName());
+		}
 
 		// f(a, b = 3): `name = value` arguments are keyword arguments, matched to parameters by name in CheckCall
 		{
@@ -1494,6 +1527,19 @@ namespace clear
 
 		bool returnsValue = context.ReturnType && context.ReturnType->Get() && !context.ReturnType->Get()->isVoidTy();
 
+		// a lambda that borrows a local cannot outlive it
+		if (returnStatement->ReturnValue)
+		{
+			auto type = m_TypeInferEngine.InferTypeFromNode(returnStatement->ReturnValue);
+
+			if (type && m_BorrowingClosures.contains(type.get()))
+			{
+				Token location = GetNodeLocation(returnStatement->ReturnValue);
+				Report(DiagnosticCode_BorrowingLambdaEscapes, location, location.GetData().size());
+				return nullptr;
+			}
+		}
+
 		// lambda (i: int): print(i)  returns nothing: run the body, then return
 		if (context.InferReturnFor && !returnsValue && returnStatement->ReturnValue)
 		{
@@ -1516,6 +1562,7 @@ namespace clear
 		else if (returnsValue)
 			returnStatement->ReturnValue = Coerce(returnStatement->ReturnValue, context.ReturnType);
 
+		m_Unreachable = true;
 		return returnStatement;
 	}
 	
@@ -1579,7 +1626,16 @@ namespace clear
 
 		SemaContext storageContext = context;
 		storageContext.AssignmentTarget = true;
+
+		// m[k] = v can add an entry, which may move the others
+		if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(assignmentOp->Storage))
+			NoteContainerChange(subscript->Target, GetNodeLocation(subscript->Target));
+
+		// x = v gives x a new value (x += v reads it first)
+		auto reinitialised = assignmentOp->GetAssignType() == AssignmentOperatorType::Normal ? std::dynamic_pointer_cast<ASTVariable>(assignmentOp->Storage) : nullptr;
+		m_Reinitialised = reinitialised.get();
 		assignmentOp->Storage = Visit(assignmentOp->Storage, storageContext);
+		m_Reinitialised = nullptr;
 		// auto type = m_TypeInferEngine.InferTypeFromNode(assignmentOp->Storage);
 		//if (type->IsConst() || type->As<PointerType>()->GetBaseType()->IsConst()) {
 		//	CLEAR_LOG_ERROR("WRITING TO CONST BAD!!");
@@ -1622,6 +1678,25 @@ namespace clear
 			// pointer += n is pointer arithmetic, not a conversion
 			if (storageType && !(storageType->IsPointer() && assignmentOp->GetAssignType() != AssignmentOperatorType::Normal))
 				assignmentOp->Value = Coerce(assignmentOp->Value, storageType);
+
+			if (reinitialised && reinitialised->Variable && !m_Unreachable)
+				m_Moved.erase(reinitialised->Variable.get());
+
+			if (reinitialised && reinitialised->Variable)
+			{
+				m_ElementPointers.erase(reinitialised->Variable.get());
+				m_StalePointers.erase(reinitialised->Variable.get());
+			}
+		}
+
+		// make().qty = 5: the change would go to a value that is thrown away straight after
+		if (auto root = WrittenTemporary(assignmentOp->Storage))
+		{
+			Token location = GetNodeLocation(root);
+			size_t width = location.GetData().size();
+			location.SetData(GetDisplayName(m_TypeInferEngine.InferTypeFromNode(AsValue(root))));
+			Report(DiagnosticCode_AssignToTemporary, location, width);
+			return nullptr;
 		}
 
 		// obj.name = v on a property calls its setter
@@ -2133,6 +2208,28 @@ namespace clear
 
 		classTy->MemberDefaults = defaults;
 
+		// a union does not know which field it holds, so it could never clean one up
+		if (classExpr->IsUnion)
+		{
+			for (auto& member : classExpr->Members)
+			{
+				auto spec = std::dynamic_pointer_cast<ASTTypeSpecifier>(member);
+				auto field = std::find_if(members.begin(), members.end(), [&](auto& m) { return spec && m.first == spec->GetName(); });
+
+				if (field != members.end() && IsOwning(field->second->GetType()))
+				{
+					Token location = spec->TypeResolver ? GetNodeLocation(spec->TypeResolver) : Token();
+
+					if (location.GetSourceFile().empty())
+						location = classExpr->Location;
+
+					size_t width = location.GetData().size();
+					location.SetData(GetDisplayName(field->second->GetType()));
+					Report(DiagnosticCode_UnionOwningField, location, width);
+				}
+			}
+		}
+
 		if (classExpr->IsUnion)
 			classTy->SetUnionBody(members);
 		else
@@ -2255,15 +2352,27 @@ namespace clear
 		SemaContext conditionContext = context;
 		conditionContext.ValueReq = ValueRequired::RValue;
 
+		auto branches = BeginBranches();
+
 		for (auto& conditionalBlock : ifExpr->ConditionalBlocks)
 		{
+			m_Moved = branches.Start;
 			conditionalBlock.Condition = Visit(conditionalBlock.Condition, conditionContext);
+			branches.Start = m_Moved; // conditions run one after another
+
+			BeginBranch(branches);
 			Visit(conditionalBlock.CodeBlock, context);
+			EndBranch(branches);
 		}
 		
 		if (ifExpr->ElseBlock)
+		{
+			BeginBranch(branches);
 			Visit(ifExpr->ElseBlock, context);
+			EndBranch(branches);
+		}
 
+		EndBranches(branches, !ifExpr->ElseBlock);
 		return ifExpr;
 	}
 
@@ -2297,13 +2406,17 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTWhileExpression> whileExpr, SemaContext context)
 	{
+		MovedSet beforeLoop = m_Moved;
+		BeginLoop();
+
 		context.ValueReq = ValueRequired::RValue;
 		whileExpr->WhileBlock.Condition = Visit(whileExpr->WhileBlock.Condition, context);
 
 		context.ValueReq = ValueRequired::Any;
 		context.InLoop = true;
 		Visit(whileExpr->WhileBlock.CodeBlock, context);
-		
+
+		EndLoop(beforeLoop);
 		return whileExpr;
 	}
 	
@@ -2353,12 +2466,23 @@ namespace clear
 					return node;
 				};
 
+				// a generator held in a variable is iterated in place (a later loop can carry on after a break),
+				// a new one belongs to the loop and is cleaned up when it ends
 				auto handle = std::make_shared<ASTVariableDeclaration>(token(handleName));
 				handle->Location = location;
 				handle->Initializer = pristineIterable;
 
-				auto destroy = std::make_shared<ASTDefer>();
-				destroy->Expr = intrinsic("coro_destroy", nullptr);
+				bool held = pristineIterable->GetType() == ASTNodeType::Variable ||
+							(pristineIterable->GetType() == ASTNodeType::BinaryExpression && std::dynamic_pointer_cast<ASTBinaryExpression>(pristineIterable)->GetExpression() == OperatorType::Dot);
+
+				if (held)
+				{
+					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+					address->Location = location;
+					address->Operand = pristineIterable;
+					handle->Initializer = address;
+					handle->IsAlias = true;
+				}
 
 				auto element = std::make_shared<ASTVariableDeclaration>(forExpr->VariableName);
 				element->Location = forExpr->VariableName;
@@ -2378,7 +2502,7 @@ namespace clear
 				loop->WhileBlock.CodeBlock->Children.insert(loop->WhileBlock.CodeBlock->Children.end(), forExpr->CodeBlock->Children.begin(), forExpr->CodeBlock->Children.end());
 
 				auto block = std::make_shared<ASTBlock>();
-				block->Children = { handle, destroy, loop };
+				block->Children = { handle, loop };
 				return Visit(block, context);
 			}
 
@@ -2423,7 +2547,11 @@ namespace clear
 		SemaContext bodyContext = context;
 		bodyContext.ValueReq = ValueRequired::Any;
 		bodyContext.InLoop = true;
+
+		MovedSet beforeLoop = m_Moved;
+		BeginLoop();
 		Visit(forExpr->CodeBlock, bodyContext);
+		EndLoop(beforeLoop);
 
 		m_ScopeStack.pop_back();
 		return forExpr;
@@ -2639,6 +2767,7 @@ namespace clear
 		}
 
 		std::unordered_set<int64_t> seen;
+		auto branches = BeginBranches();
 
 		for (auto& switchCase : switchNode->Cases)
 		{
@@ -2667,11 +2796,17 @@ namespace clear
 				switchCase.Constants.push_back(*constant);
 			}
 
+			BeginBranch(branches);
 			Visit(switchCase.CodeBlock, context);
+			EndBranch(branches);
 		}
 
 		if (switchNode->DefaultCaseCodeBlock)
+		{
+			BeginBranch(branches);
 			Visit(switchNode->DefaultCaseCodeBlock, context);
+			EndBranch(branches);
+		}
 
 		// a switch over an enum without default must handle every member
 		if (valueType->IsEnum() && !switchNode->DefaultCaseCodeBlock)
@@ -2694,6 +2829,7 @@ namespace clear
 			switchNode->IsExhaustive = missing.empty();
 		}
 
+		EndBranches(branches, !switchNode->DefaultCaseCodeBlock && !switchNode->IsExhaustive);
 		return switchNode;
 	}
 
@@ -2883,6 +3019,8 @@ namespace clear
 			return nullptr;
 		}
 
+		// awaiting a task finishes and frees it: a variable holding it is moved from
+		await->Operand = TakeOwnership(await->Operand, task);
 		await->ValueType = task->GetValueType();
 		return await;
 	}
@@ -2916,6 +3054,24 @@ namespace clear
 			where.SetData(std::format("{}’ of ‘{}", method, GetDisplayName(type)));
 			Report(DiagnosticCode_UnknownMember, where);
 			return nullptr;
+		}
+
+		// x.free(): clean up the variable (or temporary) holding it, which then holds nothing
+		if (method == "free")
+		{
+			std::shared_ptr<ASTNodeBase> holder = IsStorageNode(object) ? object : nullptr;
+
+			if (auto load = std::dynamic_pointer_cast<ASTLoad>(object); load && !holder)
+				holder = load->Operand;
+
+			if (holder)
+			{
+				auto destroy = std::make_shared<ASTDestroy>();
+				destroy->Location = name;
+				destroy->Pointer = holder;
+				destroy->ValueType = type;
+				return destroy;
+			}
 		}
 
 		auto intrinsic = std::make_shared<ASTIntrinsic>(entry.Intrinsic, entry.Result);
@@ -3330,14 +3486,19 @@ namespace clear
 			return reference;
 		}
 
-		// captures: a small class holding copies of them, called through __call__
+		// captures: a small class holding copies of them, called through __call__. A value that owns memory is
+		// borrowed (the closure holds a pointer to the variable), or moved in with `move lambda`
 		auto closure = std::make_shared<ASTClass>(std::format("__closure_{}", id));
 		closure->Location = location;
+
+		auto borrowed = [&](const std::shared_ptr<Type>& type) { return IsOwning(type) && !lambda->MovesCaptures; };
+		bool borrows = false;
 
 		for (auto& [name, type] : captures)
 		{
 			auto member = std::make_shared<ASTTypeSpecifier>(name.GetData());
-			member->TypeResolver = std::make_shared<ASTTypeLiteral>(type);
+			borrows = borrows || borrowed(type);
+			member->TypeResolver = std::make_shared<ASTTypeLiteral>(borrowed(type) ? m_Module->GetTypeRegistry()->GetPointerTo(type) : type);
 			closure->Members.push_back(member);
 			closure->DefaultValues.push_back(nullptr);
 		}
@@ -3357,7 +3518,7 @@ namespace clear
 		call->Arguments.push_back(self);
 		makeParameters(call);
 
-		// inside __call__ each captured name is a local copied from the closure
+		// inside __call__ each captured name is a local copied from the closure (an owning value is used in place)
 		for (auto& [name, type] : captures)
 		{
 			auto access = std::make_shared<ASTBinaryExpression>(OperatorType::Dot);
@@ -3367,6 +3528,20 @@ namespace clear
 
 			auto local = std::make_shared<ASTVariableDeclaration>(name);
 			local->Initializer = access;
+
+			if (IsOwning(type))
+			{
+				local->IsAlias = true;
+
+				if (!borrowed(type))
+				{
+					auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+					address->Location = name;
+					address->Operand = access;
+					local->Initializer = address;
+				}
+			}
+
 			body->Children.push_back(local);
 		}
 
@@ -3394,7 +3569,21 @@ namespace clear
 		value->TargetType = target;
 
 		for (auto& [name, type] : captures)
-			value->Values.push_back(std::make_shared<ASTVariable>(name));
+		{
+			if (!borrowed(type))
+			{
+				value->Values.push_back(std::make_shared<ASTVariable>(name));
+				continue;
+			}
+
+			auto address = std::make_shared<ASTUnaryExpression>(OperatorType::Address);
+			address->Location = name;
+			address->Operand = std::make_shared<ASTVariable>(name);
+			value->Values.push_back(address);
+		}
+
+		if (borrows)
+			m_BorrowingClosures.insert(closure->ClassTy.get());
 
 		SemaContext valueContext = context;
 		valueContext.ValueReq = ValueRequired::RValue;
@@ -3979,6 +4168,8 @@ namespace clear
 
 		std::unordered_set<int64_t> seen;
 
+		auto branches = BeginBranches();
+
 		for (auto& switchCase : switchNode->Cases)
 		{
 			bool singlePattern = switchCase.Values.size() == 1;
@@ -4079,12 +4270,16 @@ namespace clear
 				switchCase.CodeBlock->Children.insert(switchCase.CodeBlock->Children.begin(), declarations.begin(), declarations.end());
 			}
 
+			BeginBranch(branches);
 			Visit(switchCase.CodeBlock, context);
+			EndBranch(branches);
 		}
 
 		if (switchNode->DefaultCaseCodeBlock)
 		{
+			BeginBranch(branches);
 			Visit(switchNode->DefaultCaseCodeBlock, context);
+			EndBranch(branches);
 		}
 		else
 		{
@@ -4105,6 +4300,8 @@ namespace clear
 			switchNode->IsExhaustive = missing.empty();
 		}
 
+		EndBranches(branches, !switchNode->DefaultCaseCodeBlock && !switchNode->IsExhaustive);
+
 		auto sequence = std::make_shared<ASTSequence>();
 		sequence->Location = location;
 		sequence->Children = { subjectDecl, switchNode };
@@ -4116,6 +4313,14 @@ namespace clear
 		if (!context.InLoop)
 			Report(DiagnosticCode_LoopControlOutsideLoop, controlFlow->GetToken());
 
+		if (!m_LoopMoves.empty() && !m_Unreachable)
+		{
+			auto& loop = m_LoopMoves.back();
+			auto& into = controlFlow->GetToken().GetData() == "break" ? loop.AtBreak : loop.AtContinue;
+			into.insert(m_Moved.begin(), m_Moved.end());
+		}
+
+		m_Unreachable = true;
 		return controlFlow;
 	}
 
@@ -4917,6 +5122,46 @@ namespace clear
 		return std::nullopt;
 	}
 
+	std::shared_ptr<ASTNodeBase> Sema::WrittenTemporary(std::shared_ptr<ASTNodeBase> storage)
+	{
+		// follow a.b.c / a[i].b down to what is written into: a variable or pointer is real storage,
+		// a value made on the spot (a call's result, a copy from a get) is not
+		auto node = storage;
+
+		while (node)
+		{
+			if (auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node); binary && binary->GetExpression() == OperatorType::Dot)
+				node = binary->LeftSide;
+			else if (auto subscript = std::dynamic_pointer_cast<ASTSubscript>(node); subscript && subscript->Meaning == SubscriptSemantic::ArrayIndex)
+				node = subscript->Target;
+			else if (auto load = std::dynamic_pointer_cast<ASTLoad>(node))
+				node = load->Operand;
+			else
+				break;
+		}
+
+		if (!node || node == storage)
+			return nullptr;
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Temporary:
+			{
+				auto type = std::dynamic_pointer_cast<ASTTemporary>(node)->ValueType;
+				return type && !type->IsPointer() ? node : nullptr;
+			}
+			case ASTNodeType::FunctionCall:
+			case ASTNodeType::Construct:
+			case ASTNodeType::StructExpr:
+			{
+				auto type = m_TypeInferEngine.InferTypeFromNode(node);
+				return type && !type->IsPointer() ? node : nullptr;
+			}
+			default:
+				return nullptr;
+		}
+	}
+
 	static bool IsFreshValue(const std::shared_ptr<ASTNodeBase>& node)
 	{
 		switch (node->GetType())
@@ -4961,6 +5206,8 @@ namespace clear
 		// let b = a  /  f(a)  /  return a: a is left empty
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand))
 		{
+			RecordMove(std::dynamic_pointer_cast<ASTVariable>(load->Operand));
+
 			auto move = std::make_shared<ASTMove>();
 			move->Location = node->Location;
 			move->Storage = load->Operand;
@@ -5185,6 +5432,231 @@ namespace clear
 	{
 		// TODO: change CodeGeneration to Semanatic Analysis
 		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, token, code);
+	}
+
+	void Sema::Report(DiagnosticCode code, Token token, size_t width)
+	{
+		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, token, code, std::max<size_t>(width, 1));
+	}
+
+	void Sema::Warn(DiagnosticCode code, Token token, size_t width)
+	{
+		m_DiagBuilder.Report(Stage::CodeGeneration, Severity::Low, token, code, std::max<size_t>(width, 1));
+	}
+
+	void Sema::RecordMove(const std::shared_ptr<ASTVariable>& variable)
+	{
+		if (m_Unreachable || !variable->Variable)
+			return;
+
+		// f(a, a): the second one finds a already empty
+		CheckNotMoved(variable);
+		m_Moved[variable->Variable.get()] = variable->GetName();
+	}
+
+	void Sema::CheckNotMoved(const std::shared_ptr<ASTVariable>& variable)
+	{
+		if (m_Unreachable || m_Moved.empty() || !variable->Variable)
+			return;
+
+		auto it = m_Moved.find(variable->Variable.get());
+
+		if (it == m_Moved.end())
+			return;
+
+		Token location = variable->GetName();
+		size_t width = location.GetData().size();
+		location.SetData(std::format("‘{}’ was moved on line {}", location.GetData(), it->second.LineNumber + 1));
+		Report(DiagnosticCode_UseAfterMove, location, width);
+
+		m_Moved.erase(it); // one error per move is enough
+	}
+
+	static std::shared_ptr<ASTVariable> RootVariable(std::shared_ptr<ASTNodeBase> node, bool* throughCall = nullptr)
+	{
+		// the variable an expression like &a.items[i].field or a.get(i) starts from
+		while (node)
+		{
+			switch (node->GetType())
+			{
+				case ASTNodeType::Variable:
+					return std::dynamic_pointer_cast<ASTVariable>(node);
+				case ASTNodeType::Load:
+					node = std::dynamic_pointer_cast<ASTLoad>(node)->Operand;
+					break;
+				case ASTNodeType::UnaryExpression:
+				{
+					auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node);
+
+					if (unary->GetOperatorType() != OperatorType::Address && unary->GetOperatorType() != OperatorType::Dereference)
+						return nullptr;
+
+					node = unary->Operand;
+					break;
+				}
+				case ASTNodeType::BinaryExpression:
+				{
+					auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+
+					if (binary->GetExpression() != OperatorType::Dot)
+						return nullptr;
+
+					node = binary->LeftSide;
+					break;
+				}
+				case ASTNodeType::Subscript:
+					if (throughCall) *throughCall = true;
+					node = std::dynamic_pointer_cast<ASTSubscript>(node)->Target;
+					break;
+				case ASTNodeType::FunctionCall:
+				{
+					// a method call: its first argument is the object
+					auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+
+					if (call->Arguments.empty())
+						return nullptr;
+
+					if (throughCall) *throughCall = true;
+					node = call->Arguments[0];
+					break;
+				}
+				default:
+					return nullptr;
+			}
+		}
+
+		return nullptr;
+	}
+
+	void Sema::NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl)
+	{
+		if (!decl->Initializer || !decl->ResolvedType || !decl->ResolvedType->IsPointer())
+			return;
+
+		bool throughCall = false;
+		auto root = RootVariable(decl->Initializer, &throughCall);
+
+		if (!root || !throughCall || !root->Variable || !m_LocalVariables.contains(root->Variable.get()))
+			return;
+
+		// only into something that holds items: a class (or a pointer to one), not a plain array
+		auto type = root->Variable->GetType();
+
+		if (type && type->IsPointer())
+			type = type->As<PointerType>()->GetBaseType();
+
+		if (!type || !type->IsClass())
+			return;
+
+		m_ElementPointers[decl->Variable.get()] = ElementPointer { root->Variable.get(), root->GetName().GetData() };
+	}
+
+	void Sema::NoteContainerChange(const std::shared_ptr<ASTNodeBase>& container, const Token& change)
+	{
+		if (m_ElementPointers.empty())
+			return;
+
+		auto root = RootVariable(container);
+
+		if (!root)
+			return;
+
+		auto [entry, scope] = LookupSymbol(root->GetName().GetData());
+		Symbol* symbol = root->Variable ? root->Variable.get() : (entry ? entry->Symbol.get() : nullptr);
+
+		for (auto& [pointer, element] : m_ElementPointers)
+		{
+			if (element.Container == symbol && !m_StalePointers.contains(pointer))
+				m_StalePointers[pointer] = change;
+		}
+	}
+
+	void Sema::CheckStalePointer(const std::shared_ptr<ASTVariable>& variable)
+	{
+		if (m_StalePointers.empty() || !variable->Variable)
+			return;
+
+		auto stale = m_StalePointers.find(variable->Variable.get());
+
+		if (stale == m_StalePointers.end())
+			return;
+
+		Token location = variable->GetName();
+		size_t width = location.GetData().size();
+		location.SetData(std::format("‘{}’ points into ‘{}’, which was changed by ‘{}’ on line {}", location.GetData(),
+									 m_ElementPointers[variable->Variable.get()].ContainerName, stale->second.GetData(), stale->second.LineNumber + 1));
+		Warn(DiagnosticCode_StaleElementPointer, location, width);
+
+		m_StalePointers.erase(stale); // warn once
+		m_ElementPointers.erase(variable->Variable.get());
+	}
+
+	// if/else and switch: each branch starts from the same state, afterwards a variable is moved if any branch that carries on moved it
+	Sema::BranchMoves Sema::BeginBranches()
+	{
+		return BranchMoves { m_Moved, {}, false };
+	}
+
+	void Sema::BeginBranch(BranchMoves& branches)
+	{
+		m_Moved = branches.Start;
+		m_Unreachable = false;
+	}
+
+	void Sema::EndBranch(BranchMoves& branches)
+	{
+		if (m_Unreachable)
+			return;
+
+		branches.Out.insert(m_Moved.begin(), m_Moved.end());
+		branches.AnyLive = true;
+	}
+
+	void Sema::EndBranches(BranchMoves& branches, bool fallsThrough)
+	{
+		if (fallsThrough)
+		{
+			branches.Out.insert(branches.Start.begin(), branches.Start.end());
+			branches.AnyLive = true;
+		}
+
+		m_Moved = std::move(branches.Out);
+		m_Unreachable = !branches.AnyLive;
+	}
+
+	void Sema::BeginLoop()
+	{
+		m_LoopMoves.push_back(LoopMoves { m_LocalCounter, {}, {} });
+	}
+
+	void Sema::EndLoop(const MovedSet& beforeLoop)
+	{
+		LoopMoves loop = std::move(m_LoopMoves.back());
+		m_LoopMoves.pop_back();
+
+		// whatever is still moved when the body starts again was moved by the previous time round
+		MovedSet atEnd = m_Unreachable ? MovedSet {} : m_Moved;
+		atEnd.insert(loop.AtContinue.begin(), loop.AtContinue.end());
+
+		for (auto& [variable, where] : atEnd)
+		{
+			auto order = m_LocalOrder.find(variable);
+
+			if (beforeLoop.contains(variable) || order == m_LocalOrder.end() || order->second >= loop.FirstLocal)
+				continue;
+
+			Token location = where;
+			size_t width = location.GetData().size();
+			location.SetData(std::format("‘{}’", location.GetData()));
+			Report(DiagnosticCode_MovedInLoop, location, width);
+		}
+
+		// after the loop: it may not have run at all, or ended at the condition or at a break
+		MovedSet after = beforeLoop;
+		after.insert(atEnd.begin(), atEnd.end());
+		after.insert(loop.AtBreak.begin(), loop.AtBreak.end());
+		m_Moved = std::move(after);
+		m_Unreachable = false;
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::VisitBinaryExprArithmetic(std::shared_ptr<ASTBinaryExpression> binaryExpression, SemaContext context)
@@ -5495,8 +5967,16 @@ namespace clear
 		if (!lhsType)
 			return binaryExpr;
 
+		// work().run(): the new task is kept in a temporary that is cleaned up at the end of the block
+		if (std::dynamic_pointer_cast<CoroutineType>(lhsType) && IsFreshValue(binaryExpr->LeftSide))
+		{
+			auto load = std::make_shared<ASTLoad>();
+			load->Operand = AddressOf(binaryExpr->LeftSide);
+			binaryExpr->LeftSide = load;
+		}
+
 		// make_list().length: the new list is cleaned up at the end of the block
-		if (IsOwning(lhsType) && IsFreshValue(binaryExpr->LeftSide))
+		if (IsOwning(lhsType) && IsFreshValue(binaryExpr->LeftSide) && !std::dynamic_pointer_cast<CoroutineType>(lhsType))
 		{
 			binaryExpr->LeftSide = AddressOf(binaryExpr->LeftSide);
 			lhsType = m_TypeInferEngine.InferTypeFromNode(binaryExpr->LeftSide);

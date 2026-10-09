@@ -11,8 +11,8 @@ function main() -> int32:
     let names = List[String]()
     names.push(String("ada"))
     let grace = String("grace")
-    names.push(grace)                 // moved into the list: grace is now empty
-    print(len(names), names[1], len(grace))
+    names.push(grace)                 // moved into the list: using grace after this is a compile error
+    print(len(names), names[1])
 
     let last = names.pop()            // the list hands the item over
     print(last, len(names))
@@ -46,7 +46,7 @@ function main() -> int32:
     return 0
 
 // expect:
-// 2 grace 0
+// 2 grace
 // grace 1
 // ada ada!
 // 3

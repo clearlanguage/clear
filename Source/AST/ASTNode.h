@@ -874,6 +874,7 @@ namespace clear
 		std::vector<std::shared_ptr<ASTVariableDeclaration>> Parameters; // TypeResolver is null when the type comes from context
 		std::shared_ptr<ASTNodeBase> ReturnType;
 		std::shared_ptr<ASTNodeBase> Body;
+		bool MovesCaptures = false; // `move lambda`: owning values it uses are moved in, otherwise they are borrowed
 	};
 
 	// function(int, int) -> int in a type position

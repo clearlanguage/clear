@@ -102,6 +102,8 @@ namespace clear
 
 	private:
 		void Report(DiagnosticCode code, Token token);
+		void Report(DiagnosticCode code, Token token, size_t width);
+		void Warn(DiagnosticCode code, Token token, size_t width);
 		std::shared_ptr<ASTNodeBase> VisitDeclaration(std::shared_ptr<ASTVariableDeclaration> decl, SemaContext context);
 		void VisitTopLevel(std::shared_ptr<ASTBlock> ast, SemaContext context);
 
@@ -121,6 +123,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
 		std::shared_ptr<ASTNodeBase> VisitPropertyAssign(std::shared_ptr<ASTAssignmentOperator> assignmentOp, std::shared_ptr<ASTFunctionCall> getter);
 		void DefineClass(std::shared_ptr<ASTClass> classExpr, SemaContext context);
@@ -173,6 +176,36 @@ namespace clear
 		size_t m_MacroCounter = 0;
 		std::unordered_set<Symbol*> m_LocalVariables; // locals and parameters: owning values can be moved out of them
 		bool m_ViewsAllowed = false;                  // yield hands out views, it does not take ownership
+
+		// moves out of locals, followed through the function body so an emptied variable is not used again
+		using MovedSet = std::unordered_map<Symbol*, Token>; // variable -> where it was moved
+		struct BranchMoves { MovedSet Start; MovedSet Out; bool AnyLive = false; };
+		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; };
+
+		MovedSet m_Moved;
+		bool m_Unreachable = false;                     // after return, break or continue nothing runs
+		std::vector<LoopMoves> m_LoopMoves;
+		std::unordered_map<Symbol*, size_t> m_LocalOrder; // declaration order, to tell variables from outside a loop
+		size_t m_LocalCounter = 0;
+		std::unordered_set<Type*> m_BorrowingClosures; // lambdas holding pointers to local variables
+		ASTVariable* m_Reinitialised = nullptr;         // `x = v`: x is given a new value, not read
+
+		void RecordMove(const std::shared_ptr<ASTVariable>& variable);
+		void CheckNotMoved(const std::shared_ptr<ASTVariable>& variable);
+		BranchMoves BeginBranches();
+		void BeginBranch(BranchMoves& branches);
+		void EndBranch(BranchMoves& branches);
+		void EndBranches(BranchMoves& branches, bool fallsThrough);
+		void BeginLoop();
+		void EndLoop(const MovedSet& beforeLoop);
+
+		// let p = &xs[0] ... xs.push(v) ... p: the push may have moved the items, p would point at freed memory
+		struct ElementPointer { Symbol* Container = nullptr; std::string ContainerName; };
+		std::unordered_map<Symbol*, ElementPointer> m_ElementPointers;
+		std::unordered_map<Symbol*, Token> m_StalePointers; // pointer -> the call that changed its container
+		void NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl);
+		void NoteContainerChange(const std::shared_ptr<ASTNodeBase>& container, const Token& change);
+		void CheckStalePointer(const std::shared_ptr<ASTVariable>& variable);
 		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
 
 		struct LazyBody

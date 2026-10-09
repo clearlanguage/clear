@@ -180,6 +180,9 @@ Everything here follows the same rules: visible cost, opt-in dynamism, checked a
 - [x] `operator add`, `operator get` … instead of Python's dunder methods; `function init` constructors; bare `self`.
 - [x] `operator get` returning a reference: `list[i].field = v` edits in place; loops visit objects in place.
 - [x] Type variants: `variant Number: int, float64`, checked reads with `as`, `is`, `switch case int(x)`.
+- [x] Move checking: using a moved variable, moving inside a loop, and moving twice in one call are compile errors; writes into temporaries are errors; a warning for pointers into a collection used after it changes.
+- [x] Lambdas borrow owning values, `move lambda` moves them in; generators and tasks are owned values cleaned up like the rest (also when abandoned mid-way).
+- [x] Internal compiler errors are reported with the source line being compiled and a stack trace.
 - [ ] Slices `[]T` (pointer + length).
 - [ ] Generic methods (type parameters on a method).
 - [ ] Debug info for gdb/lldb; `clearc fmt`; a language server.

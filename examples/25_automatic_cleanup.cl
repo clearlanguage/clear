@@ -26,8 +26,8 @@ function main() -> int32:
     let words = List[String]()         // no free(), no defer
     words.push(String("hello"))
     let w = String("world")
-    words.push(w)                      // moved into the list: w is now empty
-    print(len(words), len(w))
+    words.push(w)                      // moved into the list: using w after this is a compile error
+    print(len(words))
 
     let first = words[0].copy()        // copying is explicit
     first.append("!")
@@ -37,7 +37,7 @@ function main() -> int32:
     print("session for", s.user)
 
     let moved = s                      // moving hands everything over, nothing is copied
-    print("still one session:", moved.user, len(s.user))
+    print("still one session:", moved.user)   // s is moved: s.user here would not compile
     print("end of main")
     return 0
     // here: moved (its String and Connection), first, w, words... are all cleaned up
@@ -45,9 +45,9 @@ function main() -> int32:
 // expect:
 // using temporary
 // closing temporary
-// 2 0
+// 2
 // hello! hello
 // session for ada
-// still one session: ada 0
+// still one session: ada
 // end of main
 // closing db

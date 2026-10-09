@@ -368,6 +368,10 @@ namespace clear
         if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
             return IsOwning(array->GetBaseType());
 
+        // a generator or task owns its frame
+        if (std::dynamic_pointer_cast<CoroutineType>(type))
+            return true;
+
         auto classType = std::dynamic_pointer_cast<ClassType>(type);
 
         if (!classType || classType->IsUnion || classType->IsTrait)

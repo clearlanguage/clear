@@ -1,3 +1,4 @@
+#include "Core/CrashHandler.h"
 #include "ASTNode.h"
 
 #include "Core/Log.h"
@@ -143,13 +144,14 @@ namespace clear
 			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
 				break;
 
+			NoteProgress("generating code for", child->Location.GetSourceFile(), child->Location.LineNumber, child->Location.ColumnNumber);
 			Symbol result = child->Codegen(ctx);
 
 			// `make_list()` on its own line: the value it made is cleaned up straight away
 			bool fresh = child->GetType() == ASTNodeType::FunctionCall || child->GetType() == ASTNodeType::Construct || child->GetType() == ASTNodeType::StructExpr;
 
 			if (fresh && result.Kind == SymbolKind::Value && result.GetType() && IsOwning(result.GetType()) && result.GetLLVMValue() && 
-				!result.GetLLVMValue()->getType()->isPointerTy())
+				(!result.GetLLVMValue()->getType()->isPointerTy() || std::dynamic_pointer_cast<CoroutineType>(result.GetType())))
 			{
 				Symbol slot = CreateAlloca(result.GetType(), ctx);
 				ctx.Builder.CreateStore(result.GetLLVMValue(), slot.GetLLVMValue());
@@ -947,13 +949,30 @@ namespace clear
 	// generators and async functions are LLVM coroutines (switch-resumed). The call allocates the frame
 	// (LLVM removes the allocation when the coroutine does not outlive its caller), runs up to the first
 	// suspension and returns the handle; resuming continues from the last suspension.
+	// destroyed while suspended (a loop over a generator ends with break): clean up what is alive at this point,
+	// as a return from here would, before the frame is freed
+	static llvm::BasicBlock* AbandonBlock(CodegenContext& ctx)
+	{
+		auto& builder = ctx.Builder;
+		auto saved = builder.saveIP();
+
+		llvm::BasicBlock* abandon = llvm::BasicBlock::Create(ctx.Context, "coro.abandon", builder.GetInsertBlock()->getParent());
+		builder.SetInsertPoint(abandon);
+		EmitDefers(ctx, ctx.FunctionDeferBase);
+		builder.CreateBr(ctx.Coroutine->Cleanup);
+
+		builder.restoreIP(saved);
+		return abandon;
+	}
+
 	static llvm::Value* CoroutineSuspend(CodegenContext& ctx, bool final, llvm::BasicBlock* resume)
 	{
 		auto& builder = ctx.Builder;
+		llvm::BasicBlock* destroyed = final ? ctx.Coroutine->Cleanup : AbandonBlock(ctx);
 		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(final) });
 		llvm::SwitchInst* branch = builder.CreateSwitch(state, ctx.Coroutine->Suspend, 2);
 		branch->addCase(builder.getInt8(0), resume);
-		branch->addCase(builder.getInt8(1), ctx.Coroutine->Cleanup);
+		branch->addCase(builder.getInt8(1), destroyed);
 		return state;
 	}
 
@@ -1071,7 +1090,7 @@ namespace clear
 		// destroyed while waiting: the awaited task goes too
 		builder.SetInsertPoint(abandon);
 		builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { task });
-		builder.CreateBr(ctx.Coroutine->Cleanup);
+		builder.CreateBr(AbandonBlock(ctx));
 
 		builder.SetInsertPoint(wait);
 		llvm::Value* state = builder.CreateIntrinsic(llvm::Intrinsic::coro_suspend, {}, { llvm::ConstantTokenNone::get(ctx.Context), builder.getInt1(false) });
@@ -2671,9 +2690,9 @@ namespace clear
 				builder.CreateIntrinsic(llvm::Intrinsic::coro_resume, {}, { handle });
 				builder.CreateBr(check);
 
+				// the frame is freed by whoever owns the task (a variable, or the temporary when it ends)
 				builder.SetInsertPoint(after);
 				llvm::Value* result = ResultType ? value(ResultType) : nullptr;
-				builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
 				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}
@@ -2954,6 +2973,23 @@ namespace clear
 		{
 			for (size_t i = 0; i < array->GetArraySize(); i++)
 				EmitDestroy(ctx, array->GetBaseType(), builder.CreateConstInBoundsGEP2_64(array->Get(), address, 0, i));
+			return;
+		}
+
+		// a generator or task: free its frame (if it still has one) and forget it, so a second cleanup does nothing
+		if (std::dynamic_pointer_cast<CoroutineType>(type))
+		{
+			llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "coro.destroy", function);
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "coro.destroyed", function);
+			llvm::Value* handle = builder.CreateLoad(builder.getPtrTy(), address, "handle");
+			builder.CreateCondBr(builder.CreateIsNotNull(handle), destroy, done);
+
+			builder.SetInsertPoint(destroy);
+			builder.CreateIntrinsic(llvm::Intrinsic::coro_destroy, {}, { handle });
+			builder.CreateStore(llvm::ConstantPointerNull::get(builder.getPtrTy()), address);
+			builder.CreateBr(done);
+
+			builder.SetInsertPoint(done);
 			return;
 		}
 

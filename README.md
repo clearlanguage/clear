@@ -337,12 +337,12 @@ class Connection:
 
 let words = List[String]()             // no free(), no defer
 let w = String("world")
-words.push(w)                          // moved into the list: w is left empty
+words.push(w)                          // moved into the list: using w after this won't compile
 let first = words[0].copy()            // copies are explicit
 let bad = words[0]                     // compile error: would give the text two owners
 ```
 
-Assigning from a local variable *moves* the value and leaves the variable empty, so there is always exactly one owner and nothing is freed twice. Copying out of a field or element is a compile error that suggests `.copy()`. The cost is visible: one cleanup call where a scope ends, nothing running in the background.
+Assigning from a local variable *moves* the value, so there is always exactly one owner and nothing is freed twice. Using a variable after it was moved is a compile error, and so is copying out of a field or element (the error suggests `.copy()`). Lambdas borrow such values (`move lambda` takes them over), and generators and tasks are cleaned up the same way. The cost is visible: one cleanup call where a scope ends, nothing running in the background.
 
 ### Generators and async
 
