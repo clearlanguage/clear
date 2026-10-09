@@ -2697,6 +2697,9 @@ namespace clear
 			}
 		}
 
+		if (Name == "clone")
+			return Symbol::CreateValue(EmitCopy(ctx, ResultType, builder.CreateLoad(ResultType->Get(), args[0], "original")), ResultType);
+
 		if (Name == "take")
 			return Symbol::CreateValue(builder.CreateLoad(ResultType->Get(), args[0], "taken"), ResultType);
 
@@ -2952,6 +2955,92 @@ namespace clear
 		auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
 		ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
 		return value;
+	}
+
+	Symbol ASTCopy::Codegen(CodegenContext& ctx)
+	{
+		Symbol value = Value->Codegen(ctx);
+		return Symbol::CreateValue(EmitCopy(ctx, ValueType, value.GetLLVMValue()), ValueType);
+	}
+
+	llvm::Value* EmitCopy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* value)
+	{
+		if (!IsOwning(type))
+			return value;
+
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+		{
+			for (unsigned i = 0; i < array->GetArraySize(); i++)
+				value = builder.CreateInsertValue(value, EmitCopy(ctx, array->GetBaseType(), builder.CreateExtractValue(value, { i })), { i });
+			return value;
+		}
+
+		auto classType = type->As<ClassType>();
+		Symbol result = CreateAlloca(type, ctx);
+		builder.CreateStore(value, result.GetLLVMValue());
+
+		// operator copy decides
+		if (auto copy = classType->MemberFunctions.find("__copy__"); copy != classType->MemberFunctions.end())
+		{
+			llvm::Function* callee = GetFunctionHere(copy->second, ctx);
+			return builder.CreateCall(callee, { result.GetLLVMValue() }, "copy");
+		}
+
+		// variants and optionals: copy what the case they hold owns
+		if (classType->IsVariant)
+		{
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "copy.done", function);
+			llvm::Value* tag = builder.CreateExtractValue(value, { 0u }, "tag");
+			llvm::SwitchInst* branch = builder.CreateSwitch(tag, done);
+
+			for (size_t i = 0; i < classType->Cases.size(); i++)
+			{
+				auto& variantCase = classType->Cases[i];
+
+				if (std::none_of(variantCase.Fields.begin(), variantCase.Fields.end(), [](auto& field) { return IsOwning(field.second); }))
+					continue;
+
+				llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "copy.case", function);
+				branch->addCase(builder.getInt32((uint32_t)i), block);
+				builder.SetInsertPoint(block);
+
+				llvm::Value* payload = builder.CreateStructGEP(classType->Get(), result.GetLLVMValue(), 1);
+
+				for (size_t f = 0; f < variantCase.Fields.size(); f++)
+				{
+					auto fieldType = variantCase.Fields[f].second;
+
+					if (!IsOwning(fieldType))
+						continue;
+
+					llvm::Value* address = builder.CreateStructGEP(variantCase.Payload, payload, (unsigned)f);
+					builder.CreateStore(EmitCopy(ctx, fieldType, builder.CreateLoad(fieldType->Get(), address)), address);
+				}
+
+				builder.CreateBr(done);
+			}
+
+			builder.SetInsertPoint(done);
+			return builder.CreateLoad(type->Get(), result.GetLLVMValue());
+		}
+
+		// field by field: plain fields as they are, owning fields copied
+		unsigned index = 0;
+		for (const auto& [name, fieldType] : classType->GetMemberValues())
+		{
+			if (IsOwning(fieldType))
+			{
+				llvm::Value* address = builder.CreateStructGEP(classType->Get(), result.GetLLVMValue(), index);
+				builder.CreateStore(EmitCopy(ctx, fieldType, builder.CreateLoad(fieldType->Get(), address)), address);
+			}
+
+			index++;
+		}
+
+		return builder.CreateLoad(type->Get(), result.GetLLVMValue());
 	}
 
 	Symbol ASTDestroy::Codegen(CodegenContext& ctx)

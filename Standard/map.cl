@@ -156,3 +156,14 @@ class Map[K, V]:
 
     operator destruct(self):
         self.free()
+
+    // let b = a gives b its own map (and its own copies of the keys and values)
+    operator copy(self) -> Map[K, V]:
+        let result = Map[K, V]()
+        for slot in 0..self.capacity:
+            if self.states[slot] == 1:
+                result.insert(clone(self.keys + slot), clone(self.values + slot))
+        return result
+
+    function copy(self) -> Map[K, V]:
+        return clone(self)

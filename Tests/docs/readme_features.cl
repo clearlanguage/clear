@@ -1,3 +1,6 @@
+import "string"
+import "list"
+
 // The snippets of README.md's tour that are not in readme_tour.cl, so the README stays true.
 import "math"
 
@@ -156,6 +159,12 @@ function main() -> int32:
 
     if true:
         let c = Connection("db")
+
+    let words = List[String]()
+    words.push(String("hello"))
+    let first = words[0]
+    words[0].append(" world")
+    print(first, "|", words[0])
     return 0
 
 // expect:
@@ -181,3 +190,4 @@ function main() -> int32:
 // true 2.5
 // int 7
 // closing db
+// hello | hello world

@@ -122,6 +122,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> VisitHash(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
+		void EnsureCopyDefined(std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);
@@ -221,6 +222,7 @@ namespace clear
 		void NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl);
 		void NoteContainerChange(const std::shared_ptr<ASTNodeBase>& container, const Token& change);
 		void CheckStalePointer(const std::shared_ptr<ASTVariable>& variable);
+		bool m_Returning = false;                     // analysing a return value: locals are moved, not copied
 		size_t m_MacroDepth = 0;                      // catches `class A(B)` / `class B(A)`
 
 		struct LazyBody

@@ -1,57 +1,62 @@
 // patterns that move values and are fine: a variable is only unusable while it is empty
-import "string"
+// (Token cleans up itself and has no operator copy, so it moves instead of being copied)
+class Token:
+    text: str
 
-function take(s: String):
-    print("took", s)
+    operator destruct(self):
+        self.text = ""
+
+function take(s: Token):
+    print("took", s.text)
 
 macro swap(a, b):
     let tmp = a
     a = b
     b = tmp
 
-function pick(flag: bool) -> String:
-    let a = String("a")
+function pick(flag: bool) -> Token:
+    let a = Token("a")
     if flag:
         return a            // this path ends here
-    print("still have", a)
+    print("still have", a.text)
     return a
 
 function main() -> int32:
-    let a = String("one")
+    let a = Token("one")
     take(a)
-    a = String("two")       // a new value: usable again
-    print(a)
+    a = Token("two")       // a new value: usable again
+    print(a.text)
 
-    let b = String("loop")
+    let b = Token("loop")
     for i in 0..5:
         if i == 2:
             take(b)
             break           // moved only once
     
-    let c = String("refill")
+    let c = Token("refill")
     let n = 0
     while n < 2:
         take(c)
-        c = String("again") // refilled before the next time round
+        c = Token("again") // refilled before the next time round
         n += 1
 
     for i in 0..2:
-        let inner = String("inner")
+        let inner = Token("inner")
         take(inner)         // a new variable every time round
 
-    let x = String("x")
-    let y = String("y")
+    let x = Token("x")
+    let y = Token("y")
     swap!(x, y)
-    print(x, y)
-    print(pick(true), pick(false))
+    print(x.text, y.text)
+    print(pick(true).text, pick(false).text)
 
-    let d = String("d")
+    let d = Token("d")
     if n > 100:
         take(d)
     else:
         take(d)
-    d = String("d2")
-    print(d)
+    d = Token("d2")
+    print(d.text)
     return 0
 
 // expect:

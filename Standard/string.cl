@@ -134,6 +134,10 @@ class String:
     function equals(self: *String, text: str) -> bool:
         return strcmp(self.text(), text) == 0
 
+    // let t = s (or reading a String out of a list or field) gives t its own copy of the text
+    operator copy(self) -> String:
+        return self.copy()
+
     function copy(self: *String) -> String:
         let result = String { }
         result.append_bytes(self.text(), self.length)

@@ -366,8 +366,8 @@ Message = "This type is not one of the variant's types."
 Advice  = "‘{}."
 
 [CannotCopyOwning]
-Message = "This value owns memory, so it is not copied implicitly."
-Advice  = "Two owners of one ‘{}’ would free it twice. Make a separate copy with .copy(), or use it in place (a pointer, or the element itself). Only a local variable is moved, and it is left empty."
+Message = "This value cannot be copied."
+Advice  = "‘{}’ cleans up after itself (operator destruct) and has no ‘operator copy’, so a copy would free the same thing twice. Use it in place, move it out of a local variable, or give the class an operator copy."
 
 [OwningOperatorArgument]
 Message = "An operator cannot take an owning value as a copy."
@@ -375,11 +375,11 @@ Advice  = "Declare the parameter as a pointer, e.g. ‘other: *{}’, so the ope
 
 [UseAfterMove]
 Message = "This variable was moved, so it is empty here."
-Advice  = "{}. Move a .copy() instead to keep the original, or give the variable a new value before using it again."
+Advice  = "{}. A value that can't be copied moves when it is assigned or passed. Lend it with a pointer (&x) instead, or give the variable a new value before using it again."
 
 [MovedInLoop]
 Message = "This moves a variable that the next time round the loop uses again."
-Advice  = "{} is declared outside the loop, so after the first time round it would be empty. Pass a .copy(), break right after moving it, or declare it inside the loop."
+Advice  = "{} is declared outside the loop, so after the first time round it would be empty. Lend it with a pointer (&x), break right after moving it, or declare it inside the loop."
 
 [UnionOwningField]
 Message = "A union cannot hold a value that needs cleaning up."

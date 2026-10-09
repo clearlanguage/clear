@@ -397,6 +397,51 @@ namespace clear
         return false;
     }
 
+    bool IsCopyable(const std::shared_ptr<Type>& type)
+    {
+        if (!IsOwning(type))
+            return true;
+
+        if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+            return IsCopyable(array->GetBaseType());
+
+        // a generator or task is one running computation: it can be moved, not duplicated
+        if (std::dynamic_pointer_cast<CoroutineType>(type))
+            return false;
+
+        auto classType = std::dynamic_pointer_cast<ClassType>(type);
+
+        if (classType->IsVariant)
+        {
+            for (auto& variantCase : classType->Cases)
+                for (auto& [name, fieldType] : variantCase.Fields)
+                    if (!IsCopyable(fieldType))
+                        return false;
+
+            return true;
+        }
+
+        // operator copy (a generic container copies its items too: List[Connection] is not copyable)
+        if (classType->MemberFunctions.contains("__copy__"))
+        {
+            for (auto& argument : classType->GenericArguments)
+                if (argument && !IsCopyable(argument))
+                    return false;
+
+            return true;
+        }
+
+        // it cleans up something itself (a file, a connection): only it knows how to copy that
+        if (classType->MemberFunctions.contains("__destruct__"))
+            return false;
+
+        for (const auto& [name, fieldType] : classType->GetMemberValues())
+            if (!IsCopyable(fieldType))
+                return false;
+
+        return true;
+    }
+
     std::string CoroutineType::GetHash() const
     {
         return std::format("{}[{}]", m_Kind == Kind::Generator ? "Generator" : "Task", m_Value ? m_Value->GetHash() : "none");

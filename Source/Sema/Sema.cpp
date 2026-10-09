@@ -440,6 +440,7 @@ namespace clear
 			case ASTNodeType::FunctionRef:				return ast;
 			case ASTNodeType::VTableRef:				return ast;
 			case ASTNodeType::Move:						return ast;
+			case ASTNodeType::Copy:						return ast;
 			case ASTNodeType::Destroy:					return ast;
 			case ASTNodeType::VariantConstruct:			return ast;
 			case ASTNodeType::VariantField:				return ast;
@@ -876,7 +877,8 @@ namespace clear
 
 		// destroy(p): clean up *p now;  take(p): hand over the value at p (raw memory a container manages)
 		if (auto callee = std::dynamic_pointer_cast<ASTVariable>(funcCall->Callee); callee && !callee->Variable && 
-			(callee->GetName().GetData() == "destroy" || callee->GetName().GetData() == "take") && !LookupSymbol(callee->GetName().GetData()).first)
+			(callee->GetName().GetData() == "destroy" || callee->GetName().GetData() == "take" || callee->GetName().GetData() == "clone") && 
+			!LookupSymbol(callee->GetName().GetData()).first)
 		{
 			if (funcCall->Arguments.size() != 1)
 			{
@@ -906,7 +908,18 @@ namespace clear
 				return destroy;
 			}
 
-			auto take = std::make_shared<ASTIntrinsic>("take", valueType);
+			if (callee->GetName().GetData() == "clone" && !IsCopyable(valueType))
+			{
+				Token where = callee->GetName();
+				where.SetData(GetDisplayName(valueType));
+				Report(DiagnosticCode_CannotCopyOwning, where);
+				return nullptr;
+			}
+
+			if (callee->GetName().GetData() == "clone")
+				EnsureCopyDefined(valueType);
+
+			auto take = std::make_shared<ASTIntrinsic>(callee->GetName().GetData(), valueType);
 			take->Location = callee->GetName();
 			take->Arguments.push_back(pointer);
 			return take;
@@ -1582,7 +1595,12 @@ namespace clear
 		else if (!returnsValue && returnStatement->ReturnValue)
 			Report(DiagnosticCode_ReturnTypeMismatch, GetNodeLocation(returnStatement->ReturnValue));
 		else if (returnsValue)
+		{
+			// `return s`: s ends here anyway, so it is handed over rather than copied
+			m_Returning = true;
 			returnStatement->ReturnValue = Coerce(returnStatement->ReturnValue, context.ReturnType);
+			m_Returning = false;
+		}
 
 		m_Unreachable = true;
 		return returnStatement;
@@ -3577,7 +3595,12 @@ namespace clear
 		SemaContext valueContext = context;
 		valueContext.ValueReq = ValueRequired::RValue;
 		valueContext.ExpectedType = nullptr;
-		return Visit(value, valueContext);
+
+		// move lambda: the captured variables are handed over, not copied
+		bool wasReturning = std::exchange(m_Returning, m_Returning || lambda->MovesCaptures);
+		auto result = Visit(value, valueContext);
+		m_Returning = wasReturning;
+		return result;
 	}
 
 	std::shared_ptr<ASTFunctionDefinition> Sema::BuildClosureCall(const std::string& name, const std::shared_ptr<ASTLambda>& lambda, std::shared_ptr<ASTNodeBase> body,
@@ -5316,12 +5339,14 @@ namespace clear
 			case ASTNodeType::UnionConstruct:
 			case ASTNodeType::Zero:
 			case ASTNodeType::Move:
+			case ASTNodeType::Copy:
 			case ASTNodeType::ConstantValue:
 			case ASTNodeType::Literal:
 			case ASTNodeType::Await:
 				return true;
 			case ASTNodeType::Intrinsic:
-				return std::dynamic_pointer_cast<ASTIntrinsic>(node)->Name == "take" || std::dynamic_pointer_cast<ASTIntrinsic>(node)->Name == "task_run";
+				return std::dynamic_pointer_cast<ASTIntrinsic>(node)->Name == "take" || std::dynamic_pointer_cast<ASTIntrinsic>(node)->Name == "clone" ||
+					   std::dynamic_pointer_cast<ASTIntrinsic>(node)->Name == "task_run";
 			case ASTNodeType::OptionalUnwrap:
 				return IsFreshValue(std::dynamic_pointer_cast<ASTOptionalUnwrap>(node)->Subject);
 			case ASTNodeType::TernaryExpression:
@@ -5332,6 +5357,38 @@ namespace clear
 			default:
 				return false;
 		}
+	}
+
+	// operator copy of a generic class is only analysed once something is really copied
+	void Sema::EnsureCopyDefined(std::shared_ptr<Type> type)
+	{
+		if (!IsOwning(type))
+			return;
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+			return EnsureCopyDefined(array->GetBaseType());
+
+		if (!type->IsClass())
+			return;
+
+		auto classType = type->As<ClassType>();
+
+		if (classType->IsVariant)
+		{
+			for (auto& variantCase : classType->Cases)
+				for (auto& [name, fieldType] : variantCase.Fields)
+					EnsureCopyDefined(fieldType);
+			return;
+		}
+
+		if (auto copy = classType->MemberFunctions.find("__copy__"); copy != classType->MemberFunctions.end())
+		{
+			EnsureDefined(copy->second->GetFunctionSymbol().FunctionNode);
+			return;
+		}
+
+		for (const auto& [name, fieldType] : classType->GetMemberValues())
+			EnsureCopyDefined(fieldType);
 	}
 
 	std::shared_ptr<ASTNodeBase> Sema::TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type)
@@ -5346,7 +5403,23 @@ namespace clear
 			return variable && variable->Variable && m_LocalVariables.contains(variable->Variable.get());
 		};
 
-		// let b = a  /  f(a)  /  return a: a is left empty
+		auto copy = [&]()
+		{
+			EnsureCopyDefined(type);
+			auto result = std::make_shared<ASTCopy>();
+			result->Location = node->Location;
+			result->Value = node;
+			result->ValueType = type;
+			return result;
+		};
+
+		bool copyable = IsCopyable(type);
+
+		// let b = a  /  f(a): b gets its own copy and a stays as it was;  return a: a ends here, so it is moved
+		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand) && copyable && !m_Returning)
+			return copy();
+
+		// a value that cannot be copied (a File, a class with its own destruct) moves out of a local, which is left empty
 		if (auto load = std::dynamic_pointer_cast<ASTLoad>(node); load && isLocal(load->Operand))
 		{
 			RecordMove(std::dynamic_pointer_cast<ASTVariable>(load->Operand));
@@ -5359,8 +5432,8 @@ namespace clear
 			return move;
 		}
 
-		// let line = maybe.value: the optional is left as none
-		if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node))
+		// let line = maybe.value (of something that cannot be copied): the optional is left as none
+		if (auto unwrap = std::dynamic_pointer_cast<ASTOptionalUnwrap>(node); unwrap && !copyable)
 		{
 			if (auto load = std::dynamic_pointer_cast<ASTLoad>(unwrap->Subject); load && isLocal(load->Operand))
 			{
@@ -5396,6 +5469,10 @@ namespace clear
 			if (auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(load->Operand); unary && unary->GetOperatorType() == OperatorType::Dereference && !unary->IsElement)
 				return node;
 		}
+
+		// reading from a field, an element or another place: a copy of its own
+		if (copyable)
+			return copy();
 
 		Token location = GetNodeLocation(node);
 		location.SetData(GetDisplayName(type));
@@ -5934,7 +6011,7 @@ namespace clear
 
 		if (otherType && otherType->IsPointer() && rhsType && rhsType->IsClass())
 			call->Arguments.push_back(AddressOf(expr->RightSide));
-		else if (IsOwning(otherType) && !IsFreshValue(expr->RightSide))
+		else if (IsOwning(otherType) && !IsCopyable(otherType) && !IsFreshValue(expr->RightSide))
 		{
 			// a == b must not empty b: owning operands are taken by pointer
 			Token where = GetNodeLocation(expr->RightSide);

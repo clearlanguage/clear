@@ -11,8 +11,8 @@ function main() -> int32:
     let names = List[String]()
     names.push(String("ada"))
     let grace = String("grace")
-    names.push(grace)                 // moved into the list: using grace after this is a compile error
-    print(len(names), names[1])
+    names.push(grace)                 // the list gets its own copy
+    print(len(names), names[1], len(grace))
 
     let last = names.pop()            // the list hands the item over
     print(last, len(names))
@@ -41,12 +41,12 @@ function main() -> int32:
             print("some", text)       // text names the string inside maybe, no copy
         case none:
             print("none")
-    let taken = maybe.value           // moved out: maybe is none now
+    let taken = maybe.value           // a copy: maybe still holds its string
     print(taken, maybe is none)
     return 0
 
 // expect:
-// 2 grace
+// 2 grace 5
 // grace 1
 // ada ada!
 // 3
@@ -54,4 +54,4 @@ function main() -> int32:
 // word ada
 // LOUD
 // some inside
-// inside true
+// inside false

@@ -336,6 +336,7 @@ class Vec2:
 | `str` | what `print(obj)` shows |
 | `hash` | `hash(obj)`, so it can be a `Map` key |
 | `destruct` | cleanup when the object's scope ends (see automatic cleanup below) |
+| `copy` | what `let b = a` makes when the object owns memory (see automatic cleanup below) |
 
 Python-style names like `__add__` are a compile error that tells you the Clear spelling.
 
@@ -625,18 +626,21 @@ class Session:                 // no destruct needed: its String and Connection 
     link: Connection
 ```
 
-**One owner at a time.** A value that owns memory is never silently copied, because two copies would free the same memory twice:
+**Reading copies, writing goes in place.** Each value that owns memory has exactly one owner, so nothing is ever freed twice:
 
 | you write | what happens |
 | --- | --- |
-| `let b = a`, `f(a)`, `return a`, `list.push(a)` (a is a local variable) | the value **moves** to its new owner and `a` is left empty |
-| using `a` after it was moved (also when only one `if` branch moved it) | compile error, until `a` is given a new value (`a = String("new")`) |
-| moving a variable from outside a loop inside the loop | compile error: the second time round it would be empty (move a `.copy()`, or `break` right after) |
-| `let x = list[0]`, `return self.name` (a field or element) | compile error: use `.copy()` for a separate copy, or use it in place |
-| `let s = maybe.value` (a local optional) | moves the value out; `maybe` becomes `none` |
+| `let x = list[0]`, `let b = a`, `f(a)`, `list.push(a)`, `return self.name`, `let s = maybe.value` | **reading**: a separate copy with its own memory; the original is untouched |
+| `list[0].append("!")`, `list[0] = s`, `list[0].qty += 1`, `for item in list`, `case some(s):` | **in place**: works on the element itself, no copy |
+| `return s` (a local) | handed over without a copy (s ends here anyway) |
 | `x = new_value` | the old value of `x` is cleaned up first |
-| `list[0].append("!")`, `for item in list`, `case some(s):` | work on the value in place, no copy |
 | `make().qty = 5`, or `bag[0].qty = 5` when `get` returns a copy | compile error: the change would go to a temporary and be lost |
+
+Copies allocate, so in hot loops prefer working in place (`for w in words`, `words[i].method()`). A copy is made with `operator copy` if the class has one, otherwise field by field. `String`, `List` and `Map` copy their contents.
+
+**Values that can't be copied.** A class with its own `operator destruct` and no `operator copy` (a `File`, a network connection) can't be duplicated safely. Assigning one *moves* it and leaves the old variable empty (all zero, so its cleanup does nothing), and copying one out of a field or list is a compile error. Give the class an `operator copy` if copying it makes sense.
+
+Using a variable after it was moved is a compile error, until it is given a new value. The compiler follows this through the function: a move in one branch of an `if` counts, moving a variable from outside a loop inside the loop is an error (the second time round it would be empty), and so is passing the same variable twice in one call. Generators and tasks can't be copied either: `let h = g`, passing one to a function and `await t` move them.
 
 **Pointers into a collection.** `let p = &list[0]` points at the item inside the list. Adding or removing items (`push`, `insert`, `remove`, `pop`, `clear`, `m[k] = v` on a map...) can move every item to new memory, so `p` must not be used after that. The compiler warns when it sees this in one function:
 
@@ -648,9 +652,9 @@ print(*p)        // warning: ‘p’ points into ‘xs’, which was changed by 
 
 It can't see every case (the pointer passed to another function, for example), so the rule to follow is: take the pointer again after changing the collection, or keep an index instead.
 
-`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, and `take(p)` to hand a value out of raw memory without copying it.
+`free()` is still there to give memory back early; the automatic cleanup afterwards does nothing. Code that manages raw memory itself (like `List`) uses `destroy(p)` to clean up `*p`, `take(p)` to hand a value out of raw memory without copying it, and `clone(p)` to copy it.
 
-The cost is visible and predictable: one cleanup call where a scope ends, and nothing running in the background.
+The cost is visible and predictable: a copy where you read an owning value, a cleanup call where a scope ends, and nothing running in the background.
 
 ### 3.22 Files and input · [`examples/21_files.cl`](../examples/21_files.cl)
 
