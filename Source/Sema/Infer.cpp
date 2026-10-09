@@ -25,13 +25,16 @@ namespace clear
 			case ASTNodeType::VTableRef:	return std::dynamic_pointer_cast<ASTVTableRef>(node)->PointerTy;
 			case ASTNodeType::Await:		return std::dynamic_pointer_cast<ASTAwait>(node)->ValueType;
 			case ASTNodeType::Yield:		return nullptr;
+			case ASTNodeType::Move:			return std::dynamic_pointer_cast<ASTMove>(node)->ValueType;
+			case ASTNodeType::Destroy:		return nullptr;
 			case ASTNodeType::VariantConstruct: return std::dynamic_pointer_cast<ASTVariantConstruct>(node)->VariantTy;
 			case ASTNodeType::VariantTag:	return std::dynamic_pointer_cast<ASTVariantTag>(node)->TagType;
 			case ASTNodeType::UnionConstruct: return std::dynamic_pointer_cast<ASTUnionConstruct>(node)->UnionTy;
 			case ASTNodeType::VariantField:
 			{
 				auto field = std::dynamic_pointer_cast<ASTVariantField>(node);
-				return field->VariantTy->As<ClassType>()->Cases[field->CaseIndex].Fields[field->FieldIndex].second;
+				auto fieldType = field->VariantTy->As<ClassType>()->Cases[field->CaseIndex].Fields[field->FieldIndex].second;
+				return field->AsAddress ? m_Module->GetTypeRegistry()->GetPointerTo(fieldType) : fieldType;
 			}
 			case ASTNodeType::OptionalUnwrap:
 			case ASTNodeType::OptionalValueOr:

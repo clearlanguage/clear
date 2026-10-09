@@ -38,14 +38,7 @@ class File:
 
     // the next line without its line break, or none at the end of the file
     function read_line(self: *File) -> ?String:
-        let line = String { }
-        let character = fgetc(self.handle)
-        if character < 0:
-            return none
-        while character >= 0 and character != '\n':
-            line.push(character as int8)
-            character = fgetc(self.handle)
-        return line
+        return read_line_from(self.handle)
 
     // everything from here to the end
     function read_all(self: *File) -> String:
@@ -68,6 +61,10 @@ class File:
 
     function flush(self: *File):
         fflush(self.handle)
+
+    // a File closes itself at the end of its scope (close() closes it sooner)
+    operator destruct(self):
+        self.close()
 
     function close(self: *File):
         if self.handle != null:
@@ -120,12 +117,21 @@ function delete_file(path: str) -> bool:
 
 let standard_input: *int8 = null
 
+function read_line_from(handle: *int8) -> ?String:
+    let character = fgetc(handle)
+    if character < 0:
+        return none
+    let line = String { }
+    while character >= 0 and character != '\n':
+        line.push(character as int8)
+        character = fgetc(handle)
+    return line
+
 // a line typed by the user (without the line break), or none when input has ended
 function read_line() -> ?String:
     if standard_input == null:
         standard_input = fdopen(0, "r")
-    let terminal = File(standard_input)
-    return terminal.read_line()
+    return read_line_from(standard_input)     // (a File here would close the terminal when it goes away)
 
 // like Python's input(): shows the prompt, returns the line ("" at the end of input)
 function input(prompt: str) -> String:

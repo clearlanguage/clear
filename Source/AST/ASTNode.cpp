@@ -143,7 +143,18 @@ namespace clear
 			if (llvm::BasicBlock* block = ctx.Builder.GetInsertBlock(); block && block->getTerminator())
 				break;
 
-			child->Codegen(ctx);
+			Symbol result = child->Codegen(ctx);
+
+			// `make_list()` on its own line: the value it made is cleaned up straight away
+			bool fresh = child->GetType() == ASTNodeType::FunctionCall || child->GetType() == ASTNodeType::Construct || child->GetType() == ASTNodeType::StructExpr;
+
+			if (fresh && result.Kind == SymbolKind::Value && result.GetType() && IsOwning(result.GetType()) && result.GetLLVMValue() && 
+				!result.GetLLVMValue()->getType()->isPointerTy())
+			{
+				Symbol slot = CreateAlloca(result.GetType(), ctx);
+				ctx.Builder.CreateStore(result.GetLLVMValue(), slot.GetLLVMValue());
+				EmitDestroy(ctx, result.GetType(), slot.GetLLVMValue());
+			}
 		}
 
 		if (inFunction)
@@ -797,6 +808,15 @@ namespace clear
 
 			if (initializer.Kind != SymbolKind::None)
 				SymbolOps::Store(*Variable, initializer, ctx.Builder, ctx.Module, true);
+
+			// an owning local is cleaned up when its block ends, however it ends
+			if (IsOwning(ResolvedType) && !ctx.Defers->empty())
+			{
+				auto destroy = std::make_shared<ASTDestroy>();
+				destroy->Address = Variable->GetLLVMValue();
+				destroy->ValueType = ResolvedType;
+				ctx.Defers->back().push_back(destroy);
+			}
 		}
 		
 
@@ -865,6 +885,10 @@ namespace clear
 
 		if(m_Type == AssignmentOperatorType::Normal || m_Type == AssignmentOperatorType::Initialize)
 		{
+			// the new value is ready (and its source emptied, if it was moved): now the old one can go
+			if (DestroyOld)
+				EmitDestroy(ctx, storage.GetType()->As<PointerType>()->GetBaseType(), storage.GetLLVMValue());
+
 			SymbolOps::Store(storage, data, ctx.Builder, ctx.Module, true);
 			return Symbol();
 		}
@@ -1108,6 +1132,10 @@ namespace clear
 		ValueRestoreGuard guard3(ctx.ReturnAlloca, returnAlloca);
 		ValueRestoreGuard guard4(ctx.FunctionDeferBase, ctx.Defers->size());
 
+		// parameters taken by value are this function's to clean up: they get a scope of their own
+		ctx.Defers->emplace_back();
+		struct PopFrame { CodegenContext& Ctx; ~PopFrame() { Ctx.Defers->pop_back(); } } popParameters { ctx };
+
 		size_t k = 0;
 		for (const auto& arg : Arguments)
 		{
@@ -1137,7 +1165,10 @@ namespace clear
 		if (CoroutineKind)
 		{
 			if (!builder.GetInsertBlock()->getTerminator())
+			{
+				EmitDefers(ctx, ctx.FunctionDeferBase);
 				builder.CreateBr(returnBlock);
+			}
 
 			functionSymbol.FunctionPtr->insert(functionSymbol.FunctionPtr->end(), returnBlock);
 			builder.SetInsertPoint(returnBlock);
@@ -1152,6 +1183,8 @@ namespace clear
 		// falling off the end (only main may do that with a return type) returns zero
 		if(!builder.GetInsertBlock()->getTerminator())
 		{
+			EmitDefers(ctx, ctx.FunctionDeferBase);
+
 			if (returnAlloca)
 				builder.CreateStore(llvm::Constant::getNullValue(returnAlloca->getAllocatedType()), returnAlloca);
 
@@ -2586,6 +2619,9 @@ namespace clear
 			if (Name == "coro_value")
 				return Symbol::CreateValue(value(ResultType), ResultType);
 
+			if (Name == "coro_value_address")
+				return Symbol::CreateValue(builder.CreateIntrinsic(llvm::Intrinsic::coro_promise, {}, { handle, builder.getInt32(16), builder.getInt1(false) }), ResultType);
+
 			if (Name == "coro_destroy")
 			{
 				llvm::BasicBlock* destroy = llvm::BasicBlock::Create(ctx.Context, "coro.destroy", function);
@@ -2641,6 +2677,9 @@ namespace clear
 				return ResultType ? Symbol::CreateValue(result, ResultType) : Symbol();
 			}
 		}
+
+		if (Name == "take")
+			return Symbol::CreateValue(builder.CreateLoad(ResultType->Get(), args[0], "taken"), ResultType);
 
 		if (Name == "hash_int")
 		{
@@ -2749,9 +2788,17 @@ namespace clear
 	Symbol ASTVariantField::Codegen(CodegenContext& ctx)
 	{
 		Symbol subject = Subject->Codegen(ctx);
-		llvm::Value* payload = LoadVariantPayload(ctx, VariantTy, CaseIndex, subject.GetLLVMValue());
-
 		auto fieldType = VariantTy->As<ClassType>()->Cases[CaseIndex].Fields[FieldIndex].second;
+
+		if (AsAddress)
+		{
+			auto& variantCase = VariantTy->As<ClassType>()->Cases[CaseIndex];
+			llvm::Value* payloadAddress = ctx.Builder.CreateStructGEP(VariantTy->Get(), subject.GetLLVMValue(), 1, "payload");
+			llvm::Value* field = ctx.Builder.CreateStructGEP(variantCase.Payload, payloadAddress, (unsigned)FieldIndex, "case.field");
+			return Symbol::CreateValue(field, ctx.TypeReg->GetPointerTo(fieldType));
+		}
+
+		llvm::Value* payload = LoadVariantPayload(ctx, VariantTy, CaseIndex, subject.GetLLVMValue());
 		return Symbol::CreateValue(ctx.Builder.CreateExtractValue(payload, { (unsigned)FieldIndex }), fieldType);
 	}
 
@@ -2862,12 +2909,102 @@ namespace clear
 		Symbol storage = CreateAlloca(ValueType, ctx);
 		SymbolOps::Store(storage, value, ctx.Builder, ctx.Module, true);
 
+		if (DestroyAtScopeEnd && !ctx.Defers->empty())
+		{
+			auto destroy = std::make_shared<ASTDestroy>();
+			destroy->Address = storage.GetLLVMValue();
+			destroy->ValueType = ValueType;
+			ctx.Defers->back().push_back(destroy);
+		}
+
 		return storage;
 	}
 
 	Symbol ASTConstantValue::Codegen(CodegenContext& ctx)
 	{
 		return Symbol::CreateValue(llvm::ConstantInt::get(ValueType->Get(), Value, /* isSigned = */ true), ValueType);
+	}
+
+	Symbol ASTMove::Codegen(CodegenContext& ctx)
+	{
+		// read the value, then leave the source all zero: its own cleanup becomes a no-op
+		Symbol value = Value->Codegen(ctx);
+		Symbol storage = Storage->Codegen(ctx);
+		auto storedType = storage.GetType()->As<PointerType>()->GetBaseType();
+		ctx.Builder.CreateStore(llvm::Constant::getNullValue(storedType->Get()), storage.GetLLVMValue());
+		return value;
+	}
+
+	Symbol ASTDestroy::Codegen(CodegenContext& ctx)
+	{
+		llvm::Value* address = Address ? Address : Pointer->Codegen(ctx).GetLLVMValue();
+		EmitDestroy(ctx, ValueType, address);
+		return Symbol();
+	}
+
+	void EmitDestroy(CodegenContext& ctx, const std::shared_ptr<Type>& type, llvm::Value* address)
+	{
+		if (!IsOwning(type))
+			return;
+
+		auto& builder = ctx.Builder;
+		llvm::Function* function = builder.GetInsertBlock()->getParent();
+
+		if (auto array = std::dynamic_pointer_cast<ArrayType>(type))
+		{
+			for (size_t i = 0; i < array->GetArraySize(); i++)
+				EmitDestroy(ctx, array->GetBaseType(), builder.CreateConstInBoundsGEP2_64(array->Get(), address, 0, i));
+			return;
+		}
+
+		auto classType = type->As<ClassType>();
+
+		// variants and optionals: clean up the case they hold
+		if (classType->IsVariant)
+		{
+			llvm::BasicBlock* done = llvm::BasicBlock::Create(ctx.Context, "destroy.done", function);
+			llvm::Value* tag = builder.CreateLoad(builder.getInt32Ty(), builder.CreateStructGEP(classType->Get(), address, 0), "tag");
+			llvm::SwitchInst* branch = builder.CreateSwitch(tag, done);
+
+			for (size_t i = 0; i < classType->Cases.size(); i++)
+			{
+				auto& variantCase = classType->Cases[i];
+				bool owns = std::any_of(variantCase.Fields.begin(), variantCase.Fields.end(), [](auto& field) { return IsOwning(field.second); });
+
+				if (!owns)
+					continue;
+
+				llvm::BasicBlock* block = llvm::BasicBlock::Create(ctx.Context, "destroy.case", function);
+				branch->addCase(builder.getInt32((uint32_t)i), block);
+				builder.SetInsertPoint(block);
+
+				llvm::Value* payload = builder.CreateStructGEP(classType->Get(), address, 1);
+
+				for (size_t f = 0; f < variantCase.Fields.size(); f++)
+					EmitDestroy(ctx, variantCase.Fields[f].second, builder.CreateStructGEP(variantCase.Payload, payload, (unsigned)f));
+
+				builder.CreateBr(done);
+			}
+
+			builder.SetInsertPoint(done);
+			return;
+		}
+
+		// operator destruct first, then the fields that own something (last field first)
+		if (auto destruct = classType->MemberFunctions.find("__destruct__"); destruct != classType->MemberFunctions.end())
+		{
+			llvm::Function* callee = GetFunctionHere(destruct->second, ctx);
+			builder.CreateCall(callee, { address });
+		}
+
+		auto& members = classType->GetMemberValues();
+		std::vector<std::pair<std::string, std::shared_ptr<Type>>> fields(members.begin(), members.end());
+
+		for (size_t i = fields.size(); i-- > 0; )
+		{
+			if (IsOwning(fields[i].second))
+				EmitDestroy(ctx, fields[i].second, builder.CreateStructGEP(classType->Get(), address, (unsigned)i));
+		}
 	}
 
 	Symbol ASTDefer::Codegen(CodegenContext& ctx)

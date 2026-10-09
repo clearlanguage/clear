@@ -68,7 +68,7 @@ class String:
     function append(self: *String, text: str):
         self.append_bytes(text, strlen(text) as int64)
 
-    function append_string(self: *String, other: String):
+    function append_string(self: *String, other: *String):
         self.append_bytes(other.data, other.length)
 
     function push(self: *String, character: int8):
@@ -110,20 +110,20 @@ class String:
         assert index >= 0 and index < self.length, "String index out of range"
         self.data[index] = character
 
-    operator equals(self: *String, other: String) -> bool:
+    operator equals(self: *String, other: *String) -> bool:
         return self.length == other.length and strcmp(self.text(), other.text()) == 0
 
-    operator not_equals(self: *String, other: String) -> bool:
+    operator not_equals(self: *String, other: *String) -> bool:
         return self.length != other.length or strcmp(self.text(), other.text()) != 0
 
-    operator less(self: *String, other: String) -> bool:
+    operator less(self: *String, other: *String) -> bool:
         return strcmp(self.text(), other.text()) < 0
 
     operator hash(self: *String) -> uint64:
         return hash(self.text())
 
     // a new String holding both (allocates)
-    operator add(self: *String, other: String) -> String:
+    operator add(self: *String, other: *String) -> String:
         let result = self.copy()
         result.append_string(other)
         return result
@@ -195,6 +195,10 @@ class String:
         if self.data != null:
             self.data[0] = 0
 
+    operator destruct(self):
+        self.free()
+
+    // gives the memory back now (it is also given back automatically at the end of the string's scope)
     function free(self: *String):
         if self.data != null:
             release(self.data)

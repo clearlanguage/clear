@@ -95,6 +95,8 @@ namespace clear
 		DiagnosticCode_UseOperatorSyntax,
 		DiagnosticCode_VirtualNotNeeded,
 		DiagnosticCode_NotInVariant,
+		DiagnosticCode_CannotCopyOwning,
+		DiagnosticCode_OwningOperatorArgument,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -190,6 +192,8 @@ namespace clear
 		"Special methods are written with ‘operator’.",
 		"‘virtual’ is not needed.",
 		"This type is not one of the variant's types.",
+		"This value owns memory, so it is not copied implicitly.",
+		"An operator cannot take an owning value as a copy.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -284,5 +288,7 @@ namespace clear
 		"‘{}’.",
 		"Methods of a class that inherits or is inherited from always run the object's own version. Remove ‘{}’.",
 		"‘{}.",
+		"Two owners of one ‘{}’ would free it twice. Make a separate copy with .copy(), or use it in place (a pointer, or the element itself). Only a local variable is moved, and it is left empty.",
+		"Declare the parameter as a pointer, e.g. ‘other: *{}’, so the operand is not moved or copied.",
 	};
 }

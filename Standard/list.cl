@@ -24,7 +24,7 @@ class List[T]:
     function pop(self: *List[T]) -> T:
         assert self.length > 0, "pop from an empty List"
         self.length -= 1
-        return *(self.data + self.length)
+        return take(self.data + self.length)          // the list hands the item over
 
     // list[i] is the element itself: read it, assign to it (list[i] = v), or change it (list[i].count += 1).
     // Indices are checked like array indices (the checks disappear with --no-checks / -O3)
@@ -37,12 +37,14 @@ class List[T]:
 
     function last(self: *List[T]) -> T:
         assert self.length > 0, "last of an empty List"
-        return *(self.data + self.length - 1)
+        return self[self.length - 1]
 
     function is_empty(self: *List[T]) -> bool:
         return self.length == 0
 
     function clear(self: *List[T]):
+        for i in 0..self.length:
+            destroy(self.data + i)
         self.length = 0
 
     function contains(self: *List[T], value: T) -> bool:
@@ -51,9 +53,13 @@ class List[T]:
                 return true
         return false
 
-    function free(self: *List[T]):
+    // gives the memory back now (it is also given back automatically at the end of the list's scope)
+    function free(self):
+        self.clear()
         if self.data != null:
             release(self.data)
         self.data = null
-        self.length = 0
         self.capacity = 0
+
+    operator destruct(self):
+        self.free()
