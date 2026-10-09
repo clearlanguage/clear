@@ -436,3 +436,7 @@ Advice  = "The problem comes from how ‘{}’ is used here."
 [NotAPointer]
 Message = "Only a pointer can be dereferenced."
 Advice  = "‘{}’, not a pointer, so ‘*’ cannot read through it. Use the value as it is, or take its address with ‘&’."
+
+[IntegerLiteralTooLarge]
+Message = "Integer literal is too large."
+Advice  = "‘{}’ does not fit in 64 bits (the largest integer is 18446744073709551615, 0xFFFF_FFFF_FFFF_FFFF). Write it as a float, with a ‘.’ or an exponent, if an approximate value is enough."
