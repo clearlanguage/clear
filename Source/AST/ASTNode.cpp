@@ -1260,7 +1260,7 @@ namespace clear
 	}
 
 	// the function behind a symbol, generated on first use and declared in this module if it lives in another
-	static llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
+	llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx)
 	{
 		FunctionSymbol& functionSymbol = symbol->GetFunctionSymbol();
 

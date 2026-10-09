@@ -1175,6 +1175,7 @@ namespace clear
 
 	// branches to a panic when `ok` is false, code generation continues on the success path
 	void EmitCheck(CodegenContext& ctx, llvm::Value* ok, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
+	llvm::Function* GetFunctionHere(std::shared_ptr<Symbol> symbol, CodegenContext& ctx); // the function, declared in this module
 
 	// stops the program: prints "panic: <message>" with the source location to stderr and aborts
 	void EmitPanic(CodegenContext& ctx, const std::string& message, const Token& location, llvm::Value* detail = nullptr);
