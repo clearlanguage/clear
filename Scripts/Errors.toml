@@ -222,8 +222,8 @@ Message = "Switch value must be an integer or an enum."
 Advice  = "‘{}’ cannot be switched on. Use if/elseif for other types."
 
 [MissingOperatorOverload]
-Message = "Operator is not defined for this class."
-Advice  = "‘{}’. Define the dunder method on the class to support the operator."
+Message = "This operator is not defined for this type."
+Advice  = "{}."
 
 [BadOperatorSignature]
 Message = "Operator method has the wrong number of parameters."
@@ -428,3 +428,7 @@ Advice  = "‘{}!’ runs statements; use it on a line of its own. A macro has a
 [NoConversion]
 Message = "These types do not convert to each other."
 Advice  = "{}."
+
+[UsedHere]
+Message = "The standard library code above is used from this line of the program."
+Advice  = "The problem comes from how ‘{}’ is used here."

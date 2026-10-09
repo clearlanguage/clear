@@ -203,7 +203,11 @@ namespace clear
 
 		// moves out of locals, followed through the function body so an emptied variable is not used again
 		using MovedSet = std::unordered_map<Symbol*, Token>; // variable -> where it was moved
-		struct BranchMoves { MovedSet Start; MovedSet Out; bool AnyLive = false; };
+		struct BranchMoves
+		{
+			MovedSet Start; MovedSet Out; bool AnyLive = false;
+			std::unordered_map<Symbol*, Token> StaleStart, StaleOut; // pointers made stale, per branch the same way
+		};
 		struct LoopMoves { size_t FirstLocal = 0; MovedSet AtBreak; MovedSet AtContinue; size_t FirstCandidate = 0; };
 
 		MovedSet m_Moved;
@@ -275,7 +279,7 @@ namespace clear
 		void EndLoop(const MovedSet& beforeLoop);
 
 		// let p = &xs[0] ... xs.push(v) ... p: the push may have moved the items, p would point at freed memory
-		struct ElementPointer { Symbol* Container = nullptr; std::string ContainerName; };
+		struct ElementPointer { Symbol* Container = nullptr; std::string ContainerName; std::string ContainerPath; };
 		std::unordered_map<Symbol*, ElementPointer> m_ElementPointers;
 		std::unordered_map<Symbol*, Token> m_StalePointers; // pointer -> the call that changed its container
 		void NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl);

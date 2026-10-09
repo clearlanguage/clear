@@ -463,7 +463,16 @@ namespace clear
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTNodeBase> ast, SemaContext context)
     {
 		if (ast)
+		{
 			NoteProgress("checking", ast->Location.GetSourceFile(), ast->Location.LineNumber, ast->Location.ColumnNumber);
+
+			// remember the program's own line (not the standard library's), for notes on errors inside the library
+			static const std::string standard = std::filesystem::weakly_canonical(std::filesystem::path(CLEAR_STANDARD_DIR)).string();
+			const auto& file = ast->Location.GetSourceFile();
+
+			if (!file.empty() && !file.string().starts_with(standard))
+				m_DiagBuilder.SetUserLine(&ast->Location);
+		}
 
 		// "only read" applies to x and x.field.field, not to anything inside a call or another expression
 		bool chain = ast && (ast->GetType() == ASTNodeType::Variable || 
@@ -735,9 +744,11 @@ namespace clear
 		bool outerUnreachable = std::exchange(m_Unreachable, false);
 		auto outerLoops = std::exchange(m_LoopMoves, {});
 		auto outerCopies = std::exchange(m_Copies, {});
+		size_t errorsBefore = m_DiagBuilder.ErrorCount();
 
 		Visit(func->CodeBlock, context);	
 		m_ScopeStack.pop_back();
+		bool bodyHadErrors = m_DiagBuilder.ErrorCount() != errorsBefore;
 
 		FinishCopies();
 		m_Copies = std::move(outerCopies);
@@ -751,7 +762,8 @@ namespace clear
 												: func->ReturnTypeVal && func->ReturnTypeVal->Get() && !func->ReturnTypeVal->Get()->isVoidTy();
 		bool isMain = func->GetNameToken().GetData() == "main" && !context.TypeHint;
 
-		if (returnsValue && !isMain && !AlwaysReturns(func->CodeBlock))
+		// (not after an error in the body: a statement that failed may well have been the return)
+		if (returnsValue && !isMain && !bodyHadErrors && !AlwaysReturns(func->CodeBlock))
 			Report(DiagnosticCode_MissingReturn, func->GetNameToken());
 	}
 
@@ -1108,6 +1120,16 @@ namespace clear
 			if (!LookupSymbol("print").first)
 			{
 				funcCall->IsBuiltinPrint = true;
+
+				// print("a", end = "") is not Python's print: say so instead of ignoring it
+				if (!funcCall->KeywordArguments.empty())
+				{
+					auto& [name, value] = funcCall->KeywordArguments[0];
+					Token where = name;
+					where.SetData(std::format("{}’ (print takes values only: it puts spaces between them and a line break after", name.GetData()));
+					m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_UnknownKeyword, name.GetData().size());
+					return nullptr;
+				}
 
 				for (auto& arg : funcCall->Arguments)
 				{
@@ -1686,9 +1708,13 @@ namespace clear
 
 		if (function->IsVariadic ? given < expected : given != expected)
 		{
+			// P(...): counted as written, without the self that init gets
+			size_t shown = funcCall->IsConstructor && expected > 0 ? expected - 1 : expected;
+			size_t passed = funcCall->IsConstructor && given > 0 ? given - 1 : given;
+
 			Token where = location;
 			where.SetData(std::format("{}’ expects {}{} argument{}, but {} {} given", where.GetData(), function->IsVariadic ? "at least " : "", 
-									  expected, expected == 1 ? "" : "s", given, given == 1 ? "was" : "were"));
+									  shown, shown == 1 ? "" : "s", passed, passed == 1 ? "was" : "were"));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, where, DiagnosticCode_WrongArgumentCount, std::max<size_t>(location.GetData().size(), 1));
 			return nullptr;
 		}
@@ -5324,6 +5350,14 @@ namespace clear
 		auto classType = target->Variable->GetType()->As<ClassType>();
 		auto init = classType->MemberFunctions.find("__init__");
 
+		// Outcome(5) with `variant Outcome: int, String`: the value, put in the variant
+		if (classType->IsTypeVariant && funcCall->Arguments.size() == 1 && funcCall->KeywordArguments.empty())
+		{
+			SemaContext valueContext { .ValueReq = ValueRequired::RValue, .GlobalState = false };
+			auto value = Visit(funcCall->Arguments[0], valueContext);
+			return value ? Coerce(value, classType) : nullptr;
+		}
+
 		// Number(f = 1.5): a union is built with at most one field set
 		if (classType->IsUnion)
 		{
@@ -5413,11 +5447,13 @@ namespace clear
 		construct->Initial = CompleteStructValues(initial);
 		construct->Self = std::make_shared<ASTSlot>(m_Module->GetTypeRegistry()->GetPointerTo(classType));
 
-		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, "__init__", target->GetName().GetSourceFile(), target->GetName().LineNumber, target->GetName().ColumnNumber));
+		// named after the class in messages: P(...), not __init__
+		auto callee = std::make_shared<ASTVariable>(Token(TokenType::Identifier, target->GetName().GetData(), target->GetName().GetSourceFile(), target->GetName().LineNumber, target->GetName().ColumnNumber));
 		callee->Variable = init->second;
 
 		construct->InitCall = std::make_shared<ASTFunctionCall>();
 		construct->InitCall->Location = funcCall->Location;
+		construct->InitCall->IsConstructor = true;
 		construct->InitCall->Callee = callee;
 		construct->InitCall->Arguments.push_back(construct->Self);
 		construct->InitCall->Arguments.append(funcCall->Arguments.begin(), funcCall->Arguments.end());
@@ -7171,6 +7207,77 @@ namespace clear
 		return nullptr;
 	}
 
+	static std::string PathOf(const std::shared_ptr<ASTNodeBase>& node)
+	{
+		// c.sections, box.items.data: the chain of names an expression reaches its object through ("" if none)
+		if (!node)
+			return "";
+
+		switch (node->GetType())
+		{
+			case ASTNodeType::Variable: return std::dynamic_pointer_cast<ASTVariable>(node)->GetName().GetData();
+			case ASTNodeType::Load:     return PathOf(std::dynamic_pointer_cast<ASTLoad>(node)->Operand);
+			case ASTNodeType::Once:     return PathOf(std::dynamic_pointer_cast<ASTOnce>(node)->Operand);
+			case ASTNodeType::UnaryExpression:
+			{
+				auto unary = std::dynamic_pointer_cast<ASTUnaryExpression>(node);
+				return unary->GetOperatorType() == OperatorType::Address || unary->GetOperatorType() == OperatorType::Dereference ? PathOf(unary->Operand) : "";
+			}
+			case ASTNodeType::BinaryExpression:
+			{
+				auto binary = std::dynamic_pointer_cast<ASTBinaryExpression>(node);
+				auto field = std::dynamic_pointer_cast<ASTVariable>(binary->RightSide);
+
+				if (binary->GetExpression() != OperatorType::Dot || !field)
+					return "";
+
+				auto left = PathOf(binary->LeftSide);
+				return left.empty() ? "" : left + "." + field->GetName().GetData();
+			}
+			default:
+				return "";
+		}
+	}
+
+	static std::string ContainerPathOf(std::shared_ptr<ASTNodeBase> node)
+	{
+		// &c.sections[0] -> "c.sections": the collection an element pointer (or slice) points into
+		while (node)
+		{
+			switch (node->GetType())
+			{
+				case ASTNodeType::FunctionCall:
+				{
+					auto call = std::dynamic_pointer_cast<ASTFunctionCall>(node);
+					return call->Arguments.empty() ? "" : PathOf(call->Arguments[0]);
+				}
+				case ASTNodeType::Intrinsic:
+				{
+					auto intrinsic = std::dynamic_pointer_cast<ASTIntrinsic>(node);
+					return intrinsic->Arguments.empty() ? "" : PathOf(intrinsic->Arguments[0]);
+				}
+				case ASTNodeType::Subscript:
+					return PathOf(std::dynamic_pointer_cast<ASTSubscript>(node)->Target);
+				case ASTNodeType::Load:
+					node = std::dynamic_pointer_cast<ASTLoad>(node)->Operand;
+					break;
+				case ASTNodeType::Once:
+					node = std::dynamic_pointer_cast<ASTOnce>(node)->Operand;
+					break;
+				case ASTNodeType::UnaryExpression:
+					node = std::dynamic_pointer_cast<ASTUnaryExpression>(node)->Operand;
+					break;
+				case ASTNodeType::BinaryExpression:
+					node = std::dynamic_pointer_cast<ASTBinaryExpression>(node)->LeftSide;
+					break;
+				default:
+					return "";
+			}
+		}
+
+		return "";
+	}
+
 	void Sema::NoteElementPointer(const std::shared_ptr<ASTVariableDeclaration>& decl)
 	{
 		bool view = decl->ResolvedType && std::dynamic_pointer_cast<SliceType>(decl->ResolvedType);
@@ -7193,7 +7300,7 @@ namespace clear
 		if (!type || !type->IsClass())
 			return;
 
-		m_ElementPointers[decl->Variable.get()] = ElementPointer { root->Variable.get(), root->GetName().GetData() };
+		m_ElementPointers[decl->Variable.get()] = ElementPointer { root->Variable.get(), root->GetName().GetData(), ContainerPathOf(decl->Initializer) };
 	}
 
 	void Sema::NoteContainerChange(const std::shared_ptr<ASTNodeBase>& container, const Token& change)
@@ -7209,9 +7316,21 @@ namespace clear
 		auto [entry, scope] = LookupSymbol(root->GetName().GetData());
 		Symbol* symbol = root->Variable ? root->Variable.get() : (entry ? entry->Symbol.get() : nullptr);
 
+		// c.problems.push(x) does not move c.sections's items: the paths must overlap (one is the other or inside it)
+		std::string changed = PathOf(container);
+		auto overlaps = [](const std::string& a, const std::string& b)
+		{
+			if (a.empty() || b.empty() || a == b)
+				return true;
+
+			const std::string& shorter = a.size() < b.size() ? a : b;
+			const std::string& longer = a.size() < b.size() ? b : a;
+			return longer.starts_with(shorter) && longer[shorter.size()] == '.';
+		};
+
 		for (auto& [pointer, element] : m_ElementPointers)
 		{
-			if (element.Container == symbol && !m_StalePointers.contains(pointer))
+			if (element.Container == symbol && overlaps(element.ContainerPath, changed) && !m_StalePointers.contains(pointer))
 				m_StalePointers[pointer] = change;
 		}
 	}
@@ -7374,21 +7493,26 @@ namespace clear
 	// if/else and switch: each branch starts from the same state, afterwards a variable is moved if any branch that carries on moved it
 	Sema::BranchMoves Sema::BeginBranches()
 	{
-		return BranchMoves { m_Moved, {}, false };
+		BranchMoves branches { m_Moved, {}, false };
+		branches.StaleStart = m_StalePointers;
+		return branches;
 	}
 
 	void Sema::BeginBranch(BranchMoves& branches)
 	{
 		m_Moved = branches.Start;
+		m_StalePointers = branches.StaleStart;
 		m_Unreachable = false;
 	}
 
 	void Sema::EndBranch(BranchMoves& branches)
 	{
+		// a branch that ends in return/break/continue does not reach what follows: what it changed does not count there
 		if (m_Unreachable)
 			return;
 
 		branches.Out.insert(m_Moved.begin(), m_Moved.end());
+		branches.StaleOut.insert(m_StalePointers.begin(), m_StalePointers.end());
 		branches.AnyLive = true;
 	}
 
@@ -7397,10 +7521,12 @@ namespace clear
 		if (fallsThrough)
 		{
 			branches.Out.insert(branches.Start.begin(), branches.Start.end());
+			branches.StaleOut.insert(branches.StaleStart.begin(), branches.StaleStart.end());
 			branches.AnyLive = true;
 		}
 
 		m_Moved = std::move(branches.Out);
+		m_StalePointers = std::move(branches.StaleOut);
 		m_Unreachable = !branches.AnyLive;
 	}
 
@@ -7496,6 +7622,22 @@ namespace clear
 		}
 	}
 
+	static std::string OperatorWord(const char* dunder)
+	{
+		// __add__ -> add: how operators are written in Clear
+		static const std::unordered_map<std::string, std::string> words = {
+			{ "__add__", "add" }, { "__sub__", "subtract" }, { "__mul__", "multiply" }, { "__div__", "divide" }, { "__mod__", "modulo" },
+			{ "__pow__", "power" }, { "__eq__", "equals" }, { "__ne__", "not_equals" }, { "__lt__", "less" }, { "__le__", "less_equal" },
+			{ "__gt__", "greater" }, { "__ge__", "greater_equal" },
+		};
+
+		if (!dunder)
+			return "?";
+
+		auto found = words.find(dunder);
+		return found != words.end() ? found->second : std::string(dunder);
+	}
+
 	static const char* GetOperatorSpelling(OperatorType op)
 	{
 		switch (op)
@@ -7559,7 +7701,16 @@ namespace clear
 
 		if (!method)
 		{
-			location.SetData(std::format("{}’ has no {} method for ‘{}", classType->GetHash(), name ? name : "operator", GetOperatorSpelling(expr->GetExpression())));
+			// as written in Clear (operator add), and for an optional: take the value out first
+			std::string word = OperatorWord(name);
+
+			if (classType->IsOptional)
+				location.SetData(std::format("‘{}’ is optional, so it may hold no value: use its value with `x ?? fallback`, `if x:` or `.value` first", 
+											 GetDisplayName(classType)));
+			else
+				location.SetData(std::format("‘{}’ has no ‘operator {}’ for ‘{}’. Define it in the class: operator {}(self, other: ...)", 
+											 GetDisplayName(classType), word, GetOperatorSpelling(expr->GetExpression()), word));
+
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_MissingOperatorOverload, 1);
 			return std::shared_ptr<ASTNodeBase>(nullptr);
 		}
@@ -7569,7 +7720,7 @@ namespace clear
 
 		if (function->Arguments.size() != 2)
 		{
-			location.SetData(std::format("{}.{}", classType->GetHash(), negate ? "__eq__" : name));
+			location.SetData(std::format("operator {}’ of ‘{}", OperatorWord(negate ? "__eq__" : name), GetDisplayName(classType)));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_BadOperatorSignature, 1);
 			return std::shared_ptr<ASTNodeBase>(nullptr);
 		}

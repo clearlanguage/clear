@@ -33,6 +33,7 @@ namespace clear
         if (severity == Severity::High)
         {
             m_IsFatal = true;
+            m_ErrorCount++;
         }
 
         // the parser can report the same problem several times while recovering, keep the first one
@@ -43,6 +44,26 @@ namespace clear
         }
 
         m_ReportedErrors.push_back(diag);
+
+        // an error in the standard library (List, String...) is caused by how the program uses it: say where
+        static const std::string standard = std::filesystem::weakly_canonical(std::filesystem::path(CLEAR_STANDARD_DIR)).string();
+
+        if (severity == Severity::High && m_UserLine && !m_UserLine->GetSourceFile().empty() && diag.File.string().starts_with(standard))
+        {
+            Diagnostic note;
+            note.Code = DiagnosticCode_UsedHere;
+            note.DiagSeverity = Severity::None;
+            note.DiagStage = stage;
+            note.File = m_UserLine->GetSourceFile();
+            note.Line = m_UserLine->LineNumber;
+            note.Column = m_UserLine->ColumnNumber;
+            note.Message = g_DiagnosticMessages[DiagnosticCode_UsedHere];
+            std::string shown = m_UserLine->GetData().empty() ? std::string("here") : m_UserLine->GetData();
+            note.Advice = std::vformat(g_DiagnosticAdvices[DiagnosticCode_UsedHere], std::make_format_args(shown));
+            note.SourceLine = GetSourceLine(note.File, note.Line);
+            note.ArrowsWidth = std::max<size_t>(m_UserLine->GetData().size(), 1);
+            m_ReportedErrors.push_back(note);
+        }
     }
 
     void DiagnosticsBuilder::Dump(std::FILE* output)
