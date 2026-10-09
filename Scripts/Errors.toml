@@ -464,3 +464,7 @@ Advice  = "‘{}’ doesn't return a value. Call it on a line of its own, and re
 [OptionalMember]
 Message = "This value is optional, so its members can't be used directly."
 Advice  = "‘{}’. Use ?. to reach it only when there is a value (x?.name, a?.b?.c), or check first (if x: ...)."
+
+[SignedUnsignedMix]
+Message = "A signed and an unsigned integer are compared (or divided)."
+Advice  = "In ‘{}’ the signed value is treated as unsigned, so a negative number becomes a huge one (-1 > 5 as uint32 is true). Convert one side with ‘as’ to say which you mean."

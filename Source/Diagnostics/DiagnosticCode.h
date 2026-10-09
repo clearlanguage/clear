@@ -120,6 +120,7 @@ namespace clear
 		DiagnosticCode_GenericEnum,
 		DiagnosticCode_NoValue,
 		DiagnosticCode_OptionalMember,
+		DiagnosticCode_SignedUnsignedMix,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -240,6 +241,7 @@ namespace clear
 		"An enum cannot have type parameters.",
 		"This call returns nothing, so there is no value to store.",
 		"This value is optional, so its members can't be used directly.",
+		"A signed and an unsigned integer are compared (or divided).",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -359,5 +361,6 @@ namespace clear
 		"‘{}[...]’: generic enums aren't supported. Write the enum for the type you need (enum IntResult: Ok(value: int), Err), or use a generic class, e.g. class Result[T] with a field value: ?T.",
 		"‘{}’ doesn't return a value. Call it on a line of its own, and read what you need before or after it (e.g. let r = xs[0] before xs.remove(0)).",
 		"‘{}’. Use ?. to reach it only when there is a value (x?.name, a?.b?.c), or check first (if x: ...).",
+		"In ‘{}’ the signed value is treated as unsigned, so a negative number becomes a huge one (-1 > 5 as uint32 is true). Convert one side with ‘as’ to say which you mean.",
 	};
 }

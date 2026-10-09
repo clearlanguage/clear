@@ -5204,6 +5204,10 @@ namespace clear
 		if (toText && (from->IsIntegral() || from->IsFloatingPoint()) && !from->IsEnum())
 			return std::format("A {} is not text: use from_int(x) or from_float(x) to make a String of it", fromName);
 
+		// m[a] with a: str on a Map[String, V], f(a) taking a String...
+		if (to->GetHash() == "String" && from->GetHash() == "str")
+			return "A String is expected here: write String(x) to make one from a str (it allocates, so it is written out), e.g. m[String(key)] or String(key) in m";
+
 		if (toText && from->IsEnum())
 			return std::format("A {} is not text: switch over it and give each case its text", fromName);
 
@@ -8670,6 +8674,25 @@ namespace clear
 			Token location = expr->Location;
 			location.SetData(std::format("{} {} {}", GetDisplayName(lhs), GetOperatorSpelling(expr->GetExpression()), GetDisplayName(rhs)));
 			m_DiagBuilder.Report(Stage::CodeGeneration, Severity::High, location, DiagnosticCode_InvalidOperands, 1);
+		}
+
+		// u > i with u: uint32 and i: int32: i is compared as unsigned, so -1 is bigger than everything (like -Wsign-compare).
+		// Only when the unsigned type wins (the signed side is not wider), and not for a constant that is >= 0 (u > 0)
+		bool signSensitive = comparison || expr->GetExpression() == OperatorType::Div || expr->GetExpression() == OperatorType::Mod;
+
+		if (valid && signSensitive && isInteger(lhs) && isInteger(rhs) && lhs->IsSigned() != rhs->IsSigned() &&
+			!IsStandardLibraryFile(expr->Location.GetSourceFile()))
+		{
+			auto& signedSide = lhs->IsSigned() ? expr->LeftSide : expr->RightSide;
+			auto signedType = lhs->IsSigned() ? lhs : rhs, unsignedType = lhs->IsSigned() ? rhs : lhs;
+			auto constant = EvaluateInteger(signedSide);
+
+			if (signedType->Get()->getIntegerBitWidth() <= unsignedType->Get()->getIntegerBitWidth() && !(constant && *constant >= 0))
+			{
+				Token location = expr->Location.GetSourceFile().empty() ? GetNodeLocation(expr->LeftSide) : expr->Location;
+				location.SetData(std::format("{} {} {}", GetDisplayName(lhs), GetOperatorSpelling(expr->GetExpression()), GetDisplayName(rhs)));
+				Warn(DiagnosticCode_SignedUnsignedMix, location, 1);
+			}
 		}
 
 		return valid;

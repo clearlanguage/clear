@@ -219,7 +219,7 @@ A pointer to an array is indexed like the array: with `a: *[4; int]`, `a[i] = 3`
 Implicit conversions only happen when no information can be lost. Everything else needs `as`; this rule exists so that silent precision bugs can't happen.
 
 - Changing between signed and unsigned of the same size (`int32` and `uint32`) needs `as`, because the value can change meaning.
-- When an unsigned and a signed value of the same size meet in arithmetic, the result is unsigned, as in C. A literal takes the type of the other side when it fits, so `x * 6364136223846793005` works with a `uint64` x.
+- When an unsigned and a signed value of the same size meet in arithmetic, the result is unsigned, as in C. A literal takes the type of the other side when it fits, so `x * 6364136223846793005` works with a `uint64` x. Comparing (or dividing) such a mix gives a warning, because a negative value then counts as a huge one: with `u: uint32`, `u > i` is false for `i = -1`. A constant that is 0 or more (`u > 0`) and a wider signed side (`int64` against `uint32`) don't warn.
 - `T(x)` is the same as `x as T` for number types: `int64(3)`, or `T(0)` inside a generic.
 - An integer literal must fit in 64 bits (`18446744073709551615`, `0xFFFF_FFFF_FFFF_FFFF`); a bigger one is a compile error. Write it with a `.` or an exponent (`1e20`) to get a float.
 - `x << n` and `x >> n` keep the type of `x`, and `>>` on a signed `x` keeps the sign. `n` must be from 0 to the number of bits minus 1: a constant outside that is a compile error, and with checks on (see 3.18) a computed one stops the program. With checks off only the low bits of `n` count (`n % 32` for an int32), the same at every `-O` level.
