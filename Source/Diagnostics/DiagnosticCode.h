@@ -112,6 +112,7 @@ namespace clear
 		DiagnosticCode_MacroHasNoValue,
 		DiagnosticCode_NoConversion,
 		DiagnosticCode_UsedHere,
+		DiagnosticCode_AmbiguousImport,
 		Diagnostic_Count
 	};
 	inline const char* g_DiagnosticMessages[] = {
@@ -224,6 +225,7 @@ namespace clear
 		"This macro is a list of statements, so it has no value.",
 		"These types do not convert to each other.",
 		"The standard library code above is used from this line of the program.",
+		"This name is defined by more than one imported file.",
 	};
 	inline const char* g_DiagnosticAdvices[] = {
 		"The issue occurred at {}. Please report this if unexpected.",
@@ -335,5 +337,6 @@ namespace clear
 		"‘{}!’ runs statements; use it on a line of its own. A macro has a value when its body is one expression (macro double(x): x * 2).",
 		"{}.",
 		"The problem comes from how ‘{}’ is used here.",
+		"‘{}’. Say which one: import one of them with a name (import \"mb\" as b, then b.name), or define it in this file.",
 	};
 }

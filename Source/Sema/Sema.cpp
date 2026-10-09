@@ -367,6 +367,23 @@ namespace clear
 
 	std::shared_ptr<ASTNodeBase> Sema::Visit(std::shared_ptr<ASTVariable> variable, SemaContext context)
 	{
+		// helper() when both `import "ma"` and `import "mb"` define one (a definition in this file would win)
+		if (auto ambiguous = m_AmbiguousImports.find(variable->GetName().GetData()); ambiguous != m_AmbiguousImports.end())
+		{
+			bool definedHere = false;
+
+			for (size_t i = 1; i < m_ScopeStack.size() && !definedHere; i++)
+				definedHere = m_ScopeStack[i].Get(ambiguous->first).has_value();
+
+			if (!definedHere)
+			{
+				Token where = variable->GetName();
+				where.SetData(std::format("{}’ is defined by both ‘{}’ and ‘{}", ambiguous->first, ambiguous->second.first, ambiguous->second.second));
+				Report(DiagnosticCode_AmbiguousImport, where, variable->GetName().GetData().size());
+				return nullptr;
+			}
+		}
+
 		if (variable->Variable)
 			return variable;
 
@@ -2878,7 +2895,19 @@ namespace clear
 			// imported globals are variables like local ones: reading them loads the value
 			// the outermost scope holds imports, so a file's own definitions shadow imported names (like Python)
 			SymbolEntryType entryType = exposedSymbol->Kind == SymbolKind::Value ? SymbolEntryType::Variable : SymbolEntryType::None;
-			m_ScopeStack.front().Insert(symbolName, entryType, exposedSymbol);
+			std::string from = importExpr->Filepath.filename().string();
+
+			if (m_ScopeStack.front().Insert(symbolName, entryType, exposedSymbol))
+			{
+				m_ImportedFrom[symbolName] = from;
+				continue;
+			}
+
+			// two imports define the same name: using it without saying which is an error (see Visit(ASTVariable))
+			auto existing = m_ScopeStack.front().Get(symbolName);
+
+			if (existing && existing->Symbol != exposedSymbol && m_ImportedFrom.contains(symbolName) && m_ImportedFrom[symbolName] != from)
+				m_AmbiguousImports.try_emplace(symbolName, m_ImportedFrom[symbolName], from);
 		}
 		
 		return importExpr;

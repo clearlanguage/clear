@@ -432,3 +432,7 @@ Advice  = "{}."
 [UsedHere]
 Message = "The standard library code above is used from this line of the program."
 Advice  = "The problem comes from how ‘{}’ is used here."
+
+[AmbiguousImport]
+Message = "This name is defined by more than one imported file."
+Advice  = "‘{}’. Say which one: import one of them with a name (import \"mb\" as b, then b.name), or define it in this file."

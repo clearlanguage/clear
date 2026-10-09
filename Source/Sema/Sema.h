@@ -194,6 +194,8 @@ namespace clear
 		std::optional<int64_t> KnownConstant(Symbol* symbol, std::shared_ptr<Type>* type = nullptr); // also the consts of imported files (type: theirs)
 		std::unordered_set<Symbol*> m_ConstSymbols;
 		std::unordered_set<std::string> m_FailedDeclarations;
+		std::unordered_map<std::string, std::string> m_ImportedFrom; // a name brought in by a plain import: its file
+		std::unordered_map<std::string, std::pair<std::string, std::string>> m_AmbiguousImports; // ...defined by two of them
 		std::shared_ptr<Module> m_LookupModule; // the home file of a generic being instantiated from another file
 		static inline std::unordered_map<std::string, std::shared_ptr<Symbol>> m_GenericInstances; // shared: List[int] is one type in every file
 		std::unordered_map<ClassType*, std::shared_ptr<ASTClass>> m_ClassNodes; // so a base class's body can be declared first

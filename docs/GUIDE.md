@@ -813,6 +813,8 @@ A module is just a `.cl` file, and everything at its top level can be imported. 
 
 So a file of yours named `math.cl` hides the standard `math`, as in Python. The compiler warns when that happens, and `import "std/math"` always means the standard one.
 
+A plain `import` brings the module's names into the file. A name defined in the file itself wins over an imported one. When two plain imports both define a name, using it is an error that names both files: import one of them `as` a name and write `b.helper()`, or define the name in your file. A clash is fine as long as the name isn't used.
+
 Standard library: `math`, `memory` (`allocate[T]`, `release`, …), `list`, `map`, `string`, `io`. `String` is always available, and `List` and `Map` are too as soon as a file uses them, like Python's built-ins. The compiler adds `import "std/string"` (and `std/list`, `std/map`) itself unless the file defines its own class with that name.
 
 ### 3.24 Calling C · [`examples/23_c_interop.cl`](../examples/23_c_interop.cl)
