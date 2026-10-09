@@ -1010,12 +1010,29 @@ namespace clear
 		frame->addIncoming(memory, allocate);
 		coroutine.Handle = builder.CreateIntrinsic(llvm::Intrinsic::coro_begin, {}, { id, frame });
 
+		// a generator owns the value it yielded last: it starts empty, so replacing or cleaning it up is safe
+		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+			builder.CreateStore(llvm::Constant::getNullValue(CoroutineValue->Get()), coroutine.Promise);
+
 		// destroying the coroutine frees its frame; suspending returns the handle to the caller
 		coroutine.Cleanup = llvm::BasicBlock::Create(ctx.Context, "coro.cleanup", function);
 		coroutine.Suspend = llvm::BasicBlock::Create(ctx.Context, "coro.suspend", function);
 		llvm::BasicBlock* release = llvm::BasicBlock::Create(ctx.Context, "coro.free", function);
 
 		llvm::IRBuilder<> cleanup(coroutine.Cleanup);
+
+		// the last value a generator yielded is cleaned up with it
+		if (CoroutineKind == 1 && coroutine.Promise && IsOwning(CoroutineValue))
+		{
+			llvm::BasicBlock* freeFrame = llvm::BasicBlock::Create(ctx.Context, "coro.free_frame", function);
+			auto saved = builder.saveIP();
+			builder.SetInsertPoint(coroutine.Cleanup);
+			EmitDestroy(ctx, CoroutineValue, coroutine.Promise);
+			builder.CreateBr(freeFrame);
+			builder.restoreIP(saved);
+			cleanup.SetInsertPoint(freeFrame);
+		}
+
 		llvm::Value* toFree = cleanup.CreateIntrinsic(llvm::Intrinsic::coro_free, {}, { id, coroutine.Handle });
 		cleanup.CreateCondBr(cleanup.CreateIsNotNull(toFree), release, coroutine.Suspend);
 
@@ -1053,6 +1070,11 @@ namespace clear
 	Symbol ASTYield::Codegen(CodegenContext& ctx)
 	{
 		Symbol value = Value->Codegen(ctx);
+
+		// the previous value is replaced: clean it up first (it starts out empty)
+		if (value.GetType() && IsOwning(value.GetType()))
+			EmitDestroy(ctx, value.GetType(), ctx.Coroutine->Promise);
+
 		ctx.Builder.CreateStore(value.GetLLVMValue(), ctx.Coroutine->Promise);
 
 		llvm::BasicBlock* resume = llvm::BasicBlock::Create(ctx.Context, "yield.resume", ctx.Builder.GetInsertBlock()->getParent());

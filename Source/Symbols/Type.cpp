@@ -387,7 +387,8 @@ namespace clear
             return false;
         }
 
-        if (classType->MemberFunctions.contains("__destruct__"))
+        // operator copy: copies have to go through it, so the value is handled like one that owns something
+        if (classType->MemberFunctions.contains("__destruct__") || classType->MemberFunctions.contains("__copy__"))
             return true;
 
         for (const auto& [name, fieldType] : classType->GetMemberValues())

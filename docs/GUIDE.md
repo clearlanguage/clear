@@ -505,6 +505,7 @@ for i in count_up(3, 6):     // 3 4 5
 - Values are produced only when the loop asks, so a generator can be endless (`fibonacci()` in the example).
 - A generator is cleaned up like any other value: `for x in gen():` cleans it up when the loop ends (also on `break`), and `let g = gen()` when `g`'s scope ends. Values the generator was holding while paused are cleaned up too.
 - `for x in g:` on a variable steps through `g` in place, so a second loop carries on where a `break` left off.
+- A generator owns what it yields: `yield String(...)` hands the new value over, `yield s` yields a copy (so `s` is still yours), and each value is cleaned up when the next one replaces it. `g.value()` gives you a copy.
 - By hand: `g.advance()` (true when a new value is ready), `g.value()`, `g.done()`, `g.free()` (frees it early).
 
 ### 3.16 Async / await · [`examples/16_async_await.cl`](../examples/16_async_await.cl)

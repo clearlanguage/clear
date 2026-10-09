@@ -123,6 +123,7 @@ namespace clear
 		std::shared_ptr<ASTNodeBase> ExpandMacro(std::shared_ptr<ASTMacroCall> call, SemaContext context);
 		std::shared_ptr<ASTNodeBase> VisitSuperCall(std::shared_ptr<ASTFunctionCall> funcCall, SemaContext context);
 		void EnsureCopyDefined(std::shared_ptr<Type> type);
+		std::shared_ptr<ASTNodeBase> OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> TakeOwnership(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type);
 		std::shared_ptr<ASTNodeBase> WrittenTemporary(std::shared_ptr<ASTNodeBase> storage);
 		std::shared_ptr<ASTNodeBase> CompoundValue(AssignmentOperatorType assignType, std::shared_ptr<ASTNodeBase> current, std::shared_ptr<ASTNodeBase> value);

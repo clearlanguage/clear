@@ -3025,9 +3025,12 @@ namespace clear
 		if (!yield->Value)
 			return nullptr;
 
+		// the generator owns what it yields (and cleans it up when the next value replaces it): a new value is
+		// handed over, anything else is copied, so the place it came from (a local, a map's own keys) keeps its own
 		m_ViewsAllowed = true;
 		yield->Value = Coerce(yield->Value, context.CoroutineValue);
 		m_ViewsAllowed = false;
+		yield->Value = OwnedValue(yield->Value, context.CoroutineValue);
 		return yield;
 	}
 
@@ -3117,6 +3120,11 @@ namespace clear
 		auto intrinsic = std::make_shared<ASTIntrinsic>(entry.Intrinsic, entry.Result);
 		intrinsic->Location = name;
 		intrinsic->Arguments.push_back(AsValue(object));
+
+		// gen.value(): the generator keeps its value, the caller gets a copy
+		if (!isTask && method == "value" && IsOwning(entry.Result))
+			return OwnedValue(intrinsic, entry.Result);
+
 		return intrinsic;
 	}
 
@@ -5357,6 +5365,28 @@ namespace clear
 			default:
 				return false;
 		}
+	}
+
+	std::shared_ptr<ASTNodeBase> Sema::OwnedValue(std::shared_ptr<ASTNodeBase> node, std::shared_ptr<Type> type)
+	{
+		// a value that will be owned (and cleaned up) by whoever receives it: new values as they are, others copied
+		if (!node || !IsOwning(type) || IsFreshValue(node))
+			return node;
+
+		if (!IsCopyable(type))
+		{
+			Token location = GetNodeLocation(node);
+			location.SetData(GetDisplayName(type));
+			Report(DiagnosticCode_CannotCopyOwning, location);
+			return nullptr;
+		}
+
+		EnsureCopyDefined(type);
+		auto copy = std::make_shared<ASTCopy>();
+		copy->Location = node->Location;
+		copy->Value = node;
+		copy->ValueType = type;
+		return copy;
 	}
 
 	// operator copy of a generic class is only analysed once something is really copied
