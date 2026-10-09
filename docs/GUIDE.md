@@ -214,6 +214,8 @@ const LIMIT = 4                // a compile-time constant
 
 Operators: `+ - * / % **`, comparisons, `and or not`, bitwise `& | ^ ~ << >>`, compound `+= -= …`, `++ --`, `in` / `not in`, `len(x)`.
 
+A pointer to an array is indexed like the array: with `a: *[4; int]`, `a[i] = 3` and `len(a)` work on the array it points at (bounds-checked), the way a `*List[T]` is indexed like the list. A plain `*T` indexes memory as in C: `p[2]` is the item two places after `*p`, unchecked.
+
 Implicit conversions only happen when no information can be lost. Everything else needs `as`; this rule exists so that silent precision bugs can't happen.
 
 - Changing between signed and unsigned of the same size (`int32` and `uint32`) needs `as`, because the value can change meaning.

@@ -3536,6 +3536,10 @@ namespace clear
 		auto type = m_TypeInferEngine.InferTypeFromNode(argument);
 		auto int64Type = m_Module->Lookup("int64").value()->GetType();
 
+		// len(a) with a: [N; T] or *[N; T]: N
+		if (type && type->IsPointer() && type->As<PointerType>()->GetBaseType() && type->As<PointerType>()->GetBaseType()->IsArray())
+			type = type->As<PointerType>()->GetBaseType();
+
 		if (type && type->IsArray())
 			return std::make_shared<ASTConstantValue>((int64_t)type->As<ArrayType>()->GetArraySize(), int64Type);
 
@@ -5885,6 +5889,17 @@ namespace clear
 				element->IsStorage = context.ValueReq == ValueRequired::LValue;
 				element->IsElement = true;
 				return element;
+			}
+
+			// a[i] with a: *[N; T]: the array a points at, like a *List[T] uses the list's operator get
+			if (targetType->IsPointer() && targetType->As<PointerType>()->GetBaseType() && targetType->As<PointerType>()->GetBaseType()->IsArray())
+			{
+				auto array = std::make_shared<ASTUnaryExpression>(OperatorType::Dereference);
+				array->Location = GetNodeLocation(subscript->Target);
+				array->Operand = AsValue(subscript->Target);
+				array->IsStorage = true;
+				subscript->Target = array;
+				targetType = targetType->As<PointerType>()->GetBaseType();
 			}
 
 			// f()[i]: index the computed pointer (or array) directly
